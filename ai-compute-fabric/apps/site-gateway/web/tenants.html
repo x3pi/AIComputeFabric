@@ -33,11 +33,28 @@
 </main>
 <script>
 const msg = t => { document.getElementById("msg").textContent = t; };
-function showKey(k) {
-  document.getElementById("keytext").textContent = k;
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); return true; } catch (e) {}
+  const ta = document.createElement("textarea"); // fallback for non-secure pages (http on a LAN address)
+  ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+  ta.remove(); return ok;
+}
+function selectAll(el) { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+async function showKey(k) {
+  const kt = document.getElementById("keytext"), cp = document.getElementById("copy");
+  kt.textContent = k;
   document.getElementById("newkey").hidden = false;
-  document.getElementById("copy").onclick = () => navigator.clipboard && navigator.clipboard.writeText(k);
-  document.getElementById("dismiss").onclick = () => { document.getElementById("keytext").textContent = ""; document.getElementById("newkey").hidden = true; };
+  kt.onclick = () => selectAll(kt);
+  const done = async () => {
+    const ok = await copyText(k);
+    cp.textContent = ok ? "Đã sao chép ✓" : "Không tự sao chép được — bấm vào khóa rồi nhấn Ctrl+C";
+    if (!ok) selectAll(kt);
+  };
+  cp.textContent = "Sao chép";
+  cp.onclick = done;
+  done(); // copy right away: the key is shown only once
+  document.getElementById("dismiss").onclick = () => { kt.textContent = ""; document.getElementById("newkey").hidden = true; };
 }
 async function patch(id, body) {
   const r = await api("/api/tenants/" + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify(body) });
