@@ -1,0 +1,80 @@
+syntax = "proto3";
+package aicf.v1;
+
+enum ConfidenceLevel {
+  CONFIDENCE_ESTIMATED = 0;
+  CONFIDENCE_CALIBRATED = 1;
+  CONFIDENCE_MEASURED = 2;
+}
+
+message WorkerCapacity {
+  string worker_id = 1;
+  string site_id = 2;
+  uint64 vram_free_bytes = 3;
+  uint64 ram_free_bytes = 4;
+  uint32 cpu_threads_available = 5;
+  repeated string supported_engines = 6;
+  bool user_is_active = 7;
+  VramBuckets vram = 8;
+}
+
+message ModelIdentity {
+  string model_id = 1;
+  string weight_sha256 = 2;
+  string tokenizer_sha256 = 3;
+  string revision = 4;
+  string quantization = 5;
+  string source_repo = 6;
+  string source_revision = 7;
+  string converter = 8;
+  string gguf_sha256 = 9;
+  string license_spdx = 10;
+  bool trust_remote_code = 11;
+}
+
+message VramBuckets {
+  uint64 total_bytes = 1;
+  uint64 os_user_bytes = 2;
+  uint64 weights_bytes = 3;
+  uint64 kv_state_bytes = 4;
+  uint64 compute_bytes = 5;
+  uint64 headroom_bytes = 6;
+  uint64 allocatable_bytes = 7;
+}
+
+message GpuLayerEstimate {
+  string worker_id = 1;
+  uint32 gpu_index = 2;
+  uint32 layer_start = 3;
+  uint32 layer_end = 4;
+  VramBuckets projected_buckets = 5;
+}
+
+message VramEstimate {
+  string deployment_plan_id = 1;
+  repeated GpuLayerEstimate per_gpu = 2;
+  uint64 system_ram_bytes = 3;
+  ConfidenceLevel confidence = 4;
+  float error_margin_pct = 5;
+  string estimator_version = 6;
+  string engine_revision = 7;
+  string fit_status = 8;
+}
+
+message WorkloadJob {
+  string job_id = 1;
+  string tenant_id = 2;
+  string approved_task_type = 3;
+  string artifact_ref = 4;
+  uint64 deadline_unix_ms = 5;
+  string data_class = 6;
+}
+
+message LeaseToken {
+  string lease_id = 1;
+  string worker_id = 2;
+  string deployment_id = 3;
+  uint64 vram_reserved_bytes = 4;
+  uint64 ttl_ms = 5;
+  uint64 issued_unix_ms = 6;
+}

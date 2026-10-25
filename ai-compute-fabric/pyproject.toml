@@ -1,0 +1,9 @@
+[project]
+name = "ai-compute-fabric"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = ["hardware: needs real PCs / GPUs (P0+ gates), skipped on dev machines"]

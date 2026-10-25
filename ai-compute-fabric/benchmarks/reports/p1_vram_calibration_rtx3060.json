@@ -1,0 +1,973 @@
+{
+ "schema_version": 1,
+ "date": "2026-10-25",
+ "scope": "SINGLE dev machine, Linux, 1x RTX 3060 12GB, driver 580.178.04, llama.cpp 74bca39 (CUDA, sm_86), gguf-parser-go 9257743, Q4_K_M only, Qwen3-4B/8B, llama-server -ngl 99 --fit off. NOT the target Windows fleet; not the 72-config matrix (no 32B / MoE: disk).",
+ "calibration_rule": "calibrated = parser(ctx_per_slot, np=1).vram + (np-1) * parser(ctx_per_slot, np=1).kv  ; rule derived from the 'fit' batch, validated on the 'heldout' batch",
+ "cuda_overhead_mib_observed": [
+  131,
+  133
+ ],
+ "fit_batch": {
+  "configs": 24,
+  "started": 20,
+  "raw_pass": 16,
+  "cal_pass": 20,
+  "raw_max_err_mib": 1689,
+  "cal_max_err_mib": 197,
+  "never_underestimates_raw": true,
+  "never_underestimates_cal": true,
+  "not_started": [
+   [
+    "Qwen3-4B-Q4_K_M.gguf",
+    32768,
+    4,
+    false
+   ],
+   [
+    "Qwen3-4B-Q4_K_M.gguf",
+    32768,
+    4,
+    true
+   ],
+   [
+    "Qwen3-8B-Q4_K_M.gguf",
+    32768,
+    4,
+    false
+   ],
+   [
+    "Qwen3-8B-Q4_K_M.gguf",
+    32768,
+    4,
+    true
+   ]
+  ],
+  "not_started_all_predicted_over_free_vram": true
+ },
+ "heldout_batch": {
+  "configs": 8,
+  "started": 8,
+  "raw_pass": 4,
+  "cal_pass": 8,
+  "raw_max_err_mib": 633,
+  "cal_max_err_mib": 141,
+  "never_underestimates_raw": true,
+  "never_underestimates_cal": true,
+  "not_started": [],
+  "not_started_all_predicted_over_free_vram": true
+ },
+ "tolerance": "max(5% of measured, 300 MB)",
+ "rows_fit": [
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 2048,
+   "parallel": 1,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 3214843392,
+    "vram_uma": 301989888,
+    "ram_nonuma": 847076472,
+    "full_offload": true,
+    "calibrated_vram": 3214843392,
+    "one_slot_vram": 3214843392,
+    "one_slot_kv": 301989888
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 2969,
+   "measured_delta_bytes": 3112173568,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 288.0,
+    "compute": 172.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 102669824,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 102669824
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 2048,
+   "parallel": 1,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 3156123136,
+    "vram_uma": 301989888,
+    "ram_nonuma": 847076472,
+    "full_offload": true,
+    "calibrated_vram": 3156123136,
+    "one_slot_vram": 3156123136,
+    "one_slot_kv": 301989888
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 2875,
+   "measured_delta_bytes": 3013607424,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 288.0,
+    "compute": 79.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 142515712,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 142515712
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 2048,
+   "parallel": 4,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 4536049152,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 859659384,
+    "full_offload": true,
+    "calibrated_vram": 4120813056,
+    "one_slot_vram": 3214843392,
+    "one_slot_kv": 301989888
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 3833,
+   "measured_delta_bytes": 4018143232,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 1152.0,
+    "compute": 172.01
+   },
+   "raw_within_tolerance": false,
+   "raw_error_bytes": 517905920,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 102669824
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 2048,
+   "parallel": 4,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 4080967168,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 859659384,
+    "full_offload": true,
+    "calibrated_vram": 4062092800,
+    "one_slot_vram": 3156123136,
+    "one_slot_kv": 301989888
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 3739,
+   "measured_delta_bytes": 3919577088,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 1152.0,
+    "compute": 79.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 161390080,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 142515712
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 8192,
+   "parallel": 1,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 4536049152,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 859659384,
+    "full_offload": true,
+    "calibrated_vram": 4536049152,
+    "one_slot_vram": 4536049152,
+    "one_slot_kv": 1207959552
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 4229,
+   "measured_delta_bytes": 4433379328,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 1152.0,
+    "compute": 568.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 102669824,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 102669824
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 8192,
+   "parallel": 1,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 4080967168,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 859659384,
+    "full_offload": true,
+    "calibrated_vram": 4080967168,
+    "one_slot_vram": 4080967168,
+    "one_slot_kv": 1207959552
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 3745,
+   "measured_delta_bytes": 3925868544,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 1152.0,
+    "compute": 85.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 155098624,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 155098624
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 8192,
+   "parallel": 4,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 9820872192,
+    "vram_uma": 4831838208,
+    "ram_nonuma": 909991032,
+    "full_offload": true,
+    "calibrated_vram": 8159927808,
+    "one_slot_vram": 4536049152,
+    "one_slot_kv": 1207959552
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 7685,
+   "measured_delta_bytes": 8057257984,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 4608.0,
+    "compute": 568.01
+   },
+   "raw_within_tolerance": false,
+   "raw_error_bytes": 1763614208,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 102669824
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 8192,
+   "parallel": 4,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 7780343296,
+    "vram_uma": 4831838208,
+    "ram_nonuma": 909991032,
+    "full_offload": true,
+    "calibrated_vram": 7704845824,
+    "one_slot_vram": 4080967168,
+    "one_slot_kv": 1207959552
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 7201,
+   "measured_delta_bytes": 7549747200,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 4608.0,
+    "compute": 85.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 230596096,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 155098624
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 32768,
+   "parallel": 1,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 9820872192,
+    "vram_uma": 4831838208,
+    "ram_nonuma": 909991032,
+    "full_offload": true,
+    "calibrated_vram": 9820872192,
+    "one_slot_vram": 9820872192,
+    "one_slot_kv": 4831838208
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 9269,
+   "measured_delta_bytes": 9718202368,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 4608.0,
+    "compute": 2152.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 102669824,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 102669824
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 32768,
+   "parallel": 1,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 7780343296,
+    "vram_uma": 4831838208,
+    "ram_nonuma": 909991032,
+    "full_offload": true,
+    "calibrated_vram": 7780343296,
+    "one_slot_vram": 7780343296,
+    "one_slot_kv": 4831838208
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 7225,
+   "measured_delta_bytes": 7574913024,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 4608.0,
+    "compute": 109.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 205430272,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 205430272
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 32768,
+   "parallel": 4,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 30960164352,
+    "vram_uma": 19327352832,
+    "ram_nonuma": 1382112376,
+    "full_offload": true,
+    "calibrated_vram": 24316386816,
+    "one_slot_vram": 9820872192,
+    "one_slot_kv": 4831838208
+   },
+   "started": false,
+   "baseline_mib": 1,
+   "peak_mib": 113,
+   "measured_delta_bytes": null,
+   "log_buffers_mib": {
+    "model": 2375.91
+   }
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 32768,
+   "parallel": 4,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 22577847808,
+    "vram_uma": 19327352832,
+    "ram_nonuma": 1382112376,
+    "full_offload": true,
+    "calibrated_vram": 22275857920,
+    "one_slot_vram": 7780343296,
+    "one_slot_kv": 4831838208
+   },
+   "started": false,
+   "baseline_mib": 1,
+   "peak_mib": 2489,
+   "measured_delta_bytes": null,
+   "log_buffers_mib": {
+    "model": 2375.91
+   }
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 2048,
+   "parallel": 1,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 5407868928,
+    "vram_uma": 301989888,
+    "ram_nonuma": 856518040,
+    "full_offload": true,
+    "calibrated_vram": 5407868928,
+    "one_slot_vram": 5407868928,
+    "one_slot_kv": 301989888
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 5053,
+   "measured_delta_bytes": 5297405952,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 288.0,
+    "compute": 176.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 110462976,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 110462976
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 2048,
+   "parallel": 1,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 5368023040,
+    "vram_uma": 301989888,
+    "ram_nonuma": 856518040,
+    "full_offload": true,
+    "calibrated_vram": 5368023040,
+    "one_slot_vram": 5368023040,
+    "one_slot_kv": 301989888
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 4983,
+   "measured_delta_bytes": 5224005632,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 288.0,
+    "compute": 106.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 144017408,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 144017408
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 2048,
+   "parallel": 4,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 6729074688,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 869100952,
+    "full_offload": true,
+    "calibrated_vram": 6313838592,
+    "one_slot_vram": 5407868928,
+    "one_slot_kv": 301989888
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 5917,
+   "measured_delta_bytes": 6203375616,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 1152.0,
+    "compute": 176.01
+   },
+   "raw_within_tolerance": false,
+   "raw_error_bytes": 525699072,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 110462976
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 2048,
+   "parallel": 4,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 6292867072,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 869100952,
+    "full_offload": true,
+    "calibrated_vram": 6273992704,
+    "one_slot_vram": 5368023040,
+    "one_slot_kv": 301989888
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 5847,
+   "measured_delta_bytes": 6129975296,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 1152.0,
+    "compute": 106.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 162891776,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 144017408
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 8192,
+   "parallel": 1,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 6729074688,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 869100952,
+    "full_offload": true,
+    "calibrated_vram": 6729074688,
+    "one_slot_vram": 6729074688,
+    "one_slot_kv": 1207959552
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 6313,
+   "measured_delta_bytes": 6618611712,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 1152.0,
+    "compute": 572.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 110462976,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 110462976
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 8192,
+   "parallel": 1,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 6292867072,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 869100952,
+    "full_offload": true,
+    "calibrated_vram": 6292867072,
+    "one_slot_vram": 6292867072,
+    "one_slot_kv": 1207959552
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 5853,
+   "measured_delta_bytes": 6136266752,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 1152.0,
+    "compute": 112.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 156600320,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 156600320
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 8192,
+   "parallel": 4,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 12013897728,
+    "vram_uma": 4831838208,
+    "ram_nonuma": 919432600,
+    "full_offload": true,
+    "calibrated_vram": 10352953344,
+    "one_slot_vram": 6729074688,
+    "one_slot_kv": 1207959552
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 9769,
+   "measured_delta_bytes": 10242490368,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 4608.0,
+    "compute": 572.01
+   },
+   "raw_within_tolerance": false,
+   "raw_error_bytes": 1771407360,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 110462976
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 8192,
+   "parallel": 4,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 9992243200,
+    "vram_uma": 4831838208,
+    "ram_nonuma": 919432600,
+    "full_offload": true,
+    "calibrated_vram": 9916745728,
+    "one_slot_vram": 6292867072,
+    "one_slot_kv": 1207959552
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 9309,
+   "measured_delta_bytes": 9760145408,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 4608.0,
+    "compute": 112.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 232097792,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 156600320
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 32768,
+   "parallel": 1,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 12013897728,
+    "vram_uma": 4831838208,
+    "ram_nonuma": 919432600,
+    "full_offload": true,
+    "calibrated_vram": 12013897728,
+    "one_slot_vram": 12013897728,
+    "one_slot_kv": 4831838208
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 11353,
+   "measured_delta_bytes": 11903434752,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 4608.0,
+    "compute": 2156.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 110462976,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 110462976
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 32768,
+   "parallel": 1,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 9992243200,
+    "vram_uma": 4831838208,
+    "ram_nonuma": 919432600,
+    "full_offload": true,
+    "calibrated_vram": 9992243200,
+    "one_slot_vram": 9992243200,
+    "one_slot_kv": 4831838208
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 9333,
+   "measured_delta_bytes": 9785311232,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 4608.0,
+    "compute": 136.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 206931968,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 206931968
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 32768,
+   "parallel": 4,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 33153189888,
+    "vram_uma": 19327352832,
+    "ram_nonuma": 1405185432,
+    "full_offload": true,
+    "calibrated_vram": 26509412352,
+    "one_slot_vram": 12013897728,
+    "one_slot_kv": 4831838208
+   },
+   "started": false,
+   "baseline_mib": 1,
+   "peak_mib": 4569,
+   "measured_delta_bytes": null,
+   "log_buffers_mib": {
+    "model": 4455.34
+   }
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 32768,
+   "parallel": 4,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 24789747712,
+    "vram_uma": 19327352832,
+    "ram_nonuma": 1405185432,
+    "full_offload": true,
+    "calibrated_vram": 24487757824,
+    "one_slot_vram": 9992243200,
+    "one_slot_kv": 4831838208
+   },
+   "started": false,
+   "baseline_mib": 1,
+   "peak_mib": 4569,
+   "measured_delta_bytes": null,
+   "log_buffers_mib": {
+    "model": 4455.34
+   }
+  }
+ ],
+ "rows_heldout": [
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 4096,
+   "parallel": 2,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 4536049152,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 859659384,
+    "full_offload": true,
+    "calibrated_vram": 4259225088,
+    "one_slot_vram": 3655245312,
+    "one_slot_kv": 603979776
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 3965,
+   "measured_delta_bytes": 4156555264,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 1152.0,
+    "compute": 304.01
+   },
+   "raw_within_tolerance": false,
+   "raw_error_bytes": 379493888,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 102669824
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 4096,
+   "parallel": 2,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 4080967168,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 859659384,
+    "full_offload": true,
+    "calibrated_vram": 4068384256,
+    "one_slot_vram": 3464404480,
+    "one_slot_kv": 603979776
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 3741,
+   "measured_delta_bytes": 3921674240,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 1152.0,
+    "compute": 81.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 159292928,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 146710016
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 4096,
+   "parallel": 3,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 5416852992,
+    "vram_uma": 1811939328,
+    "ram_nonuma": 868047992,
+    "full_offload": true,
+    "calibrated_vram": 4863204864,
+    "one_slot_vram": 3655245312,
+    "one_slot_kv": 603979776
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 4541,
+   "measured_delta_bytes": 4760535040,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 1728.0,
+    "compute": 304.6
+   },
+   "raw_within_tolerance": false,
+   "raw_error_bytes": 656317952,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 102669824
+  },
+  {
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "ctx_per_seq": 4096,
+   "parallel": 3,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 4697529856,
+    "vram_uma": 1811939328,
+    "ram_nonuma": 868047992,
+    "full_offload": true,
+    "calibrated_vram": 4672364032,
+    "one_slot_vram": 3464404480,
+    "one_slot_kv": 603979776
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 4317,
+   "measured_delta_bytes": 4525654016,
+   "log_buffers_mib": {
+    "model": 2375.91,
+    "KV": 1728.0,
+    "compute": 81.17
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 171875840,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 146710016
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 4096,
+   "parallel": 2,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 6729074688,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 869100952,
+    "full_offload": true,
+    "calibrated_vram": 6452250624,
+    "one_slot_vram": 5848270848,
+    "one_slot_kv": 603979776
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 6049,
+   "measured_delta_bytes": 6341787648,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 1152.0,
+    "compute": 308.01
+   },
+   "raw_within_tolerance": false,
+   "raw_error_bytes": 387287040,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 110462976
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 4096,
+   "parallel": 2,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 6292867072,
+    "vram_uma": 1207959552,
+    "ram_nonuma": 869100952,
+    "full_offload": true,
+    "calibrated_vram": 6280284160,
+    "one_slot_vram": 5676304384,
+    "one_slot_kv": 603979776
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 5849,
+   "measured_delta_bytes": 6132072448,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 1152.0,
+    "compute": 108.01
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 160794624,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 148211712
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 4096,
+   "parallel": 3,
+   "flash_attn": false,
+   "parser": {
+    "vram_nonuma": 7609878528,
+    "vram_uma": 1811939328,
+    "ram_nonuma": 877489560,
+    "full_offload": true,
+    "calibrated_vram": 7056230400,
+    "one_slot_vram": 5848270848,
+    "one_slot_kv": 603979776
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 6625,
+   "measured_delta_bytes": 6945767424,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 1728.0,
+    "compute": 308.61
+   },
+   "raw_within_tolerance": false,
+   "raw_error_bytes": 664111104,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 110462976
+  },
+  {
+   "model": "Qwen3-8B-Q4_K_M.gguf",
+   "ctx_per_seq": 4096,
+   "parallel": 3,
+   "flash_attn": true,
+   "parser": {
+    "vram_nonuma": 6909429760,
+    "vram_uma": 1811939328,
+    "ram_nonuma": 877489560,
+    "full_offload": true,
+    "calibrated_vram": 6884263936,
+    "one_slot_vram": 5676304384,
+    "one_slot_kv": 603979776
+   },
+   "started": true,
+   "baseline_mib": 1,
+   "peak_mib": 6425,
+   "measured_delta_bytes": 6736052224,
+   "log_buffers_mib": {
+    "model": 4455.34,
+    "KV": 1728.0,
+    "compute": 108.23
+   },
+   "raw_within_tolerance": true,
+   "raw_error_bytes": 173377536,
+   "cal_within_tolerance": true,
+   "cal_error_bytes": 148211712
+  }
+ ],
+ "all": {
+  "configs": 32,
+  "started": 28,
+  "raw_pass": 20,
+  "cal_pass": 28,
+  "raw_max_err_mib": 1689,
+  "cal_max_err_mib": 197,
+  "never_underestimates_raw": true,
+  "never_underestimates_cal": true,
+  "not_started": [
+   [
+    "Qwen3-4B-Q4_K_M.gguf",
+    32768,
+    4,
+    false
+   ],
+   [
+    "Qwen3-4B-Q4_K_M.gguf",
+    32768,
+    4,
+    true
+   ],
+   [
+    "Qwen3-8B-Q4_K_M.gguf",
+    32768,
+    4,
+    false
+   ],
+   [
+    "Qwen3-8B-Q4_K_M.gguf",
+    32768,
+    4,
+    true
+   ]
+  ],
+  "not_started_all_predicted_over_free_vram": true
+ }
+}

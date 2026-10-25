@@ -1,0 +1,18 @@
+# Upstream manifest (plan P0.2). commit_sha values are CANDIDATE pins taken from
+# the default-branch HEAD on 2026-10-25 via `git ls-remote`; P0 must replace them
+# with the tags/commits actually benchmarked. legal_reviewed stays false until
+# Legal signs off (gate P0). Entries with an unverified license are tier=research
+# and therefore cannot enter the production build.
+version: 1
+pinned_at: "2026-10-25"
+components:
+  - {name: llama.cpp,        repo_url: "https://github.com/ggml-org/llama.cpp",             commit_sha: 74bca3950054eed1795f525cb9cf06bfe796492d, spdx_license: MIT,          integration_strategy: DEPEND,        tier: production, legal_reviewed: false}
+  - {name: gguf-parser-go,   repo_url: "https://github.com/gpustack/gguf-parser-go",        commit_sha: 9257743a3c1775b882ba1b58ec7f5a856c2cc385, spdx_license: MIT,          integration_strategy: DEPEND,        tier: production, legal_reviewed: false}
+  - {name: gpustack,         repo_url: "https://github.com/gpustack/gpustack",              commit_sha: 4aaf598ee12d656115ba59acaf16577e77e17010, spdx_license: Apache-2.0,   integration_strategy: RESEARCH_ONLY, tier: research,   legal_reviewed: false, notes: "Worker is Linux-only (D01); baseline/reference only"}
+  - {name: vllm,             repo_url: "https://github.com/vllm-project/vllm",              commit_sha: 65bc698356b4b0106630788536b6af6a916308e9, spdx_license: Apache-2.0,   integration_strategy: DEPEND,        tier: production, legal_reviewed: false}
+  - {name: langgraph,        repo_url: "https://github.com/langchain-ai/langgraph",         commit_sha: 4c52e129eb1ab69a3da58b799f67929f77d81149, spdx_license: MIT,          integration_strategy: DEPEND,        tier: production, legal_reviewed: false}
+  - {name: peft,             repo_url: "https://github.com/huggingface/peft",               commit_sha: 7d6315ae910bf62b6044a7ca917bccf5881f5e43, spdx_license: Apache-2.0,   integration_strategy: DEPEND,        tier: production, legal_reviewed: false}
+  - {name: nats-server,      repo_url: "https://github.com/nats-io/nats-server",            commit_sha: f8f6db894528640b27311353e874ac62c3a47af5, spdx_license: Apache-2.0,   integration_strategy: DEPEND,        tier: production, legal_reviewed: false}
+  - {name: prime-diloco,     repo_url: "https://github.com/PrimeIntellect-ai/prime-diloco", commit_sha: de5b9317da5f57247f11abed2fca259076795460, spdx_license: UNVERIFIED,   integration_strategy: RESEARCH_ONLY, tier: research,   legal_reviewed: false, notes: "License not checked yet (P0.2)"}
+  - {name: prima.cpp,        repo_url: "https://github.com/OpenCPIL/prima.cpp",             commit_sha: 288df6a2cc2120387e12d6f40798f30cc525c9ea, spdx_license: UNVERIFIED,   integration_strategy: VENDOR,        tier: research,   legal_reviewed: false, notes: "License + Windows support unverified (D04)"}
+  - {name: MoLink,           repo_url: "https://github.com/oldcpple/MoLink",                commit_sha: fdc708c46333ffac2bc8f3706a0a0da0a1c9c528, spdx_license: UNVERIFIED,   integration_strategy: VENDOR,        tier: research,   legal_reviewed: false, notes: "License + Windows support unverified (D04)"}
