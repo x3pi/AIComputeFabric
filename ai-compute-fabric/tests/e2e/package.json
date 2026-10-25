@@ -1,0 +1,7 @@
+{
+  "name": "aicf-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Browser end-to-end tests for the gateway pages (real Chrome, real llama-server)",
+  "dependencies": { "playwright-core": "1.48.2" }
+}

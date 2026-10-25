@@ -1,0 +1,22 @@
+:root{--bg:#f6f7f9;--fg:#1c2330;--card:#fff;--mut:#667085;--bd:#e3e6eb;--acc:#2a6fdb;--ok:#2a9d8f;--warn:#e9a23b;--bad:#c0392b;
+--run:#2a9d8f;--rec:#e9a23b;--yld:#5b6fd4;--off:#b8bec9;--stp:#8d99ae}
+@media(prefers-color-scheme:dark){:root{--bg:#10141b;--fg:#e6e9ef;--card:#181d27;--mut:#98a2b3;--bd:#2a3140;--acc:#6aa0ff;--ok:#3fb8a9;--warn:#f0b254;--bad:#ff7b6b;
+--run:#3fb8a9;--rec:#f0b254;--yld:#7d8df0;--off:#4a5262;--stp:#6b768a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 4px}.sub{color:var(--mut);margin-bottom:16px}
+nav{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--bd);background:var(--card);padding:0 16px}
+nav a{padding:10px 14px;color:var(--mut);text-decoration:none;border-bottom:2px solid transparent}
+nav a[aria-current=page]{color:var(--fg);border-bottom-color:var(--acc);font-weight:600}
+nav a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:16px}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.grow{flex:1}
+button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid var(--bd);background:var(--card);color:var(--fg);cursor:pointer}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}button:disabled{opacity:.5;cursor:default}
+input,select,textarea{font:inherit;padding:6px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--bg);color:var(--fg)}
+textarea{width:100%;resize:vertical}label{color:var(--mut);font-size:13px;display:block;margin-bottom:2px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd);vertical-align:middle}
+.num{font-variant-numeric:tabular-nums}.table-wrap{overflow-x:auto}
+.banner{background:var(--card);border:1px solid var(--warn);border-radius:10px;padding:12px 16px;margin-bottom:16px}
+.key{font-family:ui-monospace,monospace;background:var(--bg);border:1px dashed var(--bd);padding:8px;border-radius:6px;word-break:break-all}
+.pill{padding:2px 10px;border-radius:99px;border:1px solid var(--bd);font-size:12px}
+.err{color:var(--bad)}.ok{color:var(--ok)}.mut{color:var(--mut)}

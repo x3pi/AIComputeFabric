@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -21,6 +22,10 @@ type Inference struct {
 	L       *Limiter
 	Client  *http.Client
 	MaxBody int64
+	// Tenants, when set together with AuthRequired, replaces the unauthenticated X-Tenant-ID
+	// header by API keys (Authorization: Bearer aicf_...).
+	Tenants      *TenantStore
+	AuthRequired bool
 }
 
 func NewInference(r *Router, l *Limiter) *Inference {
@@ -47,13 +52,26 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
-	tenant := r.Header.Get("X-Tenant-ID")
-	if tenant == "" {
-		tenant = "anonymous"
+	var tenant string
+	if in.AuthRequired && in.Tenants != nil {
+		t, ok := in.Tenants.Authenticate(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		if !ok {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="aicf"`)
+			reject(w, http.StatusUnauthorized, 0, "missing, invalid or disabled API key")
+			return
+		}
+		tenant = t.ID
+	} else if tenant = r.Header.Get("X-Tenant-ID"); tenant == "" {
+		tenant = "anonymous" // dev mode only: this header is not authenticated
 	}
+	// A caller can only LOWER its own priority; raising it is not possible.
 	prio := PrioInteractive
 	if r.Header.Get("X-Priority") == "batch" {
 		prio = PrioBatch
+	}
+	var deadline time.Duration
+	if ms, err := strconv.Atoi(r.Header.Get("X-Deadline-Ms")); err == nil && ms > 0 {
+		deadline = time.Duration(ms) * time.Millisecond
 	}
 	if ok, wait := in.L.Allow(tenant); !ok {
 		in.R.mu.Lock()
@@ -77,11 +95,14 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	skip := ""
 	for attempt := 0; attempt < 2; attempt++ { // one retry on another worker, only before any byte is sent
-		rt, err := in.R.Acquire(Req{Model: probe.Model, Skip: skip, Tenant: tenant, Prio: prio}, r.Context().Done())
+		rt, err := in.R.Acquire(Req{Model: probe.Model, Skip: skip, Tenant: tenant, Prio: prio, Deadline: deadline}, r.Context().Done())
 		switch err {
 		case nil:
 		case ErrQueueFull:
 			reject(w, http.StatusTooManyRequests, time.Second, "server busy: queue full")
+			return
+		case ErrWouldMiss:
+			reject(w, http.StatusTooManyRequests, in.R.LastEstimate(), "estimated wait exceeds your deadline")
 			return
 		case ErrTenantQueueFull:
 			reject(w, http.StatusTooManyRequests, time.Second, "too many waiting requests for this tenant")
@@ -95,8 +116,9 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			reject(w, http.StatusServiceUnavailable, 5*time.Second, "no worker serves this model")
 			return
 		}
+		granted := time.Now()
 		done, retry := in.forward(w, r, rt, body)
-		in.R.Release(rt, tenant, !done)
+		in.R.Release(rt, tenant, !done, time.Since(granted))
 		skip = rt.ID
 		if done || !retry {
 			return
@@ -167,6 +189,7 @@ func (in *Inference) Metrics(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintf(w, "# TYPE aicf_rejected_total counter\n")
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"queue_full\"} %d\n", s.RejectedQueueFull)
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"tenant_queue_full\"} %d\n", s.RejectedTenantQueue)
+	fmt.Fprintf(w, "aicf_rejected_total{reason=\"deadline\"} %d\n", s.RejectedDeadline)
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"wait_timeout\"} %d\n", s.RejectedWait)
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"no_worker\"} %d\n", s.RejectedNoWorker)
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"rate_limit\"} %d\n", s.RejectedRate)

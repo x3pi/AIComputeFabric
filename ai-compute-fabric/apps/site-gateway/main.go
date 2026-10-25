@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,8 @@ func main() {
 	perTenantQueue := flag.Int("tenant-queue", 0, "queue slots one tenant may use (0 = max-queue/4)")
 	perTenantInflight := flag.Int("tenant-inflight", 0, "concurrent requests one tenant may run (0 = unlimited)")
 	weightsFlag := flag.String("tenant-weights", "", "comma list tenant=weight, e.g. sales=3,ops=1")
+	tenantsFile := flag.String("tenants-file", "", "JSON file with tenants and hashed API keys (enables API-key auth)")
+	adminToken := flag.String("admin-token", os.Getenv("AICF_ADMIN_TOKEN"), "bearer token for /api/* (admin); required when listening beyond loopback")
 	flag.Parse()
 	reg := NewRegistry(*offline)
 	lis, err := net.Listen("tcp", *grpcAddr)
@@ -49,13 +52,28 @@ func main() {
 			}
 		}
 	}
-	router := NewRouter(RouterConfig{MaxQueue: *maxQueue, MaxWait: *maxWait, Fair: *fair, MaxQueuePerTenant: *perTenantQueue,
+	store, err := NewTenantStore(*tenantsFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var policy func(string) (float64, int)
+	if *tenantsFile != "" {
+		policy = store.Policy
+	}
+	router := NewRouter(RouterConfig{Policy: policy, MaxQueue: *maxQueue, MaxWait: *maxWait, Fair: *fair, MaxQueuePerTenant: *perTenantQueue,
 		MaxInflightTenant: *perTenantInflight, Weights: weights}, reg)
 	go router.Run(nil)
+	if h, _, _ := net.SplitHostPort(*httpAddr); *adminToken == "" && h != "127.0.0.1" && h != "localhost" && h != "::1" {
+		log.Fatal("refusing to expose the admin API on ", *httpAddr, " without --admin-token (or AICF_ADMIN_TOKEN)")
+	}
 	inf := NewInference(router, NewLimiter(*rate, *burst))
+	inf.Tenants, inf.AuthRequired = store, *tenantsFile != ""
+	if !inf.AuthRequired {
+		log.Print("WARNING: no --tenants-file: tenants are taken from the unauthenticated X-Tenant-ID header (dev mode)")
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", inf)
 	mux.HandleFunc("/metrics", inf.Metrics)
-	mux.Handle("/", HTTPHandler(fleet))
+	mux.Handle("/", NewAPI(fleet, store, *adminToken))
 	log.Fatal(http.ListenAndServe(*httpAddr, mux))
 }

@@ -8,6 +8,9 @@ test-go:
 	cd apps/worker-guard && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
 	cd apps/site-gateway && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
 
+# Browser end-to-end (needs Chrome, a GPU and a model; NOT part of verify-dev):
+#   cd tests/e2e && npm install && node dashboard_e2e.mjs --gateway ... --guard ... --server ... --model ... --out report.json
+
 # Both OS targets must compile on every change. Compiling is NOT running: the Windows build has never
 # been executed on a Windows machine (see plan B.8).
 build-cross:

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AICF Người dùng</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<script src="common.js"></script>
+<main>
+<h1>Người dùng & khóa API</h1>
+<div class="sub">Mỗi tenant (phòng ban, ứng dụng) có một khóa API riêng. Trọng số quyết định phần GPU khi tranh chấp; giới hạn đồng thời chặn một tenant chiếm hết slot.</div>
+<div id="newkey" class="banner" hidden>
+  <strong>Khóa API mới — chỉ hiện một lần, hãy lưu ngay:</strong>
+  <div class="key" id="keytext"></div>
+  <div class="row" style="margin-top:8px"><button id="copy">Sao chép</button><button id="dismiss">Đã lưu, đóng</button></div>
+</div>
+<div class="card">
+  <form id="add" class="row" autocomplete="off">
+    <div><label for="n">Tên tenant</label><input id="n" required maxlength="64"></div>
+    <div><label for="w">Trọng số</label><input id="w" type="number" min="0.1" step="0.1" value="1" style="width:90px"></div>
+    <div><label for="m">Tối đa đồng thời (0 = mặc định)</label><input id="m" type="number" min="0" step="1" value="0" style="width:120px"></div>
+    <button class="primary" style="align-self:flex-end">Tạo tenant</button>
+  </form>
+  <div id="msg" class="mut" role="status" style="margin-top:8px"></div>
+</div>
+<div class="card table-wrap">
+  <table><thead><tr><th>Tên</th><th>ID</th><th class="num">Trọng số</th><th class="num">Tối đa đồng thời</th><th>Trạng thái</th><th></th></tr></thead>
+  <tbody id="rows"></tbody></table>
+</div>
+</main>
+<script>
+const msg = t => { document.getElementById("msg").textContent = t; };
+function showKey(k) {
+  document.getElementById("keytext").textContent = k;
+  document.getElementById("newkey").hidden = false;
+  document.getElementById("copy").onclick = () => navigator.clipboard && navigator.clipboard.writeText(k);
+  document.getElementById("dismiss").onclick = () => { document.getElementById("keytext").textContent = ""; document.getElementById("newkey").hidden = true; };
+}
+async function patch(id, body) {
+  const r = await api("/api/tenants/" + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify(body) });
+  if (!r.ok) msg("Lỗi: " + (await r.text())); else msg("Đã cập nhật.");
+  load();
+}
+async function load() {
+  const r = await api("/api/tenants");
+  if (!r || !r.ok) return;
+  const list = await r.json(), tb = document.getElementById("rows");
+  tb.replaceChildren();
+  if (!list.length) tb.append(el("tr", {}, el("td", { colspan: 6, class: "mut" }, "Chưa có tenant nào. Tạo tenant đầu tiên ở trên.")));
+  for (const t of list) {
+    const w = el("input", { type: "number", min: "0.1", step: "0.1", value: t.weight, style: "width:80px", "aria-label": "Trọng số " + t.name });
+    const m = el("input", { type: "number", min: "0", step: "1", value: t.max_inflight, style: "width:80px", "aria-label": "Tối đa đồng thời " + t.name });
+    const save = el("button", { onclick: () => patch(t.id, { weight: +w.value, max_inflight: +m.value }) }, "Lưu");
+    const tog = el("button", { onclick: () => patch(t.id, { disabled: !t.disabled }) }, t.disabled ? "Bật lại" : "Vô hiệu hóa");
+    const rot = el("button", { onclick: async () => {
+      if (!confirm("Đổi khóa của " + t.name + "? Khóa cũ sẽ ngừng hoạt động ngay.")) return;
+      const r = await api("/api/tenants/" + encodeURIComponent(t.id) + "/rotate-key", { method: "POST" });
+      if (r.ok) showKey((await r.json()).api_key); else msg("Lỗi: " + (await r.text()));
+    } }, "Đổi khóa");
+    tb.append(el("tr", {}, el("td", {}, t.name), el("td", { class: "mut" }, t.id), el("td", {}, w), el("td", {}, m),
+      el("td", {}, el("span", { class: "pill " + (t.disabled ? "err" : "ok") }, t.disabled ? "đã vô hiệu" : "hoạt động")),
+      el("td", { class: "row" }, save, tog, rot)));
+  }
+}
+document.getElementById("add").onsubmit = async e => {
+  e.preventDefault();
+  const r = await api("/api/tenants", { method: "POST", body: JSON.stringify({
+    name: document.getElementById("n").value.trim(), weight: +document.getElementById("w").value, max_inflight: +document.getElementById("m").value }) });
+  if (r.status === 201) { const d = await r.json(); showKey(d.api_key); msg("Đã tạo " + d.tenant.name + "."); document.getElementById("n").value = ""; }
+  else msg("Lỗi: " + (await r.text()));
+  load();
+};
+load();
+</script>
+</body>
+</html>

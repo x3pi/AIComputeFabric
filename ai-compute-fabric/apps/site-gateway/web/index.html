@@ -4,21 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AICF Fleet</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="common.css">
 <style>
-:root{--bg:#f6f7f9;--fg:#1c2330;--card:#fff;--mut:#667085;--bd:#e3e6eb;--run:#2a9d8f;--rec:#e9a23b;--yld:#5b6fd4;--off:#b8bec9;--stp:#8d99ae}
-@media(prefers-color-scheme:dark){:root{--bg:#10141b;--fg:#e6e9ef;--card:#181d27;--mut:#98a2b3;--bd:#2a3140;--run:#3fb8a9;--rec:#f0b254;--yld:#7d8df0;--off:#4a5262;--stp:#6b768a}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}
-main{max-width:980px;margin:0 auto;padding:16px}h1{font-size:20px;margin:0 0 4px}
-.sub{color:var(--mut);margin-bottom:16px}.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px}
-.cell{height:54px;border-radius:6px;display:flex;align-items:flex-end;justify-content:center;font-size:11px;color:#fff;padding-bottom:3px;overflow:hidden;border:0;cursor:default}
+.cell{height:54px;border-radius:6px;display:flex;align-items:flex-end;justify-content:center;font-size:11px;color:#fff;padding-bottom:3px;overflow:hidden}
 .leg{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--mut);font-size:13px;margin-top:10px}.leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
-table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd)}
-.num{font-variant-numeric:tabular-nums}button{font:inherit;font-size:13px;padding:3px 10px;border-radius:6px;border:1px solid var(--bd);background:var(--card);color:var(--fg);cursor:pointer}
-button:focus-visible{outline:2px solid var(--run);outline-offset:2px}.table-wrap{overflow-x:auto}
 </style>
 </head>
 <body>
+<script src="common.js"></script>
 <main>
 <h1>AICF Fleet</h1>
 <div class="sub" id="sum">Đang chờ worker…</div>
@@ -46,20 +41,21 @@ function renderGrid(s){
 }
 async function loadPage(){
   const st=document.getElementById("flt").value;
-  const r=await fetch(`/api/workers?offset=${offset}&limit=${PAGE}&state=${encodeURIComponent(st)}`);
+  const r=await api(`/api/workers?offset=${offset}&limit=${PAGE}&state=${encodeURIComponent(st)}`);
+  if(!r.ok)return;
   total=+r.headers.get("X-Total-Count")||0;const ws=await r.json();
   document.getElementById("pg").textContent=`${total?offset+1:0}–${offset+ws.length} / ${total}`;
   const b=document.getElementById("rows");b.replaceChildren();
   for(const w of ws){const tr=document.createElement("tr");
     const btn=document.createElement("button");const paused=w.pause_requested;btn.textContent=paused?"Cho chạy lại":"Tạm dừng AI";
-    btn.onclick=async()=>{await fetch(`/api/workers/${encodeURIComponent(w.worker_id)}/${paused?"resume":"pause"}`,{method:"POST"});loadPage()};
+    btn.onclick=async()=>{await api(`/api/workers/${encodeURIComponent(w.worker_id)}/${paused?"resume":"pause"}`,{method:"POST"});loadPage()};
     const act=document.createElement("td");act.append(btn);
     tr.append(td(w.worker_id),td(w.state),td(w.model||"-"),td(w.online?Math.round(w.vram_free_bytes/MIB)+" MiB":"-","num"),td(w.online?w.gpu_temp_c+" °C":"-","num"),td(w.last_reclaim_ms?Math.round(w.last_reclaim_ms)+" ms":"-","num"),act);b.append(tr)}
 }
 document.getElementById("prev").onclick=()=>{offset=Math.max(0,offset-PAGE);loadPage()};
 document.getElementById("next").onclick=()=>{if(offset+PAGE<total){offset+=PAGE;loadPage()}};
 document.getElementById("flt").onchange=()=>{offset=0;loadPage()};
-new EventSource("/api/fleet/stream").onmessage=m=>renderGrid(JSON.parse(m.data));
+stream("/api/fleet/stream", renderGrid);
 loadPage();setInterval(loadPage,2000);
 </script>
 </body>

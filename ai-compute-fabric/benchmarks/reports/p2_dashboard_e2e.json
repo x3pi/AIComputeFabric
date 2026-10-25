@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "pass": true,
+  "checks": [
+    {
+      "name": "worker registered and running",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "admin API refuses requests without the token",
+      "ok": true,
+      "detail": "status 401"
+    },
+    {
+      "name": "fleet page shows the worker on the heatmap",
+      "ok": true,
+      "detail": "1/1 worker trực tuyến · 1 đang chạy AI"
+    },
+    {
+      "name": "fleet table lists pc-001 as running",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "creating a tenant shows its API key once",
+      "ok": true,
+      "detail": "aicf_yvx1…"
+    },
+    {
+      "name": "the key is gone from the page after closing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tenant appears in the list with weight 2",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the API never returns keys or hashes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "chat streams an answer through the gateway",
+      "ok": true,
+      "detail": "Suy nghĩ của mô hìnhOkay, the user greeted me in Vietnamese with \"Chào bạn, hãy "
+    },
+    {
+      "name": "chat shows worker, time to first token and tok/s",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a wrong API key is rejected with 401 and the page says so",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "8 simultaneous chats all complete",
+      "ok": true,
+      "detail": "10 answers with stats"
+    },
+    {
+      "name": "the pause button stops AI on that worker",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no JavaScript errors in any page",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

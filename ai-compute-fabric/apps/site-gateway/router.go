@@ -8,10 +8,11 @@ import (
 
 // Admission errors map to HTTP statuses in the proxy.
 var (
-	ErrQueueFull       = errors.New("queue full")                  // 429
-	ErrTenantQueueFull = errors.New("tenant queue share full")     // 429
-	ErrWaitTimeout     = errors.New("queue wait expired")          // 503 with Retry-After
-	ErrNoWorker        = errors.New("no worker serves this model") // 503
+	ErrQueueFull       = errors.New("queue full")                          // 429
+	ErrTenantQueueFull = errors.New("tenant queue share full")             // 429
+	ErrWaitTimeout     = errors.New("queue wait expired")                  // 503 with Retry-After
+	ErrNoWorker        = errors.New("no worker serves this model")         // 503
+	ErrWouldMiss       = errors.New("estimated wait exceeds the deadline") // 429 with the estimate as Retry-After
 )
 
 // Priorities: interactive requests are always dispatched before batch ones.
@@ -31,6 +32,8 @@ type RouterConfig struct {
 	RefreshEach       time.Duration // routable-worker cache refresh
 	Fair              bool          // false = one shared FIFO (the v1 behaviour, kept for A/B measurement)
 	Weights           map[string]float64
+	// Policy, when set, overrides Weights and the global concurrency cap per tenant.
+	Policy func(tenant string) (weight float64, maxInflight int)
 }
 
 // Req is one admission request.
@@ -39,6 +42,8 @@ type Req struct {
 	Skip   string // worker this request already failed on (retry goes elsewhere if it can)
 	Tenant string
 	Prio   int
+	// Deadline is how long the caller is willing to wait for a slot (0 = RouterConfig.MaxWait).
+	Deadline time.Duration
 }
 
 type waiter struct {
@@ -70,11 +75,13 @@ type Router struct {
 	queue     []*waiter
 	stats     Stats
 	served    map[string]uint64 // per tenant, bounded
+	svcEWMA   float64           // seconds one request holds a slot (EWMA of successful requests)
+	lastWait  time.Duration     // estimate behind the most recent ErrWouldMiss
 }
 
 type Stats struct {
-	Requests, Served, RejectedQueueFull, RejectedTenantQueue, RejectedWait, RejectedNoWorker, RejectedRate, Failovers uint64
-	WaitNanosTotal                                                                                                    uint64
+	Requests, Served, RejectedQueueFull, RejectedTenantQueue, RejectedDeadline, RejectedWait, RejectedNoWorker, RejectedRate, Failovers uint64
+	WaitNanosTotal                                                                                                                      uint64
 }
 
 func NewRouter(cfg RouterConfig, reg *Registry) *Router {
@@ -129,6 +136,11 @@ func (r *Router) key(t string) string {
 }
 
 func (r *Router) weight(t string) float64 {
+	if r.cfg.Policy != nil {
+		if w, _ := r.cfg.Policy(t); w > 0 {
+			return w
+		}
+	}
 	if w, ok := r.cfg.Weights[t]; ok && w > 0 {
 		return w
 	}
@@ -168,7 +180,16 @@ func (r *Router) hasModelLocked(model, skip string) bool {
 }
 
 func (r *Router) tenantAtCapLocked(t string) bool {
-	return r.cfg.Fair && r.cfg.MaxInflightTenant > 0 && r.tInflight[t] >= r.cfg.MaxInflightTenant
+	if !r.cfg.Fair {
+		return false
+	}
+	limit := r.cfg.MaxInflightTenant
+	if r.cfg.Policy != nil {
+		if _, m := r.cfg.Policy(t); m > 0 {
+			limit = m
+		}
+	}
+	return limit > 0 && r.tInflight[t] >= limit
 }
 
 // grantLocked books the slot for a tenant and advances its virtual clock.
@@ -278,6 +299,16 @@ func (r *Router) Acquire(q Req, cancel <-chan struct{}) (Route, error) {
 		r.mu.Unlock()
 		return Route{}, ErrTenantQueueFull
 	}
+	deadline := q.Deadline
+	if deadline <= 0 || deadline > r.cfg.MaxWait {
+		deadline = r.cfg.MaxWait
+	}
+	if est := r.estimateWaitLocked(q); est > deadline {
+		r.stats.RejectedDeadline++
+		r.lastWait = est
+		r.mu.Unlock()
+		return Route{}, ErrWouldMiss
+	}
 	r.seq++
 	w := &waiter{Req: q, seq: r.seq, ch: make(chan Route, 1)}
 	r.queue = append(r.queue, w)
@@ -286,7 +317,7 @@ func (r *Router) Acquire(q Req, cancel <-chan struct{}) (Route, error) {
 	r.dispatchLocked() // a free slot may exist that earlier waiters cannot use
 	r.mu.Unlock()
 
-	timer := time.NewTimer(r.cfg.MaxWait)
+	timer := time.NewTimer(deadline)
 	defer timer.Stop()
 	select {
 	case rt := <-w.ch:
@@ -313,8 +344,9 @@ func (r *Router) Acquire(q Req, cancel <-chan struct{}) (Route, error) {
 	return Route{}, ErrWaitTimeout
 }
 
-// Release frees the slot; failed marks the worker as bad after repeated failures.
-func (r *Router) Release(rt Route, tenant string, failed bool) {
+// Release frees the slot; failed marks the worker as bad after repeated failures. held is how long the
+// request occupied the slot (feeds the wait estimate); pass 0 when unknown.
+func (r *Router) Release(rt Route, tenant string, failed bool, held ...time.Duration) {
 	tenant = r.key(tenant)
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -333,11 +365,50 @@ func (r *Router) Release(rt Route, tenant string, failed bool) {
 	} else {
 		r.stats.Served++
 		r.fails[rt.ID] = 0
+		if len(held) > 0 && held[0] > 0 {
+			if r.svcEWMA == 0 {
+				r.svcEWMA = held[0].Seconds()
+			} else {
+				r.svcEWMA = 0.8*r.svcEWMA + 0.2*held[0].Seconds()
+			}
+		}
 		if len(r.served) < 1000 || r.served[tenant] > 0 {
 			r.served[tenant]++
 		}
 	}
 	r.dispatchLocked()
+}
+
+// estimateWaitLocked predicts how long a new request would queue: the requests that
+// will be served before it, times the typical slot hold time, divided by the slots.
+// Unknown service time (nothing completed yet) means no estimate, so nothing is rejected on it.
+func (r *Router) estimateWaitLocked(q Req) time.Duration {
+	if r.svcEWMA == 0 {
+		return 0
+	}
+	slots := 0
+	for _, rt := range r.routes {
+		if modelMatches(q.Model, rt.Model) {
+			slots += rt.Slots
+		}
+	}
+	if slots == 0 {
+		return 0
+	}
+	ahead := 0
+	for _, w := range r.queue {
+		if !w.done && modelMatches(q.Model, w.Model) && (w.Prio < q.Prio || (w.Prio == q.Prio && (!r.cfg.Fair || w.Tenant == q.Tenant))) {
+			ahead++
+		}
+	}
+	return time.Duration(float64(ahead+1) / float64(slots) * r.svcEWMA * float64(time.Second))
+}
+
+// LastEstimate is the wait estimate behind the latest ErrWouldMiss (for Retry-After).
+func (r *Router) LastEstimate() time.Duration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastWait
 }
 
 // Snapshot of live gauges + counters (for /metrics and tests).
