@@ -1,12 +1,12 @@
 {
   "workers": 3,
   "checks": {
-    "all_running_s": 5.03960108757019,
+    "all_running_s": 5.044260025024414,
     "buckets_reported": true,
-    "pause_applied_s": 2.0308961868286133,
+    "pause_applied_s": 3.05372953414917,
     "others_still_running": true,
-    "resume_to_running_s": 4.014084577560425,
-    "offline_detected_s": 2.9445810317993164,
+    "resume_to_running_s": 5.016555547714233,
+    "offline_detected_s": 3.973928689956665,
     "survivors_online": true
   },
   "pass": true

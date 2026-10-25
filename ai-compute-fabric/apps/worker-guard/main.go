@@ -28,7 +28,9 @@ func main() {
 		ngl      = flag.Int("ngl", 99, "GPU layers")
 		headroom = flag.Uint64("headroom-mib", 1536, "free VRAM that must stay available to the user (D07)")
 		stable   = flag.Duration("resume-stable", 10*time.Second, "GPU must stay free this long before restart")
-		poll     = flag.Duration("poll", 100*time.Millisecond, "control-loop period")
+		poll     = flag.Duration("poll", 500*time.Millisecond, "normal control-loop period")
+		fastPoll = flag.Duration("fast-poll", 100*time.Millisecond, "period when free VRAM is near the headroom")
+		near     = flag.Uint64("near-margin-mib", 2048, "\"near\" = free VRAM below headroom + this")
 		listen   = flag.String("listen", "127.0.0.1:8099", "dashboard/API address (loopback by default)")
 		logPath  = flag.String("engine-log", "", "write engine log here")
 		gpu      = flag.Int("gpu", 0, "GPU index")
@@ -41,7 +43,7 @@ func main() {
 	}
 	eng := &LlamaEngine{Bin: *bin, Model: *model, Port: *port, Ctx: *ctx, Parallel: *par, NGL: *ngl,
 		LogPath: *logPath, Grace: 500 * time.Millisecond}
-	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll}, SMISampler{Index: *gpu}, eng)
+	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near}, SMISampler{Index: *gpu}, eng)
 	go g.Run(nil)
 	if *gateway != "" {
 		host, _ := os.Hostname()

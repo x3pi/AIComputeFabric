@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "platform": "linux-single-gpu",
+  "headroom_mib": 1536,
+  "summary": {
+    "n_ok": 10,
+    "n": 10,
+    "min_ms": 412.9,
+    "median_ms": 474.6,
+    "p95_ms": 907.0,
+    "max_ms": 907.0,
+    "gate_under_2000ms": true
+  },
+  "trials": [
+    {
+      "trial": 0,
+      "engine_mib": 5460,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 907.0,
+      "guard_detect_to_freed_ms": 474.37,
+      "guard_stop_ms": 434.5,
+      "signal": "SIGTERM"
+    },
+    {
+      "trial": 1,
+      "engine_mib": 5460,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 437.0,
+      "guard_detect_to_freed_ms": 191.367,
+      "guard_stop_ms": 148.866,
+      "signal": "SIGTERM"
+    },
+    {
+      "trial": 2,
+      "engine_mib": 5460,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 490.2,
+      "guard_detect_to_freed_ms": 197.495,
+      "guard_stop_ms": 153.334,
+      "signal": "SIGTERM"
+    },
+    {
+      "trial": 3,
+      "engine_mib": 5460,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 489.2,
+      "guard_detect_to_freed_ms": 200.051,
+      "guard_stop_ms": 157.113,
+      "signal": "SIGTERM"
+    },
+    {
+      "trial": 4,
+      "engine_mib": 5460,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 464.1,
+      "guard_detect_to_freed_ms": 196.629,
+      "guard_stop_ms": 151.258,
+      "signal": "SIGTERM"
+    },
+    {
+      "trial": 5,
+      "engine_mib": 5460,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 474.0,
+      "guard_detect_to_freed_ms": 188.665,
+      "guard_stop_ms": 149.073,
+      "signal": "SIGTERM"
+    },
+    {
+      "trial": 6,
+      "engine_mib": 5460,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 475.2,
+      "guard_detect_to_freed_ms": 188.612,
+      "guard_stop_ms": 149.902,
+      "signal": "SIGTERM"
+    },
+    {
+      "trial": 7,
+      "engine_mib": 5460,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 476.5,
+      "guard_detect_to_freed_ms": 203.214,
+      "guard_stop_ms": 156.233,
+      "signal": "SIGTERM"
+    },
+    {
+      "trial": 8,
+      "engine_mib": 5460,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 457.0,
+      "guard_detect_to_freed_ms": 198.597,
+      "guard_stop_ms": 150.811,
+      "signal": "SIGTERM"
+    },
+    {
+      "trial": 9,
+      "engine_mib": 5460,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 412.9,
+      "guard_detect_to_freed_ms": 197.739,
+      "guard_stop_ms": 152.948,
+      "signal": "SIGTERM"
+    }
+  ]
+}

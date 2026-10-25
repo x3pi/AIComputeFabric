@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "host_cpus": 20,
+  "note": "loadgen + gateway on the same host",
+  "scenarios": [
+    {
+      "duration_s": 20,
+      "errors": 0,
+      "hb_max_ms": 12.839,
+      "hb_p50_ms": 0.355,
+      "hb_p99_ms": 0.929,
+      "heartbeats": 4000,
+      "viewers": 0,
+      "workers": 200,
+      "gateway_cpu_cores_avg": 0.068,
+      "gateway_rss_mb": 42.5
+    },
+    {
+      "duration_s": 20,
+      "errors": 0,
+      "hb_max_ms": 11.782,
+      "hb_p50_ms": 0.349,
+      "hb_p99_ms": 0.814,
+      "heartbeats": 19905,
+      "sse_avg_msg_bytes": 481897,
+      "sse_msgs": 85,
+      "viewers": 5,
+      "workers": 1000,
+      "gateway_cpu_cores_avg": 0.334,
+      "gateway_rss_mb": 145.8
+    },
+    {
+      "duration_s": 20,
+      "errors": 0,
+      "hb_max_ms": 139.157,
+      "hb_p50_ms": 0.174,
+      "hb_p99_ms": 4.993,
+      "heartbeats": 98584,
+      "sse_avg_msg_bytes": 2409463,
+      "sse_msgs": 340,
+      "viewers": 20,
+      "workers": 5000,
+      "gateway_cpu_cores_avg": 0.924,
+      "gateway_rss_mb": 996.9
+    }
+  ]
+}

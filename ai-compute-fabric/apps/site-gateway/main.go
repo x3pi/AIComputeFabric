@@ -29,5 +29,7 @@ func main() {
 	pb.RegisterFleetGatewayServer(s, &GRPC{Reg: reg})
 	go func() { log.Fatal(s.Serve(lis)) }()
 	log.Printf("site-gateway gRPC %s, http://%s", *grpcAddr, *httpAddr)
-	log.Fatal(http.ListenAndServe(*httpAddr, HTTPHandler(reg)))
+	fleet := NewFleet(reg)
+	go fleet.Run(time.Second, nil)
+	log.Fatal(http.ListenAndServe(*httpAddr, HTTPHandler(fleet)))
 }

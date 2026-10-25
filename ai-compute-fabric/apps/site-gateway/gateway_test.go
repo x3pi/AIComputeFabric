@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,7 +73,7 @@ func TestPauseDirectiveDeliveredOnHeartbeat(t *testing.T) {
 	if r, _ := c.Heartbeat(ctx, hb("w1", "running")); r.PauseRequested {
 		t.Fatal("no pause requested yet")
 	}
-	h := HTTPHandler(reg)
+	h := HTTPHandler(NewFleet(reg))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/workers/w1/pause", nil))
 	if rec.Code != 204 {
@@ -88,7 +90,7 @@ func TestPauseDirectiveDeliveredOnHeartbeat(t *testing.T) {
 
 func TestHTTPValidation(t *testing.T) {
 	_, reg, _ := rig(t)
-	h := HTTPHandler(reg)
+	h := HTTPHandler(NewFleet(reg))
 	for _, tc := range []struct {
 		method, path string
 		want         int
@@ -107,7 +109,74 @@ func TestHTTPValidation(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/workers", nil))
 	var out []Worker
+	if strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Fatalf("empty fleet must encode as [], got %q", rec.Body.String())
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out) != 0 {
 		t.Fatalf("empty fleet must be [] : %q %v", rec.Body.String(), err)
+	}
+}
+
+func TestPaginationFilterAndSharedFrame(t *testing.T) {
+	_, reg, _ := rig(t)
+	for i := 0; i < 250; i++ {
+		id := fmt.Sprintf("w%04d", i)
+		reg.Register(&pb.RegisterRequest{WorkerId: id, VramTotalBytes: 12 << 30})
+		st := "running"
+		if i%5 == 0 {
+			st = "paused"
+		}
+		reg.Heartbeat(&pb.HeartbeatRequest{State: st, Capacity: &pb.WorkerCapacity{WorkerId: id, VramFreeBytes: 3 << 30}})
+	}
+	f := NewFleet(reg)
+	h := HTTPHandler(f)
+	get := func(url string) (*httptest.ResponseRecorder, []Worker) {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", url, nil))
+		var ws []Worker
+		json.Unmarshal(rec.Body.Bytes(), &ws)
+		return rec, ws
+	}
+	rec, ws := get("/api/workers")
+	if len(ws) != 100 || rec.Header().Get("X-Total-Count") != "250" {
+		t.Fatalf("default page must be 100 of 250, got %d / %s", len(ws), rec.Header().Get("X-Total-Count"))
+	}
+	if _, ws = get("/api/workers?limit=100000"); len(ws) != 250 {
+		t.Fatalf("limit is capped at 500, got %d", len(ws))
+	}
+	if rec, ws = get("/api/workers?state=paused&limit=500"); len(ws) != 50 || rec.Header().Get("X-Total-Count") != "50" {
+		t.Fatalf("paused filter: %d", len(ws))
+	}
+	if _, ws = get("/api/workers?offset=240&limit=50"); len(ws) != 10 {
+		t.Fatalf("last page: %d", len(ws))
+	}
+	frame, next := f.Frame()
+	var s Summary
+	if err := json.Unmarshal(frame, &s); err != nil || s.Total != 250 || len(s.Cells) != 250 || s.Counts["running"] != 200 {
+		t.Fatalf("summary: %v total=%d counts=%v", err, s.Total, s.Counts)
+	}
+	if per := len(frame) / 250; per > 60 {
+		t.Fatalf("compact frame should be <60 B/worker, got %d", per)
+	}
+	select {
+	case <-next:
+		t.Fatal("next must not be closed before a refresh")
+	default:
+	}
+	f.Refresh()
+	select {
+	case <-next:
+	default:
+		t.Fatal("refresh must wake SSE viewers")
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/workers/w0003", nil))
+	if rec.Code != 200 {
+		t.Fatalf("detail: %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/workers/ghost", nil))
+	if rec.Code != 404 {
+		t.Fatalf("unknown detail: %d", rec.Code)
 	}
 }

@@ -254,3 +254,19 @@ func TestReporterDoesNotUndoLocalPauseAndReRegisters(t *testing.T) {
 		t.Fatalf("worker must re-register after the gateway forgot it, registrations=%d", fg.regCount)
 	}
 }
+
+func TestPollCadenceSpeedsUpOnlyNearHeadroom(t *testing.T) {
+	g, gpu, _, _ := newRig(t)
+	g.cfg.Poll, g.cfg.FastPoll, g.cfg.NearMarginMiB = 500*time.Millisecond, 100*time.Millisecond, 2048
+	g.Tick() // GPU empty: 12288 MiB free
+	if got := g.NextInterval(); got != 500*time.Millisecond {
+		t.Fatalf("idle GPU should poll slowly, got %v", got)
+	}
+	gpu.mu.Lock()
+	gpu.external = 12288 - 1536 - 1000 // free = 2536 < headroom + 2048
+	gpu.mu.Unlock()
+	g.Tick()
+	if got := g.NextInterval(); got != 100*time.Millisecond {
+		t.Fatalf("near the headroom should poll fast, got %v", got)
+	}
+}

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
-	"time"
 
 	pb "github.com/aicf/ai-compute-fabric/contracts/gen/go"
 )
@@ -34,13 +34,15 @@ func (g *GRPC) Heartbeat(_ context.Context, r *pb.HeartbeatRequest) (*pb.Heartbe
 }
 
 // HTTPHandler serves the fleet API and the embedded fleet page.
-func HTTPHandler(reg *Registry) http.Handler {
+//
+//	GET  /api/fleet/stream           SSE, one shared compact summary per second (heatmap)
+//	GET  /api/workers?offset&limit&state   paginated detail (limit default 100, max 500)
+//	GET  /api/workers/{id}           one worker
+//	POST /api/workers/{id}/pause|resume
+func HTTPHandler(f *Fleet) http.Handler {
+	reg := f.reg
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/workers", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(reg.List())
-	})
-	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/fleet/stream", func(w http.ResponseWriter, r *http.Request) {
 		fl, ok := w.(http.Flusher)
 		if !ok {
 			http.Error(w, "streaming unsupported", 500)
@@ -48,26 +50,53 @@ func HTTPHandler(reg *Registry) http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
-		t := time.NewTicker(time.Second)
-		defer t.Stop()
 		for {
-			b, _ := json.Marshal(reg.List())
-			fmt.Fprintf(w, "data: %s\n\n", b)
+			frame, next := f.Frame()
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", frame); err != nil {
+				return
+			}
 			fl.Flush()
 			select {
 			case <-r.Context().Done():
 				return
-			case <-t.C:
+			case <-next:
 			}
 		}
 	})
-	// POST /api/workers/{id}/pause and /resume
+	mux.HandleFunc("/api/workers", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		offset, _ := strconv.Atoi(q.Get("offset"))
+		limit, err := strconv.Atoi(q.Get("limit"))
+		if err != nil || limit <= 0 {
+			limit = 100
+		}
+		if limit > 500 {
+			limit = 500
+		}
+		if offset < 0 {
+			offset = 0
+		}
+		ws, total := f.Page(offset, limit, q.Get("state"))
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Total-Count", strconv.Itoa(total))
+		json.NewEncoder(w).Encode(ws)
+	})
 	mux.HandleFunc("/api/workers/", func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/workers/"), "/")
+		if len(parts) == 1 && parts[0] != "" && r.Method == http.MethodGet {
+			wk, ok := f.Get(parts[0])
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(wk)
+			return
+		}
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)
 			return
 		}
-		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/workers/"), "/")
 		if len(parts) != 2 || (parts[1] != "pause" && parts[1] != "resume") {
 			http.NotFound(w, r)
 			return

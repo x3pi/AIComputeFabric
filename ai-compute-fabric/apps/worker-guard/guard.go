@@ -22,7 +22,9 @@ const (
 type Config struct {
 	HeadroomMiB   uint64
 	ResumeStable  time.Duration // GPU must stay free this long before the engine restarts
-	Poll          time.Duration
+	Poll          time.Duration // normal cadence
+	FastPoll      time.Duration // cadence when free VRAM is within NearMarginMiB of the headroom (0 = same as Poll)
+	NearMarginMiB uint64
 	FreedFraction float64 // fraction of the engine's VRAM that must disappear to call it "freed"
 	FreedTimeout  time.Duration
 }
@@ -61,6 +63,8 @@ type Guard struct {
 	own       uint64 // engine VRAM seen at last running sample
 	lastOwn   uint64
 	freeSince time.Time
+	procs     []Proc
+	procsAt   time.Time
 	events    []Event
 }
 
@@ -113,8 +117,13 @@ func (g *Guard) Tick() error {
 		return err
 	}
 	g.mu.Lock()
-	g.last = s
 	st := g.st
+	g.mu.Unlock()
+	if st == StRunning {
+		s.Procs = g.cachedProcs(false)
+	}
+	g.mu.Lock()
+	g.last = s
 	g.mu.Unlock()
 
 	switch st {
@@ -157,6 +166,33 @@ func (g *Guard) Tick() error {
 	return nil
 }
 
+// cachedProcs returns per-process VRAM, refreshed at most once per second unless
+// force is set. Samplers without a ProcSampler (tests) carry Procs in the sample.
+func (g *Guard) cachedProcs(force bool) []Proc {
+	ps, ok := g.smp.(ProcSampler)
+	if !ok {
+		s, _ := g.smp.Sample()
+		return s.Procs
+	}
+	if force || g.now().Sub(g.procsAt) >= time.Second {
+		if p, err := ps.Procs(); err == nil {
+			g.procs, g.procsAt = p, g.now()
+		}
+	}
+	return g.procs
+}
+
+// NextInterval is the poll cadence for the next tick: fast only when the user is
+// close to taking the headroom, otherwise slow to keep CPU use negligible.
+func (g *Guard) NextInterval() time.Duration {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.cfg.FastPoll > 0 && g.last.TotalMiB > 0 && g.last.FreeMiB() < g.cfg.HeadroomMiB+g.cfg.NearMarginMiB {
+		return g.cfg.FastPoll
+	}
+	return g.cfg.Poll
+}
+
 func (g *Guard) start() error {
 	t0 := g.now()
 	if err := g.eng.Start(); err != nil {
@@ -181,6 +217,7 @@ func (g *Guard) reclaim(pre GPUSample, own uint64) {
 	for g.now().Before(deadline) {
 		s, err := g.smp.Sample()
 		if err == nil {
+			s.Procs = g.cachedProcs(true)
 			g.mu.Lock()
 			g.last = s
 			g.mu.Unlock()
@@ -231,16 +268,15 @@ func min64(a, b uint64) uint64 {
 	return b
 }
 
-// Run ticks until stop is closed.
+// Run ticks until stop is closed, adapting the cadence to how close the user is
+// to the headroom (see NextInterval).
 func (g *Guard) Run(stop <-chan struct{}) {
-	t := time.NewTicker(g.cfg.Poll)
-	defer t.Stop()
 	for {
+		g.Tick()
 		select {
 		case <-stop:
 			return
-		case <-t.C:
-			g.Tick()
+		case <-time.After(g.NextInterval()):
 		}
 	}
 }

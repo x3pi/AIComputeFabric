@@ -270,6 +270,24 @@ Mọi bản phát hành của Dashboard phải vượt qua kịch bản kiểm t
 2. **Kiểm thử Phản hồi Thao tác Quản trị (Interactive Latency):** Thao tác điều chỉnh Quota phòng ban, tìm kiếm Worker theo IP/tên, hoặc kích hoạt lệnh tạm dừng AI phải phản hồi trên giao diện trong $< 200\text{ ms}$.
 3. **Kiểm thử Phân quyền Đa Vai Trò (RBAC Verification):** Tài khoản vai trò `Viewer` bị vô hiệu hóa 100% các nút điều chỉnh Quota, gán Task hoặc thu hồi GPU; tài khoản `Operator` chỉ được thao tác trong Site của mình; tài khoản `Admin` có toàn quyền cấu hình toàn cụm.
 
+### B.7. Thiết Kế Cho Tải Lớn (Scale-Ready Design) — Nguyên Tắc, Số Đo Và Phần Còn Thiếu
+
+Có hai loại "tải" khác nhau và phải thiết kế riêng: **mặt điều khiển** (heartbeat, đăng ký, dashboard — tỉ lệ theo số PC) và **mặt dữ liệu** (yêu cầu suy luận của người dùng — tỉ lệ theo số người dùng, bị chặn bởi GPU).
+
+**Nguyên tắc (bắt buộc cho mọi module mới):**
+1. **Worker kết nối ra ngoài** (outbound gRPC), không mở cổng vào; lệnh điều khiển đi theo phản hồi heartbeat. Gateway không giữ kết nối ngược tới worker.
+2. **Gateway/scheduler không giữ trạng thái duy nhất**: nhiều bản sao sau bộ cân bằng tải; trạng thái bền ở PostgreSQL, sự kiện qua NATS JetStream (chưa làm — hiện gateway giữ trong RAM, một bản sao).
+3. **Chia theo site**: mỗi site có gateway riêng và là miền lỗi riêng; control plane toàn cục chỉ nhận số tổng hợp, không nhận heartbeat thô.
+4. **Worker không phụ thuộc mạng để bảo vệ người dùng**: mất gateway vẫn thu hồi GPU cục bộ (đã làm và có test; reporter chỉ log lỗi).
+5. **Đọc rẻ, ghi một lần**: dashboard đọc ảnh chụp đã tuần tự hóa MỘT lần mỗi giây dùng chung cho mọi người xem; heatmap dùng khung gọn (~23 B/worker), chi tiết phân trang và lấy theo yêu cầu (đã làm).
+6. **Mặt dữ liệu có admission control**: hàng đợi có giới hạn theo model, từ chối sớm bằng 429 + `Retry-After` khi thời gian chờ ước tính vượt hạn chót (logic `reject_reason` đã có trong scheduler; chưa có gateway suy luận), giới hạn tốc độ theo tenant (token bucket), truyền phát (streaming) không đệm toàn bộ phản hồi.
+7. **Agent trên PC người dùng phải gần như miễn phí**: mục tiêu ≤ 0,05 lõi CPU và ≤ 50 MB RAM.
+8. **Mọi thay đổi đường nóng phải có số đo trước/sau** (`benchmarks/control_plane/gateway_capacity.py`).
+
+**Đã đo (Phần I.7):** một tiến trình gateway nhận heartbeat 1 Hz từ 5.000 worker giả lập với p99 0,5 ms, 0,8 lõi CPU, 628 MB RAM (cùng máy với bộ tạo tải, nên số này bi quan); cổng W4 (200 worker) dùng khoảng 0,07 lõi. Khung SSE giảm 21 lần sau khi bỏ việc tuần tự hóa riêng từng người xem. Agent worker-guard giảm từ 0,38 xuống 0,054 lõi CPU (poll thích nghi).
+
+**Chưa đo / chưa làm (không được xem là đã sẵn sàng):** (a) mặt dữ liệu: chưa có gateway suy luận, chưa đo tải đồng thời 8/32/… yêu cầu, thông lượng gộp mỗi GPU với `-np` > 1 chưa đo; (b) chưa có HA gateway, NATS, PostgreSQL, mTLS; (c) chưa kiểm tra mạng thật (độ trễ, mất gói, 200 PC thật); (d) trên 5.000 worker/site cần khung delta thay vì khung đầy đủ và chia shard registry; (e) chưa có Prometheus metrics cho gateway.
+
 ---
 
 ## PHẦN C — KẾ HOẠCH THỰC HIỆN CHI TIẾT P0 → P8 (KÈM YÊU CẦU VIẾT TEST & CHECK PASS RÕ RÀNG)
@@ -884,7 +902,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [~] P2.1 Kế toán VRAM 6 ngăn 1 Hz; power limit; thang thu hồi Drain → Checkpoint → Kill → `apps/worker-guard` (Go, Linux, 1 GPU): bucket từ log llama.cpp + SSE 1 Hz, thu hồi bằng SIGTERM→SIGKILL, 10/10 lần < 240 ms (Phần I.5); CHƯA có Drain/Checkpoint, power limit, Windows/PDH
 - [ ] P2.1 Tự cập nhật vòng 5 → 25 → 100 % + watchdog rollback
 - [ ] P2.1 System Tray: nút "Tạm dừng AI 4 giờ"
-- [~] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease → `apps/site-gateway` + `gateway.proto`: Register/Heartbeat/pause directive/offline detection chạy với 3 worker-guard thật (Phần I.6); CHƯA có mTLS, NATS, PostgreSQL, Lease
+- [~] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease → `apps/site-gateway` + `gateway.proto`: Register/Heartbeat/pause directive/offline detection chạy với 3 worker-guard thật (Phần I.6); tải 5.000 worker giả lập đạt (I.7, §B.7); CHƯA có mTLS, NATS, PostgreSQL, Lease, HA
 - [ ] P2.2 CA `step-ca`, cert tự xoay 30 ngày
 - [ ] P2.2 `core/topology-graph` đo RTT/băng thông
 - [~] P2.3 `core/adaptive-scheduler` v1 (lọc VramEstimate, ModelIdentity, tenant, hàm chi phí) → core/adaptive_scheduler/scheduler.py: logic thuần; chưa nối gateway/lease
@@ -1180,21 +1198,30 @@ So với ước lượng cũ (8B: 40–55 tok/s; cận băng thông 73): thực 
 - **RAM host:** `gguf-parser` mặc định (mmap) báo ~1,3–1,5 GB nhưng llama.cpp thực giữ 8,5–11,8 GB cho layer trên CPU — thiếu 7,7–11 GB. Dùng `--no-mmap`: luôn thừa đúng +1.394 MiB (an toàn). **Scheduler phải dùng số `--no-mmap`** cho `LOCAL_HYBRID`.
 - Chưa đo: TTFT/p95 qua server, concurrency 8/32, joule/token (B02 đầy đủ).
 
-### I.5. PoC thu hồi GPU trên Linux (`apps/worker-guard`, RTX 3060, 10 lần)
+### I.5. PoC thu hồi GPU trên Linux (`apps/worker-guard`, RTX 3060, 10 lần) — bản v2 sau khi giảm CPU, bản v1 ở cuối mục
 Kịch bản: worker-guard chạy llama-server Qwen3-8B (5.460 MiB); một job GPU độc lập (Qwen3-4B, ctx 24576) đóng vai người dùng và kéo VRAM trống xuống dưới headroom 1.536 MiB. Mốc thời gian do harness tự đo (nvidia-smi mỗi ~10 ms): từ lúc VRAM trống < headroom đến lúc pid của engine không còn giữ VRAM.
 
 | Chỉ số | Giá trị |
 |---|---|
 | Số lần đạt / thử | 10 / 10 |
-| min / median / p95 / max | 154,7 / 207,7 / 239,1 / 239,1 ms |
+| min / median / p95 / max (v2, poll 500 ms, nhanh 100 ms khi gần ngưỡng) | 412,9 / 474,6 / 907,0 / 907,0 ms |
+| v1 (poll cố định 100 ms, 2 lần spawn nvidia-smi mỗi nhịp) | 154,7 / 207,7 / 239,1 / 239,1 ms — nhanh hơn nhưng tốn 0,38 lõi CPU mỗi PC |
 | Phần dừng tiến trình (SIGTERM, không cần SIGKILL) | ≈ 150 ms |
 | Cổng < 2 s | đạt ở Linux, 1 GPU |
 
-Bằng chứng: `ai-compute-fabric/benchmarks/reports/p2_gpu_reclaim_poc_rtx3060.json`, harness `benchmarks/hardware/reclaim_poc.py`. Giới hạn trung thực: (1) chỉ Linux, nơi NVML cho số VRAM theo tiến trình; trên Windows/WDDM số này không đáng tin nên cổng vẫn chưa được kiểm chứng; (2) "người dùng" là job llama-server nạp dần, chưa phải game/trình duyệt; (3) chưa có Drain/Checkpoint, kill thẳng vì suy luận không có trạng thái cần giữ; (4) 10 lần là mẫu nhỏ, chưa đủ để nói p95 chắc chắn.
+Bằng chứng: `ai-compute-fabric/benchmarks/reports/p2_gpu_reclaim_poc_rtx3060_v2.json` (v1: `..._rtx3060.json`), harness `benchmarks/hardware/reclaim_poc.py`. Giới hạn trung thực: (1) chỉ Linux, nơi NVML cho số VRAM theo tiến trình; trên Windows/WDDM số này không đáng tin nên cổng vẫn chưa được kiểm chứng; (2) "người dùng" là job llama-server nạp dần, chưa phải game/trình duyệt; (3) chưa có Drain/Checkpoint, kill thẳng vì suy luận không có trạng thái cần giữ; (4) 10 lần là mẫu nhỏ, chưa đủ để nói p95 chắc chắn.
 
 ### I.6. Đường điều khiển gateway ↔ worker-guard (1 máy, 3 worker thật dùng chung 1 GPU)
-`site-gateway` + 3 tiến trình `worker-guard`, mỗi cái chạy `llama-server` Qwen3-4B riêng (`benchmarks/hardware/fleet_poc.py`). Kết quả: cả 3 worker lên `running` sau 5,0 s; gateway nhận đủ 6 nhóm VRAM từ cả 3; lệnh tạm dừng một worker qua gateway có hiệu lực sau 2,0 s (một chu kỳ heartbeat 1 s + dừng engine) và 2 worker còn lại không bị ảnh hưởng; cho chạy lại sau 4,0 s; worker bị `kill -9` hiện `offline` sau 2,9 s (ngưỡng 3 s). Bằng chứng: `benchmarks/reports/p2_gateway_control_path_poc.json`.
+`site-gateway` + 3 tiến trình `worker-guard`, mỗi cái chạy `llama-server` Qwen3-4B riêng (`benchmarks/hardware/fleet_poc.py`). Kết quả: cả 3 worker lên `running` sau 5,0 s; gateway nhận đủ 6 nhóm VRAM từ cả 3; lệnh tạm dừng một worker qua gateway có hiệu lực sau 3,1 s (chờ heartbeat kế tiếp ≤ 1 s + dừng engine + tối đa 1 s do ảnh chụp đọc được làm mới mỗi giây) và 2 worker còn lại không bị ảnh hưởng; cho chạy lại sau 5,0 s; worker bị `kill -9` hiện `offline` sau 4,0 s (ngưỡng 3 s + tối đa 1 s trễ ảnh chụp). Lần chạy đầu (trước khi có ảnh chụp dùng chung) cho 2,0 / 4,0 / 2,9 s: độ trễ tăng thêm ~1 s là cái giá có chủ đích của việc đọc rẻ. Bằng chứng: `benchmarks/reports/p2_gateway_control_path_poc.json`.
 Giới hạn: 3 worker trên cùng một máy và một GPU, không có độ trễ mạng, không mTLS; chứng minh đường điều khiển đúng, KHÔNG chứng minh quy mô 200 PC. Gateway lưu trạng thái trong RAM; gateway khởi động lại thì worker tự đăng ký lại (có test).
+
+### I.7. Sức chứa mặt điều khiển (gateway, worker giả lập 1 Hz, cùng máy 20 lõi với bộ tạo tải, 20 s mỗi kịch bản)
+| Worker | Người xem SSE | Lỗi | Heartbeat p50 / p99 / max (ms) | CPU gateway | RAM gateway | Khung SSE |
+|---|---|---|---|---|---|---|
+| 200 | 0 | 0 | 0,38 / 0,94 / 18,6 | 0,07 lõi | 43 MB | – |
+| 1.000 | 5 | 0 | 0,36 / 0,81 / 2,9 | 0,33 lõi | 143 MB | 23 KB |
+| 5.000 | 20 | 0 | 0,18 / 0,51 / 56,8 | 0,81 lõi | 628 MB | 115 KB |
+Bản đầu (tuần tự hóa riêng từng người xem): khung 482 KB ở 1.000 worker và 2,4 MB ở 5.000 worker, RAM 997 MB (`p2_gateway_capacity_v1_per_viewer_marshal.json`). Bằng chứng: `benchmarks/reports/p2_gateway_capacity.json`. Giới hạn: worker giả lập (không phải worker-guard), cùng máy, không mTLS, không mạng thật; chỉ chứng minh mặt điều khiển, không nói gì về mặt dữ liệu. Chi phí agent: 0,38 lõi (poll 100 ms × 2 lần spawn nvidia-smi) → 0,054 lõi (poll 500 ms, 100 ms khi gần ngưỡng, hỏi tiến trình 1 Hz); đổi lại độ trễ thu hồi tăng từ trung vị 208 ms lên 475 ms (max 907 ms), vẫn dưới 2 s.
 
 ### I.4. Còn trống
 Windows (WDDM, PDH, thu hồi GPU), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).

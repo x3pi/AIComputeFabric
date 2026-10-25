@@ -63,20 +63,31 @@ func (s SMISampler) Sample() (GPUSample, error) {
 		return GPUSample{}, fmt.Errorf("parse %q", out)
 	}
 	g.UsedMiB, g.TotalMiB, g.TempC = u, t, c
+	return g, nil
+}
+
+// ProcSampler is the optional, costlier per-process query. Each nvidia-smi spawn
+// costs ~18 ms of CPU, so the guard calls it at 1 Hz (and during a reclaim), not
+// on every fast poll: measured 0.38 CPU cores at 10 Hz x 2 spawns on an office PC.
+type ProcSampler interface{ Procs() ([]Proc, error) }
+
+func (s SMISampler) Procs() ([]Proc, error) {
 	apps, err := exec.Command("nvidia-smi", "-i", strconv.Itoa(s.Index),
 		"--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits").Output()
-	if err == nil {
-		for _, ln := range strings.Split(strings.TrimSpace(string(apps)), "\n") {
-			p := strings.Split(ln, ",")
-			if len(p) != 2 {
-				continue
-			}
-			pid, e1 := strconv.Atoi(strings.TrimSpace(p[0]))
-			m, e2 := strconv.ParseUint(strings.TrimSpace(p[1]), 10, 64)
-			if e1 == nil && e2 == nil {
-				g.Procs = append(g.Procs, Proc{pid, m})
-			}
+	if err != nil {
+		return nil, err
+	}
+	var out []Proc
+	for _, ln := range strings.Split(strings.TrimSpace(string(apps)), "\n") {
+		p := strings.Split(ln, ",")
+		if len(p) != 2 {
+			continue
+		}
+		pid, e1 := strconv.Atoi(strings.TrimSpace(p[0]))
+		m, e2 := strconv.ParseUint(strings.TrimSpace(p[1]), 10, 64)
+		if e1 == nil && e2 == nil {
+			out = append(out, Proc{pid, m})
 		}
 	}
-	return g, nil
+	return out, nil
 }

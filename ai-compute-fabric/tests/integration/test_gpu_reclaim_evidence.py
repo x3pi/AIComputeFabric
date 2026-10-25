@@ -3,7 +3,7 @@ measurement; it does NOT re-run the GPU job. Windows/WDDM remains unmeasured."""
 import json
 from pathlib import Path
 
-REPORT = Path(__file__).parents[2] / "benchmarks/reports/p2_gpu_reclaim_poc_rtx3060.json"
+REPORT = Path(__file__).parents[2] / "benchmarks/reports/p2_gpu_reclaim_poc_rtx3060_v2.json"
 
 
 def test_reclaim_report_meets_2s_gate_on_linux():

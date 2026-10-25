@@ -24,25 +24,43 @@ button:focus-visible{outline:2px solid var(--run);outline-offset:2px}.table-wrap
 <div class="sub" id="sum">Đang chờ worker…</div>
 <div class="card"><div class="grid" id="grid" role="list"></div>
 <div class="leg"><span><i style="background:var(--run)"></i>running</span><span><i style="background:var(--rec)"></i>reclaiming</span><span><i style="background:var(--yld)"></i>yielded</span><span><i style="background:var(--stp)"></i>stopped / paused</span><span><i style="background:var(--off)"></i>offline</span></div></div>
-<div class="card table-wrap"><table><thead><tr><th>Worker</th><th>Trạng thái</th><th>Model</th><th class="num">VRAM trống</th><th class="num">Nhiệt độ</th><th class="num">Thu hồi gần nhất</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="card table-wrap">
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+<label for="flt">Lọc trạng thái</label><select id="flt"><option value="">tất cả</option><option>running</option><option>reclaiming</option><option>yielded</option><option>paused</option><option>stopped</option><option>offline</option></select>
+<button id="prev">Trước</button><span id="pg" class="num"></span><button id="next">Sau</button></div>
+<table><thead><tr><th>Worker</th><th>Trạng thái</th><th>Model</th><th class="num">VRAM trống</th><th class="num">Nhiệt độ</th><th class="num">Thu hồi gần nhất</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
 </main>
 <script>
-const MIB=1048576, COL={running:"--run",reclaiming:"--rec",yielded:"--yld",offline:"--off",stopped:"--stp",paused:"--stp",registered:"--stp"};
+const MIB=1048576, PAGE=50, NAMES=["offline","registered","stopped","paused","yielded","reclaiming","running"];
+const COL=["--off","--stp","--stp","--stp","--yld","--rec","--run"];
+let offset=0,total=0;
 function td(t,c){const d=document.createElement("td");d.textContent=t;if(c)d.className=c;return d}
-function render(ws){
-  document.getElementById("sum").textContent=`${ws.filter(w=>w.online).length}/${ws.length} worker trực tuyến · ${ws.filter(w=>w.state==="running").length} đang chạy AI`;
-  const g=document.getElementById("grid"),b=document.getElementById("rows");g.replaceChildren();b.replaceChildren();
-  for(const w of ws){
-    const c=document.createElement("div");c.className="cell";c.role="listitem";c.style.background=`var(${COL[w.state]||"--stp"})`;
-    c.textContent=w.worker_id.slice(-6);c.title=`${w.worker_id}: ${w.state}`;g.append(c);
-    const tr=document.createElement("tr");
-    const btn=document.createElement("button");const paused=w.pause_requested;btn.textContent=paused?"Cho chạy lại":"Tạm dừng AI";
-    btn.onclick=()=>fetch(`/api/workers/${encodeURIComponent(w.worker_id)}/${paused?"resume":"pause"}`,{method:"POST"});
-    const act=document.createElement("td");act.append(btn);
-    tr.append(td(w.worker_id),td(w.state),td(w.model||"-"),td(w.online?Math.round(w.vram_free_bytes/MIB)+" MiB":"-","num"),td(w.online?w.gpu_temp_c+" °C":"-","num"),td(w.last_reclaim_ms?Math.round(w.last_reclaim_ms)+" ms":"-","num"),act);b.append(tr);
-  }
+// Heatmap: ONE compact frame per second shared by all viewers; rows are [id,stateCode,vramUsedPermille,tempC].
+function renderGrid(s){
+  const run=s.counts.running||0,on=s.total-(s.counts.offline||0);
+  document.getElementById("sum").textContent=`${on}/${s.total} worker trực tuyến · ${run} đang chạy AI`;
+  const g=document.getElementById("grid"),f=document.createDocumentFragment();
+  for(const [id,st,used,t] of s.cells){const c=document.createElement("div");c.className="cell";c.role="listitem";
+    c.style.background=`var(${COL[st]})`;c.textContent=id.slice(-5);c.title=`${id}: ${NAMES[st]} · VRAM dùng ${used/10}% · ${t} °C`;f.append(c)}
+  g.replaceChildren(f);
 }
-new EventSource("/api/events").onmessage=m=>render(JSON.parse(m.data));
+async function loadPage(){
+  const st=document.getElementById("flt").value;
+  const r=await fetch(`/api/workers?offset=${offset}&limit=${PAGE}&state=${encodeURIComponent(st)}`);
+  total=+r.headers.get("X-Total-Count")||0;const ws=await r.json();
+  document.getElementById("pg").textContent=`${total?offset+1:0}–${offset+ws.length} / ${total}`;
+  const b=document.getElementById("rows");b.replaceChildren();
+  for(const w of ws){const tr=document.createElement("tr");
+    const btn=document.createElement("button");const paused=w.pause_requested;btn.textContent=paused?"Cho chạy lại":"Tạm dừng AI";
+    btn.onclick=async()=>{await fetch(`/api/workers/${encodeURIComponent(w.worker_id)}/${paused?"resume":"pause"}`,{method:"POST"});loadPage()};
+    const act=document.createElement("td");act.append(btn);
+    tr.append(td(w.worker_id),td(w.state),td(w.model||"-"),td(w.online?Math.round(w.vram_free_bytes/MIB)+" MiB":"-","num"),td(w.online?w.gpu_temp_c+" °C":"-","num"),td(w.last_reclaim_ms?Math.round(w.last_reclaim_ms)+" ms":"-","num"),act);b.append(tr)}
+}
+document.getElementById("prev").onclick=()=>{offset=Math.max(0,offset-PAGE);loadPage()};
+document.getElementById("next").onclick=()=>{if(offset+PAGE<total){offset+=PAGE;loadPage()}};
+document.getElementById("flt").onchange=()=>{offset=0;loadPage()};
+new EventSource("/api/fleet/stream").onmessage=m=>renderGrid(JSON.parse(m.data));
+loadPage();setInterval(loadPage,2000);
 </script>
 </body>
 </html>
