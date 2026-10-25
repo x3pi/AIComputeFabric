@@ -5,10 +5,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
+
+	pb "github.com/aicf/ai-compute-fabric/contracts/gen/go"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -25,6 +32,8 @@ func main() {
 		listen   = flag.String("listen", "127.0.0.1:8099", "dashboard/API address (loopback by default)")
 		logPath  = flag.String("engine-log", "", "write engine log here")
 		gpu      = flag.Int("gpu", 0, "GPU index")
+		gateway  = flag.String("gateway", "", "site-gateway gRPC address (empty = standalone)")
+		workerID = flag.String("worker-id", "", "worker id (default: hostname)")
 	)
 	flag.Parse()
 	if *bin == "" || *model == "" {
@@ -34,6 +43,20 @@ func main() {
 		LogPath: *logPath, Grace: 500 * time.Millisecond}
 	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll}, SMISampler{Index: *gpu}, eng)
 	go g.Run(nil)
+	if *gateway != "" {
+		host, _ := os.Hostname()
+		if *workerID == "" {
+			*workerID = host
+		}
+		// Plain gRPC for now: mTLS (step-ca) is an open P2.2 item.
+		conn, err := grpc.NewClient(*gateway, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Fatal(err)
+		}
+		r := &Reporter{Client: pb.NewFleetGatewayClient(conn), G: g, WorkerID: *workerID, SiteID: "dev", Hostname: host,
+			GPUName: "NVIDIA GPU", Model: filepath.Base(*model)}
+		go r.Run(context.Background())
+	}
 	log.Printf("worker-guard on http://%s", *listen)
 	log.Fatal(http.ListenAndServe(*listen, Handler(g)))
 }

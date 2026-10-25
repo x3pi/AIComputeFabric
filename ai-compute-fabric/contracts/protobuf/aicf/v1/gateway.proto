@@ -1,0 +1,45 @@
+syntax = "proto3";
+package aicf.v1;
+option go_package = "github.com/aicf/ai-compute-fabric/contracts/gen/go;aicfv1";
+
+import "aicf/v1/fabric.proto";
+
+// FleetGateway is what a worker-guard talks to (plan P2.2). Pause/resume is a
+// directive returned on the heartbeat so a worker behind NAT never needs an
+// inbound port.
+service FleetGateway {
+  rpc Register(RegisterRequest) returns (RegisterReply);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatReply);
+}
+
+message RegisterRequest {
+  string worker_id = 1;
+  string site_id = 2;
+  string hostname = 3;
+  string gpu_name = 4;
+  uint64 vram_total_bytes = 5;
+  repeated string supported_engines = 6;
+  string agent_version = 7;
+}
+
+message RegisterReply {
+  uint32 heartbeat_interval_ms = 1;
+}
+
+message ReclaimStat {
+  uint64 at_unix_ms = 1;
+  double detect_to_freed_ms = 2;
+}
+
+message HeartbeatRequest {
+  WorkerCapacity capacity = 1;
+  string state = 2;          // stopped | running | reclaiming | yielded | paused
+  string model = 3;
+  ReclaimStat last_reclaim = 4;
+  uint32 gpu_temp_c = 5;
+}
+
+message HeartbeatReply {
+  bool registered = 1;       // false => worker must Register again (gateway restarted)
+  bool pause_requested = 2;  // operator wants AI paused on this worker
+}

@@ -1,6 +1,8 @@
 go 1.22.2
 
 use (
+	./apps/site-gateway
 	./apps/worker-guard
+	./contracts/gen/go
 	./core/vram-estimator
 )

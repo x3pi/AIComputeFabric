@@ -1,5 +1,6 @@
 syntax = "proto3";
 package aicf.v1;
+option go_package = "github.com/aicf/ai-compute-fabric/contracts/gen/go;aicfv1";
 
 enum ConfidenceLevel {
   CONFIDENCE_ESTIMATED = 0;

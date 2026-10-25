@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
+	"net"
 	"sync"
 	"testing"
 	"time"
+
+	pb "github.com/aicf/ai-compute-fabric/contracts/gen/go"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // fakeGPU lets a test play the role of "the user" by raising external usage.
@@ -156,5 +162,95 @@ func TestParseBuffers(t *testing.T) {
 	}
 	if b.ModelMiB != 4455.04 || b.KVMiB != 576 || b.ComputeMiB != 296.75 {
 		t.Fatalf("%+v", b)
+	}
+}
+
+// --- reporter / gateway directive ---
+
+type fakeGateway struct {
+	pb.UnimplementedFleetGatewayServer
+	mu       sync.Mutex
+	pause    bool
+	known    bool
+	got      []*pb.HeartbeatRequest
+	regCount int
+}
+
+func (f *fakeGateway) Register(context.Context, *pb.RegisterRequest) (*pb.RegisterReply, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.known = true
+	f.regCount++
+	return &pb.RegisterReply{HeartbeatIntervalMs: 1000}, nil
+}
+func (f *fakeGateway) Heartbeat(_ context.Context, r *pb.HeartbeatRequest) (*pb.HeartbeatReply, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.got = append(f.got, r)
+	return &pb.HeartbeatReply{Registered: f.known, PauseRequested: f.pause}, nil
+}
+
+func reporterRig(t *testing.T) (*Reporter, *fakeGateway, *Guard, *fakeEngine, *time.Time) {
+	t.Helper()
+	g, _, eng, clock := newRig(t)
+	g.Tick()
+	*clock = clock.Add(11 * time.Second)
+	g.Tick() // running
+	fg := &fakeGateway{}
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := grpc.NewServer()
+	pb.RegisterFleetGatewayServer(s, fg)
+	go s.Serve(lis)
+	t.Cleanup(s.Stop)
+	conn, _ := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	t.Cleanup(func() { conn.Close() })
+	return &Reporter{Client: pb.NewFleetGatewayClient(conn), G: g, WorkerID: "w1", Model: "m"}, fg, g, eng, clock
+}
+
+func TestReporterSendsBucketsAndAppliesPauseThenResume(t *testing.T) {
+	r, fg, g, eng, _ := reporterRig(t)
+	ctx := context.Background()
+	if err := r.Step(ctx); err != nil {
+		t.Fatal(err)
+	}
+	hb := fg.got[len(fg.got)-1]
+	if hb.State != "running" || hb.Capacity.Vram.GetWeightsBytes() == 0 || hb.Capacity.WorkerId != "w1" {
+		t.Fatalf("%+v", hb)
+	}
+	fg.mu.Lock()
+	fg.pause = true
+	fg.mu.Unlock()
+	r.Step(ctx)
+	if g.st != StPaused || eng.running {
+		t.Fatalf("gateway pause must stop the engine: state=%s running=%v", g.st, eng.running)
+	}
+	fg.mu.Lock()
+	fg.pause = false
+	fg.mu.Unlock()
+	r.Step(ctx)
+	if g.st != StStopped {
+		t.Fatalf("gateway resume must lift the pause, state=%s", g.st)
+	}
+}
+
+func TestReporterDoesNotUndoLocalPauseAndReRegisters(t *testing.T) {
+	r, fg, g, _, _ := reporterRig(t)
+	ctx := context.Background()
+	r.Step(ctx)
+	g.Pause() // operator pressed pause on the machine itself
+	r.Step(ctx)
+	if g.st != StPaused {
+		t.Fatal("gateway without a directive must not resume a locally paused worker")
+	}
+	fg.mu.Lock()
+	fg.known = false // gateway restarted
+	fg.mu.Unlock()
+	r.Step(ctx)
+	r.Step(ctx)
+	if fg.regCount != 2 {
+		t.Fatalf("worker must re-register after the gateway forgot it, registrations=%d", fg.regCount)
 	}
 }

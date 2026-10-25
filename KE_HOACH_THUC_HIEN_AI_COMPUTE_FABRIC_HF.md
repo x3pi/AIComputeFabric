@@ -818,7 +818,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 | Chuẩn bị | Tài liệu & quyết định | 6 | 5 | 0 | Chờ dữ liệu thật từ bạn |
 | P0 | Khảo sát, baseline, kiểm chứng ADR-001 | 19 | 1 | 4 | Có probe, manifest, B01 một phần trên 1 máy Linux; chưa có PC Windows/fleet |
 | P1 | Monorepo, contract, registry, estimator | 14 | 2 | 7 | Toán + hiệu chuẩn trên 1 GPU Linux xong (28/28 sau hiệu chuẩn); thiếu ma trận 72, Windows, HF Hub, CI |
-| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 21 | 1 | 3 | Có PoC worker-guard Linux (thu hồi GPU đạt) + trang quản lý 1 worker; chưa gateway, Windows, heatmap |
+| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 21 | 1 | 4 | Có PoC worker-guard Linux (thu hồi GPU đạt), gateway Register/Heartbeat/pause, 2 trang web; chưa mTLS/NATS/PG, Windows, 200 node |
 | P3 | Qwen phân tán + Deploy UI | 13 | 0 | 0 | Chưa bắt đầu (cần GPU) |
 | P4 | MoE & Speculative | 11 | 0 | 0 | Chưa bắt đầu (cần GPU) |
 | P5 | Agent, RAG, 15 typed tasks | 13 | 0 | 0 | Chưa bắt đầu |
@@ -826,7 +826,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 | P7 | WAN, đa tenant, metering | 11 | 0 | 0 | Chưa bắt đầu |
 | P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | 0 | Chưa bắt đầu |
 
-**Tổng: 142 mục, 11 xong, 16 một phần, 115 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
+**Tổng: 142 mục, 11 xong, 17 một phần, 114 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
 
 ### H.1. Chuẩn bị (trước P0)
 - [x] Đọc, đánh giá kế hoạch và tài liệu kiến trúc [KT]; sửa lỗi số học, công thức, gate → Phần A
@@ -884,11 +884,11 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [~] P2.1 Kế toán VRAM 6 ngăn 1 Hz; power limit; thang thu hồi Drain → Checkpoint → Kill → `apps/worker-guard` (Go, Linux, 1 GPU): bucket từ log llama.cpp + SSE 1 Hz, thu hồi bằng SIGTERM→SIGKILL, 10/10 lần < 240 ms (Phần I.5); CHƯA có Drain/Checkpoint, power limit, Windows/PDH
 - [ ] P2.1 Tự cập nhật vòng 5 → 25 → 100 % + watchdog rollback
 - [ ] P2.1 System Tray: nút "Tạm dừng AI 4 giờ"
-- [ ] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease
+- [~] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease → `apps/site-gateway` + `gateway.proto`: Register/Heartbeat/pause directive/offline detection chạy với 3 worker-guard thật (Phần I.6); CHƯA có mTLS, NATS, PostgreSQL, Lease
 - [ ] P2.2 CA `step-ca`, cert tự xoay 30 ngày
 - [ ] P2.2 `core/topology-graph` đo RTT/băng thông
 - [~] P2.3 `core/adaptive-scheduler` v1 (lọc VramEstimate, ModelIdentity, tenant, hàm chi phí) → core/adaptive_scheduler/scheduler.py: logic thuần; chưa nối gateway/lease
-- [~] P2.4 Dashboard MVP: Màn 1 (heatmap 200 GPU) và Màn 3 (worker, quota, preemption log) → chỉ có trang tĩnh 1 worker nhúng trong worker-guard (thanh 6 bucket + nhật ký thu hồi + nút tạm dừng); chưa React/AntD, chưa heatmap, chưa quota/RBAC, chưa Playwright
+- [~] P2.4 Dashboard MVP: Màn 1 (heatmap 200 GPU) và Màn 3 (worker, quota, preemption log) → hai trang HTML tĩnh: 1 worker (worker-guard) và lưới + bảng nhiều worker (site-gateway, nút tạm dừng qua gateway); chưa React/AntD, chưa thử ở quy mô 200 node, chưa quota/RBAC, chưa Playwright
 - [ ] P2.4 RBAC, audit log, Việt/Anh
 - [x] Test: `test_adaptive_scheduler_decisions.py` (≥ 15 kịch bản) → 16 kịch bản pass; mutation bắt được lỗi bỏ kiểm VRAM
 - [ ] Test: `test_lease_lifecycle_and_idempotency.py`
@@ -1191,6 +1191,10 @@ Kịch bản: worker-guard chạy llama-server Qwen3-8B (5.460 MiB); một job G
 | Cổng < 2 s | đạt ở Linux, 1 GPU |
 
 Bằng chứng: `ai-compute-fabric/benchmarks/reports/p2_gpu_reclaim_poc_rtx3060.json`, harness `benchmarks/hardware/reclaim_poc.py`. Giới hạn trung thực: (1) chỉ Linux, nơi NVML cho số VRAM theo tiến trình; trên Windows/WDDM số này không đáng tin nên cổng vẫn chưa được kiểm chứng; (2) "người dùng" là job llama-server nạp dần, chưa phải game/trình duyệt; (3) chưa có Drain/Checkpoint, kill thẳng vì suy luận không có trạng thái cần giữ; (4) 10 lần là mẫu nhỏ, chưa đủ để nói p95 chắc chắn.
+
+### I.6. Đường điều khiển gateway ↔ worker-guard (1 máy, 3 worker thật dùng chung 1 GPU)
+`site-gateway` + 3 tiến trình `worker-guard`, mỗi cái chạy `llama-server` Qwen3-4B riêng (`benchmarks/hardware/fleet_poc.py`). Kết quả: cả 3 worker lên `running` sau 5,0 s; gateway nhận đủ 6 nhóm VRAM từ cả 3; lệnh tạm dừng một worker qua gateway có hiệu lực sau 2,0 s (một chu kỳ heartbeat 1 s + dừng engine) và 2 worker còn lại không bị ảnh hưởng; cho chạy lại sau 4,0 s; worker bị `kill -9` hiện `offline` sau 2,9 s (ngưỡng 3 s). Bằng chứng: `benchmarks/reports/p2_gateway_control_path_poc.json`.
+Giới hạn: 3 worker trên cùng một máy và một GPU, không có độ trễ mạng, không mTLS; chứng minh đường điều khiển đúng, KHÔNG chứng minh quy mô 200 PC. Gateway lưu trạng thái trong RAM; gateway khởi động lại thì worker tự đăng ký lại (có test).
 
 ### I.4. Còn trống
 Windows (WDDM, PDH, thu hồi GPU), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).
