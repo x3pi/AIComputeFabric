@@ -19,6 +19,9 @@ Khung monorepo theo `KE_HOACH_THUC_HIEN_AI_COMPUTE_FABRIC_HF.md` (Phụ lục A 
 - B01 một phần: Qwen3-8B Q4_K_M decode 64,9 tok/s; Qwen3-4B 104,5 tok/s (`llama-bench`, concurrency 1).
 - Harness: `benchmarks/hardware/calibrate_vram.py` (cần llama-server, gguf-parser và GPU NVIDIA).
 
+## Chạy thử worker-guard + site-gateway + web (Linux)
+Xem `docs/TESTING.md` và `deploy/demo/run_demo.sh`. Windows: chưa chạy thật.
+
 ## Chưa có (cần phần cứng/con người thật)
 worker-guard, site-gateway, dashboard, mọi adapter engine, benchmark B01–B09, soak 72 h, pilot, WAN, Legal/HR duyệt.
 

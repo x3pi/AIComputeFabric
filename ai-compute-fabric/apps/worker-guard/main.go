@@ -54,6 +54,10 @@ func serve(stop <-chan struct{}) {
 		gpu      = flag.Int("gpu", 0, "GPU index")
 		gateway  = flag.String("gateway", "", "site-gateway gRPC address (empty = standalone)")
 		advert   = flag.String("advertise-host", "127.0.0.1", "address the gateway uses to reach this engine")
+		tlsCA    = flag.String("tls-ca", "", "CA that signed the gateway certificate (enables mTLS)")
+		tlsCert  = flag.String("tls-cert", "", "this worker's client certificate")
+		tlsKey   = flag.String("tls-key", "", "this worker's private key")
+		tlsName  = flag.String("tls-server-name", "", "expected gateway certificate name (default: host of --gateway)")
 		workerID = flag.String("worker-id", "", "worker id (default: hostname)")
 	)
 	flag.Parse()
@@ -69,8 +73,15 @@ func serve(stop <-chan struct{}) {
 		if *workerID == "" {
 			*workerID = host
 		}
-		// Plain gRPC for now: mTLS (step-ca) is an open P2.2 item.
-		conn, err := grpc.NewClient(*gateway, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		creds := insecure.NewCredentials()
+		if *tlsCA != "" {
+			c, err := ClientCreds(*tlsCA, *tlsCert, *tlsKey, *tlsName)
+			if err != nil {
+				log.Fatal("mTLS: ", err)
+			}
+			creds = c
+		}
+		conn, err := grpc.NewClient(*gateway, grpc.WithTransportCredentials(creds))
 		if err != nil {
 			log.Fatal(err)
 		}

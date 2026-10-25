@@ -1,6 +1,6 @@
 // site-gateway: the per-site control point workers register with (plan P2.2).
 // Implemented: Register/Heartbeat over gRPC, in-memory registry, offline
-// detection, operator pause directive, fleet page. NOT implemented: mTLS,
+// detection, operator pause directive, fleet page, optional mTLS. NOT implemented:
 // NATS JetStream, PostgreSQL, leases.
 package main
 
@@ -32,13 +32,27 @@ func main() {
 	weightsFlag := flag.String("tenant-weights", "", "comma list tenant=weight, e.g. sales=3,ops=1")
 	tenantsFile := flag.String("tenants-file", "", "JSON file with tenants and hashed API keys (enables API-key auth)")
 	adminToken := flag.String("admin-token", os.Getenv("AICF_ADMIN_TOKEN"), "bearer token for /api/* (admin); required when listening beyond loopback")
+	affinity := flag.Duration("affinity-patience", 300*time.Millisecond, "wait this long for the worker holding a conversation's cache (0 = off)")
+	tlsCert := flag.String("tls-cert", "", "gateway server certificate (enables mTLS on the gRPC port)")
+	tlsKey := flag.String("tls-key", "", "gateway server private key")
+	tlsCA := flag.String("tls-client-ca", "", "CA that must have signed every worker certificate")
 	flag.Parse()
 	reg := NewRegistry(*offline)
 	lis, err := net.Listen("tcp", *grpcAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	s := grpc.NewServer()
+	var opts []grpc.ServerOption
+	if *tlsCert != "" {
+		creds, err := ServerCreds(*tlsCert, *tlsKey, *tlsCA)
+		if err != nil {
+			log.Fatal("mTLS: ", err)
+		}
+		opts = append(opts, grpc.Creds(creds))
+	} else if h, _, _ := net.SplitHostPort(*grpcAddr); h != "127.0.0.1" && h != "localhost" && h != "::1" {
+		log.Print("WARNING: gRPC is listening beyond loopback without mTLS (--tls-cert/--tls-key/--tls-client-ca)")
+	}
+	s := grpc.NewServer(opts...)
 	pb.RegisterFleetGatewayServer(s, &GRPC{Reg: reg})
 	go func() { log.Fatal(s.Serve(lis)) }()
 	log.Printf("site-gateway gRPC %s, http://%s", *grpcAddr, *httpAddr)
@@ -61,7 +75,7 @@ func main() {
 		policy = store.Policy
 	}
 	router := NewRouter(RouterConfig{Policy: policy, MaxQueue: *maxQueue, MaxWait: *maxWait, Fair: *fair, MaxQueuePerTenant: *perTenantQueue,
-		MaxInflightTenant: *perTenantInflight, Weights: weights}, reg)
+		MaxInflightTenant: *perTenantInflight, Weights: weights, AffinityPatience: *affinity}, reg)
 	go router.Run(nil)
 	if h, _, _ := net.SplitHostPort(*httpAddr); *adminToken == "" && h != "127.0.0.1" && h != "localhost" && h != "::1" {
 		log.Fatal("refusing to expose the admin API on ", *httpAddr, " without --admin-token (or AICF_ADMIN_TOKEN)")

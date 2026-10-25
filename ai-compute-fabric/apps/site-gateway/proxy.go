@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,8 +17,8 @@ import (
 // (rate limit, bounded queue, 429/503 + Retry-After), least-loaded routing and
 // a streaming reverse proxy to the chosen worker's llama-server.
 //
-// Tenant identity comes from the X-Tenant-ID header and is NOT authenticated
-// here: this must sit behind the organisation's SSO/API-key layer (plan P2.2 / P7).
+// Tenant identity comes from the API key when AuthRequired is set. Without it (dev mode) it
+// comes from the X-Tenant-ID header, which is NOT authenticated.
 type Inference struct {
 	R       *Router
 	L       *Limiter
@@ -86,16 +88,26 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var probe struct {
-		Model string `json:"model"`
+		Model    string `json:"model"`
+		Messages []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
 	}
 	if json.Unmarshal(body, &probe) != nil {
 		reject(w, http.StatusBadRequest, 0, "body must be JSON")
 		return
 	}
 
+	session := r.Header.Get("X-Session-ID")
+	if session == "" {
+		session = sessionKey(tenant, probe.Messages)
+	} else {
+		session = tenant + "|" + session // a client-chosen id is only ever scoped to its own tenant
+	}
 	skip := ""
 	for attempt := 0; attempt < 2; attempt++ { // one retry on another worker, only before any byte is sent
-		rt, err := in.R.Acquire(Req{Model: probe.Model, Skip: skip, Tenant: tenant, Prio: prio, Deadline: deadline}, r.Context().Done())
+		rt, err := in.R.Acquire(Req{Model: probe.Model, Skip: skip, Tenant: tenant, Prio: prio, Deadline: deadline, Session: session}, r.Context().Done())
 		switch err {
 		case nil:
 		case ErrQueueFull:
@@ -194,4 +206,30 @@ func (in *Inference) Metrics(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"no_worker\"} %d\n", s.RejectedNoWorker)
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"rate_limit\"} %d\n", s.RejectedRate)
 	p("aicf_queue_wait_seconds_total", "counter", "Total time served requests spent queued", float64(s.WaitNanosTotal)/1e9)
+}
+
+// sessionKey identifies a conversation without any client support: the tenant plus every
+// message up to and including the first user message. Later turns repeat that prefix, so
+// they map to the same key (and to the worker whose cache holds the prefix).
+func sessionKey(tenant string, msgs []struct {
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
+}) string {
+	h := sha256.New()
+	h.Write([]byte(tenant))
+	seenUser := false
+	for _, m := range msgs {
+		h.Write([]byte{0})
+		h.Write([]byte(m.Role))
+		h.Write([]byte{0})
+		h.Write(m.Content)
+		if m.Role == "user" {
+			seenUser = true
+			break
+		}
+	}
+	if !seenUser {
+		return "" // nothing to anchor a conversation on
+	}
+	return hex.EncodeToString(h.Sum(nil)[:12])
 }

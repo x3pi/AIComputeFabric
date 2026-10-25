@@ -917,7 +917,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [~] P2.1 Kế toán VRAM 6 ngăn 1 Hz; power limit; thang thu hồi Drain → Checkpoint → Kill → `apps/worker-guard` (Go, Linux, 1 GPU): bucket từ log llama.cpp + SSE 1 Hz, thu hồi bằng SIGTERM→SIGKILL, 10/10 lần < 240 ms (Phần I.5); CHƯA có Drain/Checkpoint, power limit, Windows/PDH
 - [ ] P2.1 Tự cập nhật vòng 5 → 25 → 100 % + watchdog rollback
 - [ ] P2.1 System Tray: nút "Tạm dừng AI 4 giờ"
-- [~] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease → `apps/site-gateway` + `gateway.proto`: Register/Heartbeat/pause directive/offline detection chạy với 3 worker-guard thật (Phần I.6); tải 5.000 worker giả lập đạt (I.7, §B.7); gateway suy luận có admission control và đã đo 1/8/32/64 luồng (I.8); CHƯA có mTLS, NATS, PostgreSQL, Lease, HA, xác thực tenant
+- [~] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease → `apps/site-gateway` + `gateway.proto`: Register/Heartbeat/pause directive/offline detection chạy với 3 worker-guard thật (Phần I.6); tải 5.000 worker giả lập đạt (I.7, §B.7); gateway suy luận có admission control và đã đo 1/8/32/64 luồng (I.8); mTLS gateway↔worker có (I.10, test từ chối chứng chỉ sai); xác thực API-key/admin token, hạn chót, UI tenant có; affinity đúng ở mức đơn vị nhưng lợi ích qua gateway CHƯA chứng minh (I.10); CHƯA có NATS, PostgreSQL, Lease, HA, xoay/thu hồi chứng chỉ
 - [ ] P2.2 CA `step-ca`, cert tự xoay 30 ngày
 - [ ] P2.2 `core/topology-graph` đo RTT/băng thông
 - [~] P2.3 `core/adaptive-scheduler` v1 (lọc VramEstimate, ModelIdentity, tenant, hàm chi phí) → core/adaptive_scheduler/scheduler.py: logic thuần; chưa nối gateway/lease
@@ -1264,6 +1264,15 @@ Kịch bản "hàng xóm ồn": tenant `noisy` giữ 24 client vòng kín, tenan
 
 Kết luận có bằng chứng: (1) với FIFO chung, một tenant giữ hàng đợi đầy thì tenant kia bị từ chối 100 % (0/398); (2) với hàng đợi công bằng tenant yên tĩnh được phục vụ 100 % (24/24) với TTFT trung vị 176 ms; (3) tổng thông lượng không đổi (175,2 so với 178,4 tok/s) vì GPU vẫn bão hòa, tenant ồn chỉ bị giới hạn phần hàng đợi nên độ chờ của nó giảm từ 5,8 s xuống 2,8 s và phần dư bị 429 sớm. Trước đó, 6 test đơn vị (mỗi test bị "đột biến" bắt được khi tắt từng cơ chế): tenant yên tĩnh không bị đói, chia theo trọng số 3:1 ≈ 9/12, phần hàng đợi mỗi tenant, trần chạy đồng thời mỗi tenant, tương tác vượt batch, tenant rảnh không tích lũy tín dụng.
 Bằng chứng: `benchmarks/reports/p2_tenant_fairness_rtx3060.json`, harness `benchmarks/control_plane/tenant_fairness.py`. Giới hạn: một GPU, một worker, hai tenant, client vòng kín (tenant ồn lấp đầy hàng đợi ngay khi có chỗ, là trường hợp xấu nhưng có thật); `X-Tenant-ID` và `X-Priority` chưa được xác thực nên một tenant có thể mạo danh; trọng số/trần mới là cờ dòng lệnh, chưa quản trị được trên dashboard; hạng batch dùng ưu tiên tuyệt đối nên có thể bị bỏ đói khi tương tác liên tục; chưa đo với nhiều worker.
+
+### I.10. Gắn cuộc hội thoại với worker giữ cache KV (affinity) + mTLS + demo
+**Đo trực tiếp trên engine** (`benchmarks/control_plane/session_affinity.py`, `p2_session_affinity_rtx3060.json`): lượt 2 trên worker đã giữ prefix có TTFT 38 ms so với 1.390 ms khi sang worker khác (≈36×).
+**Đo qua gateway với 2 worker-guard thật dùng chung 1 GPU** (`affinity_gateway.py`, Qwen3-4B, 2 slot/worker): KHÔNG chứng minh được lợi ích.
+- Quá tải (6 hội thoại / 4 slot): affinity tắt 4,7 % lượt sau ở cùng worker, bật 7,4 %; TTFT p50 4,9 s vs 4,3 s — bị hàng đợi chi phối, kiên nhẫn 300 ms hết trước khi worker kia rảnh (`p2_affinity_gateway_saturated_6conv_rtx3060.json`).
+- Tải vừa (3 hội thoại): cả hai chế độ đều 100 % ở cùng worker (least-loaded vô tình ổn định) nên bài đo **không phân biệt** được hai chế độ; TTFT p50 257 ms cả hai (`p2_affinity_gateway_rtx3060.json`).
+Cái đã chứng minh: chính sách định tuyến đúng ở mức đơn vị (`affinity_test.go`, đã kiểm đột biến) và lợi ích cache ở mức engine. Chưa chứng minh: lợi ích đầu-cuối qua gateway; cần kịch bản mà least-loaded sẽ chia cắt hội thoại (nhiều worker hơn, tải xen kẽ).
+**mTLS** gateway↔worker (`mtls.go`, `internal/pki`, `cmd/pki`, cờ `-tls-*` / `--tls-*`): test `mtls_test.go` xác nhận chấp nhận worker có chứng chỉ do CA site ký, từ chối client không chứng chỉ, chứng chỉ CA lạ và plaintext; demo chạy thật qua mTLS. Chưa có: xoay vòng tự động/CRL/step-ca, Windows chưa chạy.
+**Demo + hướng dẫn test:** `deploy/demo/run_demo.sh`, `docs/TESTING.md` (đã chạy: worker đăng ký qua mTLS, 401 khi thiếu key, chat có key trả lời).
 
 ### I.4. Còn trống
 Windows: toàn bộ chạy thật (bản dựng đã biên dịch được nhưng chưa từng chạy; WDDM, PDH, thu hồi GPU, dịch vụ Windows), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).

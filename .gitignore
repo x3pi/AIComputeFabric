@@ -11,3 +11,6 @@ __pycache__/
 .idea/
 .vscode/
 node_modules/
+apps/*/worker-guard
+apps/*/site-gateway
+.demo/
