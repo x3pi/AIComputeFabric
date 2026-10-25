@@ -23,14 +23,19 @@ func fairRig(t *testing.T, slots uint32, cfg RouterConfig) *Router {
 func enqueue(t *testing.T, rt *Router, order chan<- Req, q Req) {
 	t.Helper()
 	_, before, _ := rt.Snapshot()
+	stop := make(chan struct{})
+	t.Cleanup(func() { close(stop) }) // leftover waiters leave the queue when the test ends
 	go func() {
-		route, err := rt.Acquire(q, nil)
+		_, err := rt.Acquire(q, stop)
 		if err != nil {
-			t.Errorf("acquire %+v: %v", q, err)
+			select {
+			case <-stop: // test is over: abandoned on purpose
+			default:
+				t.Errorf("acquire %+v: %v", q, err)
+			}
 			return
 		}
 		order <- q
-		_ = route
 	}()
 	waitFor(t, "request queued", func() bool { _, n, _ := rt.Snapshot(); return n == before+1 })
 }
