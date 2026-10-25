@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -110,7 +109,7 @@ func (e *LlamaEngine) Start() error {
 	cmd := exec.Command(e.Bin, "-m", e.Model, "-c", strconv.Itoa(e.Ctx*e.Parallel), "-np", strconv.Itoa(e.Parallel),
 		"-ngl", strconv.Itoa(e.NGL), "--port", strconv.Itoa(e.Port), "--host", "127.0.0.1",
 		"-fa", "off", "--no-warmup", "--fit", "off", "-lv", "4")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	prepareCmd(cmd)
 	pr, pw := io.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw
 	if err := cmd.Start(); err != nil {
@@ -161,7 +160,8 @@ func (e *LlamaEngine) Start() error {
 	return fmt.Errorf("llama-server not healthy after 180 s")
 }
 
-// Stop sends SIGTERM to the process group, then SIGKILL after Grace.
+// Stop asks the engine to exit (SIGTERM to its process group on Unix), then forces it
+// after Grace. Where no graceful stop exists (Windows) it terminates immediately.
 func (e *LlamaEngine) Stop() (StopInfo, error) {
 	e.mu.Lock()
 	cmd, done := e.cmd, e.done
@@ -170,16 +170,18 @@ func (e *LlamaEngine) Stop() (StopInfo, error) {
 		return StopInfo{}, nil
 	}
 	t0 := time.Now()
-	pg := -cmd.Process.Pid
-	info := StopInfo{Signal: "SIGTERM"}
-	syscall.Kill(pg, syscall.SIGTERM)
-	select {
-	case <-done:
-	case <-time.After(e.Grace):
-		syscall.Kill(pg, syscall.SIGKILL)
-		info.Signal = "SIGKILL"
-		<-done
+	info := StopInfo{}
+	if name, ok := softStop(cmd); ok {
+		info.Signal = name
+		select {
+		case <-done:
+			info.Elapsed = time.Since(t0)
+			return info, nil
+		case <-time.After(e.Grace):
+		}
 	}
+	info.Signal = hardStop(cmd)
+	<-done
 	info.Elapsed = time.Since(t0)
 	return info, nil
 }

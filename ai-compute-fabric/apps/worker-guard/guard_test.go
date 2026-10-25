@@ -19,13 +19,24 @@ type fakeGPU struct {
 	external uint64
 	engine   uint64
 	pid      int
+
+	hideProcs bool // Windows/WDDM: per-process VRAM is not available
+	freeAfter int  // samples the driver needs after Stop before the memory is really free
+	pending   int
+	samples   int
 }
 
 func (f *fakeGPU) Sample() (GPUSample, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.samples++
+	if f.pending > 0 {
+		if f.pending--; f.pending == 0 {
+			f.engine = 0
+		}
+	}
 	s := GPUSample{TotalMiB: f.total, UsedMiB: f.external + f.engine, TempC: 50}
-	if f.engine > 0 {
+	if f.engine > 0 && !f.hideProcs {
 		s.Procs = []Proc{{f.pid, f.engine}}
 	}
 	return s, nil
@@ -48,7 +59,13 @@ func (e *fakeEngine) Start() error {
 func (e *fakeEngine) Stop() (StopInfo, error) {
 	e.g.mu.Lock()
 	defer e.g.mu.Unlock()
-	e.running, e.g.engine = false, 0
+	e.running = false
+	if e.g.freeAfter > 0 {
+		e.g.pending = e.g.freeAfter
+		e.g.samples = 0
+	} else {
+		e.g.engine = 0
+	}
 	return StopInfo{Signal: "SIGTERM"}, nil
 }
 func (e *fakeEngine) Running() bool    { return e.running }
@@ -269,4 +286,42 @@ func TestPollCadenceSpeedsUpOnlyNearHeadroom(t *testing.T) {
 	if got := g.NextInterval(); got != 100*time.Millisecond {
 		t.Fatalf("near the headroom should poll fast, got %v", got)
 	}
+}
+
+// Windows/WDDM: nvidia-smi cannot say how much VRAM the engine holds, so the guard must use the
+// engine's own report as the target and wait until that much is actually returned.
+func TestReclaimWithoutPerProcessVRAMWaitsForTheMemoryToReturn(t *testing.T) {
+	g, gpu, eng, clock := newRig(t)
+	gpu.hideProcs, gpu.freeAfter = true, 5
+	g.Tick()
+	*clock = clock.Add(11 * time.Second)
+	g.Tick() // running
+	g.Tick()
+	gpu.mu.Lock()
+	gpu.external = 12288 - 6000 - 1000 // free = 1000 < headroom
+	gpu.mu.Unlock()
+	g.Tick()
+	if g.st != StYielded || eng.running {
+		t.Fatalf("state=%s running=%v", g.st, eng.running)
+	}
+	gpu.mu.Lock()
+	n := gpu.samples
+	gpu.mu.Unlock()
+	if n < 5 {
+		t.Fatalf("reclaim declared the GPU free after %d samples although the driver needs 5: it trusted a 0-byte target", n)
+	}
+	for _, e := range g.events {
+		if e.Kind == "reclaim" && e.Detail != "" && contains(e.Detail, "NOT confirmed") {
+			t.Fatalf("memory did come back, it must be confirmed: %s", e.Detail)
+		}
+	}
+}
+
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }

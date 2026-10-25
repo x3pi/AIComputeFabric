@@ -1,7 +1,8 @@
 // worker-guard: per-PC agent that runs llama-server only while the GPU is not
 // needed by the person sitting at the machine (plan P2.1, decision D01).
-// This is the Linux proof-of-concept of the reclaim loop; the Windows
-// implementation (PDH counters, WDDM) is NOT done and is the main open risk.
+// One code base for Linux and Windows (platform files: proc_*.go, service_*.go).
+// Verified on Linux only; the Windows build compiles but has never run on Windows
+// (WDDM behaviour, PDH counters, the service wrapper): see plan B.8 and I.4.
 package main
 
 import (
@@ -11,7 +12,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	pb "github.com/aicf/ai-compute-fabric/contracts/gen/go"
@@ -20,6 +23,20 @@ import (
 )
 
 func main() {
+	if isService() {
+		runService(serve)
+		return
+	}
+	stop := make(chan struct{})
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() { <-sig; close(stop) }()
+	serve(stop)
+}
+
+// serve runs the agent until stop is closed, then stops the engine so no llama-server is
+// left holding the user's GPU.
+func serve(stop <-chan struct{}) {
 	var (
 		bin      = flag.String("llama-server", "", "path to llama-server")
 		model    = flag.String("model", "", "GGUF model path")
@@ -46,7 +63,7 @@ func main() {
 	eng := &LlamaEngine{Bin: *bin, Model: *model, Port: *port, Ctx: *ctx, Parallel: *par, NGL: *ngl,
 		LogPath: *logPath, Grace: 500 * time.Millisecond}
 	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near}, SMISampler{Index: *gpu}, eng)
-	go g.Run(nil)
+	go g.Run(stop)
 	if *gateway != "" {
 		host, _ := os.Hostname()
 		if *workerID == "" {
@@ -60,8 +77,21 @@ func main() {
 		r := &Reporter{Client: pb.NewFleetGatewayClient(conn), G: g, WorkerID: *workerID, SiteID: "dev", Hostname: host,
 			GPUName: "NVIDIA GPU", Model: filepath.Base(*model),
 			EngineURL: fmt.Sprintf("http://%s:%d", *advert, *port), Slots: uint32(*par)}
-		go r.Run(context.Background())
+		rctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go r.Run(rctx)
 	}
+	srv := &http.Server{Addr: *listen, Handler: Handler(g)}
+	errc := make(chan error, 1)
+	go func() { errc <- srv.ListenAndServe() }()
 	log.Printf("worker-guard on http://%s", *listen)
-	log.Fatal(http.ListenAndServe(*listen, Handler(g)))
+	select {
+	case err := <-errc:
+		log.Printf("http server: %v", err)
+	case <-stop:
+	}
+	srv.Close()
+	if info, _ := eng.Stop(); info.Signal != "" {
+		log.Printf("engine stopped on shutdown (%s, %v)", info.Signal, info.Elapsed)
+	}
 }

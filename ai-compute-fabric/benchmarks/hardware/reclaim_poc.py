@@ -7,28 +7,42 @@ headroom. Timestamps come from this harness's own 10 ms nvidia-smi polling, so
 they are independent of the guard's self-reported latency:
   t_cross : first sample with free VRAM < headroom
   t_gone  : first sample where the guard's engine pid no longer holds VRAM
-Linux + single GPU only. Windows/WDDM is NOT covered.
+Runs on Linux (verified) and on Windows (NOT yet run there): on Windows/WDDM per-process VRAM
+is "[N/A]", so "gone" is decided from the drop in total used VRAM instead of the engine pid.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import statistics
 import subprocess
 import time
 import urllib.request
 from pathlib import Path
 
+SMI = shutil.which("nvidia-smi") or next(
+    (p for p in (os.path.expandvars(r"%SystemRoot%\System32\nvidia-smi.exe"),
+                 os.path.expandvars(r"%ProgramFiles%\NVIDIA Corporation\NVSMI\nvidia-smi.exe")) if os.path.exists(p)), "nvidia-smi")
+
+
+def kill_all(name):
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/IM", name + ".exe", "/F"], capture_output=True)
+    else:
+        subprocess.run(["pkill", "-x", name], check=False)
+
 
 def smi():
-    q = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
+    q = subprocess.run([SMI, "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
                        capture_output=True, text=True, check=True).stdout.split(",")
-    apps = subprocess.run(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"],
+    apps = subprocess.run([SMI, "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"],
                           capture_output=True, text=True).stdout.strip().splitlines()
     procs = {}
     for ln in apps:
         p = ln.split(",")
-        if len(p) == 2:
+        if len(p) == 2 and p[0].strip().isdigit() and p[1].strip().isdigit():  # WDDM prints [N/A]
             procs[int(p[0])] = int(p[1])
     return int(q[0]), int(q[1]), procs
 
@@ -75,18 +89,23 @@ def main():
             time.sleep(1.5)  # let the guard record the engine's own VRAM
             st = state(gport)
             pid, engine_mib = st["engine_pid"], st["engine_mib"]
+            b = st["buckets_bytes"]  # engine-reported weights + KV + compute, in MiB
+            engine_est_mib = engine_mib or (b["Weights"] + b["KVState"] + b["Compute"]) // (1 << 20)
             # the "user": a second GPU job, 100% independent of the guard
             user = subprocess.Popen([a.server, "-m", a.user_model, "-c", str(a.user_ctx), "-ngl", "99", "--port", "18091",
                                      "--host", "127.0.0.1", "--no-warmup", "--fit", "off"],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             t_cross = t_gone = None
+            used_at_cross = 0
             t0 = time.time()
             while time.time() - t0 < 60:
                 used, total, procs = smi()
                 now = time.time()
                 if t_cross is None and total - used < a.headroom:
-                    t_cross = now
-                if t_cross is not None and pid not in procs:
+                    t_cross, used_at_cross = now, used
+                per_process = bool(procs)
+                gone_now = (pid not in procs) if per_process else (used <= used_at_cross - 0.9 * engine_est_mib)
+                if t_cross is not None and gone_now:
                     t_gone = now
                     break
                 if user.poll() is not None:
@@ -114,14 +133,14 @@ def main():
             guard.wait(15)
         except subprocess.TimeoutExpired:
             guard.kill()
-        subprocess.run(["pkill", "-x", "llama-server"], check=False)
+        kill_all("llama-server")
     e2e = [t["e2e_cross_to_gone_ms"] for t in trials if "e2e_cross_to_gone_ms" in t]
     summ = {"n_ok": len(e2e), "n": len(trials)}
     if e2e:
         s = sorted(e2e)
         summ |= {"min_ms": s[0], "median_ms": statistics.median(s), "p95_ms": s[min(len(s) - 1, int(0.95 * len(s)))], "max_ms": s[-1],
                  "gate_under_2000ms": s[-1] < 2000}
-    Path(a.out).write_text(json.dumps({"schema_version": 1, "platform": "linux-single-gpu",
+    Path(a.out).write_text(json.dumps({"schema_version": 1, "platform": ("windows" if os.name == "nt" else "linux") + "-single-gpu",
                                        "headroom_mib": a.headroom, "summary": summ, "trials": trials}, indent=2))
     print(json.dumps(summ))
 

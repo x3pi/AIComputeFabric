@@ -211,7 +211,18 @@ func (g *Guard) reclaim(pre GPUSample, own uint64) {
 	pid := g.eng.PID()
 	g.setState(StReclaiming)
 	info, _ := g.eng.Stop()
-	target := uint64(float64(own) * g.cfg.FreedFraction)
+	// Per-process VRAM is unreliable on Windows/WDDM (nvidia-smi prints [N/A]), so own can be
+	// 0. Then the engine's own report of what it allocated stands in for it, otherwise a
+	// target of 0 would count the reclaim as "freed" on the very first sample.
+	expected := own
+	if expected == 0 {
+		b := g.eng.Buffers()
+		expected = uint64(b.ModelMiB + b.KVMiB + b.ComputeMiB)
+	}
+	if expected == 0 {
+		expected = 256
+	}
+	target := uint64(float64(expected) * g.cfg.FreedFraction)
 	deadline := detect.Add(g.cfg.FreedTimeout)
 	freedMS, ok := 0.0, false
 	for g.now().Before(deadline) {
@@ -223,7 +234,7 @@ func (g *Guard) reclaim(pre GPUSample, own uint64) {
 			g.mu.Unlock()
 			// Prefer per-process truth (Linux NVML): the user may still be growing, which
 			// would mask the drop in total usage. Fall back to the total-usage drop.
-			gone := own > 0 && s.OwnMiB(map[int]bool{pid: true}) == 0
+			gone := own > 0 && s.OwnMiB(map[int]bool{pid: true}) == 0 // per-process truth where the platform has it
 			dropped := pre.UsedMiB >= s.UsedMiB && pre.UsedMiB-s.UsedMiB >= target
 			if gone || (own == 0 && dropped) {
 				freedMS, ok = ms(g.now().Sub(detect)), true
@@ -232,7 +243,7 @@ func (g *Guard) reclaim(pre GPUSample, own uint64) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	d := fmt.Sprintf("free %d MiB < headroom %d MiB; engine held %d MiB", pre.FreeMiB(), g.cfg.HeadroomMiB, own)
+	d := fmt.Sprintf("free %d MiB < headroom %d MiB; engine held %d MiB", pre.FreeMiB(), g.cfg.HeadroomMiB, expected)
 	if !ok {
 		d += "; VRAM NOT confirmed freed within timeout"
 	}

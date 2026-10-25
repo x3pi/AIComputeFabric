@@ -292,6 +292,15 @@ Có hai loại "tải" khác nhau và phải thiết kế riêng: **mặt điề
 
 **Chưa đo / chưa làm (không được xem là đã sẵn sàng):** (a) mặt dữ liệu: danh tính tenant mới chỉ lấy từ header `X-Tenant-ID` (chưa xác thực, phải đặt sau SSO/API key); chưa từ chối theo thời gian chờ ước tính so với hạn chót; chưa gắn cuộc hội thoại vào worker (mất cache KV giữa các lượt); chưa thử nhiều worker/nhiều model cạnh tranh; chưa đo p99 và prompt dài; lỗi giữa chừng khi stream (ví dụ GPU bị thu hồi) cắt luồng của client, chưa có tự động tiếp tục; (b) chưa có HA gateway, NATS, PostgreSQL, mTLS; (c) chưa kiểm tra mạng thật (độ trễ, mất gói, 200 PC thật); (d) trên 5.000 worker/site cần khung delta thay vì khung đầy đủ và chia shard registry; (e) chưa có Prometheus metrics cho gateway.
 
+### B.8. Đa Nền Tảng Linux + Windows Ngay Từ Đầu (Quy Tắc Bắt Buộc)
+Một mã nguồn, hai hệ điều hành. Mọi module chạy trên PC người dùng (`worker-guard`, về sau cả agent cập nhật) phải tuân thủ:
+1. **Phần phụ thuộc hệ điều hành chỉ nằm trong tệp riêng có build tag** (`proc_unix.go` / `proc_windows.go`, `service_other.go` / `service_windows.go`), phía sau một giao diện nhỏ (`prepareCmd`, `softStop`, `hardStop`, `isService`/`runService`). Logic vòng thu hồi, ước lượng, báo cáo là Go thuần dùng chung và được test trên Linux.
+2. **Không giả định số liệu theo tiến trình.** Linux cho biết VRAM từng tiến trình; Windows/WDDM thì `nvidia-smi` in `[N/A]`. Mã phải chạy đúng khi không có số này, dùng số engine tự báo (Weights/KV/Compute) làm mục tiêu và chờ tổng VRAM thật sự giảm. Có test hồi quy: giả lập không có số theo tiến trình và trình điều khiển trả bộ nhớ chậm 5 nhịp; test fail nếu quay lại mục tiêu 0 byte.
+3. **Dừng engine:** Unix gửi SIGTERM tới nhóm tiến trình rồi SIGKILL sau 0,5 s; Windows kết thúc cả cây tiến trình ngay (`taskkill /T /F`) vì suy luận không có trạng thái cần giữ. Khi agent nhận SIGTERM/Ctrl-C hoặc lệnh Stop của Service Control Manager, nó dừng engine trước khi thoát để không bỏ rơi `llama-server` giữ GPU (đã từng xảy ra khi thử nghiệm).
+4. **Mọi bản dựng phải biên dịch được cho cả hai hệ** (`make build-cross` nằm trong `make verify-dev`). Biên dịch được KHÔNG có nghĩa là chạy đúng: bản Windows chưa từng chạy trên máy Windows thật.
+5. **Harness đo (Python/PowerShell) cũng đa nền tảng:** `reclaim_poc.py` tự chuyển sang đo bằng tổng VRAM giảm khi không có số theo tiến trình; `probe_windows.ps1` trả lời câu hỏi quyết định (đếm hiệu năng PDH có cho số theo tiến trình không); `deploy/windows/install-service.ps1` cài dịch vụ. Cả ba CHƯA chạy trên Windows.
+6. **Quy tắc khi Windows cho kết quả khác Linux:** kết quả Windows thắng, kế hoạch và ADR sửa theo (đặc biệt cổng thu hồi GPU < 2 s và ngưỡng headroom).
+
 ---
 
 ## PHẦN C — KẾ HOẠCH THỰC HIỆN CHI TIẾT P0 → P8 (KÈM YÊU CẦU VIẾT TEST & CHECK PASS RÕ RÀNG)
@@ -840,7 +849,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 | Chuẩn bị | Tài liệu & quyết định | 6 | 5 | 0 | Chờ dữ liệu thật từ bạn |
 | P0 | Khảo sát, baseline, kiểm chứng ADR-001 | 19 | 1 | 4 | Có probe, manifest, B01 một phần trên 1 máy Linux; chưa có PC Windows/fleet |
 | P1 | Monorepo, contract, registry, estimator | 14 | 2 | 7 | Toán + hiệu chuẩn trên 1 GPU Linux xong (28/28 sau hiệu chuẩn); thiếu ma trận 72, Windows, HF Hub, CI |
-| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 21 | 1 | 4 | Có PoC worker-guard Linux (thu hồi GPU đạt), gateway Register/Heartbeat/pause, 2 trang web; chưa mTLS/NATS/PG, Windows, 200 node |
+| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 23 | 1 | 5 | Có PoC worker-guard Linux (thu hồi GPU đạt), gateway Register/Heartbeat/pause, 2 trang web; chưa mTLS/NATS/PG, Windows, 200 node |
 | P3 | Qwen phân tán + Deploy UI | 13 | 0 | 0 | Chưa bắt đầu (cần GPU) |
 | P4 | MoE & Speculative | 11 | 0 | 0 | Chưa bắt đầu (cần GPU) |
 | P5 | Agent, RAG, 15 typed tasks | 13 | 0 | 0 | Chưa bắt đầu |
@@ -848,7 +857,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 | P7 | WAN, đa tenant, metering | 11 | 0 | 0 | Chưa bắt đầu |
 | P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | 0 | Chưa bắt đầu |
 
-**Tổng: 142 mục, 11 xong, 17 một phần, 114 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
+**Tổng: 144 mục, 11 xong, 18 một phần, 115 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
 
 ### H.1. Chuẩn bị (trước P0)
 - [x] Đọc, đánh giá kế hoạch và tài liệu kiến trúc [KT]; sửa lỗi số học, công thức, gate → Phần A
@@ -903,6 +912,8 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] Legal/HR/IT duyệt chính sách nhân viên; EDR/antivirus whitelist (D19)
 **Công việc**
 - [ ] P2.1 `worker-guard` production: Windows service + systemd, MSI ký số, GPO/Intune
+- [~] P2.1 Cùng một mã nguồn Linux và Windows (build tag, `make build-cross`, dịch vụ Windows, dừng engine khi agent thoát, không phụ thuộc VRAM theo tiến trình) → §B.8: biên dịch được cho cả hai và có test logic; CHƯA chạy trên Windows
+- [ ] P2.1 Windows chạy thật: `probe_windows.ps1`, `reclaim_poc.py` và `install-service.ps1` trên một máy Windows có GPU NVIDIA; ghi kết quả vào Phần I (cổng thu hồi < 2 s, PDH, dịch vụ)
 - [~] P2.1 Kế toán VRAM 6 ngăn 1 Hz; power limit; thang thu hồi Drain → Checkpoint → Kill → `apps/worker-guard` (Go, Linux, 1 GPU): bucket từ log llama.cpp + SSE 1 Hz, thu hồi bằng SIGTERM→SIGKILL, 10/10 lần < 240 ms (Phần I.5); CHƯA có Drain/Checkpoint, power limit, Windows/PDH
 - [ ] P2.1 Tự cập nhật vòng 5 → 25 → 100 % + watchdog rollback
 - [ ] P2.1 System Tray: nút "Tạm dừng AI 4 giờ"
@@ -1255,4 +1266,4 @@ Kết luận có bằng chứng: (1) với FIFO chung, một tenant giữ hàng 
 Bằng chứng: `benchmarks/reports/p2_tenant_fairness_rtx3060.json`, harness `benchmarks/control_plane/tenant_fairness.py`. Giới hạn: một GPU, một worker, hai tenant, client vòng kín (tenant ồn lấp đầy hàng đợi ngay khi có chỗ, là trường hợp xấu nhưng có thật); `X-Tenant-ID` và `X-Priority` chưa được xác thực nên một tenant có thể mạo danh; trọng số/trần mới là cờ dòng lệnh, chưa quản trị được trên dashboard; hạng batch dùng ưu tiên tuyệt đối nên có thể bị bỏ đói khi tương tác liên tục; chưa đo với nhiều worker.
 
 ### I.4. Còn trống
-Windows (WDDM, PDH, thu hồi GPU), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).
+Windows: toàn bộ chạy thật (bản dựng đã biên dịch được nhưng chưa từng chạy; WDDM, PDH, thu hồi GPU, dịch vụ Windows), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).

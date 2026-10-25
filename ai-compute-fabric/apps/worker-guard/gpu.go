@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -46,7 +48,7 @@ type Sampler interface{ Sample() (GPUSample, error) }
 type SMISampler struct{ Index int }
 
 func (s SMISampler) Sample() (GPUSample, error) {
-	out, err := exec.Command("nvidia-smi", "-i", strconv.Itoa(s.Index),
+	out, err := exec.Command(smiPath(), "-i", strconv.Itoa(s.Index),
 		"--query-gpu=memory.used,memory.total,temperature.gpu", "--format=csv,noheader,nounits").Output()
 	if err != nil {
 		return GPUSample{}, fmt.Errorf("nvidia-smi: %w", err)
@@ -72,7 +74,7 @@ func (s SMISampler) Sample() (GPUSample, error) {
 type ProcSampler interface{ Procs() ([]Proc, error) }
 
 func (s SMISampler) Procs() ([]Proc, error) {
-	apps, err := exec.Command("nvidia-smi", "-i", strconv.Itoa(s.Index),
+	apps, err := exec.Command(smiPath(), "-i", strconv.Itoa(s.Index),
 		"--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits").Output()
 	if err != nil {
 		return nil, err
@@ -90,4 +92,22 @@ func (s SMISampler) Procs() ([]Proc, error) {
 		}
 	}
 	return out, nil
+}
+
+// smiPath finds nvidia-smi: on PATH, or at the places the Windows driver installs it.
+func smiPath() string {
+	if p, err := exec.LookPath("nvidia-smi"); err == nil {
+		return p
+	}
+	if runtime.GOOS == "windows" {
+		for _, p := range []string{
+			os.Getenv("SystemRoot") + `\System32\nvidia-smi.exe`,
+			os.Getenv("ProgramFiles") + `\NVIDIA Corporation\NVSMI\nvidia-smi.exe`,
+		} {
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
+		}
+	}
+	return "nvidia-smi"
 }
