@@ -87,7 +87,7 @@
 | **1. `OS & User`** | `os_user_bytes` | $\max(0,\ \text{NVML}_{\text{total\_used}} - (\text{weights} + \text{kv\_state} + \text{compute}))$, trong đó 3 số trừ do **engine tự báo** (không dùng NVML per-process của Fabric vì không tin cậy trên WDDM). Windows: đối chiếu thêm bộ đếm PDH `GPU Process Memory` (⚠️ xác minh ở P0). | Đỏ cam (`#F97316`) |
 | **2. `Model Weights`** | `weights_bytes` | Giá trị `model buffer size` thực tế đọc từ stdout/metrics của engine (hoặc từ `VramEstimate` khi đang khởi tạo). | Xanh dương (`#3B82F6`) |
 | **3. `KV / State Cache`** | `kv_state_bytes` | Giá trị `KV buffer size + recurrent buffer size` đã đặt chỗ theo `max_ctx × n_parallel`. | Tím (`#8B5CF6`) |
-| **4. `Compute & Runtime`** | `compute_bytes` | Giá trị `compute buffer size` + CUDA context (~350–500 MB) + NCCL/gRPC buffer. | Vàng (`#EAB308`) |
+| **4. `Compute & Runtime`** | `compute_bytes` | Giá trị `compute buffer size` + CUDA context + NCCL/gRPC buffer. **Đã đo (1 máy Linux, RTX 3060, llama.cpp 74bca39): phần ngoài các buffer của llama.cpp chỉ ~131–133 MiB, không phải 350–500 MB; Windows/WDDM chưa đo.** | Vàng (`#EAB308`) |
 | **5. `Safety Headroom`** | `headroom_bytes` | Ngưỡng đệm bảo vệ trải nghiệm người dùng (mặc định `1.536 MB` trong giờ hành chính, `512 MB` ngoài giờ). | Xám xanh (`#64748B`) |
 | **6. `Allocatable Free`** | `allocatable_bytes` | $\max\left(0,\ \text{Total\_VRAM} - (\text{os\_user} + \text{headroom} + \text{weights} + \text{kv\_state} + \text{compute})\right)$. | Xanh lá (`#10B981`) |
 
@@ -148,6 +148,127 @@ message VramEstimate {
   string fit_status = 8;        // "GREEN" (<=90%), "YELLOW" (90-100% or RAM offload), "RED" (>100%)
 }
 ```
+
+---
+
+### B.4. Định Vị Vai Trò Hệ Sinh Thái Hugging Face (HF-First vs Benchmark-First)
+
+Nhằm hiện thực hóa nguyên tắc bất biến số 1 (**§B.0: HF-First cho Định danh, An toàn, Kiểm định & Huấn luyện; Benchmark-First cho Runtime Suy luận**), toàn bộ các thư viện từ hệ sinh thái Hugging Face được phân định vai trò, cơ chế tích hợp và ranh giới trách nhiệm rõ ràng như sau:
+
+| Thư viện / Thành phần HF | Vai trò trong AI Compute Fabric | Cơ chế & Tích hợp Kỹ thuật Cụ thể | Trạng thái & Ranh giới Kiến trúc |
+|---|---|---|---|
+| **`huggingface_hub`** | Quản lý tải mô hình, snapshot pinning và mirror LAN nội bộ | Sử dụng `snapshot_download` ghim cố định `revision` là mã commit SHA40 (không dùng tag hay branch `main` động); đồng bộ trọng số về kho đệm MinIO / Local Mirror của Site Gateway để cấp phát cho các PC Worker qua LAN tốc độ cao. | **Adopt** — Tích hợp trong `core/model-registry`. |
+| **`safetensors`** | Lưu trữ và bảo mật trọng số gốc (Zero-Pickle Security) | Đóng vai trò là định dạng duy nhất được chấp nhận khi nhập model PyTorch/HF vào hệ thống. Sử dụng zero-copy memory mapping (`mmap`) và kiểm tra chữ ký `weight_sha256` của từng header/tensor. | **Bắt buộc** — Chặn 100% file `.bin`/`.pt` chứa rủi ro tấn công thực thi mã từ xa (deserialization RCE). |
+| **`tokenizers` (Rust Core)** | Định danh tokenizer, đồng nhất tokenization và chuẩn hóa chat template | Sử dụng thư viện Rust `tokenizers` độc lập với runtime suy luận; tính `tokenizer_sha256` để kiểm tra tính tương thích giữa Worker và Model; cung cấp hàm chuẩn hóa `render_chat_template(messages, tools)` tạo prompt đồng nhất cho mọi backend. | **Bắt buộc** — Chuỗi `input_ids` phải khớp chính xác 100% giữa HF và runtime C++/CUDA (`llama.cpp`). |
+| **`transformers` & `accelerate`** | **Chuẩn Đúng Đắn Toán Học (Correctness Golden Reference)** | Sử dụng làm chuẩn tham chiếu để sinh tập logprobs top-50, tính Perplexity và độ lệch KL-Divergence nhằm nghiệm thu runtime C++/CUDA (cổng **G-CORR**). | **Chỉ dùng Kiểm định** — Tuyệt đối **không** dùng `accelerate` CPU offload làm runtime suy luận production (tốc độ chậm hơn GGUF mmap 3–5 lần). |
+| **`peft`, `trl`, `bitsandbytes`** | Huấn luyện tinh chỉnh cục bộ & phân tán (LoRA, QLoRA, DiLoCo) | Cung cấp nền tảng huấn luyện LoRA/QLoRA 1 GPU (RTX 3060 12 GB với `bitsandbytes` 4-bit) và DDP 2–4 GPU. Triển khai phương án **LoRA-FA (Frozen-A)**: khởi tạo và đóng băng ma trận $A$, chỉ huấn luyện và đồng bộ ma trận $B_k$ để phép gộp trung bình đạt độ chính xác toán học tuyệt đối: $\frac{1}{K}\sum B_k A = (\frac{1}{K}\sum B_k) A$. | **Adopt & Extend** — Nằm trong `training/peft` và `training/diloco`. Cấm tuyệt đối phép gộp ngây thơ $\bar{B}\bar{A}$. |
+| **`datasets`** | Pipeline nạp và tiền xử lý dữ liệu âm thanh/văn bản | Khai thác tính năng streaming của Apache Arrow / Parquet để nạp và xử lý lô 10.000+ file âm thanh mà không tràn RAM máy chủ; cài đặt thuật toán chia tập **`speaker-disjoint split`** bảo đảm không rò rỉ dữ liệu người nói giữa train và test. | **Adopt** — Nằm trong `audio/ingestion/split.py`. |
+| **`evaluate` & `lighteval`** | Bộ công cụ đánh giá định lượng chất lượng mô hình | Tích hợp thư viện `jiwer` đo Word Error Rate (WER) và Character Error Rate (CER) cho ASR; tích hợp bộ kiểm thử benchmark chuẩn (MMLU, GSM8K, IFEval) đánh giá suy hao chất lượng sau lượng tử hóa GGUF. | **Bắt buộc** — Cung cấp chỉ số định lượng cho cổng **G-CORR** và **G-TRAIN**. |
+| **`smolagents` (Schema only)** | Định nghĩa kiểu dữ liệu công cụ (Typed Tool Schema) | Chỉ kế thừa mô hình định nghĩa công cụ có kiểm tra kiểu tĩnh (Typed Tool với JSON/Pydantic Schema); bọc toàn bộ việc thực thi trong sandbox cô lập an toàn của Fabric ([KT] §13). | **Loại bỏ CodeAgent** — Cấm tuyệt đối mô hình `CodeAgent` tự do sinh và chạy mã shell trên máy tính nhân viên. |
+| **`TGI` (Text Generation Inference)** | **LOẠI BỎ HOÀN TOÀN** | Hugging Face đã đưa TGI vào chế độ bảo trì (maintenance mode ✅). Hơn nữa, TGI phụ thuộc nặng vào container Linux/Docker và không hỗ trợ môi trường PC Windows WDDM của văn phòng. | **Bị loại bỏ** — Thay thế bằng `llama-server` (GGUF CUDA) cho Worker PC và `vLLM` / `SGLang` cho máy chủ Linux. |
+
+---
+
+### B.5. Chuỗi Truy Xuất Nguồn Gốc Model & Tokenizer (Provenance Chain: HF Safetensors → Converter → GGUF)
+
+Để đảm bảo an ninh chuỗi cung ứng trí tuệ nhân tạo (AI Supply Chain Security), ngăn chặn mã độc, và triệt tiêu nguy cơ suy giảm chất lượng mô hình do sai lệch từ vựng (tokenizer mismatch), toàn bộ trọng số lưu hành trong Fabric phải tuân thủ nghiêm ngặt **Chuỗi truy xuất nguồn gốc 5 giai đoạn (Provenance Chain)**:
+
+```
+[Hugging Face Hub] ──(1. Ghim SHA40 & Verify)──> [Local Cache / Mirror]
+                                                       │
+                                          (2. convert_hf_to_gguf.py @ Commit SHA)
+                                                       ▼
+[GGUF Thành Phẩm] <──(4. Ký số Manifest)── [3. llama-quantize @ Commit SHA]
+        │
+        └──(5. worker-guard kiểm tra SHA256 & Tokenizer Hash)──> [Nạp vào VRAM / RAM]
+```
+
+#### 1. Chi tiết 5 giai đoạn trong Chuỗi Truy Xuất Nguồn Gốc
+1. **Giai đoạn 1 — Ghim nguồn & Kiểm định an toàn gốc (Upstream Pinning & Safety Verification):**
+   - Mọi model phải được khai báo trong `third_party/upstream-manifest.yaml` với tên repo đầy đủ (VD: `Qwen/Qwen3-8B`) và mã commit SHA40 (VD: `9f8a3c...`).
+   - Tải `config.json`, `tokenizer.json`, `tokenizer_config.json`, `model.safetensors.index.json` và các file `.safetensors`.
+   - **Cổng bảo mật kiểm tra tự động:** (a) Từ chối 100% nếu phát hiện file chứa định dạng pickle (`.bin`, `.pt`, `.pkl`); (b) Kiểm tra `config.json` — cấm thuộc tính `"auto_map"` yêu cầu `trust_remote_code=True`; (c) Tính mã hash SHA256 của từng file safetensors và lưu vào bản ghi provenance.
+2. **Giai đoạn 2 — Chuyển đổi sang GGUF unquantized (GGUF Conversion Pipeline):**
+   - Thực thi script chuyển đổi `llama.cpp/convert_hf_to_gguf.py` với commit SHA40 đã được kiểm toán trong manifest.
+   - Nhúng toàn bộ từ điển tokenizer vào header GGUF, trích xuất cấu trúc kiến trúc (`architecture`, `block_count`, `attention.head_count`, `attention.head_count_kv`, `full_attention_interval`).
+3. **Giai đoạn 3 — Lượng tử hóa có kiểm soát (Deterministic Quantization):**
+   - Chạy `llama-quantize` ở phiên bản commit xác định, áp dụng đúng kiểu lượng tử hóa mục tiêu (`Q4_K_M` cho model vừa và lớn, `Q8_0` cho model nhạy cảm).
+   - Nhúng siêu dữ liệu truy xuất nguồn gốc tùy biến vào header GGUF: `aicf.source_repo`, `aicf.source_revision`, `aicf.converter_commit`.
+4. **Giai đoạn 4 — Ký số siêu dữ liệu & Đăng ký Manifest (Signing & Registry Manifest):**
+   - Tính toán `gguf_sha256` của file artifact hoàn chỉnh.
+   - Trích xuất từ điển tokenizer, tính `tokenizer_sha256` độc lập bằng Rust `tokenizers`.
+   - Tạo file `model_manifest.json` và ký số bằng chứng chỉ số nội bộ của Fabric (`step-ca`).
+5. **Giai đoạn 5 — Xác thực tại Worker trước khi Nạp vào Phần cứng (Worker Runtime Verification):**
+   - `worker-guard` trên PC nhân viên kiểm tra tính toàn vẹn của file GGUF đối chiếu với `model_manifest.json` trước khi khởi chạy `llama-server`.
+   - Đối chiếu `tokenizer_sha256` giữa model và dịch vụ lập lịch Scheduler. Nếu phát hiện sai lệch từ vựng dù chỉ 1 token ID $\implies$ Worker lập tức từ chối nhận lệnh và báo lỗi `TOKENIZER_MISMATCH`, triệt tiêu hoàn toàn lỗi suy diễn rác ngôn ngữ.
+
+#### 2. Cấu trúc Bản ghi Truy xuất Nguồn gốc Chuẩn (`model_manifest.json`)
+```json
+{
+  "$schema": "https://aicf.corp.local/schemas/v1/model-manifest.json",
+  "model_identity": {
+    "model_id": "Qwen/Qwen3-8B-Instruct",
+    "revision": "v1.0.0",
+    "quantization": "Q4_K_M",
+    "source_repo": "Qwen/Qwen3-8B",
+    "source_revision": "9f8a3c2b1d0e4f5a6b7c8d9e0f1a2b3c4d5e6f7a",
+    "weight_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tokenizer_sha256": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+    "license_spdx": "Apache-2.0",
+    "trust_remote_code": false
+  },
+  "provenance_chain": {
+    "converter": "ggml-org/llama.cpp/convert_hf_to_gguf.py@b4820a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f",
+    "quantizer": "ggml-org/llama.cpp/llama-quantize@b4820a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f",
+    "build_host": "builder-worker-01.lan",
+    "created_at_utc": "2026-10-25T08:00:00Z"
+  },
+  "artifact": {
+    "file_name": "qwen3-8b-instruct-q4_k_m.gguf",
+    "gguf_sha256": "7d5a9b8c6e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b",
+    "file_size_bytes": 4983271424,
+    "total_layers": 36,
+    "vocab_size": 152064
+  },
+  "signature": {
+    "signed_by": "aicf-pki-signer@corp.local",
+    "cert_serial": "4A:7F:1B:3C:9E",
+    "signature_sha256": "a1b2c3d4e5f6...signature_bytes..."
+  }
+}
+```
+
+---
+
+### B.6. Kiến Trúc Giao Diện Quản Trị Cụm (`apps/dashboard`) & Lộ Trình Triển Khai Màn Hình Theo Backend
+
+Nhằm cung cấp khả năng quan sát tập trung cho cụm 200 PC phân tán, giao diện quản trị `apps/dashboard` được xây dựng hoàn toàn mới, kế thừa bố cục trực quan từ các hệ thống quản trị cụm hiện đại nhưng độc lập 100% về mã nguồn với GPUStack Server.
+
+#### 1. Kiến trúc Công nghệ Frontend
+- **Công nghệ nền tảng:** React 18+ kết hợp TypeScript, đóng gói bằng **Vite**, quản lý trạng thái tập trung bằng **Zustand**.
+- **Thư viện UI & Thiết kế:** **Ant Design 5.x** cho hệ thống bảng biểu, form điều khiển, modal phân quyền; kết hợp **TailwindCSS** cho các utility layout tùy biến cao cấp.
+- **Biểu đồ & Hiển thị Hiệu năng:** **Apache ECharts** cho đồ thị chuỗi thời gian (VRAM, Power W, TPS, Loss, WER); kết hợp **HTML5 Canvas 2D** chuyên dụng để vẽ lưới **Heatmap 200 GPU** nhằm duy trì tốc độ khung hình $\ge 30\text{ FPS}$ mà không gây nghẽn DOM trình duyệt.
+- **Cơ chế Đồng bộ Dữ liệu Thời gian Thực:** Kết nối qua luồng **Server-Sent Events (SSE)** tần số **1 Hz** xuất phát từ `apps/site-gateway` và `apps/global-control-plane`. Tuyệt đối không dùng polling HTTP ngắn hạn để tránh lãng phí băng thông LAN và CPU control plane.
+
+#### 2. Lộ trình Phân Bổ Màn Hình Giao Diện Theo Backend (Phases P2 → P7)
+Mỗi màn hình Dashboard chỉ được kích hoạt và kiểm thử E2E khi module backend tương ứng đã hoàn thiện, bảo đảm không có màn hình "rỗng" hoặc chỉ chứa dữ liệu giả lập (mock):
+
+| Nhóm màn hình | Tên màn hình chi tiết | Giai đoạn (Phase) | Backend phụ thuộc trực tiếp | Chức năng kỹ thuật & Luồng dữ liệu |
+|---|---|:---:|---|---|
+| **Màn hình 1** | **Toàn cảnh Cụm & Heatmap 200 GPU** | **P2** | `apps/site-gateway`, `apps/worker-guard` | Lưới 200 ô GPU render Canvas 1 Hz; mã màu 4 trạng thái (`Serving/Running`, `Idle/Allocatable`, `Preempted/User active`, `Offline/Error`); click vào từng ô mở Drawer hiển thị chi tiết phần cứng (VRAM 6 ngăn, Nhiệt độ GPU, Công suất W, Quạt %, CPU load). |
+| **Màn hình 2** | **Live VRAM Fit Preview & Layer-Split** | **P3** | `core/vram-estimator`, `inference/engine-manager` | Trực quan hóa công thức 6 ngăn VRAM trước khi nạp model; thanh trượt tương tác điều chỉnh phân bổ layer giữa GPU VRAM và System RAM trên 1–4 PC; hiển thị nhãn độ tin cậy (`ESTIMATED`, `CALIBRATED`, `MEASURED`) và trạng thái Fit Status (Xanh $\le 90\%$, Vàng $90–100\%$, Đỏ $>100\%$). |
+| **Màn hình 3** | **Quản lý Worker, Quota & Preemption Log** | **P2** | `core/adaptive-scheduler`, `core/resources` | Bảng danh sách 200 Worker; cấu hình hạn mức Quota VRAM/CPU theo phòng ban và theo 2 khung giờ (Giờ hành chính vs Sau 18:00 & Cuối tuần); bảng nhật ký kiểm toán thu hồi GPU (Preemption Audit Log) với thời gian thu hồi p95/p99; nút gạt tạm dừng AI khẩn cấp. |
+| **Màn hình 4a** | **Giám sát Đồ thị DAG của AI Agent** | **P5** | `agents/orchestrator` (LangGraph), `agents/knowledge` | Sơ đồ tương tác DAG hiển thị tiến độ 15 Typed Tasks; trạng thái từng node (`Pending`, `Running`, `Checkpointed`, `Succeeded`, `Retried`); thanh tiến độ xử lý lô lớn (VD: 10.000 file hội thoại); phân tích độ trễ và chi phí VRAM từng bước. |
+| **Màn hình 4b** | **Bảng Điều Khiển Huấn Luyện Phân Tán** | **P6** | `training/` (LoRA-FA, DiLoCo), `audio/` | Đồ thị suy giảm Loss theo thời gian thực; tiến độ outer-step synchronization của DiLoCo; sai số chuẩn Frobenius ma trận LoRA; thống kê dung lượng mạng tiết kiệm được (MB / % so với DDP); biểu đồ hội tụ Time-to-target-WER. |
+| **Màn hình 5a** | **Chat Playground & Benchmark Monitor** | **P3** | `inference/adapters/` (llama, vllm, prima, molink) | Giao diện Chat trực tiếp kiểm thử mô hình Qwen; hiển thị đồng hồ đo trực tiếp (Live Gauge) `TTFT`, `TPOT`, `p95 ITL`; công cụ so sánh song song câu trả lời giữa 2 backend trên cùng một prompt. |
+| **Màn hình 5b** | **Audio AI Playground** | **P6** | `audio/asr` (Qwen3-ASR), `audio/tts` (Qwen3-TTS) | Trực quan hóa sóng âm thanh (Audio Waveform); ghi âm microphone / nạp file âm thanh; hiển thị bản phiên âm ASR kèm độ tin cậy timestamp; phát âm thanh sinh từ TTS; đối chiếu văn bản gốc vs văn bản sau chuẩn hóa `VietnameseTextNormalizer`. |
+| **Màn hình 5c** | **WAN Federation & Multi-Tenant Metering** | **P7** | `apps/global-control-plane`, `core/resource-metering` | Bảng điều khiển đối soát tài nguyên liên doanh nghiệp (Compute Island): tổng hợp số lượng `prompt_tokens`, `completion_tokens`, `gpu_seconds`, `vram_gb_hours`, `audio_minutes` và `estimated_kwh` theo từng `tenant_id`, `site_id`; biểu đồ lưu lượng mạng WAN; chỉ báo tuân thủ vùng dữ liệu (Data Residency Compliance). |
+
+#### 3. Tiêu chuẩn Kiểm thử E2E Tự Động (Playwright Test Standard)
+Mọi bản phát hành của Dashboard phải vượt qua kịch bản kiểm thử E2E tự động (`tests/e2e/test_dashboard_200_nodes.spec.ts`):
+1. **Kiểm thử Tải Giao diện 200 Node (Scale Simulation):** Giả lập 200 Worker ảo gửi SSE telemetry 1 Hz liên tục trong 60 phút $\implies$ Giao diện Heatmap duy trì tốc độ khung hình $\ge 30\text{ FPS}$, thời gian render cập nhật khung hình $< 50\text{ ms}$, và rò rỉ bộ nhớ JavaScript Heap $< 10\text{ MB}$ sau 1 giờ.
+2. **Kiểm thử Phản hồi Thao tác Quản trị (Interactive Latency):** Thao tác điều chỉnh Quota phòng ban, tìm kiếm Worker theo IP/tên, hoặc kích hoạt lệnh tạm dừng AI phải phản hồi trên giao diện trong $< 200\text{ ms}$.
+3. **Kiểm thử Phân quyền Đa Vai Trò (RBAC Verification):** Tài khoản vai trò `Viewer` bị vô hiệu hóa 100% các nút điều chỉnh Quota, gán Task hoặc thu hồi GPU; tài khoản `Operator` chỉ được thao tác trong Site của mình; tài khoản `Admin` có toàn quyền cấu hình toàn cụm.
 
 ---
 
@@ -692,18 +813,20 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 
 ### H.0. Bảng tổng hợp (cập nhật tay khi đổi trạng thái)
 
-| Phase | Nội dung | Số mục | Xong | Trạng thái |
-|---|---|:-:|:-:|---|
-| Chuẩn bị | Tài liệu & quyết định | 6 | 5 | Gần xong |
-| P0 | Khảo sát, baseline, kiểm chứng ADR-001 | 19 | 0 | Chưa bắt đầu |
-| P1 | Monorepo, contract, registry, estimator | 14 | 0 | Chưa bắt đầu |
-| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 21 | 0 | Chưa bắt đầu |
-| P3 | Qwen phân tán + Deploy UI | 13 | 0 | Chưa bắt đầu |
-| P4 | MoE & Speculative | 11 | 0 | Chưa bắt đầu |
-| P5 | Agent, RAG, 15 typed tasks | 13 | 0 | Chưa bắt đầu |
-| P6 | Audio & Training | 14 | 0 | Chưa bắt đầu |
-| P7 | WAN, đa tenant, metering | 11 | 0 | Chưa bắt đầu |
-| P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | Chưa bắt đầu |
+| Phase | Nội dung | Số mục | Xong `[x]` | Một phần `[~]` | Trạng thái |
+|---|---|:-:|:-:|:-:|---|
+| Chuẩn bị | Tài liệu & quyết định | 6 | 5 | 0 | Chờ dữ liệu thật từ bạn |
+| P0 | Khảo sát, baseline, kiểm chứng ADR-001 | 19 | 1 | 4 | Có probe, manifest, B01 một phần trên 1 máy Linux; chưa có PC Windows/fleet |
+| P1 | Monorepo, contract, registry, estimator | 14 | 2 | 7 | Toán + hiệu chuẩn trên 1 GPU Linux xong (28/28 sau hiệu chuẩn); thiếu ma trận 72, Windows, HF Hub, CI |
+| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 21 | 1 | 1 | Chỉ có logic scheduler; chưa có worker/gateway/dashboard |
+| P3 | Qwen phân tán + Deploy UI | 13 | 0 | 0 | Chưa bắt đầu (cần GPU) |
+| P4 | MoE & Speculative | 11 | 0 | 0 | Chưa bắt đầu (cần GPU) |
+| P5 | Agent, RAG, 15 typed tasks | 13 | 0 | 0 | Chưa bắt đầu |
+| P6 | Audio & Training | 14 | 2 | 2 | Phần toán/chuẩn hóa xong; chưa có model/dữ liệu thật |
+| P7 | WAN, đa tenant, metering | 11 | 0 | 0 | Chưa bắt đầu |
+| P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | 0 | Chưa bắt đầu |
+
+**Tổng: 142 mục, 11 xong, 14 một phần, 117 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
 
 ### H.1. Chuẩn bị (trước P0)
 - [x] Đọc, đánh giá kế hoạch và tài liệu kiến trúc [KT]; sửa lỗi số học, công thức, gate → Phần A
@@ -718,40 +841,40 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] Có quyền truy cập cụm thử 5–10 PC (Windows/Linux) cùng switch
 - [ ] Legal/HR/IT đã cử đầu mối; chính sách nhân viên (D19) đã gửi duyệt
 **Công việc**
-- [ ] P0.1 `benchmarks/hardware/probe_node.py` và `benchmarks/network/probe_lan_matrix.py` chạy xong trên ≥ 10 PC
+- [~] P0.1 `benchmarks/hardware/probe_node.py` và `benchmarks/network/probe_lan_matrix.py` chạy xong trên ≥ 10 PC → probe_node.py viết xong, test pass, mới chạy trên 1 máy dev (Linux, RTX 3060 12 GB đã cài driver; probe thấy GPU); chưa viết probe_lan_matrix.py; chưa có bản Windows
 - [ ] P0.1 Trả lời đủ 10 câu Phụ lục C → `p0_hardware_network_inventory.json`
-- [ ] P0.2 `third_party/upstream-manifest.yaml` đủ commit SHA40 + SPDX cho mọi thành phần
+- [~] P0.2 `third_party/upstream-manifest.yaml` đủ commit SHA40 + SPDX cho mọi thành phần → ai-compute-fabric/third_party/upstream-manifest.yaml: 10 thành phần, SHA là ứng viên lấy từ HEAD 2026-10-25; 3 mục license UNVERIFIED (tier research); Legal chưa duyệt
 - [ ] P0.2 Kiểm giấy phép từng model Qwen và dataset âm thanh; Legal ký
 - [ ] P0.3 Ngày 1–2: kiểm lại tài liệu GPUStack (OS worker, backend, license), ghi vào ADR-001
 - [ ] P0.3 PoC `worker-guard`: đọc NVML + PDH + `GetLastInputInfo`, pause/kill `llama-server`
 - [ ] P0.3 Giả lập 200 worker, đo độ trễ lập lịch p95
 - [ ] P0.3 Kiểm hỗ trợ Windows của Prima.cpp/MoLink; kiểm llama.cpp hỗ trợ DeltaNet GPU offload
-- [ ] P0.4 Baseline B01 → `p0_baselines_B01_B02_B03.json`
-- [ ] P0.4 Baseline B02 (kèm tập logprobs chuẩn vàng bằng `accelerate`)
+- [~] P0.4 Baseline B01 → `p0_baselines_B01_B02_B03.json` → benchmarks/reports/p0_B01_llamabench_Qwen3-{8B,4B}_rtx3060.json: Qwen3-8B Q4_K_M decode 64,9 tok/s, prefill 2155 tok/s (pp512); 4B decode 104,5 tok/s — llama-bench, 5 lần lặp, concurrency 1, 1 máy Linux; CHƯA có concurrency 8/32, LAN, Windows
+- [~] P0.4 Baseline B02 (kèm tập logprobs chuẩn vàng bằng `accelerate`) → p0_B02_llamabench_Qwen2.5-32B_rtx3060.json: 32B Q4_K_M ngl 32 decode 3,97 tok/s (xem Phần I.3); CHƯA có tập logprobs chuẩn vàng, concurrency 8/32
 - [ ] P0.4 Baseline B03 (vLLM TP/PP, LAN 2 và 5 Gbps)
 - [ ] P0.4 `p0_vram_raw_calibration.csv`
 **Deliverable & Gate**
 - [ ] ADR-001 chuyển trạng thái `ACCEPTED` hoặc `PARTIAL_FALLBACK`; ADR-002/003 xong
-- [ ] Gate: `pytest tests/unit/test_manifest_schema.py` exit 0
+- [x] Gate: `pytest tests/unit/test_manifest_schema.py` exit 0 → 2026-10-25: 6 passed, 1 xfailed (xfail = chờ Legal ký, cố ý); SHA là ứng viên, P0 phải thay bằng bản thực sự benchmark
 - [ ] Gate: `test_p0_hardware_probe.py` + `test_p0_baseline_harness.py` exit 0; RSD TPOT < 8 %
 - [ ] Gate: `test_p0_preemption_poc.py --runs=100` đạt p95 < 2000 ms, 0 crash WDDM; sai số estimator ≤ 10 % trên ≥ 10 cấu hình
 - [ ] Hiệu chỉnh ngưỡng D14 **một lần** và đóng băng → ghi vào Phần G
 
 ### H.3. P1 — Monorepo, contract, registry, estimator (2 sprint)
-- [ ] P1.1 Khung monorepo theo Phụ lục A [KT] + `core/vram-estimator/` + `apps/worker-guard/`
+- [~] P1.1 Khung monorepo theo Phụ lục A [KT] + `core/vram-estimator/` + `apps/worker-guard/` → ai-compute-fabric/: thư mục + Makefile + pyproject; `apps/worker-guard/` còn rỗng; chưa git init
 - [ ] P1.1 CI/CD chạy build, lint (`golangci-lint`, `ruff`, `mypy`), test, SBOM
-- [ ] P1.2 `fabric.proto` + `aicf_v1.yaml` + sinh code Go/Python (`buf generate`)
+- [~] P1.2 `fabric.proto` + `aicf_v1.yaml` + sinh code Go/Python (`buf generate`) → fabric.proto biên dịch bằng protoc; chưa có OpenAPI, chưa sinh code
 - [ ] P1.2 Protocol `InferenceEngine`, `TrainingEngine`
-- [ ] P1.3 `core/model-registry`: snapshot HF, mirror LAN, xác thực SHA256, `trust_remote_code=False`
+- [~] P1.3 `core/model-registry`: snapshot HF, mirror LAN, xác thực SHA256, `trust_remote_code=False` → core/model_registry/security.py (xác thực offline) xong; chưa có snapshot/mirror
 - [ ] P1.3 Chuỗi provenance HF → converter → GGUF; `tokenizer_sha256`; `render_chat_template`
-- [ ] P1.4 `core/vram-estimator` (Go + sidecar Python) + endpoint `/api/v1/models/estimate-vram`
-- [ ] P1.4 Ma trận hiệu chuẩn 72 cấu hình → `calibration_table.json`
-- [ ] Test: `test_protobuf_contracts.py`, `estimator_test.go` (không underflow uint64)
-- [ ] Test: `test_hf_model_registry_security.py` (chặn SHA sai, pickle, auto_map, tokenizer bị sửa)
+- [~] P1.4 `core/vram-estimator` (Go + sidecar Python) + endpoint `/api/v1/models/estimate-vram` → chỉ có phần toán Go (cov 93 %); chưa nhúng gguf-parser-go, chưa sidecar, chưa endpoint
+- [~] P1.4 Ma trận hiệu chuẩn 72 cấu hình → `calibration_table.json` → mới 37 cấu hình (33 nạp được, 4 vượt VRAM) trên 1 GPU, Q4_K_M: Qwen3-4B/8B (p1_vram_calibration_rtx3060.json) + Qwen2.5-32B hybrid 5 mức ngl (p1_vram_hybrid_32b_rtx3060.json) + log gốc; chưa có MoE, Q8_0/FP16, multi-GPU, Windows
+- [x] Test: `test_protobuf_contracts.py`, `estimator_test.go` (không underflow uint64) → viết xong và pass 2026-10-25; chưa có test tuần tự hóa chéo Go↔Python
+- [x] Test: `test_hf_model_registry_security.py` (chặn SHA sai, pickle, auto_map, tokenizer bị sửa) → 11 case pass; đã thử phá code (mutation) và test bắt được
 - [ ] Test: `test_tokenizer_determinism.py`
-- [ ] Gate: `go test ./core/vram-estimator/... -race`, độ phủ ≥ 85 %, 100 % mẫu giả mạo bị chặn
+- [~] Gate: `go test ./core/vram-estimator/... -race`, độ phủ ≥ 85 %, 100 % mẫu giả mạo bị chặn → Go -race pass, cov 93 %; mẫu giả mạo bị chặn trong test; chưa có CI và chưa đo độ phủ Python
 - [ ] Gate: tokenizer khớp 100 %
-- [ ] Gate: ≥ 69/72 cấu hình đạt `max(5 %, 300 MB)`
+- [~] Gate: ≥ 69/72 cấu hình đạt `max(5 %, 300 MB)` → trên phạm vi đã đo: parser thô 20/28 (71 %, không đạt); sau hiệu chuẩn 28/28, và 8/8 ở nhóm kiểm độc lập; gate 72 cấu hình CHƯA đạt vì chưa chạy đủ ma trận
 
 ### H.4. P2 — Fleet 200 PC (4 sprint)
 **Điều kiện chặn**
@@ -764,10 +887,10 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease
 - [ ] P2.2 CA `step-ca`, cert tự xoay 30 ngày
 - [ ] P2.2 `core/topology-graph` đo RTT/băng thông
-- [ ] P2.3 `core/adaptive-scheduler` v1 (lọc VramEstimate, ModelIdentity, tenant, hàm chi phí)
+- [~] P2.3 `core/adaptive-scheduler` v1 (lọc VramEstimate, ModelIdentity, tenant, hàm chi phí) → core/adaptive_scheduler/scheduler.py: logic thuần; chưa nối gateway/lease
 - [ ] P2.4 Dashboard MVP: Màn 1 (heatmap 200 GPU) và Màn 3 (worker, quota, preemption log)
 - [ ] P2.4 RBAC, audit log, Việt/Anh
-- [ ] Test: `test_adaptive_scheduler_decisions.py` (≥ 15 kịch bản)
+- [x] Test: `test_adaptive_scheduler_decisions.py` (≥ 15 kịch bản) → 16 kịch bản pass; mutation bắt được lỗi bỏ kiểm VRAM
 - [ ] Test: `test_lease_lifecycle_and_idempotency.py`
 - [ ] Test: `test_preemption_and_worker_churn.py`
 - [ ] Test: `test_dashboard_200_nodes.spec.ts` (Playwright, ≥ 30 FPS)
@@ -823,13 +946,13 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 
 ### H.8. P6 — Audio & Training (3–4 sprint)
 - [ ] P6.1 Pipeline `datasets` streaming 10.000+ file; VAD; resample; `consent_ref`; checksum
-- [ ] P6.1 Chia speaker-disjoint; `VietnameseTextNormalizer`; WER/CER bằng `jiwer`
+- [~] P6.1 Chia speaker-disjoint; `VietnameseTextNormalizer`; WER/CER bằng `jiwer` → audio/: chia tập + normalizer (số < 1e9, ngày dd/mm/yyyy, vị trí dấu) + WER/CER tự cài; chưa dùng jiwer, chưa kiểm trên dữ liệu thật
 - [ ] P6.2 Adapter Qwen3-ASR, Qwen3-TTS, DeepFilterNet; Màn 5b
 - [ ] P6.3 Estimator bộ nhớ huấn luyện (LoRA + gradient + AdamW 8-bit)
 - [ ] P6.3 Ba chế độ: LoRA 1 GPU, DDP 2–4, DiLoCo/periodic
-- [ ] P6.3 LoRA-FA mặc định; cấm trung bình ngây thơ B̄·Ā
-- [ ] Test: `test_speaker_disjoint_and_vn_wer.py`
-- [ ] Test: `test_lora_aggregation_math.py`
+- [~] P6.3 LoRA-FA mặc định; cấm trung bình ngây thơ B̄·Ā → training/lora_merger.py (toán); chưa tích hợp trainer
+- [x] Test: `test_speaker_disjoint_and_vn_wer.py` → pass 2026-10-25
+- [x] Test: `test_lora_aggregation_math.py` → pass 2026-10-25 (naive sai, LoRA-FA sai số tương đối < 1e-6, SVD khớp Eckart-Young)
 - [ ] Test: `test_training_stale_worker_and_checkpoint.py`
 - [ ] Test: `test_b09_audio_training_convergence.py`
 - [ ] Gate: speaker overlap = 0 %; sai số Frobenius < 1e-6
@@ -873,3 +996,189 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] llama.cpp hỗ trợ đầy đủ DeltaNet GPU offload cho Qwen3.5? (D05)
 - [ ] `gguf-parser-go` hỗ trợ ước lượng hybrid DeltaNet đạt tolerance? (Phần A #3)
 - [ ] License và quy mô dataset tiếng Việt (D20)
+
+---
+
+## PHẦN PHỤ LỤC — THAM CHIẾU KIẾN TRÚC & QUY TẮC VẬN HÀNH [KT]
+
+> **Ghi chú:** Toàn bộ nội dung trong phần Phụ lục này được trích xuất và chuẩn hóa trực tiếp từ tài liệu kiến trúc kỹ thuật gốc `AI_Compute_Fabric_Kien_truc_ky_thuat_v1.docx` (25/10/2026) — **[KT] Phụ lục A, B, C**, kết hợp cùng các quyết định kỹ thuật đã chốt tại Phần G nhằm phục vụ làm kim chỉ nam thực thi cho toàn đội ngũ.
+
+---
+
+### PHỤ LỤC A — Cấu Trúc Monorepo Skeleton Đề Xuất & Phân Định Trách Nhiệm Thư Mục
+
+Cấu trúc cây thư mục duy nhất của Monorepo `ai-compute-fabric` theo đúng chuẩn kiến trúc Phụ lục A [KT] và thiết kế mở rộng:
+
+```text
+ai-compute-fabric/
+├── apps/                                   # Các ứng dụng và dịch vụ cấp cao có thể triển khai độc lập
+│   ├── global-control-plane/               # Dịch vụ điều phối liên doanh nghiệp qua WAN, đối soát & đăng bạ Site
+│   ├── site-gateway/                       # Cổng trung tâm từng Site: gRPC/mTLS, quản lý Lease, NATS JetStream, DB
+│   ├── worker-guard/                       # Daemon quản lý tiến trình trên từng PC Windows/Linux (quản vòng đời llama-server, NVML, VRAM 6 ngăn)
+│   └── dashboard/                          # Giao diện web quản trị cụm (React + Vite + AntD + ECharts + Canvas Heatmap)
+│
+├── core/                                   # Các thư viện và thuật toán dùng chung của nền tảng Fabric
+│   ├── adaptive_scheduler/                 # Bộ lập lịch cốt lõi (lọc VramEstimate, ModelIdentity, Tenant Policy, cost model)
+│   ├── vram-estimator/                     # Thư viện Go nhúng gguf-parser-go + Sidecar Python tính toán & hiệu chuẩn VRAM 6 ngăn
+│   ├── model_registry/                     # Quản lý định danh, bảo mật artifact Hugging Face, xác thực SHA256, LAN mirror
+│   ├── topology/                           # Đo đạc ma trận RTT/băng thông LAN, xây dựng đồ thị liên kết cụm
+│   ├── resource_metering/                  # Ghi nhận audit log bất biến, đối soát token, GPU-seconds, VRAM-hours, kWh
+│   └── identity/                           # Quản lý định danh tenant, xác thực chứng chỉ số PKI, phân quyền RBAC
+│
+├── inference/                              # Tầng suy luận mô hình ngôn ngữ lớn (LLM / MoE)
+│   ├── adapters/                           # Các adapter chuẩn hóa 7 hàm lifecycle (probe, plan, prepare, start, infer, metrics, stop)
+│   │   ├── llama/                          # Adapter llama.cpp (GGUF CUDA) — Động cơ mặc định cho mọi PC Worker
+│   │   ├── vllm/                           # Adapter vLLM — Động cơ suy luận thông lượng cao trên máy chủ Linux
+│   │   ├── prima/                          # Adapter Prima.cpp (Piped-Ring Parallelism) — Nhánh benchmark phân tán 3–4 PC
+│   │   └── molink/                         # Adapter MoLink (Pipeline Parallelism qua gRPC) — Nhánh benchmark đối chứng
+│   ├── moe/                                # Tối ưu hóa suy luận Mixture-of-Experts
+│   │   ├── isa_gate.py                     # Kiểm tra tập lệnh CPU (AVX2 vs AVX-512/AMX), định tuyến kernel tương thích
+│   │   └── expert_cache/                   # Bộ nhớ đệm phân tầng cho routed experts (VRAM vs CPU RAM)
+│   ├── speculative/                        # Cơ chế suy luận phỏng đoán (Speculative Decoding & DeltaNet state rollback)
+│   └── engine_manager/                     # Quản lý vòng đời tiến trình engine, giám sát sức khỏe và thu hồi tài nguyên
+│
+├── agents/                                 # Nền tảng AI Agent phân tán (Stateful DAG Workflow)
+│   ├── orchestrator/                       # Bộ điều phối đồ thị trạng thái công việc (LangGraph + checkpoint PostgreSQL)
+│   ├── task_planner/                       # Phân rã mục tiêu lớn thành chuỗi tác vụ có kiểu (15 Typed Tasks)
+│   ├── tool_registry/                      # Đăng bạ công cụ có kiểu tĩnh (Typed Tools), chữ ký số và phân quyền tenant
+│   ├── task_executor/                      # Tiến trình sandbox cô lập thực thi công cụ an toàn (cấm shell tùy ý)
+│   ├── knowledge/                          # RAG nội bộ: Hugging Face Embedding (bge-m3) + Reranker + PostgreSQL/pgvector
+│   └── result_validator/                   # Kiểm định kết quả đầu ra: kiểm tra schema JSON, đối chiếu trích dẫn nguồn, chống ảo giác
+│
+├── audio/                                  # Pipeline xử lý âm thanh & mô hình giọng nói đa ngữ
+│   ├── ingestion/                          # Nạp streaming Hugging Face datasets (Arrow/Parquet), kiểm tra consent & checksum
+│   │   └── split.py                        # Chia tập huấn luyện / kiểm thử speaker-disjoint split (0% overlap người nói)
+│   ├── vad/                                # Voice Activity Detection (phát hiện khoảng lặng, phân đoạn audio)
+│   ├── asr/                                # Tự động nhận dạng tiếng nói (Qwen3-ASR adapter)
+│   ├── tts/                                # Tổng hợp tiếng nói tự nhiên (Qwen3-TTS adapter)
+│   ├── enhancement/                        # Lọc nhiễu âm thanh tiền xử lý (DeepFilterNet)
+│   └── evaluation/                         # Đánh giá chất lượng âm thanh
+│       └── vn_normalizer.py                # Bộ chuẩn hóa văn bản tiếng Việt nhất quán (Unicode NFC, số, ngày tháng, dấu thanh)
+│
+├── training/                               # Huấn luyện và tinh chỉnh mô hình phân tán
+│   ├── peft/                               # Tinh chỉnh LoRA / QLoRA 1 GPU với Hugging Face peft & bitsandbytes
+│   ├── ddp/                                # Distributed Data Parallel 2–4 GPU trên cùng switch LAN qua HF accelerate
+│   ├── diloco/                             # Huấn luyện phân tán Local SGD vòng ngoài (Periodic Outer-Step Sync)
+│   ├── lora_merger.py                      # Thuật toán gộp LoRA: LoRA-FA (chính xác tuyệt đối), Exact Delta-W, SVD Re-factorization
+│   └── checkpoint/                         # Quản lý checkpoint an toàn định dạng .safetensors và cơ chế khôi phục phiên
+│
+├── federation/                             # Liên kết đa doanh nghiệp qua mạng diện rộng (WAN Federation)
+│   ├── policy/                             # Quản lý chính sách phân loại dữ liệu (DATA_PUBLIC, DATA_INTERNAL, DATA_RESTRICTED)
+│   ├── site_discovery/                     # Cơ chế quảng bá năng lực tính toán tổng hợp (AdvertiseCapacity)
+│   ├── routing/                            # Định tuyến tác vụ liên Site dựa trên vùng lưu trú dữ liệu (Data Residency)
+│   └── secure_transport/                  # Đường truyền bảo mật mTLS toàn tuyến giữa các Site Gateway
+│
+├── contracts/                              # Hợp đồng giao tiếp thống nhất (Unified Contracts)
+│   ├── protobuf/aicf/v1/                   # Protocol Buffers schema (fabric.proto: WorkerCapacity, ModelIdentity, VramBuckets...)
+│   ├── openapi/                            # Đặc tả RESTful API (aicf_v1.yaml)
+│   └── schemas/                            # JSON / Pydantic Schemas cho 15 Typed Tasks và Tool Definitions
+│
+├── third_party/                            # Quản lý mã nguồn phụ thuộc bên ngoài và chuỗi cung ứng
+│   ├── upstream-manifest.yaml              # Bảng khóa commit SHA40, URL gốc, license SPDX cho mọi thư viện/engine
+│   └── patches/                            # Các bản vá (patch diff) áp dụng trên mã nguồn upstream
+│
+├── benchmarks/                             # Bộ công cụ khảo sát, baseline và bài đo hiệu năng chuẩn hóa
+│   ├── hardware/                           # Script probe phần cứng PC văn phòng (probe_node.py)
+│   ├── network/                            # Script đo ma trận độ trễ và băng thông mạng LAN (probe_lan_matrix.py)
+│   ├── configs/                            # Cấu hình kịch bản đo B01 → B09 và ma trận hiệu chuẩn 72 cấu hình VRAM
+│   └── reports/                            # Báo cáo kết quả đo định lượng (JSON, CSV, PDF signoff)
+│
+├── infrastructure/                         # Cấu hình dịch vụ hạ tầng phụ trợ
+│   ├── postgres/                           # Script khởi tạo cơ sở dữ liệu PostgreSQL + extension pgvector
+│   ├── nats/                               # Cấu hình hàng đợi NATS JetStream phân tán và chính sách lưu trữ
+│   ├── artifact-store/                     # Cấu hình kho lưu trữ đối tượng MinIO / S3 tương thích
+│   └── monitoring/                         # Cấu hình OpenTelemetry Collector, Prometheus metrics và Grafana dashboards
+│
+├── tests/                                  # Toàn bộ 7 tầng kiểm thử tự động của hệ thống ([KT] §15.1)
+│   ├── unit/                               # Tầng 1: Unit tests logic (Scheduler, Contracts, 6-Bucket VRAM math, Tokenizer...)
+│   ├── integration/                        # Tầng 2: Integration tests luồng nghiệp vụ Gateway, Lease, Estimator, Registry
+│   ├── correctness/                        # Tầng 3: Kiểm định tính đúng đắn toán học so với chuẩn vàng Hugging Face
+│   ├── performance/                        # Tầng 4: Bộ test benchmark tự động cho bài đo B01 → B09
+│   ├── resilience/                         # Tầng 5: Kiểm thử độ bền, thu hồi GPU khi người dùng thao tác, rút cáp mạng, failover
+│   ├── security/                           # Tầng 6: Kiểm thử an toàn sandbox, chống prompt injection, quét CVE, cô lập tenant
+│   ├── audio_quality/                      # Tầng 7: Đánh giá chất lượng WER/CER tiếng Việt, MOS âm thanh và speaker-disjoint
+│   └── e2e/                                # Kiểm thử giao diện Dashboard đầu-cuối với Playwright
+│
+├── Makefile                                # Các lệnh thực thi tiêu chuẩn (verify-dev, verify-release-v1, test, lint, build)
+└── pyproject.toml                          # Cấu hình môi trường Python monorepo (quản lý bởi uv)
+```
+
+---
+
+### PHỤ LỤC B — Ma Trận Quy Tắc Ra Quyết Định Lập Lịch Nhanh (Fast Routing Matrix)
+
+Bảng tra cứu quy tắc lập lịch và định tuyến tài nguyên của `Adaptive Compute Scheduler` theo từng tình huống workload cụ thể ([KT] Phụ lục B & §5.4):
+
+| # | Tình huống Workload | Phương án Ưu tiên Mặc định | Chỉ chuyển hướng sang phương án khác khi... | Ghi chú Ràng buộc Kỹ thuật |
+|:-:|---|---|---|---|
+| **1** | **Qwen vừa VRAM 12 GB**<br>*(VD: Qwen3-8B Q4_K_M chiếm ~5.5 GB VRAM)* | **Local `llama.cpp`** (GGUF CUDA) trên 1 PC Worker có VRAM allocatable khả dụng cao nhất | Có chứng cứ đo lường chứng minh backend khác (hoặc vLLM trên Linux) có `TPOT` thấp hơn $\ge 15\%$ trên cùng model và context. | Luôn duy trì mức Headroom $\ge 1.536\text{ MB}$ trong giờ hành chính để không ảnh hưởng người dùng PC. |
+| **2** | **Nhiều request Qwen nhỏ đồng thời**<br>*(Độ dài ngữ cảnh ngắn, tải song song cao)* | **Nhiều bản sao độc lập (Data Parallel / Independent Replicas)** trên nhiều PC Worker khác nhau | Batching trên máy chủ GPU Linux chuyên dụng chứng minh đạt tổng thông lượng (throughput/cost) vượt trội hơn cụm PC phân tán. | Scheduler tự động cân bằng tải (load balancing) dựa trên hàng đợi và nhiệt độ GPU của từng máy. |
+| **3** | **Qwen 32B Dense vượt VRAM 12 GB**<br>*(VD: Qwen2.5-32B Q4_K_M nặng ~19.8 GB)* | **Phân tán trên nhóm 3–4 PC RTX 3060** (`Prima.cpp` Piped-Ring hoặc `MoLink` tùy theo engine thắng cuộc tại P3) | Nhóm 3–4 máy không đủ kết nối LAN $\ge 2\text{ Gbps}$ hoặc latency mạng quá cao $\implies$ Chuyển về chế độ **Local CPU RAM Offload** trên 1 PC cấu hình RAM 32 GB. | Phân tán 3 PC: chia 22 / 21 / 21 layers; bắt buộc qua kênh mTLS nội bộ LAN. |
+| **4** | **Qwen MoE vượt VRAM 12 GB**<br>*(VD: Qwen3-30B-A3B / Qwen3.5-35B-A3B)* | **Local Hybrid + Expert Locality Cache** (Attention + Hot Experts trên 12 GB VRAM, Cold Experts trên 32 GB RAM) | CPU Worker không hỗ trợ tập lệnh AVX2 (chặn bởi CPU ISA Gate) **HOẶC** cơ chế phân tán expert qua mạng chứng minh đạt TPOT nhanh hơn offload RAM. | Phân rã rõ thanh VRAM và RAM trên giao diện Dashboard; kiểm tra rollback trạng thái DeltaNet trên Qwen3.5. |
+| **5** | **Xử lý lô lớn Audio / Document**<br>*(VD: 10.000 file âm thanh hoặc tài liệu OCR)* | **Phân tán tác vụ song song độc lập (Embarrassingly Parallel Tasks)** qua hàng đợi NATS JetStream trên toàn cụm 200 PC | Tác vụ có sự phụ thuộc chuỗi nghiêm ngặt đòi hỏi tổng hợp tuần tự từng bước $\implies$ Chuyển sang đồ thị **LangGraph DAG** có checkpointing. | Mỗi task phải có tính bất biến và idempotent; tự động phát lại nếu Worker bị thu hồi GPU giữa chừng. |
+| **6** | **Huấn luyện tinh chỉnh ASR / TTS**<br>*(Fine-tuning mô hình giọng nói nội bộ)* | **LoRA 1 GPU $\rightarrow$ DDP 2–4 GPU** (trên các PC cùng switch LAN qua Hugging Face `accelerate`) | Băng thông LAN bị nghẽn hoặc các Worker nằm ở các switch khác nhau $\implies$ Chuyển sang cơ chế **Periodic Local SGD / DiLoCo** (đồng bộ outer-step sau mỗi $H$ bước). | Bắt buộc áp dụng công thức **LoRA-FA (Frozen-A)** để bảo toàn tính đúng đắn toán học của ma trận trọng số gộp. |
+| **7** | **Tương tác Liên doanh nghiệp qua WAN**<br>*(Hai Site kết nối qua mạng diện rộng)* | **Chỉ chuyển tiếp Request suy luận độc lập và Tác vụ AI Agent** (Request/Task Federation) | Có đường truyền thuê riêng (Dedicated Leased Line) đạt băng thông $\ge 10\text{ Gbps}$ và RTT $< 5\text{ ms}$ có cam kết SLA mới xem xét phân tán trọng số mô hình. | **Cấm tuyệt đối phân tán Pipeline/Tensor Parallelism qua WAN**; dữ liệu gắn nhãn `DATA_RESTRICTED` tuyệt đối không được rời khỏi Site gốc. |
+
+---
+
+### PHỤ LỤC C — 10 Câu Hỏi Khảo Sát Phần Cứng & Mạng (Checklist Khảo Sát P0.1)
+
+Mọi hoạt động thiết kế chi tiết và lập lịch tài nguyên đều phải dựa trên số liệu đo lường thực tế trên cụm máy mẫu (tối thiểu 10 PC văn phòng thật) tại Bước P0 theo danh mục 10 câu hỏi cốt lõi sau ([KT] Phụ lục C & §1.2):
+
+| # | Vấn đề Cần Khảo sát & Xác minh | Phương pháp Đo lường & Công cụ Thực hiện | Chỉ số Kỹ thuật Cần Thu thập | Tác động Trực tiếp đến Kiến trúc & Lập lịch |
+|:-:|---|---|---|---|
+| **1** | **Dung lượng VRAM thực tế & Driver mode** | Chạy `nvidia-smi` và gọi NVML API qua `benchmarks/hardware/probe_node.py` | - GPU là RTX 3060 phiên bản **12 GB hay 8 GB**.<br>- Hệ điều hành: Windows 10/11 (WDDM mode) hay Linux (TCC mode).<br>- Phiên bản NVIDIA Driver & CUDA Runtime. | Nếu tồn tại bản 8 GB, Scheduler phải tự động loại bỏ khỏi nhóm chạy model lớn; WDDM đòi hỏi kế toán VRAM 6 ngăn thay vì tin tưởng số per-process của NVML. |
+| **2** | **Cấu hình CPU & Tập lệnh Gia tốc (ISA)** | Đọc `/proc/cpuinfo` (Linux) hoặc `GetLogicalProcessorInformation` (Windows) | - Mã chip Intel Core i5 (thế hệ 10, 11, 12, 13...).<br>- Số nhân vật lý / số luồng logic.<br>- Cờ tập lệnh: `avx2`, `avx512f`, `avx512_vnni`, `amx_int8`. | Quyết định kích hoạt `KT-Kernel` hay `llama.cpp` AVX2 cho MoE CPU offload; bảo đảm không gây crash `SIGILL`. |
+| **3** | **Dung lượng RAM & Băng thông Bộ nhớ Thực tế** | Kiểm tra cấu hình khe cắm RAM qua DMI/WMI và chạy benchmark `mbw` / `stream` | - Tổng RAM hệ thống (32 GB).<br>- Số lượng thanh RAM: 1 thanh (kênh đơn - Single Channel) hay 2 thanh (kênh đôi - Dual Channel).<br>- Băng thông đọc/ghi thực tế ($\text{GB/s}$). | Băng thông RAM kênh đơn chỉ đạt ~20–25 GB/s, làm giảm 50% tốc độ suy luận MoE offload so với kênh đôi (~45–50 GB/s). |
+| **4** | **Băng thông Mạng LAN & Độ trễ Liên PC** | Chạy `iperf3` và `ping` ma trận qua `benchmarks/network/probe_lan_matrix.py` | - Băng thông per-node (2 Gbps hay 5 Gbps).<br>- Băng thông tổng uplink của switch khi 10–20 máy truyền đồng thời.<br>- Độ trễ RTT p50, p95 giữa các máy cùng switch và khác switch. | Xác định tính khả thi của suy luận phân tán Qwen 32B trên 3–4 máy (`B04/B05`) và tần suất đồng bộ DiLoCo. |
+| **5** | **Phiên bản Mô hình Mục tiêu & SLA Nghiệp vụ** | Làm việc với Product Owner / Stakeholder nghiệp vụ | - Định danh model: Qwen 8B, 32B, MoE 30B/35B.<br>- Ngữ cảnh prompt trung bình và tối đa (512 đến 32k tokens).<br>- Ngưỡng SLA chấp nhận được: TTFT (giây) và TPOT (tokens/giây). | Thiết lập tham số cấu hình cho `core/vram-estimator` và hàm chi phí của `core/adaptive-scheduler`. |
+| **6** | **Yêu cầu về Tính Tương đương Chất lượng** | Trao đổi với nhóm AI Research và nghiệp vụ | - Chấp nhận sai số lượng tử hóa ở mức nào so với chuẩn vàng FP16.<br>- Có chấp nhận mô hình Agent Ensemble (nhiều model chuyên biệt nhỏ) thay cho 1 model khổng lồ duy nhất không? | Xác lập ngưỡng chặn kiểm định toán học **G-CORR** (KL-divergence $< 0,001$ hay linh hoạt theo tác vụ). |
+| **7** | **Kiểm toán Bản quyền Phần mềm & Dữ liệu** | Rà soát pháp lý cùng bộ phận Pháp chế (Legal) | - Giấy phép mã nguồn: Apache-2.0, MIT, BSD (cho phép); GPL/AGPL (cô lập hoặc cấm).<br>- Quyền thương mại của Qwen model weights.<br>- Nguồn gốc và bản ghi đồng thuận (`consent_ref`) của tập dữ liệu âm thanh nội bộ. | Điều kiện tiên quyết để nghiệm thu cổng an toàn pháp lý **P0.2** trước khi triển khai sản phẩm. |
+| **8** | **Danh mục Công cụ & Cơ chế Sandbox trên PC** | Làm việc cùng IT Security doanh nghiệp | - Danh mục Typed Tools được phép thực thi trên PC nhân viên.<br>- Cơ chế cô lập tiến trình (Job Object trên Windows, cgroups/seccomp trên Linux).<br>- Giới hạn quyền truy cập filesystem và network của tiến trình AI. | Cấm 100% lệnh shell tùy ý; ngăn chặn rủi ro mã độc tấn công qua Prompt Injection. |
+| **9** | **Chính sách Phân loại Dữ liệu & Vùng Lưu trú** | Rà soát tiêu chuẩn an toàn thông tin doanh nghiệp | - Phân loại dữ liệu: `DATA_PUBLIC`, `DATA_INTERNAL`, `DATA_RESTRICTED`.<br>- Danh sách Site được phép nhận và xử lý dữ liệu qua WAN. | Cấu hình bộ lọc kiểm tra quyền trong `Adaptive Compute Scheduler` và `Global Control Plane`. |
+| **10** | **Chính sách Trải nghiệm Nhân viên & Thu hồi GPU** | Phối hợp với phòng Nhân sự (HR) và IT Support | - Ngưỡng phát hiện người dùng: thời gian idle chuột/phím ($T_{\text{idle}}$), phần trăm chiếm dụng CPU/VRAM của phần mềm văn phòng.<br>- Thang thu hồi GPU: Drain $\rightarrow$ Checkpoint $\rightarrow$ Kill.<br>- Nút bấm "Tạm dừng AI 4 giờ" tại khay hệ thống (System Tray). | Bảo đảm tuyệt đối nguyên tắc: **"Người dùng PC là ưu tiên số 1"** ([KT] §5.3), không gây phiền toái hay gián đoạn công việc nhân viên. |
+
+
+---
+
+## PHẦN I — KẾT QUẢ ĐO THẬT ĐÃ CÓ (CẬP NHẬT 2026-10-25)
+
+**Phạm vi — đọc kỹ:** một máy phát triển (Linux, Core Ultra 7 265K, RAM 30 GB, **1 × RTX 3060 12 GB**, driver 580.178.04), llama.cpp `74bca39` build CUDA sm_86, `gguf-parser-go` `9257743`. Đây **không phải** fleet Windows mục tiêu và không thay thế P0 trên PC thật. Qwen3-4B/8B Q4_K_M (nạp hết lên GPU) và Qwen2.5-32B-Instruct Q4_K_M (hybrid GPU+CPU); chưa thử MoE. Dữ liệu gốc: `ai-compute-fabric/benchmarks/reports/` (JSON + 32 log llama.cpp).
+
+### I.1. Độ chính xác estimator (gate G-VRAM, phạm vi trên)
+| Cách ước lượng | Đạt `max(5 %, 300 MB)` | Sai số lớn nhất | Ước lượng thiếu? |
+|---|:-:|:-:|:-:|
+| `gguf-parser` thô | 20/28 (71 %) | 1.689 MiB | Không bao giờ thấp hơn đo thực |
+| Sau quy tắc hiệu chuẩn | **28/28 (100 %)** | 197 MiB | Không |
+| Riêng nhóm kiểm độc lập (8 cấu hình chưa dùng để suy ra quy tắc) | thô 4/8 · hiệu chuẩn **8/8** | 141 MiB | Không |
+| Hybrid Qwen2.5-32B (5 mức `ngl` 24–36, ctx 4096) | thô **5/5** | 260 MiB (luôn thừa +257–260) | Không |
+
+- 4 cấu hình thô trượt đều là `parallel ≥ 2`/`4` **khi tắt flash-attention**: llama.cpp tính compute buffer theo ngữ cảnh **từng slot**, còn parser tính theo **tổng** → thừa tới 1,7 GB.
+- **Quy tắc:** `VRAM = parser(ctx_mỗi_slot, np=1) + (np−1) × KV_mỗi_slot` (đã cài trong `core/vram-estimator`, `CalibratedLlamaCppVRAM`).
+- 4 cấu hình không nạp được (`parallel=4`, ctx 32k) đều được dự báo đúng là vượt VRAM (≥ 21,5 GiB so với ~11,5 GiB trống); llama.cpp báo lỗi cấp phát bộ nhớ KV.
+- `--ctx-size` của parser = **tổng** ngữ cảnh mọi slot (bằng `-c` của llama-server). Công thức KV trong kế hoạch khớp log: Qwen3-8B @8k = 1.152 MiB.
+- **Giả định bị bác bỏ:** "CUDA context ~350–500 MB" (đo được ~133 MiB trên Linux). Windows chưa biết.
+
+### I.2. Baseline B01 một phần (Qwen3-8B/4B Q4_K_M, `llama-bench`, concurrency 1, 5 lần lặp)
+| Model | Prefill pp512 | Prefill pp4096 | Decode tg128 |
+|---|:-:|:-:|:-:|
+| Qwen3-8B | 2.155 tok/s | 2.013 tok/s | 64,9 tok/s |
+| Qwen3-4B | 3.708 tok/s | 3.294 tok/s | 104,5 tok/s |
+
+So với ước lượng cũ (8B: 40–55 tok/s; cận băng thông 73): thực tế 64,9 — cao hơn dự kiến, vẫn dưới cận trên. Chưa có TTFT/p95 qua server, joule/token, concurrency 8/32, LAN 2/5 Gbps.
+
+### I.3. B02 — Qwen2.5-32B Q4_K_M chạy lai GPU+CPU (`llama-bench`, concurrency 1, 3 lần lặp)
+| `ngl` (layer trên GPU) | VRAM đo | Prefill pp512 | Decode tg64 |
+|:-:|:-:|:-:|:-:|
+| 0 (thuần CPU + GPU hỗ trợ tính toán) | — | 223 tok/s | 2,20 tok/s |
+| 24 | 7,8 GB | 280 tok/s | 3,36 tok/s |
+| 28 | 9,0 GB | 297 tok/s | 3,63 tok/s |
+| 32 | 10,2 GB | 309 tok/s | **3,97 tok/s** |
+
+- Dự báo của kế hoạch ("~28–30 layer, ≈ 3–5 tok/s") **đúng về bậc độ lớn**: với ~10,2 GB trống thực tế đặt được ~32 layer, decode ~4 tok/s (cận băng thông RAM trong [KT] §12.3 là ≈ 4,6).
+- Mỗi layer thêm lên GPU chỉ tăng decode ~0,07–0,1 tok/s: lai GPU+CPU cho 32B bị RAM chặn, đúng lý do để benchmark phân tán 3–4 PC (B04/B05) ở P3.
+- **RAM host:** `gguf-parser` mặc định (mmap) báo ~1,3–1,5 GB nhưng llama.cpp thực giữ 8,5–11,8 GB cho layer trên CPU — thiếu 7,7–11 GB. Dùng `--no-mmap`: luôn thừa đúng +1.394 MiB (an toàn). **Scheduler phải dùng số `--no-mmap`** cho `LOCAL_HYBRID`.
+- Chưa đo: TTFT/p95 qua server, concurrency 8/32, joule/token (B02 đầy đủ).
+
+### I.4. Còn trống
+Windows (WDDM, PDH, thu hồi GPU), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s.

@@ -1,0 +1,12 @@
+# local work area: downloaded models, llama.cpp logs, scratch
+.aicf-work/
+*.gguf
+# python / go / editor
+.venv/
+**/.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.bak
+.idea/
+.vscode/
