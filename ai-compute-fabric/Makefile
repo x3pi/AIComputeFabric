@@ -5,6 +5,7 @@ verify-dev: test-go test-py proto   ## checks that need no hardware (dev machine
 
 test-go:
 	cd core/vram-estimator && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
+	cd apps/worker-guard && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
 
 test-py:
 	$(PY) -m pytest -q

@@ -818,7 +818,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 | Chuẩn bị | Tài liệu & quyết định | 6 | 5 | 0 | Chờ dữ liệu thật từ bạn |
 | P0 | Khảo sát, baseline, kiểm chứng ADR-001 | 19 | 1 | 4 | Có probe, manifest, B01 một phần trên 1 máy Linux; chưa có PC Windows/fleet |
 | P1 | Monorepo, contract, registry, estimator | 14 | 2 | 7 | Toán + hiệu chuẩn trên 1 GPU Linux xong (28/28 sau hiệu chuẩn); thiếu ma trận 72, Windows, HF Hub, CI |
-| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 21 | 1 | 1 | Chỉ có logic scheduler; chưa có worker/gateway/dashboard |
+| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 21 | 1 | 3 | Có PoC worker-guard Linux (thu hồi GPU đạt) + trang quản lý 1 worker; chưa gateway, Windows, heatmap |
 | P3 | Qwen phân tán + Deploy UI | 13 | 0 | 0 | Chưa bắt đầu (cần GPU) |
 | P4 | MoE & Speculative | 11 | 0 | 0 | Chưa bắt đầu (cần GPU) |
 | P5 | Agent, RAG, 15 typed tasks | 13 | 0 | 0 | Chưa bắt đầu |
@@ -826,7 +826,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 | P7 | WAN, đa tenant, metering | 11 | 0 | 0 | Chưa bắt đầu |
 | P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | 0 | Chưa bắt đầu |
 
-**Tổng: 142 mục, 11 xong, 14 một phần, 117 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
+**Tổng: 142 mục, 11 xong, 16 một phần, 115 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
 
 ### H.1. Chuẩn bị (trước P0)
 - [x] Đọc, đánh giá kế hoạch và tài liệu kiến trúc [KT]; sửa lỗi số học, công thức, gate → Phần A
@@ -881,14 +881,14 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] Legal/HR/IT duyệt chính sách nhân viên; EDR/antivirus whitelist (D19)
 **Công việc**
 - [ ] P2.1 `worker-guard` production: Windows service + systemd, MSI ký số, GPO/Intune
-- [ ] P2.1 Kế toán VRAM 6 ngăn 1 Hz; power limit; thang thu hồi Drain → Checkpoint → Kill
+- [~] P2.1 Kế toán VRAM 6 ngăn 1 Hz; power limit; thang thu hồi Drain → Checkpoint → Kill → `apps/worker-guard` (Go, Linux, 1 GPU): bucket từ log llama.cpp + SSE 1 Hz, thu hồi bằng SIGTERM→SIGKILL, 10/10 lần < 240 ms (Phần I.5); CHƯA có Drain/Checkpoint, power limit, Windows/PDH
 - [ ] P2.1 Tự cập nhật vòng 5 → 25 → 100 % + watchdog rollback
 - [ ] P2.1 System Tray: nút "Tạm dừng AI 4 giờ"
 - [ ] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease
 - [ ] P2.2 CA `step-ca`, cert tự xoay 30 ngày
 - [ ] P2.2 `core/topology-graph` đo RTT/băng thông
 - [~] P2.3 `core/adaptive-scheduler` v1 (lọc VramEstimate, ModelIdentity, tenant, hàm chi phí) → core/adaptive_scheduler/scheduler.py: logic thuần; chưa nối gateway/lease
-- [ ] P2.4 Dashboard MVP: Màn 1 (heatmap 200 GPU) và Màn 3 (worker, quota, preemption log)
+- [~] P2.4 Dashboard MVP: Màn 1 (heatmap 200 GPU) và Màn 3 (worker, quota, preemption log) → chỉ có trang tĩnh 1 worker nhúng trong worker-guard (thanh 6 bucket + nhật ký thu hồi + nút tạm dừng); chưa React/AntD, chưa heatmap, chưa quota/RBAC, chưa Playwright
 - [ ] P2.4 RBAC, audit log, Việt/Anh
 - [x] Test: `test_adaptive_scheduler_decisions.py` (≥ 15 kịch bản) → 16 kịch bản pass; mutation bắt được lỗi bỏ kiểm VRAM
 - [ ] Test: `test_lease_lifecycle_and_idempotency.py`
@@ -1180,5 +1180,17 @@ So với ước lượng cũ (8B: 40–55 tok/s; cận băng thông 73): thực 
 - **RAM host:** `gguf-parser` mặc định (mmap) báo ~1,3–1,5 GB nhưng llama.cpp thực giữ 8,5–11,8 GB cho layer trên CPU — thiếu 7,7–11 GB. Dùng `--no-mmap`: luôn thừa đúng +1.394 MiB (an toàn). **Scheduler phải dùng số `--no-mmap`** cho `LOCAL_HYBRID`.
 - Chưa đo: TTFT/p95 qua server, concurrency 8/32, joule/token (B02 đầy đủ).
 
+### I.5. PoC thu hồi GPU trên Linux (`apps/worker-guard`, RTX 3060, 10 lần)
+Kịch bản: worker-guard chạy llama-server Qwen3-8B (5.460 MiB); một job GPU độc lập (Qwen3-4B, ctx 24576) đóng vai người dùng và kéo VRAM trống xuống dưới headroom 1.536 MiB. Mốc thời gian do harness tự đo (nvidia-smi mỗi ~10 ms): từ lúc VRAM trống < headroom đến lúc pid của engine không còn giữ VRAM.
+
+| Chỉ số | Giá trị |
+|---|---|
+| Số lần đạt / thử | 10 / 10 |
+| min / median / p95 / max | 154,7 / 207,7 / 239,1 / 239,1 ms |
+| Phần dừng tiến trình (SIGTERM, không cần SIGKILL) | ≈ 150 ms |
+| Cổng < 2 s | đạt ở Linux, 1 GPU |
+
+Bằng chứng: `ai-compute-fabric/benchmarks/reports/p2_gpu_reclaim_poc_rtx3060.json`, harness `benchmarks/hardware/reclaim_poc.py`. Giới hạn trung thực: (1) chỉ Linux, nơi NVML cho số VRAM theo tiến trình; trên Windows/WDDM số này không đáng tin nên cổng vẫn chưa được kiểm chứng; (2) "người dùng" là job llama-server nạp dần, chưa phải game/trình duyệt; (3) chưa có Drain/Checkpoint, kill thẳng vì suy luận không có trạng thái cần giữ; (4) 10 lần là mẫu nhỏ, chưa đủ để nói p95 chắc chắn.
+
 ### I.4. Còn trống
-Windows (WDDM, PDH, thu hồi GPU), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s.
+Windows (WDDM, PDH, thu hồi GPU), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).
