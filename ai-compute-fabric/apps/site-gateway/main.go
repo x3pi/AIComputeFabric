@@ -9,6 +9,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	pb "github.com/aicf/ai-compute-fabric/contracts/gen/go"
@@ -23,6 +25,10 @@ func main() {
 	maxWait := flag.Duration("max-wait", 10*time.Second, "longest a request waits for a slot")
 	rate := flag.Float64("tenant-rate", 0, "requests/s per tenant (0 = unlimited)")
 	burst := flag.Int("tenant-burst", 20, "token bucket burst per tenant")
+	fair := flag.Bool("fair", true, "weighted fair queuing per tenant (false = one shared FIFO)")
+	perTenantQueue := flag.Int("tenant-queue", 0, "queue slots one tenant may use (0 = max-queue/4)")
+	perTenantInflight := flag.Int("tenant-inflight", 0, "concurrent requests one tenant may run (0 = unlimited)")
+	weightsFlag := flag.String("tenant-weights", "", "comma list tenant=weight, e.g. sales=3,ops=1")
 	flag.Parse()
 	reg := NewRegistry(*offline)
 	lis, err := net.Listen("tcp", *grpcAddr)
@@ -35,7 +41,16 @@ func main() {
 	log.Printf("site-gateway gRPC %s, http://%s", *grpcAddr, *httpAddr)
 	fleet := NewFleet(reg)
 	go fleet.Run(time.Second, nil)
-	router := NewRouter(RouterConfig{MaxQueue: *maxQueue, MaxWait: *maxWait}, reg)
+	weights := map[string]float64{}
+	for _, kv := range strings.Split(*weightsFlag, ",") {
+		if p := strings.SplitN(kv, "=", 2); len(p) == 2 {
+			if w, err := strconv.ParseFloat(p[1], 64); err == nil && w > 0 {
+				weights[strings.TrimSpace(p[0])] = w
+			}
+		}
+	}
+	router := NewRouter(RouterConfig{MaxQueue: *maxQueue, MaxWait: *maxWait, Fair: *fair, MaxQueuePerTenant: *perTenantQueue,
+		MaxInflightTenant: *perTenantInflight, Weights: weights}, reg)
 	go router.Run(nil)
 	inf := NewInference(router, NewLimiter(*rate, *burst))
 	mux := http.NewServeMux()

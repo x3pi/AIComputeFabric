@@ -288,7 +288,9 @@ Có hai loại "tải" khác nhau và phải thiết kế riêng: **mặt điề
 
 **Đã làm ở mặt dữ liệu (Phần I.8):** gateway suy luận tương thích OpenAI (`/v1/chat/completions`), định tuyến worker ít tải nhất, giới hạn slot theo `-np`, hàng đợi có giới hạn, 429/503 + `Retry-After`, giới hạn tốc độ theo tenant (token bucket), proxy streaming, thử lại một lần sang worker khác trước byte đầu tiên, `/metrics` dạng Prometheus; đã đo 1/8/32/64 luồng đồng thời trên 1 GPU.
 
-**Chưa đo / chưa làm (không được xem là đã sẵn sàng):** (a) mặt dữ liệu: danh tính tenant mới chỉ lấy từ header `X-Tenant-ID` (chưa xác thực, phải đặt sau SSO/API key); chưa từ chối theo thời gian chờ ước tính so với hạn chót; chưa thử nhiều worker/nhiều model cạnh tranh; chưa đo p99 và prompt dài; lỗi giữa chừng khi stream (ví dụ GPU bị thu hồi) cắt luồng của client, chưa có tự động tiếp tục; (b) chưa có HA gateway, NATS, PostgreSQL, mTLS; (c) chưa kiểm tra mạng thật (độ trễ, mất gói, 200 PC thật); (d) trên 5.000 worker/site cần khung delta thay vì khung đầy đủ và chia shard registry; (e) chưa có Prometheus metrics cho gateway.
+**Đã làm thêm (Phần I.9):** hàng đợi công bằng theo tenant (trọng số, phần hàng đợi mỗi tenant, trần chạy đồng thời mỗi tenant, ưu tiên tương tác/batch).
+
+**Chưa đo / chưa làm (không được xem là đã sẵn sàng):** (a) mặt dữ liệu: danh tính tenant mới chỉ lấy từ header `X-Tenant-ID` (chưa xác thực, phải đặt sau SSO/API key); chưa từ chối theo thời gian chờ ước tính so với hạn chót; chưa gắn cuộc hội thoại vào worker (mất cache KV giữa các lượt); chưa thử nhiều worker/nhiều model cạnh tranh; chưa đo p99 và prompt dài; lỗi giữa chừng khi stream (ví dụ GPU bị thu hồi) cắt luồng của client, chưa có tự động tiếp tục; (b) chưa có HA gateway, NATS, PostgreSQL, mTLS; (c) chưa kiểm tra mạng thật (độ trễ, mất gói, 200 PC thật); (d) trên 5.000 worker/site cần khung delta thay vì khung đầy đủ và chia shard registry; (e) chưa có Prometheus metrics cho gateway.
 
 ---
 
@@ -1240,6 +1242,17 @@ Bản đầu (tuần tự hóa riêng từng người xem): khung 482 KB ở 1.0
 Kết luận có bằng chứng: (1) proxy không tốn thông lượng đo được (±2 %); (2) 8 luồng đồng thời cho 3,1 lần thông lượng của 1 luồng trên cùng GPU (177–180 so với 57,5 tok/s) nhưng mỗi luồng chậm còn 23 tok/s; (3) quá tải 4–8 lần số slot không làm sập: thông lượng giữ ở ~178 tok/s, yêu cầu thừa bị từ chối nhanh bằng 429 + `Retry-After`, không có lỗi 5xx hay lỗi kết nối, bộ nhớ gateway bị chặn bởi hàng đợi; (4) yêu cầu được nhận khi quá tải chờ ~5,7 s (16 vị trí hàng đợi ÷ 8 slot × ~2,8 s mỗi yêu cầu): hàng đợi 2 lần số slot là quá dài cho nhu cầu tương tác, nên mặc định cần hạ xuống ≈ số slot hoặc chuyển sang từ chối theo thời gian chờ ước tính so với hạn chót (việc còn lại, chưa làm).
 Hai lỗi thật tìm ra nhờ phép đo này và đã sửa: (a) kết nối keep-alive tới `llama-server` bị cũ (`EOF`, `server closed idle connection`): 24/88 yêu cầu lỗi ở 8 luồng, 0/72 khi tắt keep-alive, thông lượng như nhau (327 so với 334 tok/s trên Qwen3-4B); gateway nay tắt keep-alive phía upstream, có test hồi quy kiểm chứng là fail nếu bỏ bản sửa; (b) một lỗi kết nối đơn lẻ đưa worker duy nhất vào cooldown 5 s làm TTFT nhảy lên 5,3 s: nay chỉ cooldown sau 2 lỗi liên tiếp và thử lại sang worker khác khi có.
 Bằng chứng: `benchmarks/reports/p2_inference_load_rtx3060.json`, harness `benchmarks/control_plane/inference_load.py`. Giới hạn: một GPU, một worker, cùng máy với bộ tải, prompt ngắn (~40 token vào, ≤ 64 ra), không TLS, chưa đo p99 hay thử nhiều model; Windows chưa đo; chưa thử nhiều worker cạnh tranh hàng đợi.
+
+### I.9. Nhiều người dùng: hàng đợi công bằng theo tenant (1 GPU, 1 worker, 8 slot, hàng đợi 16, Qwen3-8B Q4_K_M, 40 s)
+Kịch bản "hàng xóm ồn": tenant `noisy` giữ 24 client vòng kín, tenant `quiet` đến sau 2 s với 2 client. Cùng một binary gateway, chạy hai lần: `-fair=false` (một hàng FIFO chung, đúng hành vi v1) và `-fair=true` (hàng đợi công bằng theo trọng số + phần hàng đợi tối đa mỗi tenant + giới hạn số yêu cầu chạy đồng thời mỗi tenant + hai mức ưu tiên).
+
+| Chế độ | quiet: thành công / bị 429 | quiet TTFT p50 / p95 (ms) | noisy: thành công | noisy TTFT p50 (ms) | Tổng tok/s |
+|---|---|---|---|---|---|
+| FIFO chung | **0** / 398 | – | 136 | 5.782 | 175,2 |
+| Công bằng | **24** / 0 | 176 / 2.806 | 100 (2.702 bị 429) | 2.785 | 178,4 |
+
+Kết luận có bằng chứng: (1) với FIFO chung, một tenant giữ hàng đợi đầy thì tenant kia bị từ chối 100 % (0/398); (2) với hàng đợi công bằng tenant yên tĩnh được phục vụ 100 % (24/24) với TTFT trung vị 176 ms; (3) tổng thông lượng không đổi (175,2 so với 178,4 tok/s) vì GPU vẫn bão hòa, tenant ồn chỉ bị giới hạn phần hàng đợi nên độ chờ của nó giảm từ 5,8 s xuống 2,8 s và phần dư bị 429 sớm. Trước đó, 6 test đơn vị (mỗi test bị "đột biến" bắt được khi tắt từng cơ chế): tenant yên tĩnh không bị đói, chia theo trọng số 3:1 ≈ 9/12, phần hàng đợi mỗi tenant, trần chạy đồng thời mỗi tenant, tương tác vượt batch, tenant rảnh không tích lũy tín dụng.
+Bằng chứng: `benchmarks/reports/p2_tenant_fairness_rtx3060.json`, harness `benchmarks/control_plane/tenant_fairness.py`. Giới hạn: một GPU, một worker, hai tenant, client vòng kín (tenant ồn lấp đầy hàng đợi ngay khi có chỗ, là trường hợp xấu nhưng có thật); `X-Tenant-ID` và `X-Priority` chưa được xác thực nên một tenant có thể mạo danh; trọng số/trần mới là cờ dòng lệnh, chưa quản trị được trên dashboard; hạng batch dùng ưu tiên tuyệt đối nên có thể bị bỏ đói khi tương tác liên tục; chưa đo với nhiều worker.
 
 ### I.4. Còn trống
 Windows (WDDM, PDH, thu hồi GPU), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).

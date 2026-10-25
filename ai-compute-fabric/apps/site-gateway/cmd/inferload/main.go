@@ -34,6 +34,8 @@ func main() {
 	dur := flag.Duration("duration", 30*time.Second, "")
 	maxTok := flag.Int("max-tokens", 64, "")
 	out := flag.String("out", "", "")
+	tenant := flag.String("tenant", "", "X-Tenant-ID header")
+	prio := flag.String("priority", "", "X-Priority header (batch)")
 	noKA := flag.Bool("no-keepalive", false, "disable HTTP keep-alive on the client")
 	flag.Parse()
 	if *noKA {
@@ -52,7 +54,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for time.Now().Before(deadline) {
-				r := one(*url, body)
+				r := one(*url, body, *tenant, *prio)
 				mu.Lock()
 				res = append(res, r)
 				mu.Unlock()
@@ -103,9 +105,17 @@ func main() {
 	}
 }
 
-func one(url string, body []byte) result {
+func one(url string, body []byte, tenant, prio string) result {
 	t0 := time.Now()
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if tenant != "" {
+		req.Header.Set("X-Tenant-ID", tenant)
+	}
+	if prio != "" {
+		req.Header.Set("X-Priority", prio)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return result{status: -1, err: err.Error()}
 	}

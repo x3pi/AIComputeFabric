@@ -51,6 +51,10 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if tenant == "" {
 		tenant = "anonymous"
 	}
+	prio := PrioInteractive
+	if r.Header.Get("X-Priority") == "batch" {
+		prio = PrioBatch
+	}
 	if ok, wait := in.L.Allow(tenant); !ok {
 		in.R.mu.Lock()
 		in.R.stats.RejectedRate++
@@ -73,11 +77,14 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	skip := ""
 	for attempt := 0; attempt < 2; attempt++ { // one retry on another worker, only before any byte is sent
-		rt, err := in.R.Acquire(probe.Model, skip, r.Context().Done())
+		rt, err := in.R.Acquire(Req{Model: probe.Model, Skip: skip, Tenant: tenant, Prio: prio}, r.Context().Done())
 		switch err {
 		case nil:
 		case ErrQueueFull:
 			reject(w, http.StatusTooManyRequests, time.Second, "server busy: queue full")
+			return
+		case ErrTenantQueueFull:
+			reject(w, http.StatusTooManyRequests, time.Second, "too many waiting requests for this tenant")
 			return
 		case ErrWaitTimeout:
 			if r.Context().Err() == nil {
@@ -89,7 +96,7 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		done, retry := in.forward(w, r, rt, body)
-		in.R.Release(rt, !done)
+		in.R.Release(rt, tenant, !done)
 		skip = rt.ID
 		if done || !retry {
 			return
@@ -159,6 +166,7 @@ func (in *Inference) Metrics(w http.ResponseWriter, _ *http.Request) {
 	p("aicf_failovers_total", "counter", "Attempts that failed on a worker", s.Failovers)
 	fmt.Fprintf(w, "# TYPE aicf_rejected_total counter\n")
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"queue_full\"} %d\n", s.RejectedQueueFull)
+	fmt.Fprintf(w, "aicf_rejected_total{reason=\"tenant_queue_full\"} %d\n", s.RejectedTenantQueue)
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"wait_timeout\"} %d\n", s.RejectedWait)
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"no_worker\"} %d\n", s.RejectedNoWorker)
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"rate_limit\"} %d\n", s.RejectedRate)

@@ -332,15 +332,15 @@ func TestSingleBlipDoesNotTakeTheOnlyWorkerOutButRepeatedFailuresDo(t *testing.T
 	rt := NewRouter(RouterConfig{MaxQueue: 4, MaxWait: time.Second, Cooldown: time.Minute}, reg)
 	addWorker(reg, "w1", "http://x", "m", 2)
 	rt.Refresh()
-	r1, _ := rt.Acquire("m", "", nil)
-	rt.Release(r1, true)
-	if _, err := rt.Acquire("m", "", nil); err != nil {
+	r1, _ := rt.Acquire(Req{Model: "m"}, nil)
+	rt.Release(r1, "", true)
+	if _, err := rt.Acquire(Req{Model: "m"}, nil); err != nil {
 		t.Fatalf("one failure must not trigger a cooldown: %v", err)
 	}
-	rt.Release(r1, true) // second consecutive failure
+	rt.Release(r1, "", true) // second consecutive failure
 	cancel := make(chan struct{})
 	time.AfterFunc(50*time.Millisecond, func() { close(cancel) })
-	if _, err := rt.Acquire("m", "", cancel); err != ErrWaitTimeout {
+	if _, err := rt.Acquire(Req{Model: "m"}, cancel); err != ErrWaitTimeout {
 		t.Fatalf("after 2 consecutive failures the worker must be skipped (request waits, then gives up): %v", err)
 	}
 }
