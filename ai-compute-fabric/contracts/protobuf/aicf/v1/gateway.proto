@@ -20,6 +20,8 @@ message RegisterRequest {
   uint64 vram_total_bytes = 5;
   repeated string supported_engines = 6;
   string agent_version = 7;
+  string engine_url = 8;      // where the gateway sends inference requests, e.g. http://10.0.0.5:18090
+  uint32 parallel_slots = 9;  // concurrent requests the engine serves (llama-server -np)
 }
 
 message RegisterReply {

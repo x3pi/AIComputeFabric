@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -35,6 +36,7 @@ func main() {
 		logPath  = flag.String("engine-log", "", "write engine log here")
 		gpu      = flag.Int("gpu", 0, "GPU index")
 		gateway  = flag.String("gateway", "", "site-gateway gRPC address (empty = standalone)")
+		advert   = flag.String("advertise-host", "127.0.0.1", "address the gateway uses to reach this engine")
 		workerID = flag.String("worker-id", "", "worker id (default: hostname)")
 	)
 	flag.Parse()
@@ -56,7 +58,8 @@ func main() {
 			log.Fatal(err)
 		}
 		r := &Reporter{Client: pb.NewFleetGatewayClient(conn), G: g, WorkerID: *workerID, SiteID: "dev", Hostname: host,
-			GPUName: "NVIDIA GPU", Model: filepath.Base(*model)}
+			GPUName: "NVIDIA GPU", Model: filepath.Base(*model),
+			EngineURL: fmt.Sprintf("http://%s:%d", *advert, *port), Slots: uint32(*par)}
 		go r.Run(context.Background())
 	}
 	log.Printf("worker-guard on http://%s", *listen)

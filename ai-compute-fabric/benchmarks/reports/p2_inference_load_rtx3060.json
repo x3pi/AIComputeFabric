@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "model": "Qwen3-8B-Q4_K_M.gguf",
+  "slots": 8,
+  "ctx_per_slot": 1024,
+  "max_queue": 16,
+  "rows": {
+    "via_gateway": [
+      {
+        "aggregate_tok_s": 57.90566702662065,
+        "client_errors": {},
+        "concurrency": 1,
+        "duration_s": 31.050501485,
+        "ok": 29,
+        "per_request_tok_s_p5": 59.83098793441235,
+        "per_request_tok_s_p50": 60.03996167328378,
+        "requests": 29,
+        "status_counts": {
+          "200": 29
+        },
+        "ttft_ms_p50": 54,
+        "ttft_ms_p95": 56,
+        "url": "http://127.0.0.1:18380/v1/chat/completions",
+        "gateway_metrics": {
+          "aicf_inflight_requests": 0.0,
+          "aicf_queued_requests": 0.0,
+          "aicf_requests_total": 29.0,
+          "aicf_served_total": 29.0,
+          "aicf_failovers_total": 0.0,
+          "aicf_rejected_total{reason=\"queue_full\"}": 0.0,
+          "aicf_rejected_total{reason=\"wait_timeout\"}": 0.0,
+          "aicf_rejected_total{reason=\"no_worker\"}": 0.0,
+          "aicf_rejected_total{reason=\"rate_limit\"}": 0.0,
+          "aicf_queue_wait_seconds_total": 0.0
+        }
+      },
+      {
+        "aggregate_tok_s": 179.99457492788224,
+        "client_errors": {},
+        "concurrency": 8,
+        "duration_s": 30.312024694,
+        "ok": 88,
+        "per_request_tok_s_p5": 23.205027181520524,
+        "per_request_tok_s_p50": 23.337413437554723,
+        "requests": 88,
+        "status_counts": {
+          "200": 88
+        },
+        "ttft_ms_p50": 150,
+        "ttft_ms_p95": 162,
+        "url": "http://127.0.0.1:18380/v1/chat/completions",
+        "gateway_metrics": {
+          "aicf_inflight_requests": 0.0,
+          "aicf_queued_requests": 0.0,
+          "aicf_requests_total": 117.0,
+          "aicf_served_total": 117.0,
+          "aicf_failovers_total": 0.0,
+          "aicf_rejected_total{reason=\"queue_full\"}": 0.0,
+          "aicf_rejected_total{reason=\"wait_timeout\"}": 0.0,
+          "aicf_rejected_total{reason=\"no_worker\"}": 0.0,
+          "aicf_rejected_total{reason=\"rate_limit\"}": 0.0,
+          "aicf_queue_wait_seconds_total": 0.0
+        }
+      },
+      {
+        "aggregate_tok_s": 177.75881724405372,
+        "client_errors": {},
+        "concurrency": 32,
+        "duration_s": 36.273868717,
+        "ok": 104,
+        "per_request_tok_s_p5": 23.123905034526935,
+        "per_request_tok_s_p50": 23.250565282417682,
+        "requests": 1296,
+        "status_counts": {
+          "200": 104,
+          "429": 1192
+        },
+        "ttft_ms_p50": 5749,
+        "ttft_ms_p95": 5789,
+        "url": "http://127.0.0.1:18380/v1/chat/completions",
+        "gateway_metrics": {
+          "aicf_inflight_requests": 0.0,
+          "aicf_queued_requests": 0.0,
+          "aicf_requests_total": 1413.0,
+          "aicf_served_total": 221.0,
+          "aicf_failovers_total": 0.0,
+          "aicf_rejected_total{reason=\"queue_full\"}": 1192.0,
+          "aicf_rejected_total{reason=\"wait_timeout\"}": 0.0,
+          "aicf_rejected_total{reason=\"no_worker\"}": 0.0,
+          "aicf_rejected_total{reason=\"rate_limit\"}": 0.0,
+          "aicf_queue_wait_seconds_total": 512.742968769
+        }
+      },
+      {
+        "aggregate_tok_s": 179.16011690230414,
+        "client_errors": {},
+        "concurrency": 64,
+        "duration_s": 35.990152895,
+        "ok": 104,
+        "per_request_tok_s_p5": 23.11147032717965,
+        "per_request_tok_s_p50": 23.26082084739278,
+        "requests": 6064,
+        "status_counts": {
+          "200": 104,
+          "429": 5960
+        },
+        "ttft_ms_p50": 5661,
+        "ttft_ms_p95": 5736,
+        "url": "http://127.0.0.1:18380/v1/chat/completions",
+        "gateway_metrics": {
+          "aicf_inflight_requests": 0.0,
+          "aicf_queued_requests": 0.0,
+          "aicf_requests_total": 7477.0,
+          "aicf_served_total": 325.0,
+          "aicf_failovers_total": 0.0,
+          "aicf_rejected_total{reason=\"queue_full\"}": 7152.0,
+          "aicf_rejected_total{reason=\"wait_timeout\"}": 0.0,
+          "aicf_rejected_total{reason=\"no_worker\"}": 0.0,
+          "aicf_rejected_total{reason=\"rate_limit\"}": 0.0,
+          "aicf_queue_wait_seconds_total": 1021.548074564
+        }
+      }
+    ],
+    "direct_engine": [
+      {
+        "aggregate_tok_s": 57.49777001862638,
+        "client_errors": {},
+        "concurrency": 1,
+        "duration_s": 30.192475281,
+        "ok": 28,
+        "per_request_tok_s_p5": 59.89475590021351,
+        "per_request_tok_s_p50": 60.039217144198844,
+        "requests": 28,
+        "status_counts": {
+          "200": 28
+        },
+        "ttft_ms_p50": 53,
+        "ttft_ms_p95": 55,
+        "url": "http://127.0.0.1:18390/v1/chat/completions"
+      },
+      {
+        "aggregate_tok_s": 177.17733078346564,
+        "client_errors": {},
+        "concurrency": 8,
+        "duration_s": 30.794007201,
+        "ok": 88,
+        "per_request_tok_s_p5": 23.398547017127065,
+        "per_request_tok_s_p50": 23.47593008251182,
+        "requests": 88,
+        "status_counts": {
+          "200": 88
+        },
+        "ttft_ms_p50": 161,
+        "ttft_ms_p95": 511,
+        "url": "http://127.0.0.1:18390/v1/chat/completions"
+      }
+    ]
+  }
+}

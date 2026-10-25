@@ -26,6 +26,8 @@ type Worker struct {
 	PauseWanted bool      `json:"pause_requested"`
 	LastSeen    time.Time `json:"last_seen"`
 	Version     string    `json:"agent_version"`
+	EngineURL   string    `json:"engine_url"`
+	Slots       uint32    `json:"parallel_slots"`
 }
 
 type Buckets struct {
@@ -57,6 +59,7 @@ func (r *Registry) Register(req *pb.RegisterRequest) {
 	}
 	w.WorkerID, w.SiteID, w.Hostname, w.GPUName = req.WorkerId, req.SiteId, req.Hostname, req.GpuName
 	w.VRAMTotal, w.Version, w.LastSeen, w.State = req.VramTotalBytes, req.AgentVersion, r.now(), "registered"
+	w.EngineURL, w.Slots = req.EngineUrl, req.ParallelSlots
 }
 
 // Heartbeat records capacity and returns (registered, pauseRequested).
@@ -106,5 +109,32 @@ func (r *Registry) List() []Worker {
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].WorkerID < out[j].WorkerID })
+	return out
+}
+
+// Route is the minimum the data plane needs about a worker.
+type Route struct {
+	ID, URL, Model string
+	Slots          int
+}
+
+// Routable returns workers that can take inference right now: online, engine
+// running, URL known. Unsorted and allocation-light; called by the router's cache
+// refresh, never per request.
+func (r *Registry) Routable() []Route {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	now := r.now()
+	var out []Route
+	for _, w := range r.workers {
+		if w.State == "running" && w.EngineURL != "" && now.Sub(w.LastSeen) <= r.OfflineAfter {
+			slots := int(w.Slots)
+			if slots < 1 {
+				slots = 1
+			}
+			out = append(out, Route{w.WorkerID, w.EngineURL, w.Model, slots})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID }) // deterministic tie-breaking
 	return out
 }

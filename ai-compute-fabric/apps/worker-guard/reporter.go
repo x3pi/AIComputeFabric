@@ -17,6 +17,8 @@ type Reporter struct {
 	WorkerID, SiteID  string
 	Hostname, GPUName string
 	Model             string
+	EngineURL         string
+	Slots             uint32
 	Interval          time.Duration
 	registered        bool
 	pausedByGateway   bool
@@ -27,6 +29,7 @@ func (r *Reporter) register(ctx context.Context) error {
 	rep, err := r.Client.Register(ctx, &pb.RegisterRequest{
 		WorkerId: r.WorkerID, SiteId: r.SiteID, Hostname: r.Hostname, GpuName: r.GPUName,
 		VramTotalBytes: s.Sample.TotalMiB << 20, SupportedEngines: []string{"llama.cpp"}, AgentVersion: "0.1-poc",
+		EngineUrl: r.EngineURL, ParallelSlots: r.Slots,
 	})
 	if err != nil {
 		return err

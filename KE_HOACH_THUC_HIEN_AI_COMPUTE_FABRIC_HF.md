@@ -286,7 +286,9 @@ Có hai loại "tải" khác nhau và phải thiết kế riêng: **mặt điề
 
 **Đã đo (Phần I.7):** một tiến trình gateway nhận heartbeat 1 Hz từ 5.000 worker giả lập với p99 0,5 ms, 0,8 lõi CPU, 628 MB RAM (cùng máy với bộ tạo tải, nên số này bi quan); cổng W4 (200 worker) dùng khoảng 0,07 lõi. Khung SSE giảm 21 lần sau khi bỏ việc tuần tự hóa riêng từng người xem. Agent worker-guard giảm từ 0,38 xuống 0,054 lõi CPU (poll thích nghi).
 
-**Chưa đo / chưa làm (không được xem là đã sẵn sàng):** (a) mặt dữ liệu: chưa có gateway suy luận, chưa đo tải đồng thời 8/32/… yêu cầu, thông lượng gộp mỗi GPU với `-np` > 1 chưa đo; (b) chưa có HA gateway, NATS, PostgreSQL, mTLS; (c) chưa kiểm tra mạng thật (độ trễ, mất gói, 200 PC thật); (d) trên 5.000 worker/site cần khung delta thay vì khung đầy đủ và chia shard registry; (e) chưa có Prometheus metrics cho gateway.
+**Đã làm ở mặt dữ liệu (Phần I.8):** gateway suy luận tương thích OpenAI (`/v1/chat/completions`), định tuyến worker ít tải nhất, giới hạn slot theo `-np`, hàng đợi có giới hạn, 429/503 + `Retry-After`, giới hạn tốc độ theo tenant (token bucket), proxy streaming, thử lại một lần sang worker khác trước byte đầu tiên, `/metrics` dạng Prometheus; đã đo 1/8/32/64 luồng đồng thời trên 1 GPU.
+
+**Chưa đo / chưa làm (không được xem là đã sẵn sàng):** (a) mặt dữ liệu: danh tính tenant mới chỉ lấy từ header `X-Tenant-ID` (chưa xác thực, phải đặt sau SSO/API key); chưa từ chối theo thời gian chờ ước tính so với hạn chót; chưa thử nhiều worker/nhiều model cạnh tranh; chưa đo p99 và prompt dài; lỗi giữa chừng khi stream (ví dụ GPU bị thu hồi) cắt luồng của client, chưa có tự động tiếp tục; (b) chưa có HA gateway, NATS, PostgreSQL, mTLS; (c) chưa kiểm tra mạng thật (độ trễ, mất gói, 200 PC thật); (d) trên 5.000 worker/site cần khung delta thay vì khung đầy đủ và chia shard registry; (e) chưa có Prometheus metrics cho gateway.
 
 ---
 
@@ -902,7 +904,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [~] P2.1 Kế toán VRAM 6 ngăn 1 Hz; power limit; thang thu hồi Drain → Checkpoint → Kill → `apps/worker-guard` (Go, Linux, 1 GPU): bucket từ log llama.cpp + SSE 1 Hz, thu hồi bằng SIGTERM→SIGKILL, 10/10 lần < 240 ms (Phần I.5); CHƯA có Drain/Checkpoint, power limit, Windows/PDH
 - [ ] P2.1 Tự cập nhật vòng 5 → 25 → 100 % + watchdog rollback
 - [ ] P2.1 System Tray: nút "Tạm dừng AI 4 giờ"
-- [~] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease → `apps/site-gateway` + `gateway.proto`: Register/Heartbeat/pause directive/offline detection chạy với 3 worker-guard thật (Phần I.6); tải 5.000 worker giả lập đạt (I.7, §B.7); CHƯA có mTLS, NATS, PostgreSQL, Lease, HA
+- [~] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease → `apps/site-gateway` + `gateway.proto`: Register/Heartbeat/pause directive/offline detection chạy với 3 worker-guard thật (Phần I.6); tải 5.000 worker giả lập đạt (I.7, §B.7); gateway suy luận có admission control và đã đo 1/8/32/64 luồng (I.8); CHƯA có mTLS, NATS, PostgreSQL, Lease, HA, xác thực tenant
 - [ ] P2.2 CA `step-ca`, cert tự xoay 30 ngày
 - [ ] P2.2 `core/topology-graph` đo RTT/băng thông
 - [~] P2.3 `core/adaptive-scheduler` v1 (lọc VramEstimate, ModelIdentity, tenant, hàm chi phí) → core/adaptive_scheduler/scheduler.py: logic thuần; chưa nối gateway/lease
@@ -1222,6 +1224,22 @@ Giới hạn: 3 worker trên cùng một máy và một GPU, không có độ tr
 | 1.000 | 5 | 0 | 0,36 / 0,81 / 2,9 | 0,33 lõi | 143 MB | 23 KB |
 | 5.000 | 20 | 0 | 0,18 / 0,51 / 56,8 | 0,81 lõi | 628 MB | 115 KB |
 Bản đầu (tuần tự hóa riêng từng người xem): khung 482 KB ở 1.000 worker và 2,4 MB ở 5.000 worker, RAM 997 MB (`p2_gateway_capacity_v1_per_viewer_marshal.json`). Bằng chứng: `benchmarks/reports/p2_gateway_capacity.json`. Giới hạn: worker giả lập (không phải worker-guard), cùng máy, không mTLS, không mạng thật; chỉ chứng minh mặt điều khiển, không nói gì về mặt dữ liệu. Chi phí agent: 0,38 lõi (poll 100 ms × 2 lần spawn nvidia-smi) → 0,054 lõi (poll 500 ms, 100 ms khi gần ngưỡng, hỏi tiến trình 1 Hz); đổi lại độ trễ thu hồi tăng từ trung vị 208 ms lên 475 ms (max 907 ms), vẫn dưới 2 s.
+
+### I.8. Mặt dữ liệu: gateway suy luận dưới tải (1 GPU, 1 worker, Qwen3-8B Q4_K_M, 8 slot, ctx 1.024/slot, 30 s/mức, client vòng kín)
+Đường đi thật: `inferload` → `site-gateway` (`/v1/chat/completions`, hàng đợi tối đa 16, chờ tối đa 10 s) → `worker-guard` đã đăng ký → `llama-server`. Token tính cả phần "suy nghĩ" (`reasoning_content`) của Qwen3.
+
+| Đường | Đồng thời | Tổng tok/s | tok/s mỗi yêu cầu | TTFT p50 / p95 (ms) | Kết quả |
+|---|---|---|---|---|---|
+| Trực tiếp vào engine | 1 | 57,5 | 60,0 | 53 / 55 | 28 × 200 |
+| Qua gateway | 1 | 57,9 | 60,0 | 54 / 56 | 29 × 200 |
+| Trực tiếp vào engine | 8 | 177,2 | 23,5 | 161 / 511 | 88 × 200 |
+| Qua gateway | 8 | 180,0 | 23,3 | 150 / 162 | 88 × 200 |
+| Qua gateway | 32 | 177,8 | 23,3 | 5.749 / 5.789 | 104 × 200, 1.192 × 429 |
+| Qua gateway | 64 | 179,2 | 23,3 | 5.661 / 5.736 | 104 × 200, 5.960 × 429 |
+
+Kết luận có bằng chứng: (1) proxy không tốn thông lượng đo được (±2 %); (2) 8 luồng đồng thời cho 3,1 lần thông lượng của 1 luồng trên cùng GPU (177–180 so với 57,5 tok/s) nhưng mỗi luồng chậm còn 23 tok/s; (3) quá tải 4–8 lần số slot không làm sập: thông lượng giữ ở ~178 tok/s, yêu cầu thừa bị từ chối nhanh bằng 429 + `Retry-After`, không có lỗi 5xx hay lỗi kết nối, bộ nhớ gateway bị chặn bởi hàng đợi; (4) yêu cầu được nhận khi quá tải chờ ~5,7 s (16 vị trí hàng đợi ÷ 8 slot × ~2,8 s mỗi yêu cầu): hàng đợi 2 lần số slot là quá dài cho nhu cầu tương tác, nên mặc định cần hạ xuống ≈ số slot hoặc chuyển sang từ chối theo thời gian chờ ước tính so với hạn chót (việc còn lại, chưa làm).
+Hai lỗi thật tìm ra nhờ phép đo này và đã sửa: (a) kết nối keep-alive tới `llama-server` bị cũ (`EOF`, `server closed idle connection`): 24/88 yêu cầu lỗi ở 8 luồng, 0/72 khi tắt keep-alive, thông lượng như nhau (327 so với 334 tok/s trên Qwen3-4B); gateway nay tắt keep-alive phía upstream, có test hồi quy kiểm chứng là fail nếu bỏ bản sửa; (b) một lỗi kết nối đơn lẻ đưa worker duy nhất vào cooldown 5 s làm TTFT nhảy lên 5,3 s: nay chỉ cooldown sau 2 lỗi liên tiếp và thử lại sang worker khác khi có.
+Bằng chứng: `benchmarks/reports/p2_inference_load_rtx3060.json`, harness `benchmarks/control_plane/inference_load.py`. Giới hạn: một GPU, một worker, cùng máy với bộ tải, prompt ngắn (~40 token vào, ≤ 64 ra), không TLS, chưa đo p99 hay thử nhiều model; Windows chưa đo; chưa thử nhiều worker cạnh tranh hàng đợi.
 
 ### I.4. Còn trống
 Windows (WDDM, PDH, thu hồi GPU), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).
