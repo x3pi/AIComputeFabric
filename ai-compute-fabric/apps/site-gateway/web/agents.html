@@ -7,22 +7,45 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="common.css">
 <style>
-.dag-wrap { overflow: auto; border: 1px solid var(--border, rgba(127,127,127,.25)); border-radius: 10px; background: var(--bg-elevated); max-height: 70vh; }
-.dag-wrap svg { display: block; }
-.node rect { stroke-width: 1.5; rx: 6; }
-.node text { font-size: 11px; fill: var(--fg); pointer-events: none; }
-.node text.sub { fill: var(--mut); font-size: 10px; }
-.node.s-pending rect { fill: var(--bg); stroke: var(--mut); stroke-dasharray: 4 3; }
+.dag-wrap {
+  overflow: auto;
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  background:
+    radial-gradient(circle, var(--bd) 1px, transparent 1px) 0 0 / 20px 20px,
+    var(--bg-elevated);
+  max-height: 72vh;
+  padding: 8px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.14);
+}
+.dag-wrap svg { display: block; transition: transform .15s ease; transform-origin: 0 0; }
+.node rect { stroke-width: 1.75; rx: 8; transition: filter .15s ease, stroke-width .15s ease; }
+.node:hover rect { filter: brightness(1.08); }
+.node text { font-size: 11.5px; font-weight: 600; fill: var(--fg); pointer-events: none; font-family: var(--mono); }
+.node text.sub { fill: var(--mut); font-size: 10px; font-weight: 500; font-family: var(--sans); }
+.node.s-pending rect { fill: var(--card); stroke: var(--mut); stroke-dasharray: 4 3; }
 .node.s-running rect { fill: var(--acc-soft); stroke: var(--acc); }
 .node.s-retrying rect { fill: var(--warn-soft); stroke: var(--warn); }
 .node.s-ok rect { fill: var(--ok-soft); stroke: var(--ok); }
 .node.s-rejected rect, .node.s-failed rect { fill: var(--bad-soft); stroke: var(--bad); }
-.node.sel rect { stroke-width: 3; }
-.edge { fill: none; stroke: var(--mut); stroke-width: 1; opacity: .6; }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--mut); margin: 8px 0; }
-.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -2px; border: 1.5px solid; }
+.node.sel rect { stroke-width: 3; filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.35)); }
+.edge { fill: none; stroke: var(--mut); stroke-width: 1.5; opacity: .65; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--mut); margin: 4px 0 12px; align-items: center; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -2px; border: 1.5px solid; }
 #wf-list button { text-align: left; }
-#detail { font-size: 13px; margin-top: 10px; min-height: 2.5em; }
+#detail {
+  font-size: 13px;
+  margin-top: 12px;
+  min-height: 2.6em;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  font-family: var(--mono);
+  display: flex;
+  align-items: center;
+}
+.dag-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 </style>
 </head>
 <body>
@@ -33,25 +56,72 @@
       <h1>AI Agent — Đồ thị tác vụ (DAG)</h1>
       <div class="sub">Trạng thái từng bước của một workflow do orchestrator chạy. Chỉ hiển thị loại tác vụ, phụ thuộc, số lần thử và thời gian; không hiển thị nội dung đầu vào hay kết quả.</div>
     </div>
+    <div class="row" style="gap:8px">
+      <span class="pill ok">Zero-Payload Privacy</span>
+      <span class="mut mono" id="stamp" style="font-size:12px"></span>
+    </div>
+  </div>
+
+  <div class="kpi-grid" id="dag-kpi">
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Workflow đang theo dõi</span><span class="pill">DAG</span></div>
+      <div class="kpi-val" id="kpi-wf-count">0</div>
+      <div class="kpi-foot" id="kpi-wf-sub">Cập nhật tự động mỗi 2.5s</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Bước hoàn tất (OK)</span><span class="pill ok">Done</span></div>
+      <div class="kpi-val" id="kpi-step-ok">0 / 0</div>
+      <div class="kpi-foot" id="kpi-step-pct">Tiến độ workflow hiện tại</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Đang chạy / Thử lại</span><span class="pill warn">Active</span></div>
+      <div class="kpi-val" id="kpi-step-run">0</div>
+      <div class="kpi-foot" id="kpi-step-pending">0 bước đang chờ phụ thuộc</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Từ chối / Lỗi</span><span class="pill err">Guard</span></div>
+      <div class="kpi-val" id="kpi-step-fail">0</div>
+      <div class="kpi-foot">Kiểm định Validator &amp; Retry</div>
+    </div>
   </div>
 
   <div class="card">
-    <div class="card-header"><h2>Workflow</h2><span class="mut" id="stamp" style="font-size:12px"></span></div>
+    <div class="card-header">
+      <div>
+        <h2>Danh sách Workflow</h2>
+        <div class="card-sub">Chọn một workflow bên dưới để xem đồ thị phụ thuộc và trạng thái từng bước</div>
+      </div>
+    </div>
     <div id="wf-list" class="row" style="flex-wrap:wrap;gap:8px"></div>
     <div id="msg" class="mut" role="status" style="margin-top:8px;font-size:13px"></div>
   </div>
 
   <div class="card">
-    <div class="card-header"><h2 id="wf-title">Chọn một workflow</h2><span id="wf-state"></span></div>
-    <div class="legend" aria-label="Chú giải">
-      <span><i style="border-color:var(--mut);border-style:dashed"></i>chờ</span>
-      <span><i style="border-color:var(--acc);background:var(--acc-soft)"></i>đang chạy</span>
-      <span><i style="border-color:var(--warn);background:var(--warn-soft)"></i>thử lại</span>
-      <span><i style="border-color:var(--ok);background:var(--ok-soft)"></i>xong</span>
-      <span><i style="border-color:var(--bad);background:var(--bad-soft)"></i>bị từ chối / lỗi</span>
+    <div class="card-header">
+      <div>
+        <h2 id="wf-title">Chọn một workflow</h2>
+        <div class="card-sub">Nhấp vào từng ô tác vụ trên đồ thị để xem chi tiết tenant, thời gian chạy và chuỗi phụ thuộc</div>
+      </div>
+      <div class="row" style="gap:8px">
+        <span id="wf-state"></span>
+      </div>
+    </div>
+    <div class="dag-toolbar">
+      <div class="legend" aria-label="Chú giải">
+        <span><i style="border-color:var(--mut);border-style:dashed"></i>chờ</span>
+        <span><i style="border-color:var(--acc);background:var(--acc-soft)"></i>đang chạy</span>
+        <span><i style="border-color:var(--warn);background:var(--warn-soft)"></i>thử lại</span>
+        <span><i style="border-color:var(--ok);background:var(--ok-soft)"></i>xong</span>
+        <span><i style="border-color:var(--bad);background:var(--bad-soft)"></i>bị từ chối / lỗi</span>
+      </div>
+      <div class="row" style="gap:6px">
+        <button type="button" class="sm ghost" id="zoom-out" title="Thu nhỏ">−</button>
+        <button type="button" class="sm ghost mono" id="zoom-reset" title="Đặt lại tỷ lệ">100%</button>
+        <button type="button" class="sm ghost" id="zoom-in" title="Phóng to">+</button>
+      </div>
     </div>
     <div class="dag-wrap"><svg id="dag" role="img" aria-label="Đồ thị DAG của workflow"></svg></div>
-    <div id="detail" class="mut" aria-live="polite"></div>
+    <div id="detail" class="mut" aria-live="polite">Nhấp vào một bước trên đồ thị để xem thông tin chi tiết.</div>
   </div>
 </main>
 <script>
@@ -60,7 +130,17 @@ const STATUS_VI = { pending: "chờ", running: "đang chạy", retrying: "thử 
 const STATE_VI = { running: "đang chạy", done: "hoàn tất", failed: "có bước lỗi", idle: "chưa chạy" };
 let current = new URLSearchParams(location.search).get("wf") || "";
 let selected = "";
+let zoom = 1;
 const msg = t => { document.getElementById("msg").textContent = t; };
+
+function applyZoom() {
+  const g = document.getElementById("dag");
+  g.style.transform = zoom === 1 ? "" : `scale(${zoom})`;
+  document.getElementById("zoom-reset").textContent = Math.round(zoom * 100) + "%";
+}
+document.getElementById("zoom-out").onclick = () => { zoom = Math.max(0.6, +(zoom - 0.15).toFixed(2)); applyZoom(); };
+document.getElementById("zoom-in").onclick = () => { zoom = Math.min(1.6, +(zoom + 0.15).toFixed(2)); applyZoom(); };
+document.getElementById("zoom-reset").onclick = () => { zoom = 1; applyZoom(); };
 
 function svg(tag, attrs, ...kids) {
   const e = document.createElementNS(NS, tag);
@@ -92,12 +172,12 @@ function layout(nodes) {
 }
 
 function draw(snap) {
-  const W = 168, H = 44, GX = 56, GY = 14, PAD = 16;
+  const W = 176, H = 46, GX = 58, GY = 16, PAD = 18;
   const { pos, layers, maxRows } = layout(snap.nodes);
   const g = document.getElementById("dag");
   g.replaceChildren();
-  g.setAttribute("width", PAD * 2 + layers * (W + GX) - GX);
-  g.setAttribute("height", PAD * 2 + maxRows * (H + GY) - GY);
+  g.setAttribute("width", Math.max(320, PAD * 2 + layers * (W + GX) - GX));
+  g.setAttribute("height", Math.max(120, PAD * 2 + maxRows * (H + GY) - GY));
   const xy = id => { const p = pos.get(id); return { x: PAD + p.l * (W + GX), y: PAD + p.r * (H + GY) }; };
   for (const n of snap.nodes) for (const dep of n.deps) {
     if (!pos.has(dep)) continue;
@@ -110,8 +190,8 @@ function draw(snap) {
     const sub = n.type + (n.attempts > 1 ? ` · lần ${n.attempts}` : "") + (n.status === "running" && n.running_for_s != null ? ` · ${n.running_for_s}s` : "");
     const node = svg("g", { class: `node s-${n.status}${n.id === selected ? " sel" : ""}`, tabindex: 0, role: "button", "aria-label": `${n.id}: ${STATUS_VI[n.status] || n.status}`, style: "cursor:pointer" },
       svg("rect", { x, y, width: W, height: H }),
-      svg("text", { x: x + 8, y: y + 18 }, n.id.length > 24 ? n.id.slice(0, 23) + "…" : n.id),
-      svg("text", { class: "sub", x: x + 8, y: y + 33 }, sub.length > 28 ? sub.slice(0, 27) + "…" : sub));
+      svg("text", { x: x + 10, y: y + 19 }, n.id.length > 24 ? n.id.slice(0, 23) + "…" : n.id),
+      svg("text", { class: "sub", x: x + 10, y: y + 34 }, sub.length > 28 ? sub.slice(0, 27) + "…" : sub));
     const pick = () => { selected = n.id; show(n); draw(snap); };
     node.onclick = pick;
     node.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
@@ -127,11 +207,33 @@ function show(n) {
     (n.last_duration_s != null ? ` · lần gần nhất ${n.last_duration_s}s` : "") + (n.deps.length ? ` · phụ thuộc: ${n.deps.join(", ")}` : " · không phụ thuộc");
 }
 
+function updateKPI(list, snap) {
+  if (Array.isArray(list)) {
+    document.getElementById("kpi-wf-count").textContent = String(list.length);
+    const activeWf = list.filter(w => w.state === "running").length;
+    document.getElementById("kpi-wf-sub").textContent = activeWf > 0 ? `${activeWf} workflow đang thực thi` : "Cập nhật tự động mỗi 2.5s";
+  }
+  if (snap && snap.counts) {
+    const c = snap.counts;
+    const total = snap.nodes ? snap.nodes.length : 0;
+    const okCount = c.ok || 0;
+    const runCount = (c.running || 0) + (c.retrying || 0);
+    const pendCount = c.pending || 0;
+    const failCount = (c.failed || 0) + (c.rejected || 0);
+    document.getElementById("kpi-step-ok").textContent = `${okCount} / ${total}`;
+    document.getElementById("kpi-step-pct").textContent = total > 0 ? `Hoàn thành ${Math.round((okCount / total) * 100)}% các bước` : "Tiến độ workflow hiện tại";
+    document.getElementById("kpi-step-run").textContent = String(runCount);
+    document.getElementById("kpi-step-pending").textContent = `${pendCount} bước đang chờ phụ thuộc`;
+    document.getElementById("kpi-step-fail").textContent = String(failCount);
+  }
+}
+
 async function loadList() {
   const r = await api("/api/agents/workflows");
   if (!r || !r.ok) { msg(r && r.status === 502 ? "Chưa kết nối được dịch vụ xem agent (gateway --agents-url)." : "Không tải được danh sách workflow."); return; }
   msg("");
   const list = await r.json();
+  updateKPI(list, null);
   const box = document.getElementById("wf-list");
   box.replaceChildren();
   if (!list.length) box.append(el("span", { class: "mut" }, "Chưa có workflow nào."));
@@ -149,6 +251,7 @@ async function loadOne() {
   const r = await api("/api/agents/workflows/" + encodeURIComponent(current));
   if (!r || !r.ok) return;
   const snap = await r.json();
+  updateKPI(null, snap);
   document.getElementById("wf-title").textContent = snap.workflow;
   const st = document.getElementById("wf-state");
   st.textContent = `${STATE_VI[snap.state] || snap.state} · ` + Object.entries(snap.counts).map(([k, v]) => `${v} ${STATUS_VI[k] || k}`).join(", ");

@@ -7,22 +7,89 @@
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="common.css">
 <style>
-.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 14px; }
-.tabs button[aria-selected="true"] { background: var(--acc-soft); border-color: var(--acc); color: var(--acc); }
-.tabs button .tag { font-size: 10px; margin-left: 6px; opacity: .8; }
-.stack > * + * { margin-top: 10px; }
-.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
-.field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
-.field input, .field select, .field textarea { font-size: 13px; }
-.src { border-left: 3px solid var(--acc); padding: 6px 10px; margin: 6px 0; background: var(--bg-elevated); border-radius: 0 6px 6px 0; font-size: 13px; }
-.src .q { color: var(--fg); font-weight: 600; }
-.shot { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: start; }
-.bar { height: 8px; background: var(--bd); border-radius: 4px; overflow: hidden; }
-.bar > i { display: block; height: 100%; background: var(--acc); }
-.answer { white-space: pre-wrap; padding: 10px; border: 1px solid var(--bd); border-radius: 8px; background: var(--card); }
-.limits { margin: 6px 0 0 18px; padding: 0; color: var(--mut); font-size: 12px; }
-#loss { width: 100%; height: 90px; display: block; }
-pre.log { max-height: 220px; overflow: auto; font-size: 11px; background: var(--bg-elevated); padding: 8px; border-radius: 6px; }
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 0 18px;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.tabs button {
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--mut);
+  font-weight: 600;
+  transition: all .15s ease;
+}
+.tabs button:hover { color: var(--fg); background: var(--bg-elevated); }
+.tabs button[aria-selected="true"] {
+  background: var(--acc-soft);
+  border-color: var(--acc);
+  color: var(--acc);
+  box-shadow: var(--shadow-sm);
+}
+.tabs button .tag {
+  font-size: 10px;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.stack > * + * { margin-top: 12px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--mut); }
+.field input, .field select, .field textarea { font-size: 13px; width: 100%; }
+.src {
+  border-left: 3px solid var(--acc);
+  padding: 8px 12px;
+  margin: 6px 0;
+  background: var(--bg-elevated);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13px;
+}
+.src.cited { border-left-color: var(--ok); background: var(--ok-soft); }
+.src .q { color: var(--fg); font-weight: 600; margin: 2px 0; }
+.shot { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: start; }
+@media (max-width: 640px) {
+  .shot { grid-template-columns: 1fr; }
+}
+.bar { height: 10px; background: var(--bg-elevated); border: 1px solid var(--bd); border-radius: 999px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc), var(--ok)); transition: width .25s ease; }
+.answer {
+  white-space: pre-wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  line-height: 1.55;
+}
+.limits { margin: 8px 0 0 18px; padding: 0; color: var(--mut); font-size: 12.5px; }
+#loss {
+  width: 100%;
+  height: 100px;
+  display: block;
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+}
+pre.log {
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11.5px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+}
 </style>
 </head>
 <body>
@@ -33,8 +100,8 @@ pre.log { max-height: 220px; overflow: auto; font-size: 11px; background: var(--
       <h1>AI Studio — Tùy biến model theo dữ liệu của bạn</h1>
       <div class="sub">Bốn cách đưa kiến thức và văn phong của doanh nghiệp vào model: tri thức nội bộ (RAG), prompt và ví dụ mẫu, huấn luyện LoRA, và fine-tune toàn bộ (chưa hỗ trợ trên máy này). Mọi dữ liệu tách riêng theo tenant.</div>
     </div>
-    <div class="row" style="gap:8px">
-      <label class="field">Tenant <input id="tenant" value="demo" maxlength="64" style="width:160px"></label>
+    <div class="row" style="gap:10px">
+      <label class="field" style="flex-direction:row;align-items:center;gap:8px">Tenant <input id="tenant" value="demo" maxlength="64" style="width:160px" class="mono"></label>
       <span id="health" class="pill">…</span>
     </div>
   </div>
@@ -98,7 +165,7 @@ async function renderRag(root) {
       el("td", {}, x.id), el("td", { class: "num" }, String(x.chunks)), el("td", { class: "num" }, String(x.chars)), el("td", {}, x.data_class),
       el("td", {}, el("button", { class: "sm ghost", disabled: !canDelete(), title: canDelete() ? "" : "Cần vai trò admin", onclick: () => guarded(async () => {
         if (confirm("Xóa " + x.id + "?")) { await call("DELETE", T("rag/documents/" + encodeURIComponent(x.id))); await refresh(); } }) }, "Xóa"))))),
-      el("div", { class: "mut" }, `${d.totals.documents}/${d.quota.max_documents} tài liệu · ${d.totals.chars.toLocaleString("vi-VN")} ký tự`));
+      el("div", { class: "mut", style: "margin-top:8px;font-size:12px" }, `${d.totals.documents}/${d.quota.max_documents} tài liệu · ${d.totals.chars.toLocaleString("vi-VN")} ký tự`));
   }
   const q = el("input", { id: "rag-q", placeholder: "Đặt câu hỏi về tài liệu…", style: "flex:1" });
   const go = el("button", { class: "primary", onclick: () => guarded(async () => {
@@ -111,9 +178,11 @@ async function renderRag(root) {
           el("div", { class: "mut" }, `[${i + 1}] ${s.doc} · đoạn ${s.chunk}` + (r.cited.includes(i + 1) ? " · được dẫn" : "")), el("div", { class: "q" }, s.quote), el("div", { class: "mut" }, s.text))));
     } finally { go.disabled = false; }
   }) }, "Hỏi");
-  root.append(el("div", { class: "card stack" }, el("h2", {}, "Kho tri thức"),
-    el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, file, field("Phân loại dữ liệu", cls), up), list),
-    el("div", { class: "card stack" }, el("h2", {}, "Hỏi đáp có dẫn nguồn"), el("div", { class: "row", style: "gap:8px" }, q, go), ask));
+  const grid = el("div", { class: "wide-split" },
+    el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Kho tri thức"),
+      el("div", { class: "row", style: "gap:10px;flex-wrap:wrap" }, file, field("Phân loại dữ liệu", cls), up), list),
+    el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Hỏi đáp có dẫn nguồn"), el("div", { class: "row", style: "gap:8px" }, q, go), ask));
+  root.append(grid);
   await refresh();
 }
 
@@ -158,9 +227,10 @@ async function renderPrompts(root) {
     out.replaceChildren(el("div", {}, `Khớp đáp án — không ví dụ: ${s.zero_shot.contains_expected}/${s.zero_shot.scored} · có ví dụ: ${s.few_shot.contains_expected}/${s.few_shot.scored}`), el("div", { class: "mut" }, r.note),
       table(["Câu hỏi", "Không ví dụ", "Có ví dụ"], r.rows.map(x => el("tr", {}, el("td", {}, x.question), el("td", { class: x.zero_shot.contains_expected ? "ok" : "" }, x.zero_shot.answer), el("td", { class: x.few_shot.contains_expected ? "ok" : "" }, x.few_shot.answer))))); }) }, "So sánh nhiều câu");
   root.append(el("div", { class: "card stack" }, el("h2", {}, "Mẫu prompt đã lưu"), saved),
-    el("div", { class: "card stack" }, el("h2", {}, "Soạn prompt + ví dụ mẫu (few-shot)"), field("Tên", name), field("Chỉ dẫn hệ thống", sys), el("h3", {}, "Ví dụ mẫu"), shots,
-      el("div", { class: "row", style: "gap:8px" }, el("button", { class: "sm", onclick: () => addShot() }, "+ Thêm ví dụ"), field("Ghi chú", note), save)),
-    el("div", { class: "card stack" }, el("h2", {}, "Thử nghiệm"), el("div", { class: "row", style: "gap:8px" }, tq, test), field("Bộ câu hỏi so sánh", cmp), cmpGo, out));
+    el("div", { class: "wide-split" },
+      el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Soạn prompt + ví dụ mẫu (few-shot)"), field("Tên", name), field("Chỉ dẫn hệ thống", sys), el("h3", {}, "Ví dụ mẫu"), shots,
+        el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, el("button", { class: "sm", onclick: () => addShot() }, "+ Thêm ví dụ"), field("Ghi chú", note), save)),
+      el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Thử nghiệm"), el("div", { class: "row", style: "gap:8px" }, tq, test), field("Bộ câu hỏi so sánh", cmp), cmpGo, out)));
   addShot(); await refresh();
 }
 
@@ -197,7 +267,7 @@ async function renderLora(root) {
     CURRENT_JOB = id;
     const j = await call("GET", T("lora/jobs/" + id));
     const last = j.progress.filter(p => p.step != null).slice(-1)[0], pct = last && last.steps ? 100 * last.step / last.steps : 0;
-    const items = [el("div", { class: "row", style: "gap:8px" }, el("strong", {}, "Job " + j.id.slice(0, 8)), el("span", { class: "pill " + (j.status === "succeeded" ? "ok" : j.status === "failed" ? "err" : "warn") }, VI[j.status]),
+    const items = [el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, el("strong", {}, "Job " + j.id.slice(0, 8)), el("span", { class: "pill " + (j.status === "succeeded" ? "ok" : j.status === "failed" ? "err" : "warn") }, VI[j.status]),
       el("span", { class: "mut" }, `${j.params.train_examples} ví dụ · ${j.params.steps} bước · ước tính ${j.params.estimated_mib} MiB VRAM`))];
     if (j.status === "queued" && j.runner && j.runner.waiting) items.push(el("div", { class: "warn-txt" }, `Đang chờ GPU: cần ${j.runner.waiting.needs_mib} MiB, còn trống ${j.runner.waiting.free_mib} MiB (máy đang được dùng).`));
     if (j.status === "running" || last) items.push(el("div", { class: "bar", role: "progressbar", "aria-valuenow": Math.round(pct) }, el("i", { style: `width:${pct}%` })));
@@ -205,7 +275,7 @@ async function renderLora(root) {
     if (j.error) items.push(el("div", { class: "err" }, j.error));
     if (j.result) { const r = j.result; items.push(el("div", {}, `Loss ${r.first_loss.toFixed(3)} → ${r.last_loss.toFixed(3)} · perplexity (tập giữ lại) ${r.val_perplexity_before && r.val_perplexity_before.toFixed(2)} → ${r.val_perplexity_after && r.val_perplexity_after.toFixed(2)} · ${r.seconds}s`),
       el("div", { class: "mut" }, "Perplexity thấp hơn nghĩa là model dự đoán văn bản của bạn tốt hơn; chưa phải đánh giá chất lượng trả lời.")); }
-    const acts = el("div", { class: "row", style: "gap:8px" });
+    const acts = el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" });
     if (["queued", "running"].includes(j.status)) acts.append(el("button", { disabled: !canWrite(), onclick: () => guarded(async () => { await call("POST", T("lora/jobs/" + id + "/cancel")); await refresh(); await show(id); }) }, "Hủy"));
     const save = (blob, name) => { const a = el("a", { href: URL.createObjectURL(blob), download: name }); document.body.append(a); a.click(); a.remove(); };
     if (j.status === "succeeded") {
@@ -222,10 +292,11 @@ async function renderLora(root) {
     jobs.replaceChildren(table(["Job", "Trạng thái", "Tạo lúc", ""], d.jobs.map(j => el("tr", {}, el("td", { class: "mono" }, j.id.slice(0, 8)), el("td", {}, VI[j.status]), el("td", {}, j.created_at.slice(0, 16).replace("T", " ")), el("td", {}, el("button", { class: "sm", onclick: () => guarded(() => show(j.id)) }, "Xem"))))));
     return d;
   }
-  root.append(el("div", { class: "card stack" }, el("h2", {}, "Dữ liệu huấn luyện"), !bm.trainer_ready ? el("div", { class: "warn-txt" }, "Chưa cấu hình môi trường huấn luyện trên máy chủ.") : null,
-    el("div", { class: "cols" }, field("Model gốc", model), field("Định dạng", fmt), field("Tệp", file)), data, el("div", { class: "cols" }, rank, steps, batch, seq, lr),
-    el("div", { class: "row", style: "gap:8px" }, previewBtn, start), prev),
-    el("div", { class: "card stack" }, el("h2", {}, "Các job"), jobs, detail));
+  root.append(el("div", { class: "wide-split" },
+    el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Dữ liệu huấn luyện"), !bm.trainer_ready ? el("div", { class: "warn-txt" }, "Chưa cấu hình môi trường huấn luyện trên máy chủ.") : null,
+      el("div", { class: "cols" }, field("Model gốc", model), field("Định dạng", fmt), field("Tệp", file)), data, el("div", { class: "cols" }, rank, steps, batch, seq, lr),
+      el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, previewBtn, start), prev),
+    el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Các job"), jobs, detail)));
   await refresh();
   POLL = setInterval(() => { if (CURRENT_JOB && !document.hidden) guarded(async () => { await show(CURRENT_JOB); await refresh(); }); }, 2500);
 }

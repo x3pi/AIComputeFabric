@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,6 +59,18 @@ type Plane struct {
 
 func NewPlane(p Policy, secret []byte) *Plane {
 	return &Plane{Policy: p, Ledger: NewLedger(), Now: time.Now, caps: map[string]Capacity{}, offers: map[string]*offer{}, secret: secret, TokenT: 2 * time.Minute}
+}
+
+// Capacities returns a snapshot of advertised site capacities sorted by site ID.
+func (pl *Plane) Capacities() []Capacity {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
+	out := make([]Capacity, 0, len(pl.caps))
+	for _, c := range pl.caps {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Site < out[j].Site })
+	return out
 }
 
 // Token authorises exactly one site to accept exactly one job until it expires.
@@ -215,6 +228,30 @@ func (pl *Plane) Handler() http.Handler {
 		}
 		reply(w, http.StatusOK, map[string]int{"added": added, "received": len(batch)})
 	}))
+	needGet := func(h func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			site, ok := siteOf(r)
+			if !ok || r.Method != http.MethodGet {
+				reply(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+				return
+			}
+			h(w, r, site)
+		}
+	}
+	mux.HandleFunc("/v1/status", needGet(func(w http.ResponseWriter, _ *http.Request, site string) {
+		reply(w, http.StatusOK, map[string]any{
+			"caller":         site,
+			"sites":          pl.Capacities(),
+			"ledger_records": pl.Ledger.Len(),
+		})
+	}))
+	mux.HandleFunc("/v1/ledger/totals", needGet(func(w http.ResponseWriter, _ *http.Request, site string) {
+		reply(w, http.StatusOK, map[string]any{
+			"caller":  site,
+			"records": pl.Ledger.Len(),
+			"totals":  pl.Ledger.Totals(),
+		})
+	}))
 	return mux
 }
 
@@ -237,6 +274,18 @@ func (c *Client) post(path string, in, out any) (int, error) {
 	return resp.StatusCode, nil
 }
 
+func (c *Client) get(path string, out any) (int, error) {
+	resp, err := c.HTTP.Get(c.Base + path)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if out != nil {
+		_ = json.NewDecoder(resp.Body).Decode(out)
+	}
+	return resp.StatusCode, nil
+}
+
 func (c *Client) Advertise(cap Capacity) (int, error) { return c.post("/v1/advertise", cap, nil) }
 func (c *Client) ReportUsage(b []Usage) (int, error)  { return c.post("/v1/usage", b, nil) }
 func (c *Client) OfferJob(j Job) (Decision, string, int, error) {
@@ -249,6 +298,21 @@ func (c *Client) OfferJob(j Job) (Decision, string, int, error) {
 }
 func (c *Client) AcceptJob(job, token string) (int, error) {
 	return c.post("/v1/accept", map[string]string{"job": job, "token": token}, nil)
+}
+func (c *Client) Status() ([]Capacity, int, int, error) {
+	var out struct {
+		Sites   []Capacity `json:"sites"`
+		Records int        `json:"ledger_records"`
+	}
+	code, err := c.get("/v1/status", &out)
+	return out.Sites, out.Records, code, err
+}
+func (c *Client) LedgerTotals() ([]Total, int, error) {
+	var out struct {
+		Totals []Total `json:"totals"`
+	}
+	code, err := c.get("/v1/ledger/totals", &out)
+	return out.Totals, code, err
 }
 
 // Site is the part that runs inside a company: it serves its own work without the plane, writes every

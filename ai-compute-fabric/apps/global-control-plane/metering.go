@@ -1,11 +1,13 @@
 package gcp
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"sync"
 )
@@ -41,9 +43,77 @@ type Ledger struct {
 	mu      sync.Mutex
 	entries []entry
 	index   map[string]int
+	f       *os.File
 }
 
 func NewLedger() *Ledger { return &Ledger{index: map[string]int{}} }
+
+// OpenLedger opens (creating if needed) a persistent JSON-lines ledger on disk, verifies its entire
+// hash chain before accepting writes, and fsyncs every newly appended record.
+func OpenLedger(path string) (*Ledger, error) {
+	l := NewLedger()
+	rf, err := os.Open(path)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	if err == nil {
+		defer rf.Close()
+		sc := bufio.NewScanner(rf)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		prev := genesis
+		for i := 0; sc.Scan(); i++ {
+			var e entry
+			if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
+				return nil, fmt.Errorf("ledger line %d: %w", i+1, err)
+			}
+			if e.Prev != prev || hashOf(e) != e.Hash {
+				return nil, fmt.Errorf("ledger broken at entry %d", i)
+			}
+			k := key(e.Site, e.Seq)
+			if _, dup := l.index[k]; dup {
+				return nil, fmt.Errorf("ledger duplicate key %s at entry %d", k, i)
+			}
+			l.index[k] = len(l.entries)
+			l.entries = append(l.entries, e)
+			prev = e.Hash
+		}
+		if err := sc.Err(); err != nil {
+			return nil, err
+		}
+	}
+	wf, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	l.f = wf
+	return l, nil
+}
+
+// Close closes the backing file if the ledger was opened with OpenLedger.
+func (l *Ledger) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.f == nil {
+		return nil
+	}
+	err := l.f.Close()
+	l.f = nil
+	return err
+}
+
+// VerifyLedgerFile verifies the on-disk hash chain and returns the entry count and last hash.
+func VerifyLedgerFile(path string) (int, string, error) {
+	l, err := OpenLedger(path)
+	if err != nil {
+		return 0, "", err
+	}
+	defer func() { _ = l.Close() }()
+	last := genesis
+	if n := len(l.entries); n > 0 {
+		last = l.entries[n-1].Hash
+	}
+	return len(l.entries), last, nil
+}
 
 func key(site string, seq uint64) string { return fmt.Sprintf("%s#%d", site, seq) }
 
@@ -73,6 +143,18 @@ func (l *Ledger) Append(u Usage) (bool, error) {
 	}
 	e := entry{Usage: u, Prev: prev}
 	e.Hash = hashOf(e)
+	if l.f != nil {
+		b, err := json.Marshal(e)
+		if err != nil {
+			return false, err
+		}
+		if _, err := l.f.Write(append(b, '\n')); err != nil {
+			return false, err
+		}
+		if err := l.f.Sync(); err != nil {
+			return false, err
+		}
+	}
 	l.index[key(u.Site, u.Seq)] = len(l.entries)
 	l.entries = append(l.entries, e)
 	return true, nil

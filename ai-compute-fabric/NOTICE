@@ -1,0 +1,38 @@
+AI Compute Fabric (aicf)
+Copyright 2026 AI Compute Fabric Contributors.
+
+This product includes or interoperates with open-source software components
+listed in third_party/upstream-manifest.yaml and requirements-dev.txt:
+
+1. llama.cpp (https://github.com/ggml-org/llama.cpp)
+   License: MIT
+   Pinned commit: 74bca3950054eed1795f525cb9cf06bfe796492d
+
+2. gguf-parser-go (https://github.com/gpustack/gguf-parser-go)
+   License: MIT
+   Pinned commit: 9257743a3c1775b882ba1b58ec7f5a856c2cc385
+
+3. GPUStack (https://github.com/gpustack/gpustack)
+   License: Apache-2.0 (Architectural reference only; not linked into binaries)
+   Pinned commit: 4aaf598ee12d656115ba59acaf16577e77e17010
+
+4. vLLM (https://github.com/vllm-project/vllm)
+   License: Apache-2.0
+   Pinned commit: 65bc698356b4b0106630788536b6af6a916308e9
+
+5. LangGraph (https://github.com/langchain-ai/langgraph)
+   License: MIT
+   Pinned commit: 4c52e129eb1ab69a3da58b799f67929f77d81149
+
+6. HuggingFace PEFT / Transformers / TRL (https://github.com/huggingface/peft)
+   License: Apache-2.0
+   Pinned commit: 7d6315ae910bf62b6044a7ca917bccf5881f5e43
+
+7. NATS Server & nats-py (https://github.com/nats-io/nats-server)
+   License: Apache-2.0
+   Pinned commit: f8f6db894528640b27311353e874ac62c3a47af5
+
+8. Qwen3 & BAAI/bge-reranker-v2-m3 Model Families
+   - Qwen3-0.6B / 1.7B / 4B / 8B / 30B-A3B / Qwen3-Embedding-0.6B / Qwen3-ASR-0.6B: Apache-2.0
+   - BAAI/bge-reranker-v2-m3: MIT
+   - facebook/mms-tts-vie: CC-BY-NC-4.0 (research/evaluation only; commercial deployment requires a commercial-licensed TTS checkpoint)

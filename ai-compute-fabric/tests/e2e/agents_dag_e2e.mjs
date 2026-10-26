@@ -28,7 +28,7 @@ try {
   const auth = { headers: { Authorization: "Bearer " + ADMIN } };
   let snap = null;
   for (let i = 0; i < 60; i++) {
-    try { const r = await fetch(`${BASE}/api/agents/workflows/${WF}`, auth); if (r.ok) { snap = await r.json(); if (snap.counts.running) break; } } catch {}
+    try { const r = await fetch(`${BASE}/api/agents/workflows/${WF}`, auth); if (r.ok) { snap = await r.json(); if (snap.counts.ok === 12 && snap.counts.running === 1) break; } } catch {}
     await sleep(250);
   }
   check("gateway proxies the workflow, with one step running", snap && snap.counts.running === 1, JSON.stringify(snap && snap.counts));

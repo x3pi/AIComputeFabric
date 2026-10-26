@@ -3,6 +3,9 @@ package gcp
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -351,5 +354,77 @@ func TestRegionPinFailsClosedWhenTheSiteHasNotAdvertisedItsRegion(t *testing.T) 
 	d := Place(pol, job, map[string]Capacity{}) // no site has advertised anything yet
 	if d.Action != Reject {
 		t.Fatalf("an unknown region must not satisfy a residency pin: %+v", d)
+	}
+}
+
+func TestOpenLedgerPersistsAcrossRestartAndRejectsTamperedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ledger.jsonl")
+	l1, err := OpenLedger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u1 := Usage{Site: "SITE_A", Tenant: "acme", Job: "j1", Seq: 1, PromptTokens: 120, CompletionTokens: 340, GPUMs: 500, VRAMMiBSec: 2048, MicroKWh: 42}
+	u2 := Usage{Site: "SITE_B", Tenant: "beta", Job: "j2", Seq: 1, PromptTokens: 80, CompletionTokens: 160, GPUMs: 300, VRAMMiBSec: 1024, MicroKWh: 21}
+	if ok, err := l1.Append(u1); !ok || err != nil {
+		t.Fatalf("append u1: %v %v", ok, err)
+	}
+	if ok, err := l1.Append(u2); !ok || err != nil {
+		t.Fatalf("append u2: %v %v", ok, err)
+	}
+	if err := l1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	n, head, err := VerifyLedgerFile(path)
+	if err != nil || n != 2 || len(head) != 64 {
+		t.Fatalf("verify: n=%d head=%s err=%v", n, head, err)
+	}
+
+	// Reopen and verify idempotency + chain continuation
+	l2, err := OpenLedger(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := l2.Append(u1); ok || err != nil {
+		t.Fatalf("duplicate after reopen must be no-op: %v %v", ok, err)
+	}
+	u3 := Usage{Site: "SITE_A", Tenant: "acme", Job: "j3", Seq: 2, PromptTokens: 50, CompletionTokens: 50, GPUMs: 100}
+	if ok, err := l2.Append(u3); !ok || err != nil {
+		t.Fatalf("append u3 after reopen: %v %v", ok, err)
+	}
+	if l2.Len() != 3 || l2.Verify() != nil {
+		t.Fatalf("expected 3 verified entries, got %d", l2.Len())
+	}
+	_ = l2.Close()
+
+	// Tamper with the on-disk file and verify OpenLedger refuses to load it
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.Replace(string(raw), `"gpu_ms":500`, `"gpu_ms":999`, 1)
+	if err := os.WriteFile(path, []byte(tampered), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenLedger(path); err == nil {
+		t.Fatal("expected OpenLedger to reject tampered file")
+	}
+}
+
+func TestPlaneStatusAndLedgerTotalsEndpointsOverMTLS(t *testing.T) {
+	e := startPlane(t, pol)
+	a, b := e.siteClient(t, "SITE_A"), e.siteClient(t, "SITE_B")
+	_, _ = a.Advertise(Capacity{Site: "SITE_A", Region: "VN", TotalGPUs: 10, FreeGPUs: 4, FreeVRAMGiB: 48})
+	_, _ = b.Advertise(Capacity{Site: "SITE_B", Region: "VN", TotalGPUs: 20, FreeGPUs: 12, FreeVRAMGiB: 144})
+	_, _ = a.ReportUsage([]Usage{{Site: "SITE_A", Tenant: "acme", Job: "j1", Seq: 1, PromptTokens: 100, CompletionTokens: 200, GPUMs: 1000}})
+	_, _ = b.ReportUsage([]Usage{{Site: "SITE_B", Tenant: "acme", Job: "j2", Seq: 1, PromptTokens: 50, CompletionTokens: 100, GPUMs: 500}})
+
+	sites, recs, code, err := a.Status()
+	if err != nil || code != 200 || len(sites) != 2 || recs != 2 {
+		t.Fatalf("status: code=%d recs=%d sites=%+v err=%v", code, recs, sites, err)
+	}
+	totals, code, err := a.LedgerTotals()
+	if err != nil || code != 200 || len(totals) != 2 {
+		t.Fatalf("ledger totals: code=%d totals=%+v err=%v", code, totals, err)
 	}
 }
