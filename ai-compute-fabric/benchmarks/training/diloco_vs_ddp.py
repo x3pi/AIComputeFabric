@@ -103,7 +103,7 @@ def cond_diloco(h, seed, outer_lr=0.7, momentum=0.9):
 
 t0 = time.time()
 conds = {"ddp": cond_ddp, "single_worker": cond_single, "diloco_H10": lambda s: cond_diloco(10, s), "diloco_H50": lambda s: cond_diloco(50, s)}
-LRS = (2.5e-4, 5e-4, 1e-3)
+LRS = (6.25e-5, 1.25e-4, 2.5e-4, 5e-4, 1e-3)
 STORE = out.with_suffix(".jsonl")               # one line per finished run, so an interrupted experiment resumes instead of restarting
 done = [json.loads(l) for l in STORE.read_text().splitlines()] if STORE.exists() else []
 
