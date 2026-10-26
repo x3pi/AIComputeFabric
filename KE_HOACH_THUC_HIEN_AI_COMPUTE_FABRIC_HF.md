@@ -983,14 +983,14 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [~] P6.1 Chia speaker-disjoint; `VietnameseTextNormalizer`; WER/CER bằng `jiwer` → audio/: chia tập + normalizer (số < 1e9, ngày dd/mm/yyyy, vị trí dấu) + WER/CER tự cài; chưa dùng jiwer, chưa kiểm trên dữ liệu thật
 - [ ] P6.2 Adapter Qwen3-ASR, Qwen3-TTS, DeepFilterNet; Màn 5b
 - [ ] P6.3 Estimator bộ nhớ huấn luyện (LoRA + gradient + AdamW 8-bit)
-- [ ] P6.3 Ba chế độ: LoRA 1 GPU, DDP 2–4, DiLoCo/periodic
+- [~] P6.3 Ba chế độ: LoRA 1 GPU, DDP 2–4, DiLoCo/periodic → mới có bộ điều phối vòng ngoài kiểu DiLoCo (`training/coordinator.py`, Nesterov, quorum) và công thức đếm byte (`comm_bytes_per_worker`); CHƯA có trainer nào
 - [~] P6.3 LoRA-FA mặc định; cấm trung bình ngây thơ B̄·Ā → training/lora_merger.py (toán); chưa tích hợp trainer
 - [x] Test: `test_speaker_disjoint_and_vn_wer.py` → pass 2026-10-25
 - [x] Test: `test_lora_aggregation_math.py` → pass 2026-10-25 (naive sai, LoRA-FA sai số tương đối < 1e-6, SVD khớp Eckart-Young)
-- [ ] Test: `test_training_stale_worker_and_checkpoint.py`
+- [x] Test: `test_training_stale_worker_and_checkpoint.py` → pass 2026-10-26 (16 test, đã kiểm đột biến 10 cơ chế; chỉ kiểm logic điều phối trên mảng numpy, chưa có trainer thật)
 - [ ] Test: `test_b09_audio_training_convergence.py`
 - [ ] Gate: speaker overlap = 0 %; sai số Frobenius < 1e-6
-- [ ] Gate: chặn 100 % stale update; resume checkpoint khớp optimizer và step
+- [~] Gate: chặn 100 % stale update; resume checkpoint khớp optimizer và step → `training/coordinator.py`: mọi update cũ/tương lai/trùng/sai hình/NaN/quá lớn bị từ chối có lý do; resume sau crash cho kết quả giống hệt từng bit (tham số, động lượng, lịch sử); checkpoint ghi nguyên tử, có checksum, giữ 2 bản, bản hỏng thì lùi về bản trước; CHƯA chạy với trainer thật hay nhiều máy
 - [ ] Gate: WER/CER sau fine-tune thấp hơn model gốc; DiLoCo giảm ≥ 70 % byte so với DDP; time-to-target-WER đạt biên
 - [ ] Xác minh license/quy mô dataset tiếng Việt (D20)
 
@@ -1296,6 +1296,8 @@ Chưa có: NATS JetStream, worker thật nhiều máy, OCR/ASR/TTS/DOCUMENT_PARS
 **Cổng hạng GPU** (`core/hardware_profiler/gpu_class.py`, 15 test, đã kiểm đột biến): phân hạng group / standalone / light / unusable theo compute capability, thương hiệu GTX (không Tensor Core) và VRAM. Ngưỡng là lựa chọn thiết kế, chưa thử trên card nào ngoài RTX 3060; chưa nối vào scheduler.
 
 **RBAC + nhật ký kiểm toán** (`rbac_test.go`, 9 hàm test, trong đó ma trận vai trò có 16 trường hợp): xem H.4 P2.4. Đột biến đã bắt: viewer ghi được, bỏ giới hạn site, bỏ từng kiểm tra chuỗi (hash / băm trước / số thứ tự, mỗi cái có bài giả mạo riêng), không ghi 403, không ghi 401. Một đột biến còn sống và là tương đương: bỏ tiền tố `/api/workers/` trong `Allowed`, vì kiểm tra số đoạn đường dẫn đã chặn cùng trường hợp.
+
+**Đồng bộ thưa so với DDP (phép đếm giải tích, KHÔNG phải đo)**: với 1 tỉ tham số, 10.000 bước, 4 worker, DiLoCo tiết kiệm ≥ 90 / 95 / 99 % byte ở H = 50 / 100 / 500; cổng 70 % chỉ đạt khi H ≥ khoảng 8 (H = 2 không đạt). Giả định ring all-reduce, không nén. Cần kết hợp với kiểm tra chất lượng hội tụ mới kết luận được (chưa làm).
 
 ### I.4. Còn trống
 Windows: toàn bộ chạy thật (bản dựng đã biên dịch được nhưng chưa từng chạy; WDDM, PDH, thu hồi GPU, dịch vụ Windows), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).
