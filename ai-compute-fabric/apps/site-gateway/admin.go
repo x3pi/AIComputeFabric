@@ -164,6 +164,15 @@ func NewAPIStudio(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents
 			default:
 				writeJSON(w, http.StatusOK, t)
 			}
+		case len(parts) == 1 && r.Method == http.MethodDelete:
+			switch err := ts.Delete(id); {
+			case errors.Is(err, ErrNoTenant):
+				http.Error(w, err.Error(), http.StatusNotFound)
+			case err != nil:
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			default:
+				writeJSON(w, http.StatusOK, map[string]any{"deleted": id, "note": "the API key stopped working; the tenant's Studio data (documents, prompts, jobs) is kept until it is removed there"})
+			}
 		default:
 			http.NotFound(w, r)
 		}

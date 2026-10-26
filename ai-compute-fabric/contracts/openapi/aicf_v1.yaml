@@ -125,6 +125,12 @@ paths:
       responses:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Tenant"}}}}
         "404": {description: unknown tenant}
+    delete:
+      summary: Delete a tenant for good; its API key stops working at once (admin). Studio data is kept until removed there.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: deleted}
+        "404": {description: unknown tenant}
   /api/tenants/{id}/rotate-key:
     post:
       summary: Issue a new API key; the old one stops working at once (admin)
@@ -159,11 +165,38 @@ paths:
       summary: Base models available for LoRA on this machine (viewer)
       responses:
         "200": {description: ok}
+  /api/studio/v1/serving:
+    get:
+      summary: Which model and LoRA adapter the worker serves, and which GGUF files it can switch to (viewer; 503 when --worker-url is not set or the worker is unreachable)
+      responses:
+        "200": {description: ok}
+        "503": {description: not configured or worker unreachable}
+    post:
+      summary: Serve another model, optionally with an adapter (admin). Either adapter_file (already in the adapters directory) or tenant+job (a succeeded LoRA job, exported to GGUF and attached). The worker restarts the engine once the GPU is free.
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [model], properties: {model: {type: string}, adapter_file: {type: string}, tenant: {type: string}, job: {type: string}}}}}}
+      responses:
+        "200": {description: accepted by the worker}
+        "400": {description: invalid input or refused by the worker}
+        "403": {description: not an admin}
+        "409": {description: the adapter was trained on a different base model, or the job has no adapter}
+        "503": {description: not configured, GGUF export unavailable, or worker unreachable}
   /api/studio/v1/full-ft/estimate:
     get:
       summary: Full fine-tune memory ESTIMATE per base model; the method itself is unsupported (viewer)
       responses:
         "200": {description: ok}
+  /api/studio/v1/tenants/{tenant}:
+    get:
+      summary: What the tenant has stored in the Studio (documents, prompt templates, jobs) (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      responses:
+        "200": {description: ok}
+    delete:
+      summary: Erase every document, prompt template, job and adapter of the tenant (admin; 409 while a job is queued or running)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      responses:
+        "200": {description: deleted, with counts of what was removed}
+        "409": {description: jobs still active}
   /api/studio/v1/tenants/{tenant}/rag/documents:
     get:
       summary: Documents in the tenant knowledge base (viewer)

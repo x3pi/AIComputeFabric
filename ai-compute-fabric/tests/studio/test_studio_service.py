@@ -271,3 +271,29 @@ def test_gguf_export_is_refused_cleanly_when_not_configured(svc, tenant):
 def test_job_ids_cannot_escape_the_job_directory(svc, tenant):
     for bad_id in ("..", "..%2F..%2Fetc", "a" * 32, "A" * 32):
         assert call(svc, "GET", f"/v1/tenants/{tenant}/lora/jobs/{bad_id}/log", role="viewer")[0] in (404, 400)
+
+
+@needs_pg
+def test_purging_a_tenant_erases_its_data_only_and_refuses_while_jobs_are_active(svc, tenant):
+    other = "st-" + uuid.uuid4().hex[:8]
+    for t in (tenant, other):
+        assert call(svc, "POST", f"/v1/tenants/{t}/prompts", {"name": "qa", "system": "s"}, role="operator")[0] == 201
+        wait_status(svc, t, new_job(svc, t)[1]["id"], ("succeeded",))
+    summary = call(svc, "GET", f"/v1/tenants/{tenant}", role="viewer")[1]
+    assert summary["prompt_templates"] == 1 and summary["jobs"] == 1 and summary["active_jobs"] == 0
+    assert call(svc, "DELETE", f"/v1/tenants/{tenant}", role="operator")[0] == 403
+    jobdirs_before = len(list((svc.settings.data_dir / "jobs").iterdir()))
+    svc.state["free"] = 0.0                                    # keep a new job queued
+    j = new_job(svc, tenant)[1]
+    st, r = call(svc, "DELETE", f"/v1/tenants/{tenant}", role="admin")
+    assert st == 409 and r["error"]["code"] == "active_jobs"
+    assert call(svc, "POST", f"/v1/tenants/{tenant}/lora/jobs/{j['id']}/cancel", role="operator")[0] == 200
+    svc.state["free"] = 100000.0
+    st, r = call(svc, "DELETE", f"/v1/tenants/{tenant}", role="admin")
+    assert st == 200 and r["removed"]["jobs"] == 2 and r["removed"]["prompt_templates"] == 1
+    after = call(svc, "GET", f"/v1/tenants/{tenant}", role="viewer")[1]
+    assert after["jobs"] == 0 and after["prompt_templates"] == 0
+    assert len(list((svc.settings.data_dir / "jobs").iterdir())) == jobdirs_before - 1, "only this tenant's job directories are removed"
+    other_sum = call(svc, "GET", f"/v1/tenants/{other}", role="viewer")[1]
+    assert other_sum["jobs"] == 1 and other_sum["prompt_templates"] == 1, "another tenant is untouched"
+    call(svc, "DELETE", f"/v1/tenants/{other}", role="admin")

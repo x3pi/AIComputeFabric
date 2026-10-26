@@ -234,6 +234,18 @@ async function load() {
         else msg("Lỗi: " + (await res.text()));
       }
     }, "Đổi khóa");
+    const del = el("button", {
+      class: "sm ghost err",
+      title: "Xóa vĩnh viễn tenant và khóa API (không hoàn tác). Dùng 'Vô hiệu hóa' nếu có thể cần lại.",
+      onclick: async () => {
+        const typed = prompt('Xóa VĨNH VIỄN tenant "' + t.name + '"? Khóa API ngừng hoạt động ngay, không hoàn tác.\nGõ lại tên tenant để xác nhận:');
+        if (typed === null) return;
+        if (typed.trim() !== t.name) { msg("Tên không khớp, chưa xóa."); return; }
+        const res = await api("/api/tenants/" + encodeURIComponent(t.id), { method: "DELETE" });
+        msg(res.ok ? 'Đã xóa tenant "' + t.name + '". Dữ liệu Studio của tenant (nếu có) vẫn còn đến khi xóa ở trang AI Studio.' : "Lỗi: " + (await res.text()));
+        load();
+      }
+    }, "Xóa");
 
     const servedCount = servedMap[t.id] || servedMap[t.name] || 0;
     tb.append(
@@ -245,7 +257,7 @@ async function load() {
         el("td", { class: "num" }, m),
         el("td", { class: "num" }, String(servedCount)),
         el("td", {}, el("span", { class: "pill " + (t.disabled ? "err" : "ok") }, t.disabled ? "đã vô hiệu" : "hoạt động")),
-        el("td", { class: "row" }, save, tog, rot)
+        el("td", { class: "row" }, save, tog, rot, del)
       )
     );
   }

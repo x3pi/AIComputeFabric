@@ -169,6 +169,11 @@ class KnowledgeStore:
         with self._conn(tenant) as c:
             return c.execute("DELETE FROM aicf_chunks WHERE doc_id = %s", (doc_id,)).rowcount
 
+    def delete_tenant(self, tenant: str) -> int:
+        """Remove every chunk of one tenant (row-level security confines the DELETE to it). Returns the number of chunks removed."""
+        with self._conn(tenant) as c:
+            return c.execute("DELETE FROM aicf_chunks").rowcount
+
     def totals(self, tenant: str) -> dict:
         with self._conn(tenant) as c:
             r = c.execute("SELECT count(DISTINCT doc_id)::int AS documents, coalesce(sum(length(text)), 0)::bigint AS chars FROM aicf_chunks").fetchone()

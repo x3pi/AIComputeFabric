@@ -15,6 +15,8 @@ from studio.methods.lora import LoraMethod
 from studio.methods.prompts import PromptsMethod
 from studio.methods.rag import RagMethod
 from studio.registry import Registry
+from studio.serving import Serving
+from studio.tenant_admin import TenantAdmin
 from studio.web import Request, Router
 
 
@@ -46,6 +48,8 @@ def build_app(s: Settings, free_vram=free_vram_mib, start_runner: bool = True) -
         reg.register(m)
     router = Router()
     reg.mount_all(router)
+    TenantAdmin(db, store, jobs).mount(router)
+    Serving(s, lora).mount(router)
 
     def methods(req: Request):
         return {"methods": [dataclasses.asdict(i) for i in reg.infos()]}

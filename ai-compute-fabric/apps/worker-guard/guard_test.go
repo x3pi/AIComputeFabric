@@ -50,6 +50,8 @@ type fakeEngine struct {
 	running bool
 	size    uint64
 	starts  int
+	model   string
+	lora    string
 }
 
 func (e *fakeEngine) Start() error {
@@ -59,6 +61,8 @@ func (e *fakeEngine) Start() error {
 	e.starts++
 	return nil
 }
+func (e *fakeEngine) Configure(model, lora string) { e.model, e.lora = model, lora }
+func (e *fakeEngine) Describe() (string, string)   { return e.model, e.lora }
 func (e *fakeEngine) Stop() (StopInfo, error) {
 	e.g.mu.Lock()
 	defer e.g.mu.Unlock()

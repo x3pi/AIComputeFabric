@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -50,6 +51,8 @@ type Snapshot struct {
 	Buckets   est.Buckets `json:"buckets_bytes"`
 	Events    []Event     `json:"events"`
 	Headroom  uint64      `json:"headroom_mib"`
+	Model     string      `json:"model"`
+	Lora      string      `json:"lora"`
 	Updated   time.Time   `json:"updated"`
 }
 
@@ -90,6 +93,23 @@ func (g *Guard) emit(ev Event) {
 }
 
 func (g *Guard) setState(s State) { g.mu.Lock(); g.st = s; g.mu.Unlock() }
+
+// Switch changes the model and adapter the engine serves. The running engine is stopped, then the normal control loop starts
+// it again with the new settings once the GPU has stayed free for ResumeStable, so a switch obeys the same rule as every other
+// start: it never takes VRAM the user is using. A paused worker is resumed (the operator asked for a model to be served).
+func (g *Guard) Switch(model, lora string) {
+	if g.eng.Running() {
+		info, _ := g.eng.Stop()
+		g.emit(Event{Kind: "switch", Detail: "stopped for a model change", StopMS: ms(info.Elapsed), Signal: info.Signal})
+	}
+	g.eng.Configure(model, lora)
+	g.setState(StStopped)
+	d := model
+	if lora != "" {
+		d += " + " + lora
+	}
+	g.emit(Event{Kind: "switch", Detail: "will serve " + d})
+}
 
 // Pause stops the engine on operator request; Resume allows it to start again.
 func (g *Guard) Pause() {
@@ -263,13 +283,14 @@ func (g *Guard) Snapshot() Snapshot {
 	if g.st != StRunning {
 		w, kv, c, own = 0, 0, 0, 0
 	}
+	model, lora := g.eng.Describe()
 	osUser := est.OSUserFromEngine(g.last.UsedMiB*mib, w, kv, c)
 	ev := make([]Event, len(g.events))
 	copy(ev, g.events)
 	return Snapshot{
 		State: g.st, Sample: g.last, EngineMiB: own, EnginePID: g.eng.PID(), External: g.last.UsedMiB - min64(g.last.UsedMiB, own),
 		Buckets: est.NewBuckets(g.last.TotalMiB*mib, osUser, w, kv, c, g.cfg.HeadroomMiB*mib),
-		Events:  ev, Headroom: g.cfg.HeadroomMiB, Updated: g.now(),
+		Events:  ev, Headroom: g.cfg.HeadroomMiB, Updated: g.now(), Model: filepath.Base(model), Lora: filepath.Base(lora),
 	}
 }
 

@@ -233,8 +233,8 @@ class LoraMethod:
         self.jobs.get(t, req.params["job"])
         return {"log": tail(self.jobs.dir(req.params["job"]) / "log.txt")}
 
-    def _gguf(self, row: dict, d: Path) -> Raw:
-        """Adapter converted for llama-server (--lora file.gguf), cached next to the job. Needs the llama.cpp checkout and the training venv."""
+    def gguf_path(self, d: Path) -> Path:
+        """Adapter `d` converted for llama-server (--lora file.gguf), cached next to the job. Needs the llama.cpp checkout and the training venv."""
         if not (self.s.llama_cpp_dir and self.s.train_python):
             raise unavailable("GGUF export is not configured (llama_cpp_dir and train_python)")
         script = Path(self.s.llama_cpp_dir) / "convert_lora_to_gguf.py"
@@ -251,7 +251,18 @@ class LoraMethod:
             if r.returncode != 0 or not tmp.is_file():
                 raise unavailable("GGUF conversion failed: " + (r.stderr or r.stdout)[-300:])
             tmp.replace(out)
-        return Raw(out.read_bytes(), "application/octet-stream", f"adapter-{row['id'][:8]}.gguf")
+        return out
+
+    def adapter_gguf(self, tenant: str, job: str) -> tuple:
+        """(gguf path, job row) of a succeeded job of `tenant`."""
+        row = self.jobs.get(tenant, job)
+        d = self.jobs.dir(row["id"]) / "adapter"
+        if row["status"] != "succeeded" or not d.is_dir():
+            raise conflict("the job has no adapter (it did not succeed)", "no_adapter")
+        return self.gguf_path(d), row
+
+    def _gguf(self, row: dict, d: Path) -> Raw:
+        return Raw(self.gguf_path(d).read_bytes(), "application/octet-stream", f"adapter-{row['id'][:8]}.gguf")
 
     def adapter(self, req: Request):
         t = check_tenant(req.params["tenant"])

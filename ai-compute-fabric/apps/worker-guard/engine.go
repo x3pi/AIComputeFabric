@@ -50,6 +50,8 @@ type Engine interface {
 	Running() bool
 	PID() int
 	Buffers() Buffers
+	Configure(model, lora string) // takes effect at the next Start
+	Describe() (model, lora string)
 }
 
 // LlamaEngine manages one llama-server process.
@@ -66,6 +68,18 @@ type LlamaEngine struct {
 	cmd  *exec.Cmd
 	done chan struct{}
 	bufs Buffers
+}
+
+func (e *LlamaEngine) Configure(model, lora string) {
+	e.mu.Lock()
+	e.Model, e.Lora = model, lora
+	e.mu.Unlock()
+}
+
+func (e *LlamaEngine) Describe() (string, string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.Model, e.Lora
 }
 
 func (e *LlamaEngine) Running() bool {

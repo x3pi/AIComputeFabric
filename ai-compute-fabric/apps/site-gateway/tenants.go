@@ -208,6 +208,24 @@ func (s *TenantStore) RotateKey(id string) (string, error) {
 	return key, nil
 }
 
+// Delete removes a tenant for good: its API key stops authenticating at once (requests already in flight finish) and it is
+// gone from the file. Use Update(disabled) when the tenant may come back.
+func (s *TenantStore) Delete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.byID[id]
+	if t == nil {
+		return ErrNoTenant
+	}
+	delete(s.byID, id)
+	delete(s.byHash, t.KeyHash)
+	if err := s.saveLocked(); err != nil {
+		s.byID[id], s.byHash[t.KeyHash] = t, t
+		return err
+	}
+	return nil
+}
+
 // Policy gives the router a tenant's weight and concurrency cap.
 func (s *TenantStore) Policy(id string) (weight float64, maxInflight int) {
 	s.mu.RLock()
