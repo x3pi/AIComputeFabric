@@ -51,3 +51,19 @@ def test_this_machine_if_it_has_a_gpu():
     if not gpus:
         pytest.skip("no NVIDIA GPU visible")
     assert all(classify(g) in ("group", "standalone", "light", "unusable") for g in gpus)
+
+
+def test_detect_returns_no_gpu_when_nvidia_smi_is_missing_or_hangs(monkeypatch):
+    import subprocess
+
+    from core.hardware_profiler import gpu_class
+
+    def missing(*a, **k):
+        raise FileNotFoundError("nvidia-smi")
+
+    def hang(*a, **k):
+        raise subprocess.TimeoutExpired("nvidia-smi", 10)
+
+    for fn in (missing, hang):
+        monkeypatch.setattr(gpu_class.subprocess, "run", fn)
+        assert gpu_class.detect() == []

@@ -67,6 +67,9 @@ def parse_smi(csv_text: str) -> list[GpuInfo]:
 
 
 def detect() -> list[GpuInfo]:
-    r = subprocess.run(["nvidia-smi", "--query-gpu=name,compute_cap,memory.total", "--format=csv,noheader"],
-                       capture_output=True, text=True, timeout=10)
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=name,compute_cap,memory.total", "--format=csv,noheader"],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):      # no driver installed (CI runners, CPU-only PCs) or it hung: no usable GPU
+        return []
     return parse_smi(r.stdout) if r.returncode == 0 else []

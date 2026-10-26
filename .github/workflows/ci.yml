@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: trivy filesystem scan (HIGH/CRITICAL vulnerabilities in lock files, secrets, misconfiguration)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: ai-compute-fabric
@@ -46,7 +46,9 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           skip-dirs: ai-compute-fabric/.demo,ai-compute-fabric/third_party
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@v4.1.2
+        with:
+          cosign-release: v3.1.4
       - name: committed SBOMs still verify against deploy/security/cosign.pub
         working-directory: ai-compute-fabric
         run: bash deploy/security/verify_sboms.sh
