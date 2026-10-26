@@ -95,6 +95,16 @@ func (r *Registry) SetPause(id string, pause bool) bool {
 	return true
 }
 
+// SiteOf returns the site a worker registered with, read live (not from the 1 s fleet snapshot), or "".
+func (r *Registry) SiteOf(id string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if w := r.workers[id]; w != nil {
+		return w.SiteID
+	}
+	return ""
+}
+
 // List returns a stable-ordered copy with Online computed from LastSeen.
 func (r *Registry) List() []Worker {
 	r.mu.RLock()

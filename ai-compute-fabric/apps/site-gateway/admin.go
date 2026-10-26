@@ -1,9 +1,9 @@
 package main
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -12,6 +12,20 @@ import (
 // Everything under /api/ needs "Authorization: Bearer <admin token>" when a token is
 // configured; the static pages stay public (they hold no data until the token is entered).
 func NewAPI(f *Fleet, ts *TenantStore, adminToken string, routers ...*Router) http.Handler {
+	return NewAPIWith(f, ts, NewAuth(adminToken), nil, routers...)
+}
+
+// statusWriter remembers the status code so the audit entry can record the outcome.
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (s *statusWriter) WriteHeader(c int) { s.code = c; s.ResponseWriter.WriteHeader(c) }
+
+// NewAPIWith is NewAPI with role-based access and an optional audit log. With no credential
+// configured the API is open (loopback development only; main refuses that beyond loopback).
+func NewAPIWith(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, routers ...*Router) http.Handler {
 	inner := HTTPHandler(f)
 	mux := http.NewServeMux()
 	var rt *Router
@@ -81,16 +95,38 @@ func NewAPI(f *Fleet, ts *TenantStore, adminToken string, routers ...*Router) ht
 		}
 	})
 	mux.Handle("/", inner)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") && adminToken != "" {
-			got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-			if subtle.ConstantTimeCompare([]byte(got), []byte(adminToken)) != 1 {
-				w.Header().Set("WWW-Authenticate", `Bearer realm="aicf-admin"`)
-				http.Error(w, "admin token required", http.StatusUnauthorized)
-				return
+	siteOf := f.reg.SiteOf
+	note := func(p Principal, r *http.Request, code int) {
+		if audit != nil {
+			if err := audit.Record(p.Name, p.Role, r.Method, r.URL.Path, code, r.RemoteAddr); err != nil {
+				log.Printf("audit: %v", err)
 			}
 		}
-		mux.ServeHTTP(w, r)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") || auth.Open() {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		p, ok := auth.Identify(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		if !ok {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="aicf-admin"`)
+			http.Error(w, "admin token required", http.StatusUnauthorized)
+			note(Principal{Name: "-", Role: "-"}, r, http.StatusUnauthorized)
+			return
+		}
+		if !Allowed(p, r, siteOf) {
+			http.Error(w, "role "+p.Role+" may not "+r.Method+" "+r.URL.Path, http.StatusForbidden)
+			note(p, r, http.StatusForbidden)
+			return
+		}
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+		mux.ServeHTTP(sw, r)
+		note(p, r, sw.code)
 	})
 }
 

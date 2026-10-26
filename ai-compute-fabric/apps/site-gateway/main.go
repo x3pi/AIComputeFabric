@@ -32,6 +32,8 @@ func main() {
 	weightsFlag := flag.String("tenant-weights", "", "comma list tenant=weight, e.g. sales=3,ops=1")
 	tenantsFile := flag.String("tenants-file", "", "JSON file with tenants and hashed API keys (enables API-key auth)")
 	adminToken := flag.String("admin-token", os.Getenv("AICF_ADMIN_TOKEN"), "bearer token for /api/* (admin); required when listening beyond loopback")
+	rolesFile := flag.String("roles-file", "", "JSON roles file (viewer/operator/admin, SHA-256 token hashes) for the admin API")
+	auditPath := flag.String("audit-log", "", "append-only hash-chained audit log of admin actions")
 	affinity := flag.Duration("affinity-patience", 300*time.Millisecond, "wait this long for the worker holding a conversation's cache (0 = off)")
 	maxLease := flag.Duration("max-lease-ttl", 10*time.Minute, "longest TTL a lease may have; clients extend while the job runs")
 	tlsCert := flag.String("tls-cert", "", "gateway server certificate (enables mTLS on the gRPC port)")
@@ -79,8 +81,20 @@ func main() {
 	router := NewRouter(RouterConfig{Policy: policy, MaxQueue: *maxQueue, MaxWait: *maxWait, Fair: *fair, MaxQueuePerTenant: *perTenantQueue,
 		MaxInflightTenant: *perTenantInflight, Weights: weights, AffinityPatience: *affinity}, reg)
 	go router.Run(nil)
-	if h, _, _ := net.SplitHostPort(*httpAddr); *adminToken == "" && h != "127.0.0.1" && h != "localhost" && h != "::1" {
-		log.Fatal("refusing to expose the admin API on ", *httpAddr, " without --admin-token (or AICF_ADMIN_TOKEN)")
+	auth := NewAuth(*adminToken)
+	if *rolesFile != "" {
+		if err := auth.LoadRoles(*rolesFile); err != nil {
+			log.Fatal(err)
+		}
+	}
+	var audit *AuditLog
+	if *auditPath != "" {
+		if audit, err = OpenAudit(*auditPath); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if h, _, _ := net.SplitHostPort(*httpAddr); auth.Open() && h != "127.0.0.1" && h != "localhost" && h != "::1" {
+		log.Fatal("refusing to expose the admin API on ", *httpAddr, " without --admin-token (or AICF_ADMIN_TOKEN) or --roles-file")
 	}
 	inf := NewInference(router, NewLimiter(*rate, *burst))
 	inf.Tenants, inf.AuthRequired = store, *tenantsFile != ""
@@ -90,6 +104,6 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", inf)
 	mux.HandleFunc("/metrics", inf.Metrics)
-	mux.Handle("/", NewAPI(fleet, store, *adminToken, router))
+	mux.Handle("/", NewAPIWith(fleet, store, auth, audit, router))
 	log.Fatal(http.ListenAndServe(*httpAddr, mux))
 }

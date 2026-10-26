@@ -922,7 +922,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] P2.2 `core/topology-graph` đo RTT/băng thông
 - [~] P2.3 `core/adaptive-scheduler` v1 (lọc VramEstimate, ModelIdentity, tenant, hàm chi phí) → core/adaptive_scheduler/scheduler.py: logic thuần; chưa nối gateway/lease
 - [~] P2.4 Dashboard MVP: Màn 1 (heatmap 200 GPU) và Màn 3 (worker, quota, preemption log) → hai trang HTML tĩnh: 1 worker (worker-guard) và lưới + bảng nhiều worker (site-gateway, nút tạm dừng qua gateway); chưa React/AntD, chưa thử ở quy mô 200 node, chưa quota/RBAC, chưa Playwright
-- [ ] P2.4 RBAC, audit log, Việt/Anh
+- [~] P2.4 RBAC, audit log, Việt/Anh → `apps/site-gateway/rbac.go`, `audit.go`: vai trò viewer / operator (tùy chọn giới hạn theo site) / admin cho `/api/*` qua `--roles-file` (token lưu dạng SHA-256; tạo bằng `printf %s TOKEN | sha256sum`), `--admin-token` cũ vẫn là admin; viewer chỉ đọc, operator chỉ tạm dừng/tiếp tục worker, mọi thao tác ghi, bị từ chối (403) và đăng nhập sai (401) đều vào nhật ký JSONL nối băm (không chứa nội dung request, khóa hay token); đã kiểm đột biến, chạy thật với gateway nhị phân; CHƯA có: giao diện dashboard theo vai trò (nút vẫn hiện, chỉ API chặn), Việt/Anh, kiểm thử E2E giao diện; nhật ký chỉ phát hiện sửa/xóa giữa chừng, không chống được việc cắt cụt đuôi hay viết lại cả file (cần lưu hash cuối ở nơi khác); tài khoản người dùng/đăng nhập thật (chỉ có token)
 - [x] Test: `test_adaptive_scheduler_decisions.py` (≥ 15 kịch bản) → 16 kịch bản pass; mutation bắt được lỗi bỏ kiểm VRAM
 - [~] Test: `test_lease_lifecycle_and_idempotency.py` → đã viết bằng Go (`apps/site-gateway/leases_test.go`: idempotent, TTL chặt, hết hạn trả VRAM, thu hồi khi worker mất, không đặt chỗ vượt VRAM khi đồng thời); không phải file Python tên này
 - [ ] Test: `test_preemption_and_worker_churn.py`
@@ -1293,6 +1293,8 @@ Thay đổi: `worker-guard --flash-attn on|off|auto` (mặc định **on**, trư
 Chưa có: NATS JetStream, worker thật nhiều máy, OCR/ASR/TTS/DOCUMENT_PARSE/TRAIN, màn hình 4a.
 
 **Cổng hạng GPU** (`core/hardware_profiler/gpu_class.py`, 15 test, đã kiểm đột biến): phân hạng group / standalone / light / unusable theo compute capability, thương hiệu GTX (không Tensor Core) và VRAM. Ngưỡng là lựa chọn thiết kế, chưa thử trên card nào ngoài RTX 3060; chưa nối vào scheduler.
+
+**RBAC + nhật ký kiểm toán** (`rbac_test.go`, 11 test con trong ma trận vai trò + 6 test khác): xem H.4 P2.4. Đột biến đã bắt: viewer ghi được, bỏ giới hạn site, bỏ từng kiểm tra chuỗi (hash / băm trước / số thứ tự, mỗi cái có bài giả mạo riêng), không ghi 403, không ghi 401. Một đột biến còn sống và là tương đương: bỏ tiền tố `/api/workers/` trong `Allowed`, vì kiểm tra số đoạn đường dẫn đã chặn cùng trường hợp.
 
 ### I.4. Còn trống
 Windows: toàn bộ chạy thật (bản dựng đã biên dịch được nhưng chưa từng chạy; WDDM, PDH, thu hồi GPU, dịch vụ Windows), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).
