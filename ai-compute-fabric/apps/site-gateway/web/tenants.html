@@ -3,44 +3,127 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AICF Người dùng</title>
+<title>AICF Người dùng & Khóa API — Quản trị Multi-Tenant WFQ</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="common.css">
+<style>
+.share-bar {
+  width: 90px;
+  height: 6px;
+  background: var(--bg-elevated);
+  border-radius: 99px;
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+.share-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--acc);
+}
+</style>
 </head>
 <body>
 <script src="common.js"></script>
 <main>
-<h1>Người dùng & khóa API</h1>
-<div class="sub">Mỗi tenant (phòng ban, ứng dụng) có một khóa API riêng. Trọng số quyết định phần GPU khi tranh chấp; giới hạn đồng thời chặn một tenant chiếm hết slot.</div>
-<div id="newkey" class="banner" hidden>
-  <strong>Khóa API mới — chỉ hiện một lần, hãy lưu ngay:</strong>
-  <div class="key" id="keytext"></div>
-  <div class="row" style="margin-top:8px"><button id="copy">Sao chép</button><button id="dismiss">Đã lưu, đóng</button></div>
-</div>
-<div class="card">
-  <form id="add" class="row" autocomplete="off">
-    <div><label for="n">Tên tenant</label><input id="n" required maxlength="64"></div>
-    <div><label for="w">Trọng số</label><input id="w" type="number" min="0.1" step="0.1" value="1" style="width:90px"></div>
-    <div><label for="m">Tối đa đồng thời (0 = mặc định)</label><input id="m" type="number" min="0" step="1" value="0" style="width:120px"></div>
-    <button class="primary" style="align-self:flex-end">Tạo tenant</button>
-  </form>
-  <div id="msg" class="mut" role="status" style="margin-top:8px"></div>
-</div>
-<div class="card table-wrap">
-  <table><thead><tr><th>Tên</th><th>ID</th><th class="num">Trọng số</th><th class="num">Tối đa đồng thời</th><th>Trạng thái</th><th></th></tr></thead>
-  <tbody id="rows"></tbody></table>
-</div>
+  <div class="page-header">
+    <div>
+      <h1>Người dùng, Khóa API & Định tuyến Công bằng (WFQ)</h1>
+      <div class="sub">Mỗi tenant (phòng ban, ứng dụng) được cấp khóa API riêng (băm SHA-256 trên đĩa). Trọng số WFQ quyết định tỷ lệ phân bổ GPU khi tranh chấp; giới hạn đồng thời ngăn một phòng ban chiếm trọn cụm.</div>
+    </div>
+  </div>
+
+  <section class="kpi-grid" aria-label="Chỉ số Multi-Tenant WFQ">
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Tenants Hoạt động</span><span>👥</span></div>
+      <div class="kpi-val" id="kpi-t-active">0</div>
+      <div class="kpi-foot" id="kpi-t-total">Tổng cộng 0 tenant đã đăng ký</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Tổng Trọng số WFQ</span><span>⚖️</span></div>
+      <div class="kpi-val" id="kpi-t-weight">0.0</div>
+      <div class="kpi-foot">Weighted Fair Queuing theo đồng hồ ảo vtime</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Yêu cầu Đã Phục vụ</span><span>📊</span></div>
+      <div class="kpi-val" id="kpi-t-served">0</div>
+      <div class="kpi-foot" id="kpi-t-rejected">0 bị từ chối do quá tải / hạn mức</div>
+    </div>
+  </section>
+
+  <div id="newkey" class="banner" hidden>
+    <strong>🔐 Khóa API (có thể sao chép lại bất cứ lúc nào bằng nút "Sao chép khóa" ở danh sách):</strong>
+    <div class="key" id="keytext"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="copy" type="button" class="primary sm">Sao chép khóa</button>
+      <button id="dismiss" type="button" class="sm">Đóng</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Khởi tạo Tenant / Phòng ban mới</h2>
+      <span class="mut" style="font-size:12px">Khóa API sinh ngẫu nhiên 256-bit (tiền tố aicf_)</span>
+    </div>
+    <form id="add" class="row" autocomplete="off">
+      <div class="grow" style="min-width:200px">
+        <label for="n">Tên tenant (phòng ban / dịch vụ)</label>
+        <input id="n" required maxlength="64" placeholder="VD: engineering, sales, rag-bot" style="width:100%">
+      </div>
+      <div>
+        <label for="w">Trọng số WFQ</label>
+        <input id="w" type="number" min="0.1" step="0.1" value="1" style="width:110px">
+      </div>
+      <div>
+        <label for="m">Tối đa đồng thời (0 = mặc định)</label>
+        <input id="m" type="number" min="0" step="1" value="0" style="width:140px">
+      </div>
+      <button class="primary" style="align-self:flex-end">＋ Tạo tenant</button>
+    </form>
+    <div id="msg" class="mut" role="status" style="margin-top:8px;font-size:13px"></div>
+  </div>
+
+  <div class="card table-wrap">
+    <div class="card-header">
+      <h2>Danh sách Tenants & Chính sách Phân bổ Slot</h2>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Tên Tenant</th>
+          <th>Mã ID</th>
+          <th>Tỷ phần WFQ</th>
+          <th class="num">Trọng số</th>
+          <th class="num">Tối đa đồng thời</th>
+          <th class="num">Đã phục vụ</th>
+          <th>Trạng thái</th>
+          <th>Thao tác</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
 </main>
 <script>
 const msg = t => { document.getElementById("msg").textContent = t; };
+
 async function copyText(t) {
   try { await navigator.clipboard.writeText(t); return true; } catch (e) {}
-  const ta = document.createElement("textarea"); // fallback for non-secure pages (http on a LAN address)
+  const ta = document.createElement("textarea");
   ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select();
   let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
   ta.remove(); return ok;
 }
-function selectAll(el) { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+
+function selectAll(el) {
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  const s = getSelection();
+  s.removeAllRanges();
+  s.addRange(r);
+}
+
 async function showKey(k) {
   const kt = document.getElementById("keytext"), cp = document.getElementById("copy");
   kt.textContent = k;
@@ -51,45 +134,140 @@ async function showKey(k) {
     cp.textContent = ok ? "Đã sao chép ✓" : "Không tự sao chép được — bấm vào khóa rồi nhấn Ctrl+C";
     if (!ok) selectAll(kt);
   };
-  cp.textContent = "Sao chép";
+  cp.textContent = "Sao chép khóa";
   cp.onclick = done;
-  done(); // copy right away: the key is shown only once
-  document.getElementById("dismiss").onclick = () => { kt.textContent = ""; document.getElementById("newkey").hidden = true; };
+  done();
+  document.getElementById("dismiss").onclick = () => {
+    kt.textContent = "";
+    document.getElementById("newkey").hidden = true;
+  };
 }
+
 async function patch(id, body) {
-  const r = await api("/api/tenants/" + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify(body) });
-  if (!r.ok) msg("Lỗi: " + (await r.text())); else msg("Đã cập nhật.");
+  const r = await api("/api/tenants/" + encodeURIComponent(id), {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) msg("Lỗi: " + (await r.text()));
+  else msg("Đã cập nhật chính sách tenant.");
   load();
 }
+
 async function load() {
-  const r = await api("/api/tenants");
+  const [r, stRes] = await Promise.all([api("/api/tenants"), api("/api/stats")]);
   if (!r || !r.ok) return;
-  const list = await r.json(), tb = document.getElementById("rows");
-  tb.replaceChildren();
-  if (!list.length) tb.append(el("tr", {}, el("td", { colspan: 6, class: "mut" }, "Chưa có tenant nào. Tạo tenant đầu tiên ở trên.")));
+  const list = await r.json();
+  let servedMap = {}, routerStats = {};
+  if (stRes && stRes.ok) {
+    const st = await stRes.json();
+    routerStats = st.router || {};
+    servedMap = routerStats.served_by_tenant || {};
+  }
+
+  let activeCount = 0, weightSum = 0;
   for (const t of list) {
-    const w = el("input", { type: "number", min: "0.1", step: "0.1", value: t.weight, style: "width:80px", "aria-label": "Trọng số " + t.name });
-    const m = el("input", { type: "number", min: "0", step: "1", value: t.max_inflight, style: "width:80px", "aria-label": "Tối đa đồng thời " + t.name });
-    const save = el("button", { onclick: () => patch(t.id, { weight: +w.value, max_inflight: +m.value }) }, "Lưu");
-    const tog = el("button", { onclick: () => patch(t.id, { disabled: !t.disabled }) }, t.disabled ? "Bật lại" : "Vô hiệu hóa");
-    const rot = el("button", { onclick: async () => {
-      if (!confirm("Đổi khóa của " + t.name + "? Khóa cũ sẽ ngừng hoạt động ngay.")) return;
-      const r = await api("/api/tenants/" + encodeURIComponent(t.id) + "/rotate-key", { method: "POST" });
-      if (r.ok) showKey((await r.json()).api_key); else msg("Lỗi: " + (await r.text()));
-    } }, "Đổi khóa");
-    tb.append(el("tr", {}, el("td", {}, t.name), el("td", { class: "mut" }, t.id), el("td", {}, w), el("td", {}, m),
-      el("td", {}, el("span", { class: "pill " + (t.disabled ? "err" : "ok") }, t.disabled ? "đã vô hiệu" : "hoạt động")),
-      el("td", { class: "row" }, save, tog, rot)));
+    if (!t.disabled) {
+      activeCount++;
+      weightSum += (+t.weight || 1);
+    }
+  }
+  document.getElementById("kpi-t-active").textContent = String(activeCount);
+  document.getElementById("kpi-t-total").textContent = `Tổng cộng ${list.length} tenant đã đăng ký`;
+  document.getElementById("kpi-t-weight").textContent = weightSum.toFixed(1);
+  document.getElementById("kpi-t-served").textContent = String(routerStats.served_total || 0);
+  const rejObj = routerStats.rejected || {};
+  const rejSum = Object.values(rejObj).reduce((a, b) => a + (+b || 0), 0);
+  document.getElementById("kpi-t-rejected").textContent = `${rejSum} bị từ chối do quá tải / hạn mức`;
+
+  const tb = document.getElementById("rows");
+  tb.replaceChildren();
+  if (!list.length) {
+    tb.append(el("tr", {}, el("td", { colspan: 8, class: "mut" }, "Chưa có tenant nào. Tạo tenant đầu tiên ở biểu mẫu phía trên.")));
+    return;
+  }
+
+  for (const t of list) {
+    const sharePct = !t.disabled && weightSum > 0 ? Math.round((100 * (+t.weight || 1)) / weightSum) : 0;
+    const shareCell = el("td", { class: "num" },
+      el("span", {}, `${sharePct}%`),
+      el("span", { class: "share-bar" }, el("span", { style: `width:${sharePct}%` }))
+    );
+
+    // IMPORTANT E2E invariant: First <input> in each row inside #rows MUST be the weight input
+    const w = el("input", {
+      type: "number", min: "0.1", step: "0.1", value: t.weight,
+      style: "width:82px", "aria-label": "Trọng số " + t.name
+    });
+    const m = el("input", {
+      type: "number", min: "0", step: "1", value: t.max_inflight,
+      style: "width:82px", "aria-label": "Tối đa đồng thời " + t.name
+    });
+    const save = el("button", {
+      class: "sm primary",
+      onclick: () => patch(t.id, { weight: +w.value, max_inflight: +m.value })
+    }, "Lưu");
+    const tog = el("button", {
+      class: "sm",
+      onclick: () => patch(t.id, { disabled: !t.disabled })
+    }, t.disabled ? "Bật lại" : "Vô hiệu hóa");
+    const rot = el("button", {
+      class: "sm",
+      onclick: async () => {
+        if (!confirm("Đổi khóa của " + t.name + "? Khóa cũ sẽ ngừng hoạt động ngay.")) return;
+        const res = await api("/api/tenants/" + encodeURIComponent(t.id) + "/rotate-key", { method: "POST" });
+        if (res.ok) showKey((await res.json()).api_key);
+        else msg("Lỗi: " + (await res.text()));
+      }
+    }, "Đổi khóa");
+
+    const cpy = el("button", {
+      class: "sm",
+      disabled: t.key_copyable ? null : "disabled",
+      title: t.key_copyable ? "Sao chép lại khóa API hiện tại" : "Tenant cũ chưa lưu khóa: bấm Đổi khóa để có khóa sao chép được",
+      onclick: async () => {
+        const res = await api("/api/tenants/" + encodeURIComponent(t.id) + "/key");
+        if (res.ok) showKey((await res.json()).api_key);
+        else msg("Lỗi: " + (await res.text()));
+      }
+    }, "Sao chép khóa");
+
+    const servedCount = servedMap[t.id] || servedMap[t.name] || 0;
+    tb.append(
+      el("tr", {},
+        el("td", { style: "font-weight:600" }, t.name),
+        el("td", { class: "mut mono" }, t.id),
+        shareCell,
+        el("td", { class: "num" }, w),
+        el("td", { class: "num" }, m),
+        el("td", { class: "num" }, String(servedCount)),
+        el("td", {}, el("span", { class: "pill " + (t.disabled ? "err" : "ok") }, t.disabled ? "đã vô hiệu" : "hoạt động")),
+        el("td", { class: "row" }, save, cpy, tog, rot)
+      )
+    );
   }
 }
+
 document.getElementById("add").onsubmit = async e => {
   e.preventDefault();
-  const r = await api("/api/tenants", { method: "POST", body: JSON.stringify({
-    name: document.getElementById("n").value.trim(), weight: +document.getElementById("w").value, max_inflight: +document.getElementById("m").value }) });
-  if (r.status === 201) { const d = await r.json(); showKey(d.api_key); msg("Đã tạo " + d.tenant.name + "."); document.getElementById("n").value = ""; }
-  else msg("Lỗi: " + (await r.text()));
+  const r = await api("/api/tenants", {
+    method: "POST",
+    body: JSON.stringify({
+      name: document.getElementById("n").value.trim(),
+      weight: +document.getElementById("w").value,
+      max_inflight: +document.getElementById("m").value,
+    }),
+  });
+  if (r.status === 201) {
+    const d = await r.json();
+    showKey(d.api_key);
+    msg("Đã tạo tenant " + d.tenant.name + " thành công.");
+    document.getElementById("n").value = "";
+  } else {
+    msg("Lỗi: " + (await r.text()));
+  }
   load();
 };
+
 load();
 </script>
 </body>

@@ -4,6 +4,7 @@ go 1.22
 
 require (
 	github.com/aicf/ai-compute-fabric/contracts/gen/go v0.0.0
+	github.com/aicf/ai-compute-fabric/core/vram-estimator v0.0.0
 	google.golang.org/grpc v1.69.2
 )
 
@@ -16,3 +17,5 @@ require (
 )
 
 replace github.com/aicf/ai-compute-fabric/contracts/gen/go => ../../contracts/gen/go
+
+replace github.com/aicf/ai-compute-fabric/core/vram-estimator => ../../core/vram-estimator

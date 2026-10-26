@@ -107,6 +107,7 @@ func HTTPHandler(f *Fleet) http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	registerEstimatorAndStatsRoutes(mux, f, nil, nil)
 	sub, _ := fs.Sub(webFS, "web")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	return mux

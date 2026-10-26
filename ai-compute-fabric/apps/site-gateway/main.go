@@ -88,6 +88,6 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", inf)
 	mux.HandleFunc("/metrics", inf.Metrics)
-	mux.Handle("/", NewAPI(fleet, store, *adminToken))
+	mux.Handle("/", NewAPI(fleet, store, *adminToken, router))
 	log.Fatal(http.ListenAndServe(*httpAddr, mux))
 }

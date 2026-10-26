@@ -11,9 +11,14 @@ import (
 // NewAPI wraps the fleet API with admin authentication and adds tenant management.
 // Everything under /api/ needs "Authorization: Bearer <admin token>" when a token is
 // configured; the static pages stay public (they hold no data until the token is entered).
-func NewAPI(f *Fleet, ts *TenantStore, adminToken string) http.Handler {
+func NewAPI(f *Fleet, ts *TenantStore, adminToken string, routers ...*Router) http.Handler {
 	inner := HTTPHandler(f)
 	mux := http.NewServeMux()
+	var rt *Router
+	if len(routers) > 0 {
+		rt = routers[0]
+	}
+	registerEstimatorAndStatsRoutes(mux, f, ts, rt)
 	mux.HandleFunc("/api/tenants", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -52,6 +57,17 @@ func NewAPI(f *Fleet, ts *TenantStore, adminToken string) http.Handler {
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"api_key": key, "note": "the previous key no longer works"})
+		case len(parts) == 2 && parts[1] == "key" && r.Method == http.MethodGet:
+			key, err := ts.Reveal(id)
+			switch {
+			case errors.Is(err, ErrNoTenant):
+				http.Error(w, err.Error(), http.StatusNotFound)
+			case err != nil:
+				http.Error(w, err.Error(), http.StatusConflict)
+			default:
+				w.Header().Set("Cache-Control", "no-store")
+				writeJSON(w, http.StatusOK, map[string]any{"api_key": key})
+			}
 		case len(parts) == 1 && r.Method == http.MethodPatch:
 			var in struct {
 				Weight      *float64 `json:"weight"`

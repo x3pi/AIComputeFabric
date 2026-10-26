@@ -23,9 +23,19 @@
       "detail": ""
     },
     {
+      "name": "VRAM estimator renders 6-bucket projection and layer split",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "clicking a heatmap cell opens the 6-bucket worker drawer",
+      "ok": true,
+      "detail": ""
+    },
+    {
       "name": "creating a tenant shows its API key once",
       "ok": true,
-      "detail": "aicf_yvx1…"
+      "detail": "aicf_gypd…"
     },
     {
       "name": "the key is gone from the page after closing",
@@ -45,7 +55,7 @@
     {
       "name": "chat streams an answer through the gateway",
       "ok": true,
-      "detail": "Suy nghĩ của mô hìnhOkay, the user greeted me in Vietnamese with \"Chào bạn, hãy "
+      "detail": "💭 Suy nghĩ của mô hình (Reasoning)Okay, the user greeted me in Vietnamese with "
     },
     {
       "name": "chat shows worker, time to first token and tok/s",

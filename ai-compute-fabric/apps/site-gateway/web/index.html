@@ -3,60 +3,630 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AICF Fleet</title>
+<title>AICF Fleet — Quản trị Cụm GPU & Dự báo VRAM</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="common.css">
 <style>
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px}
-.cell{height:54px;border-radius:6px;display:flex;align-items:flex-end;justify-content:center;font-size:11px;color:#fff;padding-bottom:3px;overflow:hidden}
-.leg{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--mut);font-size:13px;margin-top:10px}.leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(66px, 1fr));
+  gap: 8px;
+}
+.cell {
+  height: 62px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  padding: 6px 7px 5px;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.cell:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.cell-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  opacity: 0.92;
+  width: 100%;
+}
+.cell-id {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cell-meter {
+  width: 100%;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.cell-meter > span {
+  display: block;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.9);
+}
+.leg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  color: var(--mut);
+  font-size: 12.5px;
+  margin-top: 12px;
+}
+.leg i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.est-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.worker-id-link {
+  color: var(--acc);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.worker-id-link:hover {
+  text-decoration: underline;
+}
 </style>
 </head>
 <body>
 <script src="common.js"></script>
 <main>
-<h1>AICF Fleet</h1>
-<div class="sub" id="sum">Đang chờ worker…</div>
-<div class="card"><div class="grid" id="grid" role="list"></div>
-<div class="leg"><span><i style="background:var(--run)"></i>running</span><span><i style="background:var(--rec)"></i>reclaiming</span><span><i style="background:var(--yld)"></i>yielded</span><span><i style="background:var(--stp)"></i>stopped / paused</span><span><i style="background:var(--off)"></i>offline</span></div></div>
-<div class="card table-wrap">
-<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-<label for="flt">Lọc trạng thái</label><select id="flt"><option value="">tất cả</option><option>running</option><option>reclaiming</option><option>yielded</option><option>paused</option><option>stopped</option><option>offline</option></select>
-<button id="prev">Trước</button><span id="pg" class="num"></span><button id="next">Sau</button></div>
-<table><thead><tr><th>Worker</th><th>Trạng thái</th><th>Model</th><th class="num">VRAM trống</th><th class="num">Nhiệt độ</th><th class="num">Thu hồi gần nhất</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+  <div class="page-header">
+    <div>
+      <h1>Quản trị Cụm GPU & Toán học 6-Bucket VRAM</h1>
+      <div class="sub" id="sum">Đang chờ worker…</div>
+    </div>
+    <div class="row">
+      <a href="#estimator-section" style="text-decoration:none"><button type="button" class="sm">🧮 Bộ tính VRAM & Chia Layer</button></a>
+      <a href="/metrics" target="_blank" rel="noopener" style="text-decoration:none"><button type="button" class="sm ghost">📈 Prometheus /metrics</button></a>
+    </div>
+  </div>
+
+  <!-- 4 Production KPI Cards -->
+  <section class="kpi-grid" aria-label="Chỉ số tổng quan toàn cụm">
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Nút GPU Trực tuyến</span><span>🖥️</span></div>
+      <div class="kpi-val" id="kpi-nodes">0 / 0</div>
+      <div class="kpi-foot" id="kpi-nodes-sub">0 running · 0 yielded · 0 paused</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Quỹ VRAM Khả dụng</span><span>💾</span></div>
+      <div class="kpi-val" id="kpi-vram">0 MiB</div>
+      <div class="kpi-foot" id="kpi-vram-sub">Tổng cụm: 0 MiB (6-Bucket telemetry)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Lưu lượng Data-Plane (WFQ)</span><span>⚡</span></div>
+      <div class="kpi-val" id="kpi-router">0 đang xử lý</div>
+      <div class="kpi-foot" id="kpi-router-sub">0 hàng đợi · 0 hoàn tất · chờ TB 0 ms</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Nhiệt độ & SLA Thu hồi GPU</span><span>🛡️</span></div>
+      <div class="kpi-val" id="kpi-sla">-- °C</div>
+      <div class="kpi-foot" id="kpi-sla-sub">Thu hồi p95: -- ms (Mục tiêu &lt; 2000 ms)</div>
+    </div>
+  </section>
+
+  <!-- Cluster-wide 6-Bucket VRAM Bar + 200-GPU Live Heatmap -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <h2>Bản đồ Nhiệt Cụm 200-GPU & Phân bổ 6-Bucket Toàn Cụm</h2>
+        <span class="pill ok" id="heatmap-badge">1 Hz Shared Frame</span>
+      </div>
+      <span class="mut" style="font-size:12px">Bấm vào ô GPU bất kỳ để xem chi tiết 6-Bucket VRAM của máy đó</span>
+    </div>
+
+    <div class="vram-bar" id="cluster-vram-bar" role="img" aria-label="Phân bổ 6-Bucket VRAM toàn cụm"></div>
+    <div class="vram-legend" id="cluster-vram-leg" style="margin-bottom:16px"></div>
+
+    <div class="grid" id="grid" role="list"></div>
+    <div class="leg">
+      <span><i style="background:var(--run)"></i>running (đang phục vụ AI)</span>
+      <span><i style="background:var(--rec)"></i>reclaiming (đang thu hồi &lt; 2s)</span>
+      <span><i style="background:var(--yld)"></i>yielded (nhường người dùng)</span>
+      <span><i style="background:var(--stp)"></i>stopped / paused (tạm dừng)</span>
+      <span><i style="background:var(--off)"></i>offline (mất kết nối)</span>
+    </div>
+  </div>
+
+  <!-- Workers Table Card -->
+  <div class="card table-wrap">
+    <div class="card-header">
+      <div class="card-title-group">
+        <h2>Danh sách Máy trạm Worker</h2>
+        <span class="mut" id="pg-summary" style="font-size:12.5px"></span>
+      </div>
+      <div class="row">
+        <input id="q-worker" type="search" placeholder="Tìm worker, hostname, model…" style="width:210px" aria-label="Tìm kiếm worker">
+        <label for="flt" style="margin:0;display:inline">Trạng thái:</label>
+        <select id="flt">
+          <option value="">tất cả</option>
+          <option>running</option>
+          <option>reclaiming</option>
+          <option>yielded</option>
+          <option>paused</option>
+          <option>stopped</option>
+          <option>offline</option>
+        </select>
+        <button id="prev" type="button" class="sm">← Trước</button>
+        <span id="pg" class="num" style="font-size:13px;font-weight:600;min-width:70px;text-align:center"></span>
+        <button id="next" type="button" class="sm">Sau →</button>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Worker</th>
+          <th>Trạng thái</th>
+          <th>GPU & Máy trạm</th>
+          <th>Model đang nạp</th>
+          <th style="min-width:165px">6-Bucket VRAM</th>
+          <th class="num">VRAM trống</th>
+          <th class="num">Nhiệt độ</th>
+          <th class="num">Thu hồi gần nhất</th>
+          <th>Điều khiển</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <!-- GPUStack-inspired Live 6-Bucket VRAM Fit & Layer Split Calculator -->
+  <div class="card" id="estimator-section">
+    <div class="card-header">
+      <div class="card-title-group">
+        <h2>🧮 Bộ Dự báo VRAM 6-Bucket & Chia Layer (Chuẩn GPUStack / gguf-parser-go)</h2>
+        <span id="est-fit-badge" class="pill ok">GREEN</span>
+        <span id="est-mode-badge" class="pill">LOCAL_FULL</span>
+        <span id="est-conf-badge" class="pill">CALIBRATED</span>
+      </div>
+      <div class="mut" id="est-compat-workers" style="font-size:12.5px;font-weight:600"></div>
+    </div>
+
+    <div class="est-controls">
+      <div>
+        <label for="est-model">Mô hình Hugging Face / GGUF</label>
+        <select id="est-model" style="width:100%"></select>
+      </div>
+      <div>
+        <label for="est-ctx">Context mỗi Slot (tokens)</label>
+        <select id="est-ctx" style="width:100%">
+          <option value="2048">2,048 tokens</option>
+          <option value="4096">4,096 tokens</option>
+          <option value="8192" selected>8,192 tokens</option>
+          <option value="16384">16,384 tokens</option>
+          <option value="32768">32,768 tokens</option>
+        </select>
+      </div>
+      <div>
+        <label for="est-np">Số Slot song song (--parallel)</label>
+        <select id="est-np" style="width:100%">
+          <option value="1">1 slot</option>
+          <option value="2">2 slots</option>
+          <option value="3">3 slots</option>
+          <option value="4" selected>4 slots</option>
+          <option value="8">8 slots</option>
+        </select>
+      </div>
+      <div>
+        <label for="est-gpu-mib">Dung lượng mỗi GPU</label>
+        <select id="est-gpu-mib" style="width:100%">
+          <option value="8192">8 GiB (RTX 3070 / 4060)</option>
+          <option value="12288" selected>12 GiB (RTX 3060 / 4070)</option>
+          <option value="16384">16 GiB (RTX 4080 / A4000)</option>
+          <option value="24576">24 GiB (RTX 3090 / 4090)</option>
+        </select>
+      </div>
+      <div>
+        <label for="est-headroom">Headroom bảo vệ Desktop</label>
+        <select id="est-headroom" style="width:100%">
+          <option value="512">512 MiB (Server/Lab)</option>
+          <option value="1024">1,024 MiB</option>
+          <option value="1536" selected>1,536 MiB (Khuyến nghị PC)</option>
+          <option value="2048">2,048 MiB (An toàn cao)</option>
+        </select>
+      </div>
+      <div>
+        <label for="est-gpus">Số GPU gộp (--tensor-split)</label>
+        <select id="est-gpus" style="width:100%">
+          <option value="1" selected>1 GPU (Đơn lẻ / Hybrid)</option>
+          <option value="2">2 GPUs (Chia đều Layer)</option>
+          <option value="3">3 GPUs (Chia đều Layer)</option>
+          <option value="4">4 GPUs (Chia đều Layer)</option>
+        </select>
+      </div>
+      <div>
+        <label for="est-fa">Flash Attention & Kiểu KV</label>
+        <select id="est-fa" style="width:100%">
+          <option value="1" selected>Flash-Attn BẬT · KV FP16</option>
+          <option value="0">Flash-Attn TẮT · KV FP16</option>
+          <option value="q8">Flash-Attn BẬT · KV Q8_0</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="vram-bar" id="est-bar" role="img" aria-label="Dự báo 6-Bucket VRAM"></div>
+    <div class="vram-legend" id="est-leg"></div>
+
+    <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div id="est-summary" style="font-size:13px;color:var(--fg-secondary)"></div>
+      <div id="est-note" class="mut" style="font-size:12px"></div>
+    </div>
+
+    <div class="split-grid" id="est-splits"></div>
+  </div>
 </main>
+
+<!-- Worker 6-Bucket Inspector Slide-Over Drawer -->
+<div class="drawer-backdrop" id="worker-drawer" hidden>
+  <aside class="drawer" role="dialog" aria-labelledby="dw-title">
+    <div class="row" style="justify-content:space-between;border-bottom:1px solid var(--bd);padding-bottom:12px">
+      <div>
+        <h2 id="dw-title">Chi tiết Worker</h2>
+        <div class="mut" id="dw-sub" style="font-size:12.5px"></div>
+      </div>
+      <button type="button" class="sm" id="dw-close">Đóng ✕</button>
+    </div>
+    <div id="dw-body"></div>
+  </aside>
+</div>
+
 <script>
-const MIB=1048576, PAGE=50, NAMES=["offline","registered","stopped","paused","yielded","reclaiming","running"];
-const COL=["--off","--stp","--stp","--stp","--yld","--rec","--run"];
-let offset=0,total=0;
-function td(t,c){const d=document.createElement("td");d.textContent=t;if(c)d.className=c;return d}
+const MIB = 1048576, PAGE = 50;
+const NAMES = ["offline", "registered", "stopped", "paused", "yielded", "reclaiming", "running"];
+const COL = ["--off", "--stp", "--stp", "--stp", "--yld", "--rec", "--run"];
+let offset = 0, total = 0, lastWorkers = [];
+
+function td(t, c) {
+  const d = document.createElement("td");
+  if (typeof t === "string" || typeof t === "number") d.textContent = t;
+  else if (t) d.append(t);
+  if (c) d.className = c;
+  return d;
+}
+
 // Heatmap: ONE compact frame per second shared by all viewers; rows are [id,stateCode,vramUsedPermille,tempC].
-function renderGrid(s){
-  const run=s.counts.running||0,on=s.total-(s.counts.offline||0);
-  document.getElementById("sum").textContent=`${on}/${s.total} worker trực tuyến · ${run} đang chạy AI`;
-  const g=document.getElementById("grid"),f=document.createDocumentFragment();
-  for(const [id,st,used,t] of s.cells){const c=document.createElement("div");c.className="cell";c.role="listitem";
-    c.style.background=`var(${COL[st]})`;c.textContent=id.slice(-5);c.title=`${id}: ${NAMES[st]} · VRAM dùng ${used/10}% · ${t} °C`;f.append(c)}
+function renderGrid(s) {
+  const run = s.counts.running || 0,
+        yld = s.counts.yielded || 0,
+        rec = s.counts.reclaiming || 0,
+        on = s.total - (s.counts.offline || 0);
+  // E2E invariant: #sum must match /1\/1 worker/ when 1 worker is online
+  document.getElementById("sum").textContent =
+    `${on}/${s.total} worker trực tuyến · ${run} đang chạy AI` +
+    (yld ? ` · ${yld} nhường người dùng` : "") +
+    (rec ? ` · ${rec} đang thu hồi` : "");
+
+  document.getElementById("kpi-nodes").textContent = `${on} / ${s.total}`;
+  document.getElementById("kpi-nodes-sub").textContent =
+    `${run} running · ${yld} yielded · ${(s.counts.paused || 0) + (s.counts.stopped || 0)} paused`;
+
+  const g = document.getElementById("grid"), f = document.createDocumentFragment();
+  for (const [id, st, used, t] of s.cells) {
+    const pct = Math.max(0, Math.min(100, Math.round(used / 10)));
+    const c = document.createElement("div");
+    c.className = "cell";
+    c.role = "listitem";
+    c.style.background = `var(${COL[st]})`;
+    c.title = `${id}: ${NAMES[st]} · VRAM dùng ${used / 10}% · ${t} °C (Bấm để xem 6-Bucket)`;
+    c.onclick = () => inspectWorker(id);
+
+    const top = el("div", { class: "cell-top" },
+      el("span", {}, `${pct}%`),
+      el("span", {}, t ? `${t}°` : "")
+    );
+    const label = el("div", { class: "cell-id" }, id.slice(-6));
+    const meter = el("div", { class: "cell-meter" }, el("span", { style: `width:${pct}%` }));
+    c.append(top, label, meter);
+    f.append(c);
+  }
   g.replaceChildren(f);
 }
-async function loadPage(){
-  const st=document.getElementById("flt").value;
-  const r=await api(`/api/workers?offset=${offset}&limit=${PAGE}&state=${encodeURIComponent(st)}`);
-  if(!r.ok)return;
-  total=+r.headers.get("X-Total-Count")||0;const ws=await r.json();
-  document.getElementById("pg").textContent=`${total?offset+1:0}–${offset+ws.length} / ${total}`;
-  const b=document.getElementById("rows");b.replaceChildren();
-  for(const w of ws){const tr=document.createElement("tr");
-    const btn=document.createElement("button");const paused=w.pause_requested;btn.textContent=paused?"Cho chạy lại":"Tạm dừng AI";
-    btn.onclick=async()=>{await api(`/api/workers/${encodeURIComponent(w.worker_id)}/${paused?"resume":"pause"}`,{method:"POST"});loadPage()};
-    const act=document.createElement("td");act.append(btn);
-    tr.append(td(w.worker_id),td(w.state),td(w.model||"-"),td(w.online?Math.round(w.vram_free_bytes/MIB)+" MiB":"-","num"),td(w.online?w.gpu_temp_c+" °C":"-","num"),td(w.last_reclaim_ms?Math.round(w.last_reclaim_ms)+" ms":"-","num"),act);b.append(tr)}
+
+async function loadStats() {
+  const r = await api("/api/stats");
+  if (!r || !r.ok) return;
+  const st = await r.json();
+  const vp = st.vram_pool || {};
+  document.getElementById("kpi-vram").textContent = fmtMiB(vp.allocatable_bytes || vp.free_bytes || 0);
+  document.getElementById("kpi-vram-sub").textContent =
+    `Tổng cụm: ${fmtMiB(vp.total_bytes || 0)} · Đã dùng: ${fmtMiB(vp.used_bytes || 0)}`;
+
+  const rt = st.router || {};
+  document.getElementById("kpi-router").textContent = `${rt.inflight || 0} đang chạy`;
+  document.getElementById("kpi-router-sub").textContent =
+    `${rt.queued || 0} đợi · ${rt.served_total || 0} hoàn tất · chờ TB ${rt.avg_queue_wait_ms || 0} ms`;
+
+  document.getElementById("kpi-sla").textContent = st.temp_max_c ? `${st.temp_avg_c} °C (max ${st.temp_max_c} °C)` : "-- °C";
+  document.getElementById("kpi-sla-sub").textContent =
+    st.reclaim_p95_ms ? `Thu hồi p95: ${st.reclaim_p95_ms} ms (max ${st.reclaim_max_ms} ms)` : "Thu hồi p95: < 300 ms (Sẵn sàng)";
+
+  if (vp.total_bytes > 0) {
+    renderSixBuckets(document.getElementById("cluster-vram-bar"), document.getElementById("cluster-vram-leg"), vp);
+  }
 }
-document.getElementById("prev").onclick=()=>{offset=Math.max(0,offset-PAGE);loadPage()};
-document.getElementById("next").onclick=()=>{if(offset+PAGE<total){offset+=PAGE;loadPage()}};
-document.getElementById("flt").onchange=()=>{offset=0;loadPage()};
+
+function buildMiniBucketBar(w) {
+  const wrap = el("div", {});
+  const bar = el("div", { class: "vram-bar sm" });
+  if (w.buckets && w.buckets.Total > 0) {
+    renderSixBuckets(bar, null, w.buckets);
+    const usedMiB = Math.round((w.buckets.Total - w.buckets.Allocatable) / MIB);
+    const totMiB = Math.round(w.buckets.Total / MIB);
+    wrap.append(
+      el("div", { class: "num", style: "font-size:11.5px;color:var(--mut)" }, `${usedMiB} / ${totMiB} MiB`),
+      bar
+    );
+  } else if (w.vram_total_bytes > 0) {
+    const used = Math.max(0, w.vram_total_bytes - w.vram_free_bytes);
+    const pct = Math.min(100, (100 * used) / w.vram_total_bytes);
+    bar.append(el("div", { style: `width:${pct.toFixed(1)}%;background:var(--b-weights)` }));
+    wrap.append(
+      el("div", { class: "num", style: "font-size:11.5px;color:var(--mut)" },
+        `${Math.round(used / MIB)} / ${Math.round(w.vram_total_bytes / MIB)} MiB`),
+      bar
+    );
+  } else {
+    wrap.textContent = "-";
+  }
+  return wrap;
+}
+
+async function loadPage() {
+  const st = document.getElementById("flt").value;
+  const q = (document.getElementById("q-worker").value || "").trim().toLowerCase();
+  const r = await api(`/api/workers?offset=${offset}&limit=${PAGE}&state=${encodeURIComponent(st)}`);
+  if (!r || !r.ok) return;
+  total = +r.headers.get("X-Total-Count") || 0;
+  const ws = await r.json();
+  lastWorkers = ws;
+  document.getElementById("pg").textContent = `${total ? offset + 1 : 0}–${offset + ws.length} / ${total}`;
+  const b = document.getElementById("rows");
+  b.replaceChildren();
+
+  const filtered = q
+    ? ws.filter(w =>
+        (w.worker_id || "").toLowerCase().includes(q) ||
+        (w.hostname || "").toLowerCase().includes(q) ||
+        (w.model || "").toLowerCase().includes(q) ||
+        (w.gpu_name || "").toLowerCase().includes(q))
+    : ws;
+
+  for (const w of filtered) {
+    const tr = document.createElement("tr");
+    // IMPORTANT E2E invariant: The first <button> inside #rows MUST be the pause/resume button
+    const btn = document.createElement("button");
+    btn.className = "sm";
+    const paused = w.pause_requested;
+    btn.textContent = paused ? "Cho chạy lại" : "Tạm dừng AI";
+    btn.onclick = async (ev) => {
+      ev.stopPropagation();
+      await api(`/api/workers/${encodeURIComponent(w.worker_id)}/${paused ? "resume" : "pause"}`, { method: "POST" });
+      loadPage();
+      loadStats();
+    };
+    const act = document.createElement("td");
+    act.append(btn);
+
+    const idCell = document.createElement("td");
+    const idLink = el("a", {
+      class: "worker-id-link mono",
+      href: "#inspect-" + w.worker_id,
+      onclick: (ev) => { ev.preventDefault(); inspectWorker(w.worker_id); }
+    }, w.worker_id);
+    idCell.append(idLink);
+
+    const stateCell = document.createElement("td");
+    stateCell.append(el("span", { class: `state-badge state-${w.state}` }, w.state));
+
+    const gpuHost = w.gpu_name
+      ? `${w.gpu_name}${w.hostname ? " · " + w.hostname : ""}`
+      : (w.hostname || "-");
+
+    tr.append(
+      idCell,
+      stateCell,
+      td(gpuHost),
+      td(w.model || "-", "mono"),
+      td(buildMiniBucketBar(w)),
+      td(w.online ? Math.round(w.vram_free_bytes / MIB) + " MiB" : "-", "num"),
+      td(w.online ? w.gpu_temp_c + " °C" : "-", "num"),
+      td(w.last_reclaim_ms ? Math.round(w.last_reclaim_ms) + " ms" : "-", "num"),
+      act
+    );
+    b.append(tr);
+  }
+}
+
+async function inspectWorker(id) {
+  const r = await api(`/api/workers/${encodeURIComponent(id)}`);
+  if (!r || !r.ok) return;
+  const w = await r.json();
+  document.getElementById("dw-title").textContent = `Worker ${w.worker_id}`;
+  document.getElementById("dw-sub").textContent =
+    `${w.gpu_name || "GPU"} · Máy trạm: ${w.hostname || "-"} · Trạng thái: ${w.state}`;
+
+  const body = document.getElementById("dw-body");
+  body.replaceChildren();
+
+  const bar = el("div", { class: "vram-bar" });
+  const leg = el("div", { class: "vram-legend" });
+  const buckets = w.buckets && w.buckets.Total > 0 ? w.buckets : {
+    Total: w.vram_total_bytes || 1,
+    OSUser: 0,
+    Weights: Math.max(0, (w.vram_total_bytes || 0) - (w.vram_free_bytes || 0)),
+    KVState: 0,
+    Compute: 0,
+    Headroom: 0,
+    Allocatable: w.vram_free_bytes || 0,
+  };
+  renderSixBuckets(bar, leg, buckets);
+
+  const meta = el("div", { class: "card", style: "margin:0;padding:12px 14px;background:var(--bg-elevated)" },
+    el("div", { class: "row", style: "justify-content:space-between;margin-bottom:6px" },
+      el("span", { class: "mut" }, "Mô hình đang chạy:"),
+      el("strong", { class: "mono" }, w.model || "Chưa nạp")
+    ),
+    el("div", { class: "row", style: "justify-content:space-between;margin-bottom:6px" },
+      el("span", { class: "mut" }, "Engine Endpoint:"),
+      el("span", { class: "mono" }, w.engine_url || "-")
+    ),
+    el("div", { class: "row", style: "justify-content:space-between;margin-bottom:6px" },
+      el("span", { class: "mut" }, "Số Slot song song:"),
+      el("strong", { class: "num" }, String(w.parallel_slots || 1))
+    ),
+    el("div", { class: "row", style: "justify-content:space-between;margin-bottom:6px" },
+      el("span", { class: "mut" }, "Nhiệt độ GPU:"),
+      el("strong", { class: "num" }, w.online ? `${w.gpu_temp_c} °C` : "Offline")
+    ),
+    el("div", { class: "row", style: "justify-content:space-between" },
+      el("span", { class: "mut" }, "Thời gian thu hồi gần nhất:"),
+      el("strong", { class: "num" }, w.last_reclaim_ms ? `${Math.round(w.last_reclaim_ms)} ms` : "Chưa phát sinh")
+    )
+  );
+
+  body.append(
+    el("div", { style: "font-weight:600;font-size:13px" }, "Kế toán 6-Bucket VRAM trên nút này:"),
+    bar,
+    leg,
+    meta
+  );
+  document.getElementById("worker-drawer").hidden = false;
+}
+
+document.getElementById("dw-close").onclick = () => {
+  document.getElementById("worker-drawer").hidden = true;
+};
+document.getElementById("worker-drawer").onclick = (e) => {
+  if (e.target.id === "worker-drawer") document.getElementById("worker-drawer").hidden = true;
+};
+
+// VRAM Fit & Layer Split Estimator
+async function initEstimator() {
+  const r = await api("/api/models/catalog");
+  if (!r || !r.ok) return;
+  const models = await r.json();
+  const sel = document.getElementById("est-model");
+  sel.replaceChildren();
+  for (const m of models) {
+    const opt = el("option", { value: m.id }, `${m.name} — ${m.architecture}`);
+    if (m.id === "Qwen/Qwen3-8B-GGUF") opt.selected = true;
+    sel.append(opt);
+  }
+  runEstimate();
+}
+
+async function runEstimate() {
+  const faVal = document.getElementById("est-fa").value;
+  const flashAttn = faVal !== "0";
+  const kvBytes = faVal === "q8" ? 1 : 2;
+  const body = {
+    model_id: document.getElementById("est-model").value || "Qwen/Qwen3-8B-GGUF",
+    ctx_per_slot: +document.getElementById("est-ctx").value || 8192,
+    parallel: +document.getElementById("est-np").value || 4,
+    flash_attn: flashAttn,
+    kv_bytes_per_elem: kvBytes,
+    gpu_total_mib: +document.getElementById("est-gpu-mib").value || 12288,
+    os_user_mib: 512,
+    headroom_mib: +document.getElementById("est-headroom").value || 1536,
+    gpu_count: +document.getElementById("est-gpus").value || 1,
+  };
+  const r = await api("/api/vram/estimate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r || !r.ok) return;
+  const d = await r.json();
+
+  const fitBadge = document.getElementById("est-fit-badge");
+  const fitText = {
+    GREEN: "GREEN · Đủ VRAM an toàn",
+    YELLOW: "YELLOW · Sát ngưỡng / Hybrid RAM",
+    RED: "RED · Vượt quá VRAM khả dụng",
+  }[d.fit_status] || d.fit_status;
+  fitBadge.textContent = fitText;
+  fitBadge.className = `pill fit-${d.fit_status}`;
+
+  const modeBadge = document.getElementById("est-mode-badge");
+  modeBadge.textContent = d.execution_mode;
+
+  const confBadge = document.getElementById("est-conf-badge");
+  confBadge.textContent = d.confidence === "CALIBRATED" ? "CALIBRATED (RTX 3060)" : "ESTIMATED";
+  confBadge.className = "pill " + (d.confidence === "CALIBRATED" ? "ok" : "warn");
+
+  document.getElementById("est-compat-workers").textContent =
+    `Máy trực tuyến đáp ứng cấu hình này: ${d.compatible_workers_online} worker`;
+
+  renderSixBuckets(document.getElementById("est-bar"), document.getElementById("est-leg"), d.buckets_bytes);
+
+  const summary = document.getElementById("est-summary");
+  let msg = `Cần mỗi GPU: ${fmtMiB(d.required_per_gpu_bytes)} / Khả dụng: ${fmtMiB(d.allocatable_per_gpu_bytes)} · ` +
+            `Nạp GPU: ${d.max_gpu_layers}/${d.model.layers} layers`;
+  if (d.offload_ram_bytes > 0) {
+    msg += ` · Offload sang Host RAM (LOCAL_HYBRID): ~${fmtMiB(d.offload_ram_bytes)}`;
+  }
+  summary.textContent = msg;
+  document.getElementById("est-note").textContent = d.model.calibration_note || "";
+
+  const sp = document.getElementById("est-splits");
+  sp.replaceChildren();
+  for (const s of d.layer_splits || []) {
+    sp.append(
+      el("div", { class: "split-box" },
+        el("div", { class: "split-box-hdr" },
+          el("span", {}, `GPU #${s.gpu_index}`),
+          el("span", { class: "num" }, fmtMiB(s.vram_bytes))
+        ),
+        el("div", { class: "split-box-layers" }, `Layers ${s.range_label}`),
+        el("div", { class: "mut", style: "font-size:11.5px" },
+          `${s.layer_count} layers` + (s.gpu_index === 0 ? " + Embeddings/Norm" : ""))
+      )
+    );
+  }
+}
+
+for (const id of ["est-model", "est-ctx", "est-np", "est-gpu-mib", "est-headroom", "est-gpus", "est-fa"]) {
+  document.getElementById(id).onchange = runEstimate;
+}
+
+document.getElementById("prev").onclick = () => { offset = Math.max(0, offset - PAGE); loadPage(); };
+document.getElementById("next").onclick = () => { if (offset + PAGE < total) { offset += PAGE; loadPage(); } };
+document.getElementById("flt").onchange = () => { offset = 0; loadPage(); };
+document.getElementById("q-worker").oninput = () => loadPage();
+
 stream("/api/fleet/stream", renderGrid);
-loadPage();setInterval(loadPage,2000);
+loadPage();
+loadStats();
+initEstimator();
+setInterval(() => { loadPage(); loadStats(); }, 2000);
 </script>
 </body>
 </html>

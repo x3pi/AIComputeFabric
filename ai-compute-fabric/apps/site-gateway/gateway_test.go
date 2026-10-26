@@ -180,3 +180,93 @@ func TestPaginationFilterAndSharedFrame(t *testing.T) {
 		t.Fatalf("unknown detail: %d", rec.Code)
 	}
 }
+
+func TestVRAMEstimatorCatalogAndClusterStats(t *testing.T) {
+	_, reg, _ := rig(t)
+	reg.Register(&pb.RegisterRequest{
+		WorkerId: "pc-001", Hostname: "ws-01", GpuName: "NVIDIA GeForce RTX 3060", VramTotalBytes: 12 << 30, EngineUrl: "http://127.0.0.1:18590", ParallelSlots: 4,
+	})
+	reg.Heartbeat(&pb.HeartbeatRequest{
+		State: "running", Model: "Qwen3-8B-Q4_K_M.gguf", GpuTempC: 64,
+		LastReclaim: &pb.ReclaimStat{DetectToFreedMs: 280},
+		Capacity: &pb.WorkerCapacity{
+			WorkerId: "pc-001", VramFreeBytes: 6 << 30,
+			Vram: &pb.VramBuckets{
+				TotalBytes:       12 << 30,
+				OsUserBytes:      512 << 20,
+				WeightsBytes:     4455 << 20,
+				KvStateBytes:     1152 << 20,
+				ComputeBytes:     245 << 20,
+				HeadroomBytes:    1536 << 20,
+				AllocatableBytes: 4388 << 20,
+			},
+		},
+	})
+	f := NewFleet(reg)
+	store, _ := NewTenantStore("")
+	store.Create("eng", 2, 4)
+	rt := NewRouter(RouterConfig{MaxQueue: 16, MaxWait: time.Second, Fair: true, Policy: store.Policy}, reg)
+	h := NewAPI(f, store, "", rt)
+
+	// 1. Model catalog
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/models/catalog", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("catalog status %d", rec.Code)
+	}
+	var cat []CatalogModel
+	if err := json.Unmarshal(rec.Body.Bytes(), &cat); err != nil || len(cat) < 5 {
+		t.Fatalf("catalog decode: %v len=%d", err, len(cat))
+	}
+
+	// 2. Single-GPU GREEN fit (Qwen3-8B @ 8k, np=2, flash_attn=true on 12 GiB)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/vram/estimate?model_id=Qwen/Qwen3-8B-GGUF&ctx_per_slot=8192&parallel=2&flash_attn=true&gpu_total_mib=12288&headroom_mib=1536&os_user_mib=512", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("estimate GET status %d", rec.Code)
+	}
+	var est EstimateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &est); err != nil {
+		t.Fatalf("estimate decode: %v", err)
+	}
+	if est.FitStatus != "GREEN" || est.ExecutionMode != "LOCAL_FULL" || !est.FitsEntirely || est.CompatibleWorkersOnline != 1 {
+		t.Fatalf("unexpected estimate for Qwen3-8B: %+v", est)
+	}
+
+	// 3. Hybrid CPU+GPU offload (Qwen2.5-32B on 1x 12 GiB GPU -> LOCAL_HYBRID / YELLOW)
+	rec = httptest.NewRecorder()
+	body := `{"model_id":"Qwen/Qwen2.5-32B-Instruct-GGUF","ctx_per_slot":4096,"parallel":1,"flash_attn":true,"gpu_total_mib":12288,"os_user_mib":512,"headroom_mib":1536,"gpu_count":1}`
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/vram/estimate", strings.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("estimate POST status %d", rec.Code)
+	}
+	json.Unmarshal(rec.Body.Bytes(), &est)
+	if est.ExecutionMode != "LOCAL_HYBRID" || est.FitStatus != "YELLOW" || est.MaxGPULayers == 0 || est.MaxGPULayers >= 64 || est.OffloadRAMBytes == 0 {
+		t.Fatalf("expected LOCAL_HYBRID for 32B on 12GB, got mode=%s fit=%s maxLayers=%d offloadRAM=%d",
+			est.ExecutionMode, est.FitStatus, est.MaxGPULayers, est.OffloadRAMBytes)
+	}
+
+	// 4. Multi-GPU split (Qwen2.5-32B across 3 GPUs -> ranges 0-21, 22-42, 43-63)
+	rec = httptest.NewRecorder()
+	body3 := `{"model_id":"Qwen/Qwen2.5-32B-Instruct-GGUF","ctx_per_slot":4096,"parallel":2,"flash_attn":true,"gpu_total_mib":12288,"os_user_mib":512,"headroom_mib":1536,"gpu_count":3}`
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/vram/estimate", strings.NewReader(body3)))
+	json.Unmarshal(rec.Body.Bytes(), &est)
+	if est.ExecutionMode != "DISTRIBUTED_MODEL" || len(est.LayerSplits) != 3 ||
+		est.LayerSplits[0].RangeLabel != "0-21" || est.LayerSplits[1].RangeLabel != "22-42" || est.LayerSplits[2].RangeLabel != "43-63" {
+		t.Fatalf("unexpected 3-GPU split: %+v", est.LayerSplits)
+	}
+
+	// 5. Cluster stats endpoint
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/stats", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stats status %d", rec.Code)
+	}
+	var st ClusterStatsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &st); err != nil {
+		t.Fatalf("stats decode: %v", err)
+	}
+	if st.WorkersTotal != 1 || st.WorkersRunning != 1 || st.TenantsActive != 1 || st.TempMaxC != 64 || st.VRAMPool.Total != 12<<30 {
+		t.Fatalf("unexpected cluster stats: %+v", st)
+	}
+}

@@ -55,6 +55,12 @@ try {
   check("fleet page shows the worker on the heatmap", /1\/1 worker/.test(summary), summary);
   await page.waitForSelector("#rows tr td", { timeout: 10000 });
   check("fleet table lists pc-001 as running", /pc-001/.test(await page.textContent("#rows")) && /running/.test(await page.textContent("#rows")));
+  await page.waitForSelector("#est-splits .split-box", { timeout: 10000 });
+  check("VRAM estimator renders 6-bucket projection and layer split", /GREEN|YELLOW/.test(await page.textContent("#est-fit-badge")) && (await page.locator("#est-bar div").count()) === 6);
+  await page.click("#grid .cell");
+  await page.waitForSelector("#worker-drawer:not([hidden])", { timeout: 5000 });
+  check("clicking a heatmap cell opens the 6-bucket worker drawer", /pc-001/.test(await page.textContent("#dw-title")));
+  await page.click("#dw-close");
 
   // 2. tenants page
   await page.goto(BASE + "/tenants.html");

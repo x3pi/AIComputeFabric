@@ -3,95 +3,263 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AICF Chat thử</title>
+<title>AICF Playground — Chat & Kiểm thử Tải Đồng thời</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="common.css">
 <style>
-.msg{padding:10px 12px;border-radius:8px;margin:8px 0;white-space:pre-wrap;word-break:break-word}
-.user{background:var(--bg);border:1px solid var(--bd)}.bot{background:var(--card);border:1px solid var(--bd)}
-details.think{color:var(--mut);margin:4px 0;font-size:13px}
-.stats{display:flex;gap:16px;flex-wrap:wrap;color:var(--mut);font-size:13px;margin-top:6px}
+.playground-layout {
+  display: grid;
+  grid-template-columns: 310px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .playground-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.config-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+#log {
+  min-height: 340px;
+  max-height: 540px;
+  overflow-y: auto;
+  padding: 6px 2px;
+}
+.msg {
+  padding: 12px 15px;
+  border-radius: 10px;
+  margin: 10px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.55;
+}
+.user {
+  background: var(--acc-soft);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  font-weight: 500;
+}
+.bot {
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+}
+details.think {
+  color: var(--mut);
+  background: var(--card);
+  border: 1px dashed var(--bd-strong);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 0 0 8px;
+  font-size: 12.5px;
+}
+details.think summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--mut);
+  font-size: 12px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--bd);
+}
+.stats span {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  padding: 2px 9px;
+  border-radius: 99px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
 </style>
 </head>
 <body>
 <script src="common.js"></script>
 <main>
-<h1>Chat thử</h1>
-<div class="sub">Gửi yêu cầu thật qua gateway tới một worker. Dán khóa API của tenant (hoặc để trống nếu gateway chạy chế độ dev, khi đó dùng ô "Tenant").</div>
-<div class="card">
-  <div class="row">
-    <div class="grow"><label for="key">Khóa API (aicf_…)</label><input id="key" type="password" autocomplete="off" style="width:100%"></div>
-    <div><label for="tenant">Tenant (chỉ chế độ dev)</label><input id="tenant" value="demo" style="width:120px"></div>
-    <div><label for="prio">Ưu tiên</label><select id="prio"><option value="">tương tác</option><option value="batch">nền (batch)</option></select></div>
-    <div><label for="ddl">Hạn chờ (ms, 0 = mặc định)</label><input id="ddl" type="number" min="0" value="0" style="width:110px"></div>
+  <div class="page-header">
+    <div>
+      <h1>AI Playground & Kiểm thử Tải Đồng thời (OpenAI-Compatible)</h1>
+      <div class="sub">Gửi yêu cầu suy luận trực tiếp qua <code>POST /v1/chat/completions</code> tới worker thực tế. Kiểm chứng định tuyến KV-cache session affinity, ưu tiên Interactive/Batch, Deadline SLA và khả năng chịu tải đồng thời.</div>
+    </div>
   </div>
-</div>
-<div class="card">
-  <div id="log" aria-live="polite"></div>
-  <form id="f" style="margin-top:8px">
-    <label for="q">Câu hỏi</label>
-    <textarea id="q" rows="3" required>Giải thích ngắn gọn vì sao nên dùng chung GPU trong văn phòng?</textarea>
-    <div class="row" style="margin-top:8px"><button class="primary" id="send">Gửi</button><button type="button" id="stop" disabled>Dừng</button>
-    <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="burst"> gửi 8 yêu cầu cùng lúc</label></div>
-  </form>
-</div>
+
+  <div class="playground-layout">
+    <!-- Left Sidebar: Request & QoS Config -->
+    <aside class="card config-stack">
+      <div class="card-header" style="margin-bottom:4px">
+        <h2>Cấu hình Phiên & QoS</h2>
+      </div>
+      <div>
+        <label for="key">Khóa API Tenant (aicf_…)</label>
+        <input id="key" type="password" autocomplete="off" placeholder="aicf_..." style="width:100%">
+      </div>
+      <div>
+        <label for="tenant">Tenant (chỉ chế độ dev)</label>
+        <input id="tenant" value="demo" style="width:100%">
+      </div>
+      <div>
+        <label for="prio">Lớp Ưu tiên (X-Priority)</label>
+        <select id="prio" style="width:100%">
+          <option value="">tương tác (Interactive — ưu tiên cao)</option>
+          <option value="batch">nền (Batch — xếp sau Interactive)</option>
+        </select>
+      </div>
+      <div>
+        <label for="ddl">Hạn chờ tối đa (ms, 0 = mặc định)</label>
+        <input id="ddl" type="number" min="0" value="0" style="width:100%">
+      </div>
+      <div style="padding-top:6px;border-top:1px solid var(--bd)">
+        <label>Mẫu câu hỏi nhanh</label>
+        <div class="row" style="gap:6px">
+          <button type="button" class="sm" onclick="setPrompt('Giải thích ngắn gọn vì sao nên dùng chung GPU trong văn phòng?')">Tóm tắt lợi ích</button>
+          <button type="button" class="sm" onclick="setPrompt('Viết hàm Go kiểm tra sức khỏe HTTP endpoint với timeout 2 giây.')">Sinh mã Go</button>
+          <button type="button" class="sm ghost" onclick="document.getElementById('log').replaceChildren()">Xóa lịch sử</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Right Area: Streaming Chat & Burst Runner -->
+    <section class="card">
+      <div class="card-header">
+        <h2>Luồng Phản hồi Trực tiếp (SSE Streaming)</h2>
+        <span class="pill ok">POST /v1/chat/completions</span>
+      </div>
+      <div id="log" aria-live="polite"></div>
+      <form id="f" style="margin-top:12px;border-top:1px solid var(--bd);padding-top:12px">
+        <label for="q">Câu hỏi / Prompt gửi tới mô hình</label>
+        <textarea id="q" rows="3" required>Giải thích ngắn gọn vì sao nên dùng chung GPU trong văn phòng?</textarea>
+        <div class="row" style="margin-top:10px;justify-content:space-between">
+          <div class="row">
+            <button class="primary" id="send">▶ Gửi yêu cầu</button>
+            <button type="button" id="stop" disabled>⏹ Dừng</button>
+          </div>
+          <label style="display:flex;gap:7px;align-items:center;margin:0;cursor:pointer;font-weight:600">
+            <input type="checkbox" id="burst"> ⚡ Gửi 8 yêu cầu cùng lúc (Kiểm thử tải WFQ &amp; Slot)
+          </label>
+        </div>
+      </form>
+    </section>
+  </div>
 </main>
 <script>
 const $ = id => document.getElementById(id);
 $("key").value = store.get("aicf_key");
 let ctl = null;
-function addMsg(cls, text) { const d = el("div", { class: "msg " + cls }, text); $("log").append(d); d.scrollIntoView({ block: "end" }); return d; }
+
+function setPrompt(txt) {
+  $("q").value = txt;
+  $("q").focus();
+}
+
+function addMsg(cls, text) {
+  const d = el("div", { class: "msg " + cls }, text);
+  $("log").append(d);
+  d.scrollIntoView({ block: "end" });
+  return d;
+}
+
 async function ask(question) {
   store.set("aicf_key", $("key").value);
   addMsg("user", question);
   const bot = addMsg("bot", "");
-  const think = el("details", { class: "think" }, el("summary", {}, "Suy nghĩ của mô hình")), thinkText = el("div"), answer = el("div");
-  think.append(thinkText); think.hidden = true; bot.append(think, answer);
-  const stats = el("div", { class: "stats" }); bot.append(stats);
+  const think = el("details", { class: "think" }, el("summary", {}, "💭 Suy nghĩ của mô hình (Reasoning)")),
+        thinkText = el("div"),
+        answer = el("div");
+  think.append(thinkText);
+  think.hidden = true;
+  bot.append(think, answer);
+  const stats = el("div", { class: "stats" });
+  bot.append(stats);
+
   const headers = { "Content-Type": "application/json" };
-  if ($("key").value) headers["Authorization"] = "Bearer " + $("key").value; else headers["X-Tenant-ID"] = $("tenant").value || "demo";
+  if ($("key").value) headers["Authorization"] = "Bearer " + $("key").value;
+  else headers["X-Tenant-ID"] = $("tenant").value || "demo";
   if ($("prio").value) headers["X-Priority"] = $("prio").value;
   if (+$("ddl").value > 0) headers["X-Deadline-Ms"] = $("ddl").value;
-  const t0 = performance.now(); let first = 0, n = 0;
+
+  const t0 = performance.now();
+  let first = 0, n = 0;
   try {
-    const r = await fetch("/v1/chat/completions", { method: "POST", headers, signal: ctl.signal,
-      body: JSON.stringify({ stream: true, max_tokens: 400, messages: [{ role: "user", content: question }] }) });
+    const r = await fetch("/v1/chat/completions", {
+      method: "POST",
+      headers,
+      signal: ctl.signal,
+      body: JSON.stringify({
+        stream: true,
+        max_tokens: 400,
+        messages: [{ role: "user", content: question }],
+      }),
+    });
     const wk = r.headers.get("X-AICF-Worker");
     if (!r.ok) {
-      let m = ""; try { m = (await r.json()).error.message; } catch {}
+      let m = "";
+      try { m = (await r.json()).error.message; } catch {}
       const ra = r.headers.get("Retry-After");
-      answer.className = "err"; answer.textContent = `${r.status}: ${m || r.statusText}` + (ra ? ` — thử lại sau ${ra}s` : "");
+      answer.className = "err";
+      answer.textContent = `${r.status}: ${m || r.statusText}` + (ra ? ` — thử lại sau ${ra}s` : "");
       return;
     }
-    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "";
     for (;;) {
-      const { value, done } = await reader.read(); if (done) break;
+      const { value, done } = await reader.read();
+      if (done) break;
       buf += dec.decode(value, { stream: true });
       let i;
       while ((i = buf.indexOf("\n\n")) >= 0) {
-        const ev = buf.slice(0, i); buf = buf.slice(i + 2);
+        const ev = buf.slice(0, i);
+        buf = buf.slice(i + 2);
         if (!ev.startsWith("data: ") || ev.startsWith("data: [DONE]")) continue;
-        let d; try { d = JSON.parse(ev.slice(6)).choices[0].delta; } catch { continue; }
-        if (d.reasoning_content) { think.hidden = false; thinkText.textContent += d.reasoning_content; n++; }
-        if (d.content) { answer.textContent += d.content; n++; }
+        let d;
+        try { d = JSON.parse(ev.slice(6)).choices[0].delta; } catch { continue; }
+        if (d.reasoning_content) {
+          think.hidden = false;
+          thinkText.textContent += d.reasoning_content;
+          n++;
+        }
+        if (d.content) {
+          answer.textContent += d.content;
+          n++;
+        }
         if (n && !first) first = performance.now() - t0;
       }
     }
     const total = (performance.now() - t0) / 1000;
-    stats.append(el("span", {}, "worker: " + (wk || "?")), el("span", {}, "token đầu: " + Math.round(first) + " ms"),
-      el("span", {}, n + " token"), el("span", {}, (n / Math.max(total - first / 1000, 0.001)).toFixed(1) + " tok/s"));
+    stats.append(
+      el("span", {}, "worker: " + (wk || "?")),
+      el("span", {}, "token đầu: " + Math.round(first) + " ms"),
+      el("span", {}, n + " token"),
+      el("span", {}, (n / Math.max(total - first / 1000, 0.001)).toFixed(1) + " tok/s")
+    );
   } catch (e) {
-    if (e.name !== "AbortError") { answer.className = "err"; answer.textContent = "Lỗi kết nối: " + e.message; }
+    if (e.name !== "AbortError") {
+      answer.className = "err";
+      answer.textContent = "Lỗi kết nối: " + e.message;
+    }
   }
 }
+
 $("f").onsubmit = async e => {
   e.preventDefault();
-  ctl = new AbortController(); $("send").disabled = true; $("stop").disabled = false;
+  ctl = new AbortController();
+  $("send").disabled = true;
+  $("stop").disabled = false;
   const q = $("q").value.trim();
-  if ($("burst").checked) await Promise.all(Array.from({ length: 8 }, (_, i) => ask(q + " (#" + (i + 1) + ")")));
-  else await ask(q);
-  $("send").disabled = false; $("stop").disabled = true;
+  if ($("burst").checked) {
+    await Promise.all(Array.from({ length: 8 }, (_, i) => ask(q + " (#" + (i + 1) + ")")));
+  } else {
+    await ask(q);
+  }
+  $("send").disabled = false;
+  $("stop").disabled = true;
 };
+
 $("stop").onclick = () => ctl && ctl.abort();
 </script>
 </body>
