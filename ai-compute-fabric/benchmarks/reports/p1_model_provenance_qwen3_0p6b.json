@@ -1,0 +1,114 @@
+{
+ "schema_version": 1,
+ "date": "2026-10-26",
+ "repo": "Qwen/Qwen3-0.6B",
+ "revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+ "steps": {
+  "1_snapshot_from_hf": {
+   "files": 8,
+   "bytes": 1519196330,
+   "manifest_sha256": "adfed7721136fbb805a425f2aec19a238fd46dd8b388c7a6f48703043405233c",
+   "seconds": 27.4
+  },
+  "2_pull_through_lan_mirror": {
+   "verified_against_pinned_digest": true,
+   "seconds": 3.4
+  },
+  "3_convert": {
+   "gguf_bytes": 804753760,
+   "gguf_sha256": "09fe91c457152e3e7140aa57338fc9fb7d1cfab09d6690f2b0320ed277ff48b0",
+   "converter": {
+    "script": "convert_hf_to_gguf.py",
+    "script_sha256": "c9f5f413dcb77b1272f80b26a270ef44c82612a2af7c70712cfdd8446b0788f2",
+    "llama_cpp_commit": "74bca3950054eed1795f525cb9cf06bfe796492d",
+    "outtype": "q8_0",
+    "python": "3.12.3",
+    "seconds": 11.1
+   },
+   "facts": {
+    "architecture": "qwen3",
+    "name": "Files",
+    "quantization": "Q8_0",
+    "layers": 28,
+    "layers_attn": 28,
+    "n_kv": 8,
+    "head_dim": 128,
+    "context_length": 40960,
+    "weights_bytes": 798801920,
+    "non_repeating_bytes": 330616832,
+    "embedding_cpu_bytes": 165306368,
+    "experts": 0,
+    "file_bytes": 804753760,
+    "note": ""
+   }
+  },
+  "4_verify_provenance": {
+   "ok": true,
+   "identity": {
+    "model_id": "Qwen/Qwen3-0.6B",
+    "weight_sha256": "adfed7721136fbb805a425f2aec19a238fd46dd8b388c7a6f48703043405233c",
+    "tokenizer_sha256": "91a5d4d92157b8d3cdb2599dca8ff445ecec6fdaeab57904c229ece438493bca",
+    "revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+    "quantization": "Q8_0",
+    "source_repo": "Qwen/Qwen3-0.6B",
+    "source_revision": "c1899de289a04d12100db370d81485cdf75e47ca",
+    "converter": "llama.cpp@74bca3950054eed1795f525cb9cf06bfe796492d/convert_hf_to_gguf.py",
+    "gguf_sha256": "09fe91c457152e3e7140aa57338fc9fb7d1cfab09d6690f2b0320ed277ff48b0",
+    "license_spdx": "Apache-2.0",
+    "trust_remote_code": false
+   }
+  },
+  "5_compare_with_published_gguf": {
+   "reference": "../.aicf-work/Qwen3-0.6B-Q8_0.gguf",
+   "same": {
+    "architecture": true,
+    "quantization": true,
+    "layers": true,
+    "n_kv": true,
+    "head_dim": true,
+    "context_length": true,
+    "weights_bytes": false
+   },
+   "reference_facts": {
+    "architecture": "qwen3",
+    "quantization": "Q8_0",
+    "layers": 28,
+    "n_kv": 8,
+    "head_dim": 128,
+    "context_length": 40960,
+    "weights_bytes": 633495552
+   },
+   "converted_facts": {
+    "architecture": "qwen3",
+    "quantization": "Q8_0",
+    "layers": 28,
+    "n_kv": 8,
+    "head_dim": 128,
+    "context_length": 40960,
+    "weights_bytes": 798801920
+   }
+  },
+  "6_llama_server_smoke": {
+   "loaded": true,
+   "tokenization_identical_to_hf_tokenizer": [
+    true,
+    true,
+    true,
+    true
+   ],
+   "sentences": 4,
+   "sample_reply": "Hi!"
+  }
+ },
+ "not_covered": [
+  "a single model, a single quantisation (q8_0)",
+  "the provenance record is not signed",
+  "conversion is not bit-reproducible across converter/torch versions",
+  "no gated/private repo",
+  "mirror has no authentication or TLS"
+ ],
+ "findings": [
+  "the llama.cpp converter at the pinned commit writes a separate output.weight (a copy) for tied-embedding models such as Qwen3-0.6B, so its GGUF is 165 MB (one embedding matrix) larger than the published Qwen3-0.6B-Q8_0.gguf; every other compared fact is identical",
+  "the converter needs the 'sentencepiece' Python package importable even for a BPE model (it tries the sentencepiece path first and only falls back to GPT-2 BPE on FileNotFoundError)"
+ ]
+}
