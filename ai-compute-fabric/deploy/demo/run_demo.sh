@@ -31,6 +31,10 @@ LD="$(dirname "$LLAMA")"; export LD_LIBRARY_PATH="$LD:${LD_LIBRARY_PATH:-}"
 
 pids=(); trap 'kill "${pids[@]}" 2>/dev/null || true; wait 2>/dev/null || true' EXIT INT TERM
 
+# chat models the web UI may switch to (symlinks; embedding/reranker models are not chat models), and where exported adapters go
+mkdir -p "$D/models" "$D/adapters"
+for g in "$WORK_DIR"/*.gguf; do [ -f "$g" ] && ! basename "$g" | grep -qiE 'embed|rerank|bge' && ln -sf "$g" "$D/models/$(basename "$g")"; done
+
 # 1. GGUF VRAM Sidecar
 "$PY" -m core.vram_sidecar.server --models-root "$(dirname "$MODEL")" --host 127.0.0.1 --port "$SIDECAR_PORT" >"$D/logs/sidecar.log" 2>&1 & pids+=($!)
 
@@ -67,7 +71,7 @@ PYEOF
   fi
   LCPP="$WORK_DIR/llama.cpp-py"   # convert_lora_to_gguf.py + gguf-py: lets the Studio export trained adapters for llama-server
   "$PY" -m studio ${LCPP:+--llama-cpp-dir "$LCPP"} --data-dir "$D/studio" --dsn "$PG_APP_DSN" --admin-dsn "$PG_ADMIN_DSN" --setup \
-    --port "$STUDIO_PORT" --llm-url "http://127.0.0.1:18090" "${STUDIO_RAG[@]}" \
+    --port "$STUDIO_PORT" --worker-url "http://127.0.0.1:8099" --adapters-dir "$D/adapters" --llm-url "http://127.0.0.1:18090" "${STUDIO_RAG[@]}" \
     ${TRAIN_PY:+--train-python "$TRAIN_PY"} --base-models "$BASE_MODELS" >"$D/logs/studio.log" 2>&1 & pids+=($!)
   GW_EXTRA+=(-agents-url "http://127.0.0.1:$DAG_PORT" -studio-url "http://127.0.0.1:$STUDIO_PORT")
 fi
@@ -80,7 +84,7 @@ sleep 1
 
 # 4. Worker Guard + llama-server
 "$D/bin/worker-guard" --llama-server "$LLAMA" --model "$MODEL" --parallel 2 --ctx 4096 --headroom-mib 512 \
-  --engine-port 18090 --gateway "127.0.0.1:$GRPC_PORT" --worker-id pc-001 \
+  --engine-port 18090 --models-dir "$D/models" --adapters-dir "$D/adapters" --gateway "127.0.0.1:$GRPC_PORT" --worker-id pc-001 \
   --tls-ca "$D/pki/ca.crt" --tls-cert "$D/pki/pc-001.crt" --tls-key "$D/pki/pc-001.key" \
   --tls-server-name localhost >"$D/logs/worker.log" 2>&1 & pids+=($!)
 

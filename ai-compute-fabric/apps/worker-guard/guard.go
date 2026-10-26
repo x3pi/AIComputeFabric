@@ -129,6 +129,14 @@ func (g *Guard) Resume() {
 	g.emit(Event{Kind: "resume", Detail: "operator resume"})
 }
 
+// baseName is filepath.Base that keeps "" as "" (Base("") is ".").
+func baseName(p string) string {
+	if p == "" {
+		return ""
+	}
+	return filepath.Base(p)
+}
+
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 
 // Tick runs one control-loop step.
@@ -290,7 +298,7 @@ func (g *Guard) Snapshot() Snapshot {
 	return Snapshot{
 		State: g.st, Sample: g.last, EngineMiB: own, EnginePID: g.eng.PID(), External: g.last.UsedMiB - min64(g.last.UsedMiB, own),
 		Buckets: est.NewBuckets(g.last.TotalMiB*mib, osUser, w, kv, c, g.cfg.HeadroomMiB*mib),
-		Events:  ev, Headroom: g.cfg.HeadroomMiB, Updated: g.now(), Model: filepath.Base(model), Lora: filepath.Base(lora),
+		Events:  ev, Headroom: g.cfg.HeadroomMiB, Updated: g.now(), Model: baseName(model), Lora: baseName(lora),
 	}
 }
 

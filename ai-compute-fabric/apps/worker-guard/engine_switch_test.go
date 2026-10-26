@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+func TestSnapshotWithoutAdapterHasEmptyLora(t *testing.T) {
+	g, _, _, _ := newRig(t)
+	if s := g.Snapshot(); s.Lora != "" || s.Model != "" {
+		t.Fatalf("model=%q lora=%q", s.Model, s.Lora)
+	}
+}
+
 func TestSwitchRestartsWithNewModelOnlyWhenGPUIsFree(t *testing.T) {
 	g, gpu, eng, clock := newRig(t)
 	g.Tick()

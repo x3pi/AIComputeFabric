@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AICF Model đang chạy — chọn model và adapter</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+<script src="common.js"></script>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>Model đang chạy & Adapter</h1>
+      <div class="sub">Chọn model GGUF mà worker phục vụ và gắn adapter LoRA đã huấn luyện. Worker tự khởi động lại engine khi GPU rảnh (không giành VRAM của người dùng). Chỉ admin được đổi.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>Hiện tại</h2><span id="state" class="pill">…</span></div>
+    <div id="now" class="mut">Đang tải…</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>Đổi model / adapter</h2></div>
+    <form id="f" class="row" autocomplete="off">
+      <div class="grow" style="min-width:240px">
+        <label for="model">Model (GGUF)</label>
+        <select id="model" style="width:100%"></select>
+      </div>
+      <div class="grow" style="min-width:240px">
+        <label for="src">Adapter</label>
+        <select id="src" style="width:100%"></select>
+      </div>
+      <div style="min-width:160px">
+        <label for="tenant">Tenant (khi chọn job)</label>
+        <input id="tenant" value="demo" maxlength="64" style="width:100%">
+      </div>
+      <button id="go" class="primary" style="align-self:flex-end">Áp dụng</button>
+    </form>
+    <div id="msg" class="mut" role="status" style="margin-top:8px;font-size:13px"></div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const say = (t, cls) => { $("msg").textContent = t; $("msg").className = cls === "err" ? "pill err" : "mut"; };
+const BASE = "/api/studio/v1";
+
+async function call(method, url, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
+  const r = await api(url, opts);
+  if (!r) throw new Error("không kết nối được");
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((data.error && data.error.message) || ("lỗi " + r.status));
+  return data;
+}
+
+const opt = (value, label) => { const o = document.createElement("option"); o.value = value; o.textContent = label; return o; };
+let last = null;
+
+async function adapterChoices() {
+  const out = [opt("", "(không gắn adapter)")];
+  for (const a of (last && last.adapters) || []) out.push(opt("file:" + a, "Tệp có sẵn: " + a));
+  try {
+    const d = await call("GET", `${BASE}/tenants/${encodeURIComponent($("tenant").value.trim() || "demo")}/lora/jobs`);
+    for (const j of d.jobs.filter(j => j.status === "succeeded"))
+      out.push(opt("job:" + j.id, `Job ${j.id.slice(0, 8)} (${(j.params && j.params.base_model) || "?"}, ${j.created_at.slice(0, 16).replace("T", " ")})`));
+  } catch (e) { /* tenant without jobs or Studio down: the list simply has no jobs */ }
+  return out;
+}
+
+async function refresh(keep) {
+  try {
+    last = await call("GET", BASE + "/serving");
+  } catch (e) {
+    $("now").textContent = e.message; $("state").textContent = "không khả dụng"; $("state").className = "pill err"; $("go").disabled = true;
+    return;
+  }
+  const lora = last.lora ? " + adapter " + last.lora : " (không adapter)";
+  $("now").textContent = (last.model || "(chưa chọn)") + lora;
+  $("state").textContent = last.state; $("state").className = "pill " + (last.state === "running" ? "ok" : "warn");
+  const sel = keep ? $("model").value : last.model;
+  $("model").replaceChildren(...last.models.map(m => opt(m, m)));
+  if ([...$("model").options].some(o => o.value === sel)) $("model").value = sel;
+  const cur = $("src").value;
+  $("src").replaceChildren(...await adapterChoices());
+  if ([...$("src").options].some(o => o.value === cur)) $("src").value = cur;
+  const admin = (window.AICF && (window.AICF.role === "admin"));
+  $("go").disabled = !last.switchable || !admin;
+  $("go").title = admin ? "" : "Chỉ admin được đổi model";
+}
+
+$("tenant").addEventListener("change", () => refresh(true));
+$("f").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const body = { model: $("model").value };
+  const [kind, v] = [$("src").value.split(":")[0], $("src").value.slice($("src").value.indexOf(":") + 1)];
+  if (kind === "file") body.adapter_file = v;
+  if (kind === "job") { body.job = v; body.tenant = $("tenant").value.trim(); }
+  $("go").disabled = true; say("Đang gửi…");
+  try {
+    const r = await call("POST", BASE + "/serving", body);
+    say("Đã nhận: " + r.model + (r.lora ? " + " + r.lora : "") + ". Worker khởi động lại engine khi GPU rảnh; trạng thái cập nhật bên trên.");
+  } catch (e) { say(e.message, "err"); }
+  await refresh(true);
+});
+
+window.AICF_READY.then(() => refresh(false));
+setInterval(() => { if (!document.hidden) refresh(true); }, 5000);
+</script>
+</body>
+</html>
