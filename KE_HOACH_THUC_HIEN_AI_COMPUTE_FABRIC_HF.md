@@ -852,12 +852,12 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 | P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 23 | 1 | 6 | Có PoC worker-guard Linux (thu hồi GPU đạt), gateway Register/Heartbeat/pause, 2 trang web; chưa mTLS/NATS/PG, Windows, 200 node |
 | P3 | Qwen phân tán + Deploy UI | 13 | 0 | 2 | Có adapter llama + test hợp đồng (1 GPU); chưa có vllm/prima/molink, B03–B05 phân tán (cần 3–4 PC) |
 | P4 | MoE & Speculative | 11 | 1 | 6 | B06 và B07 đã đo trên 1 GPU: MoE nhanh hơn rất nhiều, speculative KHÔNG đạt gate nên tắt; cổng ISA CPU có; chưa KTransformers, expert-cache, DeltaNet |
-| P5 | Agent, RAG, 15 typed tasks | 13 | 0 | 0 | Chưa bắt đầu |
+| P5 | Agent, RAG, 15 typed tasks | 13 | 3 | 9 | Executor cho 5 loại task, ràng buộc grammar, RAG pgvector+RLS, sandbox Docker, phục hồi sau SIGKILL đã đo trên 1 máy (I.13); chưa NATS, OCR/ASR/TTS/TRAIN, màn 4a |
 | P6 | Audio & Training | 14 | 2 | 2 | Phần toán/chuẩn hóa xong; chưa có model/dữ liệu thật |
 | P7 | WAN, đa tenant, metering | 11 | 0 | 0 | Chưa bắt đầu |
 | P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | 0 | Chưa bắt đầu |
 
-**Tổng: 144 mục, 14 xong, 29 một phần, 101 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
+**Tổng: 144 mục, 17 xong, 38 một phần, 89 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
 
 ### H.1. Chuẩn bị (trước P0)
 - [x] Đọc, đánh giá kế hoạch và tài liệu kiến trúc [KT]; sửa lỗi số học, công thức, gate → Phần A
@@ -964,9 +964,9 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 
 ### H.7. P5 — Agent, RAG, 15 typed tasks (3–4 sprint)
 - [~] P5.1 LangGraph orchestrator + checkpoint PostgreSQL → `agents/orchestrator.py`: DAG LangGraph + checkpoint PostgreSQL (container pgvector, cổng 55432) + kết quả từng bước lưu cùng giao dịch; thử SIGKILL tại 6 điểm; CHƯA có NATS JetStream, chưa chạy với worker thật
-- [~] P5.1 Đủ 15 typed task theo [KT] §6.2 → `agents/tasks.py`: 15 loại có schema vào/ra chặt (70 test); CHƯA có bộ thực thi cho từng loại (mới có TEXT_GENERATE qua llama; OCR/ASR/TTS/TRAIN chưa)
-- [~] P5.2 Tool registry ký số, `tenant_scope`, constrained decoding, sandbox; không shell tùy ý → `agents/tool_registry.py` (manifest ký Ed25519, tenant_scope, schema, cấm tên shell) + `agents/sandbox.py` (Docker không mạng, rootfs chỉ đọc, non-root, giới hạn tài nguyên); CHƯA có constrained decoding (grammar) nối vào llama; sandbox Windows chưa có (từ chối chạy, fail closed)
-- [ ] P5.3 Worker embedding/rerank (chọn `sentence-transformers` hoặc TEI sau benchmark), pgvector
+- [~] P5.1 Đủ 15 typed task theo [KT] §6.2 → `agents/tasks.py`: 15 loại có schema vào/ra chặt (70 test); CHƯA có bộ thực thi cho từng loại (có TEXT_GENERATE, STRUCTURED_EXTRACTION, EMBEDDING, RERANK, RAG_RETRIEVE qua `agents/executors.py`; OCR/ASR/TTS/DOCUMENT_PARSE/TRAIN chưa)
+- [~] P5.2 Tool registry ký số, `tenant_scope`, constrained decoding, sandbox; không shell tùy ý → `agents/tool_registry.py` (manifest ký Ed25519, tenant_scope, schema, cấm tên shell) + `agents/sandbox.py` (Docker không mạng, rootfs chỉ đọc, non-root, giới hạn tài nguyên); constrained decoding (`response_format: json_schema` của llama-server) nối qua `agents/executors.py`: 10 hóa đơn tiếng Việt tự viết, có ràng buộc 10/10 đúng schema và 39/40 trường đúng; sandbox Docker 53 kịch bản tấn công/tiêm lệnh, 0 vượt rào (Phần I.13); CHƯA có TOOL_EXECUTE chạy qua registry trong executor; sandbox Windows chưa có (từ chối chạy, fail closed)
+- [~] P5.3 Worker embedding/rerank (chọn `sentence-transformers` hoặc TEI sau benchmark), pgvector → `agents/knowledge.py`: Qwen3-Embedding-0.6B + bge-reranker-v2-m3 chạy bằng llama.cpp (không so với sentence-transformers/TEI), pgvector HNSW, row-level security theo tenant; recall@1/@3 = 1,0 trên 20 đoạn tự viết (chỉ kiểm tra đường ống, không phải benchmark truy hồi); CHƯA benchmark chọn engine, CHƯA có dữ liệu thật
 - [~] P5.3 `result-validator` (schema, citation, ảo giác) → `agents/validator.py`: schema, trích dẫn nguyên văn, kiểm số liệu lạ (heuristic, không phải bằng chứng chống ảo giác), schema trích xuất, hình dạng embedding/rerank; đã kiểm đột biến
 - [ ] P5.4 Màn 4a (Agent DAG)
 - [x] Test: `test_15_typed_task_schemas.py` → `tests/unit/test_15_typed_task_schemas.py`: 70 test pass; đã thử phá 4 quy tắc validator
@@ -1284,6 +1284,13 @@ Thay đổi: `worker-guard --flash-attn on|off|auto` (mặc định **on**, trư
 **B06 — MoE Qwen3-30B-A3B Q4_K_M, expert một phần ở CPU** (`llama-bench`, `-fa 1 -ngl 99 -t 4`, pp512/tg64, 3 lần; `p4_B06_moe_hybrid_rtx3060.json`): `-ncmoe` 48/40/32/24/18 → decode 28,0 / 33,0 / 36,4 / 42,9 / **49,9 tok/s**; prompt 243 / 484 / 595 / 697 / 801 tok/s; ≤ 16 hết VRAM. TPOT tốt nhất 20,1 ms so với 252 ms của B02 (Qwen2.5-32B dense, 3,97 tok/s): giảm 92 % (gate ≥ 40 % về tốc độ). Giới hạn: khác model (MoE vs dense) nên KHÔNG so chất lượng trả lời; chỉ 1 GPU Linux.
 **B07 — suy đoán** (target Qwen3-8B Q4_K_M, greedy, 12 prompt Việt/Anh/code, 2 lần; `p4_B07_speculative_rtx3060.json`): không suy đoán 63,6 tok/s; draft 0,6B max4 **75,3 tok/s (1,185×), acceptance 0,49**; max8 1,05×; draft 1,7B chậm hơn (0,92× / 0,76×); n-gram 0,99×. Đầu ra greedy chỉ **25–33 %** trùng với không suy đoán (hai lần chạy baseline giống nhau 100 %) — suy đoán đổi văn bản dù temperature 0. Không đạt cả 3 điều kiện (acceptance ≥ 0,65, ≥ 1,25×, khớp 100 %) → **tắt mặc định**. Cùng `tokenizer_sha256` cho cả họ Qwen3 (0,6B/1,7B/8B/4B).
 **Lease** (`apps/site-gateway/leases.go`, gRPC `LeaseService`): đặt chỗ VRAM có TTL, idempotent theo khóa, hết hạn/worker mất thì thu hồi; đã kiểm đột biến 5 cơ chế (idempotency, kiểm dung lượng, hết hạn, trần TTL, thu hồi). **Adapter llama** + **tokenizer/template**: xem H.3–H.6. Chưa có: lease bền vững (PostgreSQL), NATS, lease cho worker nhiều GPU.
+
+### I.13. P5 đo được trên 1 GPU + PostgreSQL cục bộ (RTX 3060, Linux, 2026-10-26)
+**Trích xuất có cấu trúc** (Qwen3-4B Q4_K_M, 10 hóa đơn tiếng Việt viết tay, 4 trường; `p5_structured_extraction_small_vi.json`): có ràng buộc (`response_format: json_schema`) **10/10 đúng schema, 10/10 qua validator, 39/40 trường đúng**. Không ràng buộc: 0/10, nhưng đây là **lỗi định dạng**, không phải khả năng trích xuất: mô hình trả các trường trần trên cả 10 tài liệu và không bao giờ trả khung `{data, evidence}` được yêu cầu (đã kiểm bằng tay). Bộ nhỏ, tự viết; không dùng làm benchmark.
+**RAG** (`p5_rag_quality_small_vi.json`): 20 đoạn, 20 câu hỏi diễn đạt lại; recall@1 = recall@3 = 1,0 cho cả dense và dense+rerank (bộ quá dễ để phân biệt hai chế độ). Cách ly tenant bằng row-level security của PostgreSQL có test.
+**Điều phối** (`p5_orchestrator_scale_simulated*.json`, **mô phỏng worker, không phải máy thật**): trần khoảng 115 tác vụ/s; hiệu suất 0,855 / 0,741 / 0,568 với 8 / 20 / 40 worker giả lập tác vụ 200 ms; 0,94 ở 40 worker với tác vụ 2 s. Thử SIGKILL tại 6 điểm: phục hồi đúng, không chạy trùng nhờ bảng kết quả bền ghi cùng giao dịch với nhật ký.
+**Sandbox công cụ** (Docker `--network none`, rootfs chỉ đọc, bỏ mọi capability, non-root, giới hạn pid/bộ nhớ): 53 kịch bản, 0 vượt rào trên Docker. bwrap không cô lập được mạng trên máy này (AppArmor) nên không dùng; `NullSandbox` từ chối chạy (fail closed). Windows chưa có.
+Chưa có: NATS JetStream, worker thật nhiều máy, OCR/ASR/TTS/DOCUMENT_PARSE/TRAIN, màn hình 4a.
 
 ### I.4. Còn trống
 Windows: toàn bộ chạy thật (bản dựng đã biên dịch được nhưng chưa từng chạy; WDDM, PDH, thu hồi GPU, dịch vụ Windows), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).
