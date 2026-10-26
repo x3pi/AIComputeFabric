@@ -1294,7 +1294,7 @@ Chưa có: NATS JetStream, worker thật nhiều máy, OCR/ASR/TTS/DOCUMENT_PARS
 
 **Cổng hạng GPU** (`core/hardware_profiler/gpu_class.py`, 15 test, đã kiểm đột biến): phân hạng group / standalone / light / unusable theo compute capability, thương hiệu GTX (không Tensor Core) và VRAM. Ngưỡng là lựa chọn thiết kế, chưa thử trên card nào ngoài RTX 3060; chưa nối vào scheduler.
 
-**RBAC + nhật ký kiểm toán** (`rbac_test.go`, 11 test con trong ma trận vai trò + 6 test khác): xem H.4 P2.4. Đột biến đã bắt: viewer ghi được, bỏ giới hạn site, bỏ từng kiểm tra chuỗi (hash / băm trước / số thứ tự, mỗi cái có bài giả mạo riêng), không ghi 403, không ghi 401. Một đột biến còn sống và là tương đương: bỏ tiền tố `/api/workers/` trong `Allowed`, vì kiểm tra số đoạn đường dẫn đã chặn cùng trường hợp.
+**RBAC + nhật ký kiểm toán** (`rbac_test.go`, 9 hàm test, trong đó ma trận vai trò có 16 trường hợp): xem H.4 P2.4. Đột biến đã bắt: viewer ghi được, bỏ giới hạn site, bỏ từng kiểm tra chuỗi (hash / băm trước / số thứ tự, mỗi cái có bài giả mạo riêng), không ghi 403, không ghi 401. Một đột biến còn sống và là tương đương: bỏ tiền tố `/api/workers/` trong `Allowed`, vì kiểm tra số đoạn đường dẫn đã chặn cùng trường hợp.
 
 ### I.4. Còn trống
 Windows: toàn bộ chạy thật (bản dựng đã biên dịch được nhưng chưa từng chạy; WDDM, PDH, thu hồi GPU, dịch vụ Windows), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).
