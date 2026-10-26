@@ -8,7 +8,7 @@ from pathlib import Path
 from agents.doc_executors import DocumentExecutor, RefusedInput
 from studio.errors import bad
 
-MAX_TEXT_CHARS = 5_000_000
+MAX_TEXT_CHARS = 1_000_000          # indexing is synchronous and measured at ~26 s per million characters; keeps one request under a proxy's 60 s
 EXT_MIME = {".txt": "text/plain", ".md": "text/markdown", ".markdown": "text/markdown", ".html": "text/html", ".htm": "text/html",
             ".pdf": "application/pdf", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
 
@@ -44,5 +44,5 @@ def extract_text(name: str, data: bytes) -> str:
     if not text:
         raise bad("no text could be extracted (a scanned PDF needs OCR first)", "empty_document")
     if len(text) > MAX_TEXT_CHARS:
-        raise bad(f"the document has more than {MAX_TEXT_CHARS} characters of text", "too_large")
+        raise bad(f"the document has more than {MAX_TEXT_CHARS:,} characters of text (indexing takes about 26 s per million); split it into several files", "too_large")
     return text

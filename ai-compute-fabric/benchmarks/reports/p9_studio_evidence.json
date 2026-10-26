@@ -95,5 +95,12 @@
    "40k-row dataset preview 0.2 s"
   ],
   "result": "tests/studio 32 passed; whole suite 454 passed before the 3 GPU-threshold test fixes (ran with 3 llama-servers resident, so absolute thresholds were wrong, made relative); Chrome E2E 10/10"
+ },
+ "hardening_round_3": {
+  "soak": "20 consecutive real LoRA jobs with 735 RAG asks interleaved: 0 errors, GPU drift 0 MiB, RAG ask p50 0.20 s / p95 0.66 s while training",
+  "leak_found_and_fixed": "service RSS grew ~22 KiB per RAG search (register_vector on every new connection created never-freed adapter classes); fixed with a connection pool; 600 searches: +13.2 MiB -> +0.00 MiB; regression test fails on the old code (+8.8 MiB/400) and passes on the new",
+  "real_documents": "real .docx (Vietnamese text + table) and .pdf (reportlab, DejaVu font) are extracted and answered through the API; scanned PDF refused with OCR hint; zip bomb refused (document expands beyond the size limit); truncated/corrupt/type-confused files are 400",
+  "limit_changed": "indexing is synchronous at ~26 s per 1M characters (measured: 100k=2.6 s, 400k=10.4 s, 1M=25.8 s); per-document cap lowered from 5M to 1M characters so a request stays under a typical 60 s proxy timeout",
+  "result": "full suite 467 passed / 32 skipped / 1 xfailed; Chrome E2E 10/10"
  }
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
+from typing import Optional
 
 from agents.knowledge import EmbeddingClient, KnowledgeStore, RerankClient
 from studio.config import Settings
@@ -23,9 +24,12 @@ class App:
     router: Router
     registry: Registry
     runner: Runner
+    store: Optional[KnowledgeStore] = None
 
     def close(self):
         self.runner.stop()
+        if self.store is not None:
+            self.store.close()
 
 
 def build_app(s: Settings, free_vram=free_vram_mib, start_runner: bool = True) -> App:
@@ -52,4 +56,4 @@ def build_app(s: Settings, free_vram=free_vram_mib, start_runner: bool = True) -
     router.add("GET", "/v1/health", health)
     if start_runner:
         runner.start()
-    return App(s, router, reg, runner)
+    return App(s, router, reg, runner, store)

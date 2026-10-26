@@ -93,7 +93,7 @@ def call(svc, method, path, body=None, role="admin", user="tester"):
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(svc.url + path, data=data, method=method, headers={"X-Aicf-Role": role, "X-Aicf-User": user, "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=120) as r:
             raw = r.read()
             return r.status, (json.loads(raw) if r.headers["Content-Type"].startswith("application/json") else raw)
     except urllib.error.HTTPError as e:

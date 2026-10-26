@@ -34,7 +34,7 @@ class RagMethod:
         id="rag", title="Tri thức nội bộ (RAG)", status="available",
         summary="Tải tài liệu của doanh nghiệp lên; khi hỏi, hệ thống tự tìm các đoạn liên quan nhất và đưa cho model đọc, kèm dẫn nguồn. Không cần huấn luyện, cập nhật tài liệu là có hiệu lực ngay.",
         when_to_use="Dữ liệu thay đổi thường xuyên (quy định, chính sách, báo cáo) và cần biết câu trả lời dựa trên tài liệu nào.",
-        limits=("Không thay đổi văn phong hay định dạng đầu ra của model.", "PDF dạng ảnh scan cần OCR trước.", "Chất lượng tìm kiếm đo trên tập nhỏ tiếng Việt, chưa phải benchmark."),
+        limits=("Không thay đổi văn phong hay định dạng đầu ra của model.", "PDF dạng ảnh scan cần OCR trước.", "Mỗi tài liệu tối đa 1 triệu ký tự (nạp khoảng 26 giây); tài liệu lớn hơn cần chia nhỏ.", "Chất lượng tìm kiếm đo trên tập nhỏ tiếng Việt, chưa phải benchmark."),
         ui={"icon": "book"})
 
     def __init__(self, settings: Settings, store: Optional[KnowledgeStore], llm: ChatClient, prompts=None):
