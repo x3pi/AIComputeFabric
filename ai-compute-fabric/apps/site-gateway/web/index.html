@@ -690,8 +690,6 @@ async function svCall(method, url, body) {
 async function svLoadOptions() {
   svAt = Date.now();
   try { svInfo = await svCall("GET", SV + "/serving"); } catch (e) { return; }   // Studio or worker-guard not configured: the card stays hidden
-  const keepModel = svEl("sv-model").value, keepSrc = svEl("sv-src").value;
-  svEl("sv-model").replaceChildren(...svInfo.models.map(m => svOpt(m, m)));
   const src = [svOpt("", "(không gắn adapter)")];
   for (const a of svInfo.adapters || []) src.push(svOpt("file:" + a, "Tệp có sẵn: " + a));
   try {
@@ -699,6 +697,9 @@ async function svLoadOptions() {
     for (const j of d.jobs.filter(j => j.status === "succeeded"))
       src.push(svOpt("job:" + j.id, `Job ${j.id.slice(0, 8)} (${(j.params && j.params.base_model) || "?"}, ${j.created_at.slice(0, 16).replace("T", " ")})`));
   } catch (e) { /* tenant without jobs */ }
+  // read what the user has chosen only now: a choice made while the requests above were in flight must survive the refresh
+  const keepModel = svEl("sv-model").value, keepSrc = svEl("sv-src").value;
+  svEl("sv-model").replaceChildren(...svInfo.models.map(m => svOpt(m, m)));
   svEl("sv-src").replaceChildren(...src);
   const has = (sel, v) => [...svEl(sel).options].some(o => o.value === v);
   svEl("sv-model").value = has("sv-model", keepModel) ? keepModel : svInfo.model;

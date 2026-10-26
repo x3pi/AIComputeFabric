@@ -400,6 +400,8 @@ components:
         gpu_temp_c: {type: number}
         user_is_active: {type: boolean}
         pause_requested: {type: boolean}
+        lora: {type: string, description: "LoRA adapter file the engine is configured with (empty = none)"}
+        switching: {type: boolean, description: "model/adapter change requested and the engine has not started with it yet"}
         last_seen: {type: string, format: date-time}
         agent_version: {type: string}
         engine_url: {type: string}
