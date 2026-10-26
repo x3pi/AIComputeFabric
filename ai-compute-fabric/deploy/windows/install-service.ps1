@@ -16,10 +16,10 @@ param(
   [int] $HeadroomMiB = 1536
 )
 $ErrorActionPreference = "Stop"
-$args = "--llama-server `"$LlamaServer`" --model `"$Model`" --headroom-mib $HeadroomMiB --advertise-host $AdvertiseHost"
-if ($Gateway) { $args += " --gateway $Gateway" }
+$svcArgs = "--llama-server `"$LlamaServer`" --model `"$Model`" --headroom-mib $HeadroomMiB --advertise-host $AdvertiseHost"
+if ($Gateway) { $svcArgs += " --gateway $Gateway" }
 if (Get-Service $Name -ErrorAction SilentlyContinue) { sc.exe stop $Name | Out-Null; sc.exe delete $Name | Out-Null; Start-Sleep 2 }
-sc.exe create $Name binPath= "`"$Bin`" $args" start= delayed-auto DisplayName= "AICF Worker Guard" | Out-Null
+sc.exe create $Name binPath= "`"$Bin`" $svcArgs" start= delayed-auto DisplayName= "AICF Worker Guard" | Out-Null
 # restart after a crash (plan D13: roll back if it crashes more than 3 times in 5 minutes is a later item)
 sc.exe failure $Name reset= 300 actions= restart/5000/restart/5000/restart/30000 | Out-Null
 sc.exe start $Name
