@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -108,7 +109,15 @@ func HTTPHandler(f *Fleet) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	registerEstimatorAndStatsRoutes(mux, f, nil, nil)
-	sub, _ := fs.Sub(webFS, "web")
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	var staticFS http.FileSystem
+	if fi, err := os.Stat("apps/site-gateway/web/index.html"); err == nil && !fi.IsDir() {
+		staticFS = http.Dir("apps/site-gateway/web")
+	} else if fi, err := os.Stat("web/index.html"); err == nil && !fi.IsDir() {
+		staticFS = http.Dir("web")
+	} else {
+		sub, _ := fs.Sub(webFS, "web")
+		staticFS = http.FS(sub)
+	}
+	mux.Handle("/", http.FileServer(staticFS))
 	return mux
 }

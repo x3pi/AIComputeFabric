@@ -11,7 +11,7 @@
   width: 90px;
   height: 6px;
   background: var(--bg-elevated);
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   overflow: hidden;
   display: inline-block;
   vertical-align: middle;
@@ -20,13 +20,13 @@
 .share-bar > span {
   display: block;
   height: 100%;
-  background: var(--acc);
+  background: var(--gemini-gradient);
 }
 .tenants-kpi {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: clamp(10px, 1.2vw, 18px);
-  margin-bottom: clamp(14px, 1.5vw, 20px);
+  gap: clamp(12px, 1.3vw, 18px);
+  margin-bottom: clamp(16px, 1.8vw, 24px);
 }
 @media (max-width: 640px) {
   #add > div, #add > button {

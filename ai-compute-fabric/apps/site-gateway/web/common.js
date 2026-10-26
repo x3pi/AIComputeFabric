@@ -1,13 +1,13 @@
 // Shared by every page: admin token (kept in sessionStorage only), authenticated fetch,
 // SSE over fetch (EventSource cannot send an Authorization header), theme toggle, contextual user guide, and 6-bucket VRAM renderer.
 const NAV = [
-  ["index.html", "Cụm GPU & VRAM"],
-  ["tenants.html", "Tenants & Khóa API"],
-  ["chat.html", "Playground & Tải"],
-  ["agents.html", "AI Agent (DAG)"],
-  ["studio.html", "AI Studio"],
-  ["audio.html", "🎙️ Audio AI"],
-  ["guide.html", "📖 Hướng dẫn"],
+  ["index.html", "Cụm GPU & VRAM", "🖥️"],
+  ["tenants.html", "Tenants & Khóa API", "🔑"],
+  ["chat.html", "Playground & Tải", "💬"],
+  ["agents.html", "AI Agent (DAG)", "🕸️"],
+  ["studio.html", "AI Studio", "🧪"],
+  ["audio.html", "Audio AI", "🎙️"],
+  ["guide.html", "Hướng dẫn", "📖"],
 ];
 
 const BUCKET_GROUPS = [
@@ -248,44 +248,163 @@ function renderPageGuideBanner() {
   }
 }
 
-function renderNav() {
-  const nav = document.createElement("nav");
-  nav.className = "app-nav";
-  const here = currentPage();
+function createGeminiSparkleSvg(size = 22) {
+  const span = document.createElement("span");
+  span.className = "nav-brand-sparkle-wrap";
+  span.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" style="display:block;filter:drop-shadow(0 2px 6px rgba(66,133,244,0.35))">
+    <defs>
+      <linearGradient id="gemini-nav-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#4285f4"/>
+        <stop offset="50%" stop-color="#9b72cb"/>
+        <stop offset="100%" stop-color="#d96570"/>
+      </linearGradient>
+    </defs>
+    <path d="M12 0C12 6.627 6.627 12 0 12C6.627 12 12 17.373 12 24C12 17.373 17.373 12 24 12C17.373 12 12 6.627 12 0Z" fill="url(#gemini-nav-grad)"/>
+  </svg>`;
+  return span;
+}
 
-  const brand = el("a", { href: "index.html", class: "nav-brand" },
-    el("span", { class: "nav-brand-logo", "aria-hidden": "true" }, "⚡"),
-    el("span", {}, "AI Compute Fabric"),
-    el("span", { class: "nav-brand-badge" }, "Control Plane")
+function createHamburgerSvg(size = 18) {
+  const span = document.createElement("span");
+  span.className = "icon-hamburger-svg";
+  span.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="display:block">
+    <line x1="4" y1="6" x2="20" y2="6"></line>
+    <line x1="4" y1="12" x2="20" y2="12"></line>
+    <line x1="4" y1="18" x2="20" y2="18"></line>
+  </svg>`;
+  return span;
+}
+
+function createMenuOpenSvg(size = 20) {
+  const span = document.createElement("span");
+  span.className = "icon-menu-open-svg";
+  span.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block">
+    <line x1="3" y1="6" x2="16" y2="6"></line>
+    <line x1="3" y1="12" x2="12" y2="12"></line>
+    <line x1="3" y1="18" x2="16" y2="18"></line>
+    <polyline points="15 9 12 12 15 15" stroke="var(--acc, currentColor)"></polyline>
+  </svg>`;
+  return span;
+}
+
+function isNavPinned() {
+  try {
+    const val = localStorage.getItem("aicf_nav_state");
+    if (val !== null) return val === "pinned";
+  } catch {}
+  return window.innerWidth > 1024;
+}
+
+function setNavPinned(pinned) {
+  if (window.innerWidth <= 768) {
+    if (typeof pinned === "boolean") {
+      document.body.classList.toggle("mobile-drawer-open", pinned);
+    } else {
+      document.body.classList.toggle("mobile-drawer-open");
+    }
+    return;
+  }
+  const isPinned = typeof pinned === "boolean" ? pinned : document.body.classList.contains("nav-hidden");
+  if (isPinned) {
+    document.body.classList.remove("nav-hidden");
+    try { localStorage.setItem("aicf_nav_state", "pinned"); } catch {}
+  } else {
+    document.body.classList.add("nav-hidden");
+    try { localStorage.setItem("aicf_nav_state", "hidden"); } catch {}
+  }
+}
+
+function toggleSidebar() {
+  setNavPinned();
+}
+
+function renderNav() {
+  const here = currentPage();
+  const pinned = isNavPinned();
+  if (!pinned && window.innerWidth > 768) {
+    document.body.classList.add("nav-hidden");
+  }
+
+  // 1. Mobile Backdrop
+  const backdrop = el("div", {
+    class: "sidebar-backdrop",
+    id: "sidebar-backdrop",
+    onclick: () => setNavPinned(false)
+  });
+
+  // 2. Sidebar Navigation (Ghim / Pinned Mode)
+  const sidebar = document.createElement("nav");
+  sidebar.className = "app-sidebar app-nav";
+  sidebar.id = "app-sidebar";
+
+  const brand = el("div", { class: "sidebar-brand-group" },
+    el("a", { href: "index.html", class: "sidebar-brand", title: "AI Compute Fabric" },
+      createGeminiSparkleSvg(22),
+      el("span", { class: "sidebar-brand-title" }, "AI Compute Fabric")
+    ),
+    el("button", {
+      type: "button",
+      class: "btn-collapse-pinned",
+      id: "btn-collapse-pinned",
+      title: "Ẩn menu điều hướng (Ctrl+B)",
+      onclick: () => setNavPinned(false)
+    }, createMenuOpenSvg(19))
   );
 
-  const links = el("div", { class: "nav-links" });
-  for (const [href, label] of NAV) {
-    const a = el("a", { href, class: "nav-tab" }, label);
+  const navList = el("div", { class: "sidebar-nav-list" });
+  for (const [href, label, icon] of NAV) {
+    const a = el("a", {
+      href,
+      class: "nav-tab",
+      title: label,
+      onclick: () => {
+        if (window.innerWidth <= 768) setNavPinned(false);
+      }
+    },
+      el("span", { class: "nav-tab-icon", "aria-hidden": "true" }, icon),
+      el("span", { class: "nav-tab-label" }, label)
+    );
     if (href === here) a.setAttribute("aria-current", "page");
-    links.append(a);
+    navList.append(a);
   }
+
+  sidebar.append(brand, navList);
+
+  // 3. Top Header Bar
+  const topbarHamburger = el("button", {
+    type: "button",
+    class: "btn-topbar-hamburger",
+    id: "btn-topbar-hamburger",
+    title: "Ghim / Mở menu điều hướng (Ctrl+B)",
+    onclick: () => setNavPinned(true)
+  }, createHamburgerSvg(18));
 
   const helpBtn = el("button", {
     type: "button",
     class: "sm ghost",
-    title: "Mở hướng dẫn nhanh cho màn hình này (phím tắt ?)",
+    title: "Mở hướng dẫn nhanh (phím tắt ?)",
     onclick: openHelpDrawer
-  }, "📖 Trợ giúp");
+  }, "📖 Trợ giúp", el("span", { class: "kbd-hint" }, "?"));
 
   const tokBtn = el("button", {
     type: "button",
     class: "sm ghost",
-    title: "Cập nhật Admin Bearer Token cho phiên làm việc này",
+    title: "Cập nhật Admin Bearer Token",
     onclick: () => { if (askAdminToken("Nhập Admin Token mới:")) location.reload(); }
   }, "🔑 Token");
 
+  const curTheme = document.documentElement.getAttribute("data-theme") || "dark";
   const themeBtn = el("button", {
     type: "button",
     class: "sm ghost",
+    id: "nav-theme-btn",
     title: "Chuyển đổi giao diện Sáng / Tối",
-    onclick: toggleTheme
-  }, "◐ Giao diện");
+    onclick: () => {
+      toggleTheme();
+      const next = document.documentElement.getAttribute("data-theme") || "dark";
+      themeBtn.textContent = next === "light" ? "☀️ Sáng" : "🌙 Tối";
+    }
+  }, curTheme === "light" ? "☀️ Sáng" : "🌙 Tối");
 
   const livePill = el("span", { class: "live-pill", id: "nav-live" },
     el("span", { class: "live-dot" }),
@@ -293,9 +412,19 @@ function renderNav() {
   );
 
   const roleBadge = el("span", { class: "nav-role", id: "nav-role", title: "Vai trò của token hiện tại" }, "…");
-  const actions = el("div", { class: "nav-actions" }, livePill, roleBadge, helpBtn, tokBtn, themeBtn);
-  nav.append(brand, links, actions);
-  document.body.prepend(nav);
+
+  const topbar = el("header", { class: "app-topbar" },
+    el("div", { class: "topbar-left" }, topbarHamburger),
+    el("div", { class: "topbar-actions" }, livePill, roleBadge, helpBtn, tokBtn, themeBtn)
+  );
+
+  // 4. Wrap <main> inside .app-main-wrap
+  const main = document.querySelector("main");
+  const mainWrap = el("div", { class: "app-main-wrap", id: "app-main-wrap" }, topbar);
+  if (main) mainWrap.append(main);
+
+  document.body.prepend(backdrop, sidebar);
+  document.body.append(mainWrap);
 }
 
 async function api(path, opts = {}) {
@@ -708,5 +837,12 @@ document.addEventListener("keydown", e => {
   if (e.key === "?" && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target && e.target.tagName) || "")) {
     e.preventDefault();
     openHelpDrawer();
+  }
+  if (e.key === "Escape") {
+    toggleSidebar(false);
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b" && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target && e.target.tagName) || "")) {
+    e.preventDefault();
+    toggleSidebar();
   }
 });

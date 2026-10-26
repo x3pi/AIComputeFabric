@@ -10,38 +10,38 @@
 .dag-wrap {
   overflow: auto;
   border: 1px solid var(--bd);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background:
-    radial-gradient(circle, var(--bd) 1px, transparent 1px) 0 0 / 20px 20px,
+    radial-gradient(circle, var(--bd) 1px, transparent 1px) 0 0 / 24px 24px,
     var(--bg-elevated);
   max-height: 72vh;
-  padding: 8px;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.14);
+  padding: 12px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 .dag-wrap svg { display: block; transition: transform .15s ease; transform-origin: 0 0; }
-.node rect { stroke-width: 1.75; rx: 8; transition: filter .15s ease, stroke-width .15s ease; }
-.node:hover rect { filter: brightness(1.08); }
-.node text { font-size: 11.5px; font-weight: 600; fill: var(--fg); pointer-events: none; font-family: var(--mono); }
-.node text.sub { fill: var(--mut); font-size: 10px; font-weight: 500; font-family: var(--sans); }
+.node rect { stroke-width: 1.5; rx: 10; transition: filter .15s ease, stroke-width .15s ease; }
+.node:hover rect { filter: brightness(1.1); stroke-width: 2.2; }
+.node text { font-size: 11.5px; font-weight: 600; fill: var(--fg); pointer-events: none; font-family: var(--font-mono); }
+.node text.sub { fill: var(--mut); font-size: 10px; font-weight: 500; font-family: var(--font-sans); }
 .node.s-pending rect { fill: var(--card); stroke: var(--mut); stroke-dasharray: 4 3; }
 .node.s-running rect { fill: var(--acc-soft); stroke: var(--acc); }
 .node.s-retrying rect { fill: var(--warn-soft); stroke: var(--warn); }
 .node.s-ok rect { fill: var(--ok-soft); stroke: var(--ok); }
 .node.s-rejected rect, .node.s-failed rect { fill: var(--bad-soft); stroke: var(--bad); }
-.node.sel rect { stroke-width: 3; filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.35)); }
+.node.sel rect { stroke-width: 3; filter: drop-shadow(0 0 10px rgba(138, 180, 248, 0.45)); }
 .edge { fill: none; stroke: var(--mut); stroke-width: 1.5; opacity: .65; }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--mut); margin: 4px 0 12px; align-items: center; }
 .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -2px; border: 1.5px solid; }
 #wf-list button { text-align: left; }
 #detail {
-  font-size: 13px;
-  margin-top: 12px;
-  min-height: 2.6em;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  margin-top: 14px;
+  min-height: 2.8em;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   border: 1px solid var(--bd);
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   display: flex;
   align-items: center;
 }

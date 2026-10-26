@@ -9,71 +9,76 @@
 <style>
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
   gap: 8px;
 }
 @media (max-width: 520px) {
   .grid {
-    grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
     gap: 6px;
   }
 }
 .cell {
-  height: 62px;
-  border-radius: 8px;
+  height: 64px;
+  border-radius: var(--radius-sm);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   font-size: 11px;
   font-weight: 600;
   color: #fff;
-  padding: 6px 7px 5px;
+  padding: 6px 8px;
   overflow: hidden;
   cursor: pointer;
   position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: var(--shadow-xs);
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .cell:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: var(--shadow-md), 0 0 12px rgba(255, 255, 255, 0.2);
 }
 .cell-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 10px;
-  opacity: 0.92;
+  opacity: 0.95;
   width: 100%;
+  font-family: var(--font-mono);
 }
 .cell-id {
   font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: var(--font-mono);
 }
 .cell-meter {
   width: 100%;
   height: 4px;
-  background: rgba(0, 0, 0, 0.28);
-  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 .cell-meter > span {
   display: block;
   height: 100%;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: var(--radius-pill);
 }
 .leg {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 18px;
   color: var(--mut);
-  font-size: 12.5px;
-  margin-top: 12px;
+  font-size: 12px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--bd);
 }
 .leg i {
   display: inline-block;
@@ -85,9 +90,9 @@
 }
 .est-controls {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
-  gap: 10px 12px;
-  margin-bottom: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 12px 14px;
+  margin-bottom: 16px;
 }
 .worker-id-link {
   color: var(--acc);
