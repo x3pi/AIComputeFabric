@@ -979,7 +979,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [~] Gate: throughput efficiency ≥ 0,80 và 100 % kết quả qua validator → chưa đo thật (cần 8–40 PC); giá trị mô phỏng ở trên; tỷ lệ qua ResultValidator = 100 % trong các bài đo mô phỏng
 
 ### H.8. P6 — Audio & Training (3–4 sprint)
-- [ ] P6.1 Pipeline `datasets` streaming 10.000+ file; VAD; resample; `consent_ref`; checksum
+- [~] P6.1 Pipeline `datasets` streaming 10.000+ file; VAD; resample; `consent_ref`; checksum → `audio/ingestion/dataset.py` (chỉ WAV PCM16, stdlib + numpy): manifest bắt buộc `consent_ref`/`speaker_id`/`sha256` (thiếu là lỗi, không bỏ qua), chặn đường dẫn thoát khỏi thư mục dữ liệu, kiểm checksum từng file, resample polyphase (giữ biên độ trong 0,5 dB, tone ngoài băng bị giảm ≥ 40 dB), VAD năng lượng có hangover, stream 10.000 file tổng hợp ở khoảng 5.000 file/s mà bộ nhớ không tăng (đã kiểm: nếu giữ lại mọi mục thì test fail); đã kiểm đột biến 8 cơ chế; CHƯA có: API `datasets` của Hugging Face, mp3/flac/opus, VAD thần kinh (Silero), dữ liệu tiếng Việt thật (D20), kiểm trên máy khác
 - [~] P6.1 Chia speaker-disjoint; `VietnameseTextNormalizer`; WER/CER bằng `jiwer` → audio/: chia tập + normalizer (số < 1e9, ngày dd/mm/yyyy, vị trí dấu) + WER/CER tự cài; chưa dùng jiwer, chưa kiểm trên dữ liệu thật
 - [ ] P6.2 Adapter Qwen3-ASR, Qwen3-TTS, DeepFilterNet; Màn 5b
 - [ ] P6.3 Estimator bộ nhớ huấn luyện (LoRA + gradient + AdamW 8-bit)
