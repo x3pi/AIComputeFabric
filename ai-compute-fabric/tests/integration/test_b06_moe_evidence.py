@@ -42,3 +42,16 @@ def test_noise_is_small_relative_to_the_effect(rep):
     for r in rep["rows"]:
         if "tg64_tok_s" in r and r["n_cpu_moe"] <= 40:
             assert r["tg64_std"] < 0.1 * r["tg64_tok_s"]
+
+
+OT = Path(__file__).resolve().parents[2] / "benchmarks/reports/p4_B06_override_tensor_rtx3060.json"
+
+
+def test_override_tensor_matches_n_cpu_moe_within_noise_and_other_splits_are_not_better():
+    r = json.loads(OT.read_text())["rows"]
+    a, b = r["ncmoe18"], r["ot_layers0_17"]
+    assert abs(a["tg64_tok_s"] - b["tg64_tok_s"]) < 2 * max(a["tg64_std"], b["tg64_std"])
+    best = max(a["tg64_tok_s"], b["tg64_tok_s"])
+    for name in ("ot_down_all", "ot_down_all_plus_up_0_8", "ot_updown_0_17_gate_all"):
+        assert r[name]["tg64_tok_s"] <= best + 2 * r[name]["tg64_std"], name
+    assert "layer-wise" in " ".join(json.loads(OT.read_text())["findings"])

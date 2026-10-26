@@ -1,0 +1,65 @@
+{
+ "schema_version": 1,
+ "benchmark": "B06-override-tensor",
+ "date": "2026-10-26",
+ "hardware": "1x RTX 3060 12GB, 4 CPU threads, same as B06",
+ "engine": "llama.cpp 74bca39 llama-bench, -fa 1 -ngl 99, pp512/tg64, 3 repeats; -ot patterns joined with ';' (repeating -ot silently kept only the first)",
+ "model": "Qwen3-30B-A3B Q4_K_M",
+ "rows": {
+  "ncmoe18": {
+   "override": "none",
+   "n_cpu_moe": 18,
+   "pp512_tok_s": 647.39,
+   "pp512_std": 73.16,
+   "tg64_tok_s": 50.96,
+   "tg64_std": 1.23,
+   "cpu_resident": "experts of layers 0-17 (37.5 % of expert bytes)"
+  },
+  "ot_layers0_17": {
+   "override": "blk\\.([0-9]|1[0-7])\\.ffn_.*_exps\\.=CPU",
+   "n_cpu_moe": 0,
+   "pp512_tok_s": 591.46,
+   "pp512_std": 149.64,
+   "tg64_tok_s": 51.6,
+   "tg64_std": 1.37,
+   "cpu_resident": "experts of layers 0-17 (37.5 %)"
+  },
+  "ot_down_all": {
+   "override": "ffn_down_exps=CPU",
+   "n_cpu_moe": 0,
+   "pp512_tok_s": 658.51,
+   "pp512_std": 129.55,
+   "tg64_tok_s": 48.61,
+   "tg64_std": 0.47,
+   "cpu_resident": "ffn_down_exps of all 48 layers (33 %)"
+  },
+  "ot_down_all_plus_up_0_8": {
+   "override": "ffn_down_exps=CPU;blk\\.[0-8]\\.ffn_(up|gate)_exps\\.=CPU",
+   "n_cpu_moe": 0,
+   "pp512_tok_s": 484.94,
+   "pp512_std": 231.0,
+   "tg64_tok_s": 42.29,
+   "tg64_std": 0.76,
+   "cpu_resident": "down experts of all layers + up/gate experts of layers 0-8 (about 40 %)"
+  },
+  "ot_updown_0_17_gate_all": {
+   "override": "blk\\.([0-9]|1[0-7])\\.ffn_(up|down)_exps\\.=CPU;ffn_gate_exps=CPU",
+   "n_cpu_moe": 0,
+   "pp512_tok_s": 415.9,
+   "pp512_std": 146.55,
+   "tg64_tok_s": 37.69,
+   "tg64_std": 1.39,
+   "cpu_resident": "up/down experts of layers 0-17 + gate experts of all layers (about 54 %)"
+  }
+ },
+ "findings": [
+  "--override-tensor with the regex for layers 0-17 reproduces --n-cpu-moe 18 (51.6 vs 51.0 tok/s, within one standard deviation), so -ot is a drop-in way to place experts",
+  "tensor-type granularity (down experts only, all layers) was NOT better than layer granularity: 48.6 tok/s with ~33 % of expert bytes on the CPU vs 51.0 with 37.5 % \u2014 the layer-wise split stays the default",
+  "decode speed fell as more expert bytes moved to the CPU in the two heaviest configurations (42.3 and 37.7 tok/s at about 40 % and 54 %), against 48.6-51.6 tok/s at 33-37.5 %"
+ ],
+ "caveats": [
+  "decode stddev is 0.5-1.4 tok/s, so differences under ~2.5 tok/s are not conclusions",
+  "prompt-processing stddev is 10-50 % of the mean in these runs (the machine was not otherwise idle-tuned): pp512 numbers are indicative only",
+  "3 repeats, one model, one GPU, Linux; no quality comparison; KTransformers not tried"
+ ]
+}
