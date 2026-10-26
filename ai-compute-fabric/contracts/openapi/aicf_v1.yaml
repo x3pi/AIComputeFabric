@@ -90,6 +90,22 @@ paths:
       responses:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Estimate"}}}}
         "400": {description: bad JSON}
+  /api/v1/models/estimate-vram:
+    post:
+      summary: VRAM estimate for a GGUF file read by the Python sidecar (501 unless the gateway runs with --vram-sidecar-url)
+      description: |
+        Same body as POST /api/vram/estimate plus `gguf`, a file name under the sidecar's models root. Layer count, KV heads,
+        head dimension and weight bytes come from the file header. Confidence is always ESTIMATED: only Qwen3-4B/8B
+        (Q4_K_M, Q8_0, F16) on one RTX 3060 were measured (benchmarks/reports/p1_sidecar_estimate_vs_measured.json).
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [gguf], properties: {gguf: {type: string}, ctx_per_slot: {type: integer}, parallel: {type: integer}, flash_attn: {type: boolean}, kv_bytes_per_elem: {type: integer}, gpu_total_mib: {type: integer}, os_user_mib: {type: integer}, headroom_mib: {type: integer}, gpu_count: {type: integer}}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Estimate"}}}}
+        "400": {description: bad JSON or no gguf name}
+        "403": {description: file outside the models root}
+        "404": {description: no such model file}
+        "422": {description: not a usable GGUF}
+        "501": {description: no sidecar configured}
+        "502": {description: sidecar unreachable or returned unusable facts}
   /api/tenants:
     get:
       summary: Tenants (API keys are never returned)

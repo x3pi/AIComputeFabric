@@ -40,7 +40,9 @@ func main() {
 	tlsCert := flag.String("tls-cert", "", "gateway server certificate (enables mTLS on the gRPC port)")
 	tlsKey := flag.String("tls-key", "", "gateway server private key")
 	tlsCA := flag.String("tls-client-ca", "", "CA that must have signed every worker certificate")
+	vramSidecarFlag := flag.String("vram-sidecar-url", "", "GGUF facts service (python -m core.vram_sidecar), enables POST /api/v1/models/estimate-vram")
 	flag.Parse()
+	vramSidecar = NewSidecar(*vramSidecarFlag)
 	reg := NewRegistry(*offline)
 	lis, err := net.Listen("tcp", *grpcAddr)
 	if err != nil {

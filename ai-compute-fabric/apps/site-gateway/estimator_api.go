@@ -220,7 +220,10 @@ func computeBufferBytes(m CatalogModel, ctxPerSlot uint64, flashAttn bool) (comp
 }
 
 func computeEstimate(req EstimateRequest, f *Fleet) EstimateResponse {
-	m := findCatalogModel(req.ModelID)
+	return computeEstimateFor(findCatalogModel(req.ModelID), req, f)
+}
+
+func computeEstimateFor(m CatalogModel, req EstimateRequest, f *Fleet) EstimateResponse {
 	if req.CtxPerSlot == 0 {
 		req.CtxPerSlot = 8192
 	}
@@ -597,6 +600,7 @@ func registerEstimatorAndStatsRoutes(mux *http.ServeMux, f *Fleet, ts *TenantSto
 		}
 		writeJSON(w, http.StatusOK, computeEstimate(req, f))
 	})
+	mux.HandleFunc("/api/v1/models/estimate-vram", estimateFromGGUF(f))
 	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "GET only", http.StatusMethodNotAllowed)
