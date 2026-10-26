@@ -11,6 +11,7 @@ from typing import Annotated, Callable, Optional, Protocol
 
 import psycopg
 import psycopg.types.json
+from psycopg_pool import ConnectionPool
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 from psycopg.rows import dict_row
@@ -59,21 +60,25 @@ CREATE TABLE IF NOT EXISTS aicf_exec (
 
 
 class Orchestrator:
-    def __init__(self, dsn: str, executor: Executor, max_concurrency: int = 3, max_attempts: int = 5):
+    def __init__(self, dsn: str, executor: Executor, max_concurrency: int = 3, max_attempts: int = 5, durability: str = "sync"):
         self.dsn, self.executor, self.max_concurrency, self.max_attempts = dsn, executor, max_concurrency, max_attempts
-        with psycopg.connect(self.dsn, autocommit=True) as c:
+        self.durability = durability
+        # one pool for the execution log AND LangGraph's checkpoint writes: opening a connection per write
+        # was the scaling bottleneck (efficiency fell from 0.75 to 0.54 between 8 and 40 workers)
+        self.pool = ConnectionPool(self.dsn, min_size=2, max_size=max(8, max_concurrency + 4), open=True, kwargs={"autocommit": True, "row_factory": dict_row})
+        with self.pool.connection() as c:
             c.execute(EXEC_DDL)
             c.execute(RESULTS_DDL)
 
     # ---- durable execution log (one row per attempt; survives a crash of this process) ----
     def _log_start(self, wf: str, step: str, attempt: int) -> int:
-        with psycopg.connect(self.dsn, autocommit=True) as c:
-            return c.execute("INSERT INTO aicf_exec(workflow, step, attempt) VALUES (%s,%s,%s) RETURNING id", (wf, step, attempt)).fetchone()[0]
+        with self.pool.connection() as c:
+            return c.execute("INSERT INTO aicf_exec(workflow, step, attempt) VALUES (%s,%s,%s) RETURNING id", (wf, step, attempt)).fetchone()["id"]
 
     def _log_end(self, row: int, outcome: str, store: Optional[tuple] = None):
         """Records the outcome; for a successful step the result is stored in the SAME transaction,
         so 'finished' and 'result durable' can never disagree after a crash."""
-        with psycopg.connect(self.dsn) as c:
+        with self.pool.connection() as c, c.transaction():
             c.execute("UPDATE aicf_exec SET finished_at = now(), outcome = %s WHERE id = %s", (outcome, row))
             if store:
                 wf, step, result = store
@@ -81,12 +86,12 @@ class Orchestrator:
                           (wf, step, psycopg.types.json.Jsonb(result)))
 
     def _stored(self, wf: str, step: str):
-        with psycopg.connect(self.dsn) as c:
+        with self.pool.connection() as c:
             r = c.execute("SELECT result FROM aicf_results WHERE workflow=%s AND step=%s", (wf, step)).fetchone()
-        return r[0] if r else None
+        return r["result"] if r else None
 
     def executions(self, wf: str) -> list:
-        with psycopg.connect(self.dsn, row_factory=dict_row) as c:
+        with self.pool.connection() as c:
             return c.execute("SELECT step, attempt, outcome, finished_at IS NOT NULL AS finished FROM aicf_exec WHERE workflow=%s ORDER BY id", (wf,)).fetchall()
 
     # ---- graph ----
@@ -139,9 +144,11 @@ class Orchestrator:
 
     def run(self, wf: str, steps: list, resume: bool = False) -> dict:
         cfg = {"configurable": {"thread_id": wf}, "max_concurrency": self.max_concurrency, "recursion_limit": 10_000}
-        with psycopg.connect(self.dsn, autocommit=True, row_factory=dict_row) as conn:
-            saver = PostgresSaver(conn)
-            saver.setup()
-            graph = self._compile(wf, steps, saver)
-            out = graph.invoke(None if resume else {"results": {}}, cfg, durability="sync")
+        saver = PostgresSaver(self.pool)
+        saver.setup()
+        graph = self._compile(wf, steps, saver)
+        out = graph.invoke(None if resume else {"results": {}}, cfg, durability=self.durability)
         return out["results"]
+
+    def close(self):
+        self.pool.close()

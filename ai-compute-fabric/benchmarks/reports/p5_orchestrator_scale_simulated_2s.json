@@ -1,0 +1,16 @@
+{
+ "schema_version": 1,
+ "kind": "SIMULATED workers - orchestrator overhead only, not B08",
+ "task_ms": 2000,
+ "rows": [
+  {
+   "workers": 40,
+   "tasks": 400,
+   "seconds": 21.29,
+   "tasks_per_s": 18.8,
+   "ideal_tasks_per_s": 20.0,
+   "throughput_efficiency": 0.94,
+   "complete": true
+  }
+ ]
+}

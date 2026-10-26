@@ -963,19 +963,19 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [x] Gate: B07 bật mặc định chỉ khi acceptance ≥ 0,65 và speedup ≥ 1,25×; đầu ra greedy khớp 100 % → đã đo: tốt nhất acceptance 0,49, speedup 1,185×, đầu ra greedy khớp 25 % → KHÔNG đạt cả 3 điều kiện nên speculative giữ tắt mặc định (đúng gate)
 
 ### H.7. P5 — Agent, RAG, 15 typed tasks (3–4 sprint)
-- [ ] P5.1 LangGraph orchestrator + checkpoint PostgreSQL
-- [ ] P5.1 Đủ 15 typed task theo [KT] §6.2
-- [ ] P5.2 Tool registry ký số, `tenant_scope`, constrained decoding, sandbox; không shell tùy ý
+- [~] P5.1 LangGraph orchestrator + checkpoint PostgreSQL → `agents/orchestrator.py`: DAG LangGraph + checkpoint PostgreSQL (container pgvector, cổng 55432) + kết quả từng bước lưu cùng giao dịch; thử SIGKILL tại 6 điểm; CHƯA có NATS JetStream, chưa chạy với worker thật
+- [~] P5.1 Đủ 15 typed task theo [KT] §6.2 → `agents/tasks.py`: 15 loại có schema vào/ra chặt (70 test); CHƯA có bộ thực thi cho từng loại (mới có TEXT_GENERATE qua llama; OCR/ASR/TTS/TRAIN chưa)
+- [~] P5.2 Tool registry ký số, `tenant_scope`, constrained decoding, sandbox; không shell tùy ý → `agents/tool_registry.py` (manifest ký Ed25519, tenant_scope, schema, cấm tên shell) + `agents/sandbox.py` (Docker không mạng, rootfs chỉ đọc, non-root, giới hạn tài nguyên); CHƯA có constrained decoding (grammar) nối vào llama; sandbox Windows chưa có (từ chối chạy, fail closed)
 - [ ] P5.3 Worker embedding/rerank (chọn `sentence-transformers` hoặc TEI sau benchmark), pgvector
-- [ ] P5.3 `result-validator` (schema, citation, ảo giác)
+- [~] P5.3 `result-validator` (schema, citation, ảo giác) → `agents/validator.py`: schema, trích dẫn nguyên văn, kiểm số liệu lạ (heuristic, không phải bằng chứng chống ảo giác), schema trích xuất, hình dạng embedding/rerank; đã kiểm đột biến
 - [ ] P5.4 Màn 4a (Agent DAG)
-- [ ] Test: `test_15_typed_task_schemas.py`
-- [ ] Test: `test_agent_tool_sandbox_and_injection.py` (50 kịch bản)
-- [ ] Test: `test_langgraph_checkpoint_resume.py`
-- [ ] Test: `test_b08_agent_cluster_throughput.py` (8, 20, 40 PC)
-- [ ] Gate: 0 % bypass sandbox
-- [ ] Gate: chỉ chạy lại task đang in-flight khi mất worker
-- [ ] Gate: throughput efficiency ≥ 0,80 và 100 % kết quả qua validator
+- [x] Test: `test_15_typed_task_schemas.py` → `tests/unit/test_15_typed_task_schemas.py`: 70 test pass; đã thử phá 4 quy tắc validator
+- [x] Test: `test_agent_tool_sandbox_and_injection.py` (50 kịch bản) → `tests/security/…`: 53 test (20 tài liệu tiêm lệnh với mô hình "cả tin", 12 gọi trực tiếp, kiểm chữ ký/toàn vẹn, 20 tấn công thoát sandbox, 4 lạm dụng tài nguyên, cờ bảo mật); 0 bypass trên Linux + Docker; đã thử nới 6 lớp sandbox; bộ test KHÔNG chạy được nếu thiếu Docker (skip, không tính pass)
+- [~] Test: `test_langgraph_checkpoint_resume.py` → `tests/resilience/…`: DAG 50 bước, 3 worker đồng thời, SIGKILL orchestrator ở 6 điểm (kể cả bước 25) rồi resume: kết quả đúng 100 %, 0 bước đã xong bị chạy lại; worker bị thu hồi được thử lại; kết quả hỏng bị từ chối. Chưa dùng NATS JetStream, worker là mô phỏng
+- [~] Test: `test_b08_agent_cluster_throughput.py` (8, 20, 40 PC) → chỉ có đo chi phí điều phối với worker MÔ PHỎNG (`orchestrator_scale.py`): hiệu suất 0,855/0,741/0,568 cho 8/20/40 worker với tác vụ 200 ms (trần ≈115 tác vụ/s), 0,94 với tác vụ 2 s ở 40 worker. B08 thật cần 8/20/40 PC
+- [x] Gate: 0 % bypass sandbox → 0/53 kịch bản vượt qua trên Linux + Docker (xem trên); Windows chưa có sandbox nên không áp dụng
+- [~] Gate: chỉ chạy lại task đang in-flight khi mất worker → đạt khi orchestrator bị kill (≤ 3 tác vụ in-flight chạy lại, 0 tác vụ xong chạy lại); mất worker thật qua NATS chưa thử
+- [~] Gate: throughput efficiency ≥ 0,80 và 100 % kết quả qua validator → chưa đo thật (cần 8–40 PC); giá trị mô phỏng ở trên; tỷ lệ qua ResultValidator = 100 % trong các bài đo mô phỏng
 
 ### H.8. P6 — Audio & Training (3–4 sprint)
 - [ ] P6.1 Pipeline `datasets` streaming 10.000+ file; VAD; resample; `consent_ref`; checksum
