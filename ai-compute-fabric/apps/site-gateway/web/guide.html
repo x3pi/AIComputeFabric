@@ -118,6 +118,7 @@
     <a href="#sec-studio">4. Sử dụng AI Studio (RAG · Prompt · LoRA)</a>
     <a href="#sec-rbac">5. Phân quyền RBAC &amp; Bảo mật</a>
     <a href="#sec-reclaim">6. Bảo vệ Máy trạm &amp; Thu hồi GPU</a>
+    <a href="#sec-audio">7. Audio AI (ASR · TTS · VAD · WER/CER)</a>
   </nav>
 
   <!-- Section 1: 4-Step Quickstart -->
@@ -358,6 +359,47 @@
       </div>
     </section>
   </div>
+
+  <!-- Section 7: Audio AI Factory -->
+  <section class="card" id="sec-audio">
+    <div class="card-header">
+      <div class="card-title-group">
+        <h2>7. Audio AI Factory — Tiếng nói Tiếng Việt (ASR · TTS · VAD · Khử nhiễu · WER/CER)</h2>
+        <span class="pill ok">Phase P6 Ready</span>
+      </div>
+      <a href="audio.html" style="text-decoration:none"><button type="button" class="sm primary">🎙️ Mở trang Audio AI →</button></a>
+    </div>
+    <div class="workflow-grid">
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">AUDIO_TTS · facebook/mms-tts-vie</span>
+          <h3>Tổng hợp Tiếng nói &amp; Vòng lặp</h3>
+          <p>Chuyển văn bản tiếng Việt sang tệp <code class="mono">.wav</code> 16-bit PCM, phát trực tiếp trên trình duyệt và kiểm thử khép kín <strong>TTS → Qwen3-ASR-0.6B</strong> (WER trung bình 1.82%). Tích hợp chốt chặn đạo đức AI từ chối mọi yêu cầu nhân bản giọng nói (Zero Voice-Cloning).</p>
+        </div>
+      </div>
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">AUDIO_ASR · Qwen3-ASR-0.6B</span>
+          <h3>Nhận dạng Giọng nói (Speech-to-Text)</h3>
+          <p>Nhận dạng giọng nói Tiếng Việt (<code class="mono">vi</code>) và Tiếng Anh (<code class="mono">en</code>) trên GPU kèm phân đoạn tiếng nói VAD. Đạt WER <strong>8.11%</strong> (CER <strong>4.70%</strong>) trên 100 mẫu kiểm thử thực tế <code class="mono">google/fleurs vi_vn</code>.</p>
+        </div>
+      </div>
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">AUDIO_VAD &amp; ENHANCE</span>
+          <h3>Energy VAD &amp; Wiener Spectral Gate</h3>
+          <p>Phát hiện phân đoạn tiếng nói bằng ngưỡng tương đối <code class="mono">-30 dB</code> so với đỉnh (không bỏ sót bản thu âm nhỏ tiếng) và khử nhiễu nền dừng bằng bộ lọc phổ Wiener (<code class="mono">512-FFT</code>, <code class="mono">-12 dB</code>).</p>
+        </div>
+      </div>
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">EVALUATION · vn_normalizer</span>
+          <h3>Chuẩn hóa Tiếng Việt &amp; WER / CER</h3>
+          <p>Tự động bung số đếm (<code class="mono">482 → bốn trăm tám mươi hai</code>), ngày tháng (<code class="mono">15/03/2026</code>) và chuẩn hóa vị trí dấu thanh (<code class="mono">hoà → hòa</code>) trước khi chấm điểm sai số từ/ký tự.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 <script>
 const origin = location.origin || "http://127.0.0.1:18080";

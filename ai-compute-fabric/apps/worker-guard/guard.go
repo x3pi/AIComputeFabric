@@ -53,6 +53,7 @@ type Snapshot struct {
 	Headroom  uint64      `json:"headroom_mib"`
 	Model     string      `json:"model"`
 	Lora      string      `json:"lora"`
+	Switching bool        `json:"switching"`
 	Updated   time.Time   `json:"updated"`
 }
 
@@ -70,6 +71,7 @@ type Guard struct {
 	procs     []Proc
 	procsAt   time.Time
 	events    []Event
+	switching bool // a model/adapter change was requested and the engine has not started with it yet
 }
 
 func NewGuard(cfg Config, s Sampler, e Engine) *Guard {
@@ -103,6 +105,9 @@ func (g *Guard) Switch(model, lora string) {
 		g.emit(Event{Kind: "switch", Detail: "stopped for a model change", StopMS: ms(info.Elapsed), Signal: info.Signal})
 	}
 	g.eng.Configure(model, lora)
+	g.mu.Lock()
+	g.switching = true
+	g.mu.Unlock()
 	g.setState(StStopped)
 	d := model
 	if lora != "" {
@@ -229,6 +234,9 @@ func (g *Guard) start() error {
 		g.setState(StStopped)
 		return err
 	}
+	g.mu.Lock()
+	g.switching = false
+	g.mu.Unlock()
 	g.setState(StRunning)
 	g.emit(Event{Kind: "start", Detail: fmt.Sprintf("engine healthy after %.1fs", g.now().Sub(t0).Seconds())})
 	return nil
@@ -298,7 +306,7 @@ func (g *Guard) Snapshot() Snapshot {
 	return Snapshot{
 		State: g.st, Sample: g.last, EngineMiB: own, EnginePID: g.eng.PID(), External: g.last.UsedMiB - min64(g.last.UsedMiB, own),
 		Buckets: est.NewBuckets(g.last.TotalMiB*mib, osUser, w, kv, c, g.cfg.HeadroomMiB*mib),
-		Events:  ev, Headroom: g.cfg.HeadroomMiB, Updated: g.now(), Model: baseName(model), Lora: baseName(lora),
+		Events:  ev, Headroom: g.cfg.HeadroomMiB, Updated: g.now(), Model: baseName(model), Lora: baseName(lora), Switching: g.switching,
 	}
 }
 

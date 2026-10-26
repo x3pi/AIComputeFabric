@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AICF Audio AI — Nhận dạng ASR, Tổng hợp TTS, Lọc nhiễu & Đo kiểm Tiếng Việt</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="common.css">
+<style>
+.stack > * + * { margin-top: 12px; }
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mut);
+}
+.field input, .field select, .field textarea {
+  font-size: 13px;
+  width: 100%;
+}
+.audio-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+.audio-box audio {
+  width: 100%;
+  height: 38px;
+  margin-top: 6px;
+}
+.vad-timeline {
+  position: relative;
+  height: 28px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.vad-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.75), rgba(37, 99, 235, 0.75));
+  border-left: 1px solid var(--ok);
+  border-right: 1px solid var(--acc);
+}
+.transcript-box {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--bd);
+  background: var(--bg-elevated);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg);
+  white-space: pre-wrap;
+}
+.chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sample-chip {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+.sample-chip:hover {
+  border-color: var(--acc);
+  color: var(--acc);
+}
+.two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>🎙️ Audio AI Factory — Xử lý Tiếng nói & Đánh giá Tiếng Việt</h1>
+      <div class="sub">Hệ thống xử lý âm thanh đa tác vụ (Phase P6): Nhận dạng giọng nói <b>Qwen3-ASR-0.6B</b>, tổng hợp tiếng nói tiếng Việt <b>facebook/mms-tts-vie</b>, phát hiện giọng nói bất biến mức âm lượng (<b>Energy VAD</b>), khử nhiễu phổ (<b>Wiener Spectral Gate</b>) và chuẩn hóa chấm điểm <b>WER / CER Tiếng Việt</b>.</div>
+    </div>
+    <div class="row" style="gap:8px">
+      <span id="asr-pill" class="pill">ASR: …</span>
+      <span id="tts-pill" class="pill">TTS: …</span>
+    </div>
+  </div>
+
+  <div id="ro" class="readonly-banner" hidden>Bạn đang ở chế độ chỉ xem (viewer). Cần vai trò <b>operator</b> hoặc <b>admin</b> để chạy tổng hợp giọng nói, nhận dạng ASR hoặc xử lý tín hiệu.</div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-top"><span>MODEL NHẬN DẠNG (ASR)</span><span class="pill ok">Qwen3-ASR-0.6B</span></div>
+      <div class="kpi-val num" id="kpi-asr-wer">WER 8.11%</div>
+      <div class="kpi-foot" id="kpi-asr-sub">CER 4.70% trên 100 mẫu FLEURS Tiếng Việt (1180s)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>TỔNG HỢP TIẾNG VIỆT (TTS)</span><span class="pill ok">mms-tts-vie</span></div>
+      <div class="kpi-val num" id="kpi-tts-wer">WER 1.82%</div>
+      <div class="kpi-foot">Kiểm chứng vòng lặp độc lập TTS → Qwen3-ASR</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>TIỀN XỬ LÝ & LỌC NHIỄU</span><span class="pill info">DSP + VAD</span></div>
+      <div class="kpi-val num">-30 dB / 512-FFT</div>
+      <div class="kpi-foot">Energy VAD tương đối & Wiener Spectral Gate (-12 dB)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>QUẢN TRỊ & ĐẠO ĐỨC AI</span><span class="pill warn">Bảo vệ giọng nói</span></div>
+      <div class="kpi-val">Zero Voice-Clone</div>
+      <div class="kpi-foot">Từ chối giả mạo giọng nói & bắt buộc kiểm tra Consent</div>
+    </div>
+  </div>
+
+  <div id="msg" class="mut" role="status" aria-live="polite" style="margin-bottom:12px;font-size:13px"></div>
+
+  <div class="wide-split" style="margin-bottom:18px">
+    <!-- 1. TTS & Round-trip -->
+    <section class="card stack" style="margin-bottom:0">
+      <div class="card-header">
+        <div>
+          <h2>1. Tổng hợp Tiếng nói Tiếng Việt (TTS) & Kiểm thử Vòng lặp</h2>
+          <div class="sub">Chuyển văn bản tiếng Việt thành âm thanh WAV 16-bit PCM và kiểm chứng độ rõ bằng Qwen3-ASR-0.6B</div>
+        </div>
+        <span class="pill info">AUDIO_TTS</span>
+      </div>
+
+      <div class="chip-row">
+        <button type="button" class="sample-chip" onclick="setTtsSample('xin chào quý khách, hệ thống tính toán phân tán đã sẵn sàng phục vụ')">✨ Câu mẫu 1: Chào quý khách</button>
+        <button type="button" class="sample-chip" onclick="setTtsSample('hóa đơn được thanh toán vào ngày mười lăm tháng ba')">✨ Câu mẫu 2: Thanh toán hóa đơn</button>
+        <button type="button" class="sample-chip" onclick="setTtsSample('cuộc họp kỹ thuật sẽ bắt đầu lúc chín giờ sáng')">✨ Câu mẫu 3: Lịch họp kỹ thuật</button>
+      </div>
+
+      <label class="field">
+        Văn bản Tiếng Việt cần tổng hợp (tối đa 2000 ký tự)
+        <textarea id="tts-text" rows="3" placeholder="Nhập câu tiếng Việt cần đọc...">xin chào quý khách, công ty chúng tôi xin cảm ơn quý khách hàng</textarea>
+      </label>
+
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button type="button" id="btn-tts" class="primary">🔊 Tổng hợp Giọng nói (TTS)</button>
+        <button type="button" id="btn-roundtrip">🔄 Chạy Vòng lặp TTS → ASR + Chấm WER</button>
+        <button type="button" id="btn-clone-test" class="sm ghost" title="Kiểm tra cơ chế từ chối nhân bản giọng nói trái phép">🛡️ Thử chặn Voice-Cloning</button>
+      </div>
+
+      <div id="tts-out" class="stack"></div>
+    </section>
+
+    <!-- 2. ASR (Speech to Text) -->
+    <section class="card stack" style="margin-bottom:0">
+      <div class="card-header">
+        <div>
+          <h2>2. Nhận dạng Giọng nói (ASR — Speech-to-Text)</h2>
+          <div class="sub">Nhận dạng tệp WAV PCM 16-bit bằng <b>Qwen3-ASR-0.6B</b> kèm phân đoạn tiếng nói VAD và đối chiếu WER/CER</div>
+        </div>
+        <span class="pill info">AUDIO_ASR</span>
+      </div>
+
+      <div class="two-col">
+        <label class="field">
+          Tệp âm thanh (.wav PCM 16-bit)
+          <input type="file" id="asr-file" accept=".wav,audio/wav">
+        </label>
+        <label class="field">
+          Ngôn ngữ nhận dạng
+          <select id="asr-lang">
+            <option value="vi">Tiếng Việt (vi)</option>
+            <option value="en">Tiếng Anh (en)</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="field">
+        Câu chuẩn đối chiếu (Reference — tùy chọn để tự động chấm WER / CER)
+        <input type="text" id="asr-ref" placeholder="Nhập câu gốc nếu muốn chấm điểm sai số từ (WER) và ký tự (CER)...">
+      </label>
+
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button type="button" id="btn-asr" class="primary">🎧 Nhận dạng Giọng nói (ASR)</button>
+        <span id="asr-source-hint" class="mut" style="font-size:12px">Chọn tệp .wav hoặc bấm "Đưa sang ô ASR" từ kết quả TTS bên trái.</span>
+      </div>
+
+      <div id="asr-out" class="stack"></div>
+    </section>
+  </div>
+
+  <div class="wide-split">
+    <!-- 3. VAD & Spectral Gate Enhancement -->
+    <section class="card stack" style="margin-bottom:0">
+      <div class="card-header">
+        <div>
+          <h2>3. Khử nhiễu Phổ (Spectral Gate) & Phát hiện Giọng nói (VAD)</h2>
+          <div class="sub">Tách khoảng có tiếng nói bằng <b>Energy VAD tương đối (-30 dB)</b> và lọc nhiễu nền tĩnh bằng <b>Wiener Spectral Gate</b></div>
+        </div>
+        <span class="pill info">AUDIO_VAD · ENHANCE</span>
+      </div>
+
+      <div class="row" style="gap:10px;flex-wrap:wrap">
+        <label class="field" style="flex:1;min-width:200px">
+          Tải tệp .wav cần phân tích & lọc nhiễu
+          <input type="file" id="vad-file" accept=".wav,audio/wav">
+        </label>
+        <button type="button" id="btn-sample-wav" class="sm">✨ Tạo mẫu Giọng nói + Nhiễu nền trắng</button>
+        <button type="button" id="btn-analyze" class="primary">🎚️ Phân tích VAD & Lọc nhiễu</button>
+      </div>
+
+      <div id="vad-out" class="stack"></div>
+    </section>
+
+    <!-- 4. Vietnamese Normalizer & WER/CER Evaluator + Benchmark Table -->
+    <section class="card stack" style="margin-bottom:0">
+      <div class="card-header">
+        <div>
+          <h2>4. Chuẩn hóa Văn bản Tiếng Việt & Chấm điểm WER / CER</h2>
+          <div class="sub">Chuẩn hóa số đếm, ngày tháng, dấu thanh (<code>hoà → hòa</code>, <code>15/03/2026</code>) trước khi tính khoảng cách Levenshtein</div>
+        </div>
+        <button type="button" id="btn-norm-sample" class="sm ghost">✨ Điền ví dụ chuẩn hóa khó</button>
+      </div>
+
+      <div class="two-col">
+        <label class="field">
+          Câu chuẩn (Reference)
+          <textarea id="norm-ref" rows="2">Giải đấu lớn diễn ra ngày 15/12/2026 với 125 vận động viên tại hoà bình.</textarea>
+        </label>
+        <label class="field">
+          Câu máy nhận dạng (Hypothesis)
+          <textarea id="norm-hyp" rows="2">giải đấu lớn diễn ra ngày mười lăm tháng mười hai năm 2026 với một trăm hai mươi lăm vận động viên tại hòa bình</textarea>
+        </label>
+      </div>
+
+      <div class="row" style="gap:8px">
+        <button type="button" id="btn-eval" class="primary">📐 Chuẩn hóa & Tính WER / CER</button>
+      </div>
+
+      <div id="norm-out" class="stack"></div>
+
+      <div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:12px">
+        <h3 style="margin:0 0 6px;font-size:13.5px">📊 Kết quả Thực nghiệm Đã Đo trên GPU RTX 3060 (FLEURS-vi & Round-trip)</h3>
+        <div id="bench-table"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+const API = "/api/studio/v1/audio";
+let CURRENT_AUDIO_B64 = "";
+let CURRENT_VAD_B64 = "";
+
+const canWrite = () => !!(window.AICF && AICF.can && AICF.can.studio);
+
+function say(text, cls) {
+  const m = document.getElementById("msg");
+  m.textContent = text || "";
+  m.className = cls || "mut";
+}
+
+async function call(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) {
+    opts.body = JSON.stringify(body);
+    opts.headers["Content-Type"] = "application/json";
+  }
+  const r = await api(API + path, opts);
+  if (!r) throw new Error("không kết nối được máy chủ");
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((data.error && data.error.message) || ("lỗi HTTP " + r.status));
+  return data;
+}
+
+function readFileBase64(file) {
+  return new Promise((ok, no) => {
+    const fr = new FileReader();
+    fr.onerror = () => no(new Error("không đọc được tệp"));
+    fr.onload = () => ok(String(fr.result).split(",")[1] || "");
+    fr.readAsDataURL(file);
+  });
+}
+
+function setTtsSample(txt) {
+  document.getElementById("tts-text").value = txt;
+}
+
+function renderSegments(segs, dur) {
+  const total = Math.max(dur || 1, 0.1);
+  const bar = el("div", { class: "vad-timeline", title: "Các khoảng màu xanh là đoạn phát hiện có tiếng nói (VAD)" });
+  for (const s of (segs || [])) {
+    const left = Math.max(0, Math.min(100, (s.start / total) * 100));
+    const width = Math.max(1, Math.min(100 - left, ((s.end - s.start) / total) * 100));
+    bar.append(el("div", {
+      class: "vad-seg",
+      style: `left:${left.toFixed(1)}%;width:${width.toFixed(1)}%`,
+      title: `Tiếng nói: ${s.start}s → ${s.end}s`
+    }));
+  }
+  const pills = el("div", { class: "chip-row" },
+    ...(segs && segs.length
+      ? segs.map((s, i) => el("span", { class: "pill ok" }, `Đoạn #${i + 1}: ${s.start}s – ${s.end}s`))
+      : [el("span", { class: "pill warn" }, "Không phát hiện tiếng nói (Im lặng)")])
+  );
+  return el("div", {}, bar, pills);
+}
+
+// 1. TTS & Round-trip handlers
+document.getElementById("btn-tts").onclick = async () => {
+  const btn = document.getElementById("btn-tts");
+  const out = document.getElementById("tts-out");
+  btn.disabled = true;
+  out.replaceChildren(el("div", { class: "mut" }, "Đang tổng hợp giọng nói tiếng Việt trên GPU (facebook/mms-tts-vie)…"));
+  try {
+    const r = await call("POST", "/tts", { text: document.getElementById("tts-text").value });
+    CURRENT_AUDIO_B64 = r.audio_base64;
+    CURRENT_VAD_B64 = r.audio_base64;
+    const src = "data:audio/wav;base64," + r.audio_base64;
+    out.replaceChildren(
+      el("div", { class: "audio-box" },
+        el("div", { class: "row", style: "justify-content:space-between" },
+          el("strong", {}, `Âm thanh đã tạo (${r.duration_s}s · ${r.engine} · ${r.device})`),
+          el("a", { href: src, download: "aicf-tts.wav", style: "font-size:12px;color:var(--acc);font-weight:600" }, "⬇ Tải .wav")
+        ),
+        el("audio", { controls: true, autoplay: false, src }),
+        el("div", { class: "row", style: "margin-top:8px;justify-content:space-between" },
+          el("span", { class: "mut", style: "font-size:11.5px" }, r.licence_note),
+          el("button", { type: "button", class: "sm", onclick: () => {
+            document.getElementById("asr-ref").value = r.text;
+            document.getElementById("asr-source-hint").textContent = `Đã nạp âm thanh TTS (${r.duration_s}s) vào bộ nhớ đệm ASR & VAD.`;
+            say("Đã chuyển âm thanh TTS sang ô Nhận dạng ASR (Mục 2) và Lọc nhiễu (Mục 3). Bấm nút tương ứng để chạy!", "ok");
+          } }, "↪ Đưa âm thanh này sang ô ASR & Lọc nhiễu")
+        )
+      )
+    );
+    say("Tổng hợp giọng nói hoàn tất.", "ok");
+  } catch (e) {
+    out.replaceChildren(el("div", { class: "err" }, e.message));
+  } finally {
+    btn.disabled = !canWrite();
+  }
+};
+
+document.getElementById("btn-roundtrip").onclick = async () => {
+  const btn = document.getElementById("btn-roundtrip");
+  const out = document.getElementById("tts-out");
+  btn.disabled = true;
+  out.replaceChildren(el("div", { class: "mut" }, "Đang chạy vòng lặp khép kín: TTS (mms-tts-vie) → WAV → VAD → ASR (Qwen3-ASR-0.6B) → Chấm điểm WER…"));
+  try {
+    const r = await call("POST", "/roundtrip", { text: document.getElementById("tts-text").value });
+    CURRENT_AUDIO_B64 = r.audio_base64;
+    CURRENT_VAD_B64 = r.audio_base64;
+    const src = "data:audio/wav;base64," + r.audio_base64;
+    const werPct = r.eval ? (r.eval.wer * 100).toFixed(1) + "%" : "—";
+    const cerPct = r.eval ? (r.eval.cer * 100).toFixed(1) + "%" : "—";
+    out.replaceChildren(
+      el("div", { class: "audio-box stack" },
+        el("div", { class: "row", style: "justify-content:space-between" },
+          el("strong", {}, `Kết quả Vòng lặp TTS → ASR (${r.duration_s}s)`),
+          el("div", { class: "row", style: "gap:6px" },
+            el("span", { class: "pill " + (r.eval && r.eval.wer <= 0.15 ? "ok" : "warn") }, `WER: ${werPct}`),
+            el("span", { class: "pill info" }, `CER: ${cerPct}`)
+          )
+        ),
+        el("audio", { controls: true, src }),
+        el("div", { class: "transcript-box" },
+          el("div", { class: "mut", style: "font-size:11.5px;margin-bottom:4px" }, "Văn bản Qwen3-ASR-0.6B nghe lại từ âm thanh vừa tổng hợp:"),
+          el("strong", {}, r.asr_text || "(trống)")
+        ),
+        renderSegments(r.segments, r.duration_s)
+      )
+    );
+  } catch (e) {
+    out.replaceChildren(el("div", { class: "err" }, e.message));
+  } finally {
+    btn.disabled = !canWrite();
+  }
+};
+
+document.getElementById("btn-clone-test").onclick = async () => {
+  const out = document.getElementById("tts-out");
+  try {
+    await call("POST", "/tts", { text: "Xin chào", voice: "cloned_vip", consent_ref: "fake-consent" });
+  } catch (e) {
+    out.replaceChildren(
+      el("div", { class: "audio-box", style: "border-color:var(--ok)" },
+        el("div", { class: "row", style: "gap:8px" },
+          el("span", { class: "pill ok" }, "ĐÃ CHẶN AN TOÀN (HTTP 400)"),
+          el("strong", {}, "Kiểm thử Chính sách Chống Giả mạo Giọng nói (Zero Voice-Cloning)")
+        ),
+        el("div", { class: "mut", style: "margin-top:6px" }, "Phản hồi từ máy chủ: " + e.message)
+      )
+    );
+  }
+};
+
+// 2. ASR Handler
+document.getElementById("asr-file").onchange = async e => {
+  const f = e.target.files[0];
+  if (f) {
+    CURRENT_AUDIO_B64 = await readFileBase64(f);
+    document.getElementById("asr-source-hint").textContent = `Đã nạp tệp: ${f.name} (${Math.round(f.size / 1024)} KB)`;
+  }
+};
+
+document.getElementById("btn-asr").onclick = async () => {
+  const btn = document.getElementById("btn-asr");
+  const out = document.getElementById("asr-out");
+  if (!CURRENT_AUDIO_B64) {
+    out.replaceChildren(el("div", { class: "err" }, "Hãy chọn một tệp .wav hoặc tổng hợp âm thanh từ ô TTS bên trái trước."));
+    return;
+  }
+  btn.disabled = true;
+  out.replaceChildren(el("div", { class: "mut" }, "Đang chạy Energy VAD và nhận dạng giọng nói bằng Qwen3-ASR-0.6B…"));
+  try {
+    const r = await call("POST", "/asr", {
+      audio_base64: CURRENT_AUDIO_B64,
+      lang: document.getElementById("asr-lang").value,
+      reference: document.getElementById("asr-ref").value
+    });
+    const items = [
+      el("div", { class: "row", style: "justify-content:space-between" },
+        el("strong", {}, `Kết quả Nhận dạng (${r.duration_s}s · ${r.engine} · ${r.device})`),
+        r.eval ? el("span", { class: "pill " + (r.eval.wer <= 0.15 ? "ok" : "warn") }, `WER: ${(r.eval.wer * 100).toFixed(1)}% · CER: ${(r.eval.cer * 100).toFixed(1)}%`) : null
+      ),
+      el("div", { class: "transcript-box", id: "asr-transcript" }, r.text || "(Không phát hiện lời nói)"),
+      renderSegments(r.segments, r.duration_s)
+    ];
+    if (r.eval) {
+      items.push(el("div", { class: "mut", style: "font-size:12px" },
+        `Chuẩn hóa câu gốc: "${r.eval.reference_normalized}" | Chuẩn hóa câu nhận dạng: "${r.eval.hypothesis_normalized}"`));
+    }
+    out.replaceChildren(...items);
+  } catch (e) {
+    out.replaceChildren(el("div", { class: "err" }, e.message));
+  } finally {
+    btn.disabled = !canWrite();
+  }
+};
+
+// 3. VAD & Spectral Gate Enhancement
+document.getElementById("vad-file").onchange = async e => {
+  const f = e.target.files[0];
+  if (f) {
+    CURRENT_VAD_B64 = await readFileBase64(f);
+    say(`Đã nạp tệp ${f.name} để phân tích VAD & lọc nhiễu.`, "ok");
+  }
+};
+
+document.getElementById("btn-sample-wav").onclick = async () => {
+  const out = document.getElementById("vad-out");
+  out.replaceChildren(el("div", { class: "mut" }, "Đang tạo mẫu tín hiệu âm thanh 16 kHz PCM16 có nhiễu nền…"));
+  try {
+    const r = await call("POST", "/sample-wav", { noisy: true });
+    CURRENT_VAD_B64 = r.audio_base64;
+    CURRENT_AUDIO_B64 = r.audio_base64;
+    document.getElementById("btn-analyze").click();
+  } catch (e) {
+    out.replaceChildren(el("div", { class: "err" }, e.message));
+  }
+};
+
+document.getElementById("btn-analyze").onclick = async () => {
+  const out = document.getElementById("vad-out");
+  if (!CURRENT_VAD_B64) {
+    out.replaceChildren(el("div", { class: "err" }, "Hãy tải tệp .wav hoặc bấm '✨ Tạo mẫu Giọng nói + Nhiễu nền trắng' trước."));
+    return;
+  }
+  out.replaceChildren(el("div", { class: "mut" }, "Đang chạy Energy VAD và lọc nhiễu Wiener Spectral Gate…"));
+  try {
+    const r = await call("POST", "/analyze", { audio_base64: CURRENT_VAD_B64, enhance: true });
+    const origSrc = "data:audio/wav;base64," + CURRENT_VAD_B64;
+    const enhSrc = "data:audio/wav;base64," + r.enhanced_audio_base64;
+    out.replaceChildren(
+      el("div", { class: "chip-row" },
+        el("span", { class: "pill info" }, `Thời lượng: ${r.duration_s}s (${r.sample_rate} Hz)`),
+        el("span", { class: "pill ok" }, `Tiếng nói: ${r.speech_seconds}s (${Math.round(r.speech_ratio * 100)}%)`),
+        el("span", { class: "pill warn" }, `Mức RMS gốc: ${r.rms_db} dBFS → Sau lọc: ${r.enhanced_rms_db} dBFS`)
+      ),
+      renderSegments(r.segments, r.duration_s),
+      el("div", { class: "two-col" },
+        el("div", { class: "audio-box" },
+          el("strong", {}, "🔊 Tín hiệu Gốc (Trước lọc nhiễu)"),
+          el("audio", { controls: true, src: origSrc })
+        ),
+        el("div", { class: "audio-box" },
+          el("div", { class: "row", style: "justify-content:space-between" },
+            el("strong", {}, "✨ Sau Wiener Spectral Gate (-12 dB)"),
+            el("a", { href: enhSrc, download: "aicf-enhanced.wav", style: "font-size:12px;color:var(--acc);font-weight:600" }, "⬇ Tải .wav")
+          ),
+          el("audio", { controls: true, src: enhSrc })
+        )
+      )
+    );
+  } catch (e) {
+    out.replaceChildren(el("div", { class: "err" }, e.message));
+  }
+};
+
+// 4. Vietnamese Normalizer & Evaluator
+document.getElementById("btn-norm-sample").onclick = () => {
+  document.getElementById("norm-ref").value = "Hóa đơn số 482 được thanh toán ngày 15/03/2026 tại thành phố Hoà Bình.";
+  document.getElementById("norm-hyp").value = "hóa đơn số bốn trăm tám mươi hai được thanh toán ngày mười lăm tháng ba năm hai nghìn không trăm hai mươi sáu tại thành phố hòa bình";
+  document.getElementById("btn-eval").click();
+};
+
+document.getElementById("btn-eval").onclick = async () => {
+  const out = document.getElementById("norm-out");
+  try {
+    const r = await call("POST", "/evaluate", {
+      reference: document.getElementById("norm-ref").value,
+      hypothesis: document.getElementById("norm-hyp").value
+    });
+    out.replaceChildren(
+      el("div", { class: "audio-box stack", id: "eval-result" },
+        el("div", { class: "row", style: "justify-content:space-between" },
+          el("strong", {}, "Kết quả Chuẩn hóa & So khớp Levenshtein"),
+          el("div", { class: "row", style: "gap:6px" },
+            el("span", { class: "pill " + (r.wer === 0 ? "ok" : r.wer < 0.2 ? "info" : "warn") }, `WER: ${(r.wer * 100).toFixed(2)}%`),
+            el("span", { class: "pill " + (r.cer === 0 ? "ok" : r.cer < 0.1 ? "info" : "warn") }, `CER: ${(r.cer * 100).toFixed(2)}%`)
+          )
+        ),
+        el("div", { style: "font-size:12.5px" }, el("b", {}, "Chuẩn hóa gốc: "), el("span", { class: "mono" }, r.reference_normalized)),
+        el("div", { style: "font-size:12.5px" }, el("b", {}, "Chuẩn hóa nhận dạng: "), el("span", { class: "mono" }, r.hypothesis_normalized))
+      )
+    );
+  } catch (e) {
+    out.replaceChildren(el("div", { class: "err" }, e.message));
+  }
+};
+
+(async () => {
+  await window.AICF_READY;
+  const writable = canWrite();
+  document.getElementById("ro").hidden = writable;
+  for (const id of ["btn-tts", "btn-roundtrip", "btn-clone-test", "btn-asr", "btn-sample-wav", "btn-analyze"]) {
+    document.getElementById(id).disabled = !writable;
+  }
+  try {
+    const st = await call("GET", "/status");
+    const asrP = document.getElementById("asr-pill");
+    const ttsP = document.getElementById("tts-pill");
+    asrP.textContent = st.asr_ready ? "ASR: Qwen3-ASR-0.6B sẵn sàng" : "ASR: chưa cấu hình";
+    asrP.className = "pill " + (st.asr_ready ? "ok" : "warn");
+    ttsP.textContent = st.tts_ready ? "TTS: mms-tts-vie sẵn sàng" : "TTS: chưa cấu hình";
+    ttsP.className = "pill " + (st.tts_ready ? "ok" : "warn");
+
+    const fl = st.benchmarks && st.benchmarks.fleurs_vi;
+    if (fl && fl.clean) {
+      document.getElementById("kpi-asr-wer").textContent = `WER ${(fl.clean.wer * 100).toFixed(2)}%`;
+      document.getElementById("kpi-asr-sub").textContent = `CER ${(fl.clean.cer * 100).toFixed(2)}% · ${fl.clips} mẫu FLEURS-vi (${fl.audio_seconds}s)`;
+      const rows = (fl.examples || []).slice(0, 4).map(ex => el("tr", {},
+        el("td", {}, ex.ref),
+        el("td", {}, ex.hyp)
+      ));
+      document.getElementById("bench-table").replaceChildren(
+        el("div", { class: "chip-row", style: "margin-bottom:8px" },
+          el("span", { class: "pill ok" }, `Bản sạch (Clean): WER ${(fl.clean.wer * 100).toFixed(2)}% · CER ${(fl.clean.cer * 100).toFixed(2)}%`),
+          el("span", { class: "pill warn" }, `Nhiễu trắng 10 dB: WER ${(fl.noisy.wer * 100).toFixed(2)}%`),
+          el("span", { class: "pill info" }, `Sau lọc Spectral Gate: WER ${(fl.enhanced.wer * 100).toFixed(2)}%`)
+        ),
+        el("div", { class: "table-wrap" },
+          el("table", {},
+            el("thead", {}, el("tr", {}, el("th", {}, "Câu gốc (FLEURS vi_vn)"), el("th", {}, "Qwen3-ASR-0.6B nhận dạng trên RTX 3060"))),
+            el("tbody", {}, ...rows)
+          )
+        )
+      );
+    }
+    document.getElementById("btn-eval").click();
+  } catch (e) {
+    say("Không kết nối được dịch vụ Audio AI: " + e.message, "err");
+  }
+})();
+</script>
+</body>
+</html>

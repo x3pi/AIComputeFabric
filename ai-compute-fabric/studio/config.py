@@ -29,7 +29,10 @@ class Settings:
     train_python: str = ""                      # interpreter with torch + peft + transformers
     llama_cpp_dir: str = ""                    # llama.cpp checkout with convert_lora_to_gguf.py (enables adapter export for llama-server)
     worker_url: str = ""                       # worker-guard loopback API (http://127.0.0.1:8099): enables choosing the served model/adapter
+    worker_id: str = ""                        # id the gateway knows this PC's worker by (lets the UI find its live row)
     adapters_dir: str = ""                     # where exported adapters are placed for worker-guard (--adapters-dir)
+    asr_model: str = ""                        # local HF directory for Qwen3-ASR-0.6B
+    tts_model: str = ""                        # local HF directory for facebook/mms-tts-vie
     lora_runner: tuple = ()                     # argv prefix replacing `train_python -m studio.lora_run` (tests use a fake worker)
     gpu_total_mib: int = 12288
     gpu_reserved_mib: int = 1536                # kept free for the owner of the PC (worker-guard headroom)

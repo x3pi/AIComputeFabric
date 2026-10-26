@@ -249,6 +249,34 @@
     </div>
   </div>
 
+  <!-- Model & adapter of this PC's worker: live status + switch (admin) -->
+  <div class="card" id="sv-card" style="display:none">
+    <div class="card-header">
+      <div class="card-title-group">
+        <h2>Model & Adapter đang nạp</h2>
+        <span class="mut" id="sv-who" style="font-size:12.5px"></span>
+      </div>
+      <span id="sv-state" class="state-badge">…</span>
+    </div>
+    <div id="sv-now" style="margin-bottom:10px"></div>
+    <form id="sv-form" class="row" autocomplete="off">
+      <div class="grow" style="min-width:220px">
+        <label for="sv-model">Model (GGUF)</label>
+        <select id="sv-model" style="width:100%"></select>
+      </div>
+      <div class="grow" style="min-width:220px">
+        <label for="sv-src">Adapter LoRA</label>
+        <select id="sv-src" style="width:100%"></select>
+      </div>
+      <div style="min-width:150px">
+        <label for="sv-tenant">Tenant (khi chọn job)</label>
+        <input id="sv-tenant" value="demo" maxlength="64" style="width:100%">
+      </div>
+      <button id="sv-go" class="primary" style="align-self:flex-end">Áp dụng</button>
+    </form>
+    <div id="sv-msg" class="mut" role="status" style="margin-top:8px;font-size:13px"></div>
+  </div>
+
   <!-- Full-width Workers Table Card -->
   <div class="card">
     <div class="card-header">
@@ -281,7 +309,7 @@
             <th>Worker</th>
             <th>Trạng thái</th>
             <th>GPU & Máy trạm</th>
-            <th>Model đang nạp</th>
+            <th>Model đang nạp (+ adapter)</th>
             <th style="min-width:165px">6-Bucket VRAM</th>
             <th class="num">VRAM trống</th>
             <th class="num">Nhiệt độ</th>
@@ -410,6 +438,10 @@ function buildMiniBucketBar(w) {
   return wrap;
 }
 
+// a model/adapter change was requested and the engine has not started with it yet
+const switchingNow = w => !!w.switching && w.state !== "running";
+const modelLabel = (w, none = "-") => (w.model || none) + (w.lora ? " + " + w.lora : "");
+
 async function loadPage() {
   const st = document.getElementById("flt").value;
   const q = (document.getElementById("q-worker").value || "").trim().toLowerCase();
@@ -418,6 +450,7 @@ async function loadPage() {
   total = +r.headers.get("X-Total-Count") || 0;
   const ws = await r.json();
   lastWorkers = ws;
+  svRender();
   document.getElementById("pg").textContent = `${total ? offset + 1 : 0}–${offset + ws.length} / ${total}`;
   const b = document.getElementById("rows");
   b.replaceChildren();
@@ -427,6 +460,7 @@ async function loadPage() {
         (w.worker_id || "").toLowerCase().includes(q) ||
         (w.hostname || "").toLowerCase().includes(q) ||
         (w.model || "").toLowerCase().includes(q) ||
+        (w.lora || "").toLowerCase().includes(q) ||
         (w.gpu_name || "").toLowerCase().includes(q))
     : ws;
 
@@ -457,7 +491,7 @@ async function loadPage() {
     idCell.append(idLink);
 
     const stateCell = document.createElement("td");
-    stateCell.append(el("span", { class: `state-badge state-${w.state}` }, w.state));
+    stateCell.append(el("span", { class: `state-badge state-${w.state}` }, switchingNow(w) ? "đang đổi model" : w.state));
 
     const gpuHost = w.gpu_name
       ? `${w.gpu_name}${w.hostname ? " · " + w.hostname : ""}`
@@ -467,7 +501,7 @@ async function loadPage() {
       idCell,
       stateCell,
       td(gpuHost),
-      td(w.model || "-", "mono"),
+      td(modelLabel(w), "mono"),
       td(buildMiniBucketBar(w)),
       td(w.online ? Math.round(w.vram_free_bytes / MIB) + " MiB" : "-", "num"),
       td(w.online ? w.gpu_temp_c + " °C" : "-", "num"),
@@ -504,8 +538,8 @@ async function inspectWorker(id) {
 
   const meta = el("div", { class: "card", style: "margin:0;padding:12px 14px;background:var(--bg-elevated)" },
     el("div", { class: "row", style: "justify-content:space-between;margin-bottom:6px" },
-      el("span", { class: "mut" }, "Mô hình đang chạy:"),
-      el("strong", { class: "mono" }, w.model || "Chưa nạp")
+      el("span", { class: "mut" }, "Model (+ adapter):"),
+      el("strong", { class: "mono" }, modelLabel(w, "Chưa nạp"))
     ),
     el("div", { class: "row", style: "justify-content:space-between;margin-bottom:6px" },
       el("span", { class: "mut" }, "Engine Endpoint:"),
@@ -635,7 +669,85 @@ document.getElementById("next").onclick = () => { if (offset + PAGE < total) { o
 document.getElementById("flt").onchange = () => { offset = 0; loadPage(); };
 document.getElementById("q-worker").oninput = () => loadPage();
 
-stream("/api/fleet/stream", renderGrid);
+
+// ---- Model & adapter of this PC (Studio -> worker-guard), shown live from the same worker rows as the table ----
+const SV = "/api/studio/v1";
+let svInfo = null, svSeen = "", svAt = 0;
+const svEl = id => document.getElementById(id);
+const svOpt = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; return o; };
+const svSay = (t, bad) => { const m = svEl("sv-msg"); m.textContent = t; m.className = bad ? "pill err" : "mut"; };
+
+async function svCall(method, url, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
+  const r = await api(url, opts);
+  if (!r) throw new Error("không kết nối được");
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((d.error && d.error.message) || ("lỗi " + r.status));
+  return d;
+}
+
+async function svLoadOptions() {
+  svAt = Date.now();
+  try { svInfo = await svCall("GET", SV + "/serving"); } catch (e) { return; }   // Studio or worker-guard not configured: the card stays hidden
+  const keepModel = svEl("sv-model").value, keepSrc = svEl("sv-src").value;
+  svEl("sv-model").replaceChildren(...svInfo.models.map(m => svOpt(m, m)));
+  const src = [svOpt("", "(không gắn adapter)")];
+  for (const a of svInfo.adapters || []) src.push(svOpt("file:" + a, "Tệp có sẵn: " + a));
+  try {
+    const d = await svCall("GET", `${SV}/tenants/${encodeURIComponent(svEl("sv-tenant").value.trim() || "demo")}/lora/jobs`);
+    for (const j of d.jobs.filter(j => j.status === "succeeded"))
+      src.push(svOpt("job:" + j.id, `Job ${j.id.slice(0, 8)} (${(j.params && j.params.base_model) || "?"}, ${j.created_at.slice(0, 16).replace("T", " ")})`));
+  } catch (e) { /* tenant without jobs */ }
+  svEl("sv-src").replaceChildren(...src);
+  const has = (sel, v) => [...svEl(sel).options].some(o => o.value === v);
+  svEl("sv-model").value = has("sv-model", keepModel) ? keepModel : svInfo.model;
+  if (has("sv-src", keepSrc)) svEl("sv-src").value = keepSrc;
+}
+
+function svRender() {
+  if (!svInfo) return;
+  const ws = lastWorkers || [];
+  const w = ws.find(x => x.worker_id === svInfo.worker_id) || (ws.length === 1 ? ws[0] : null);
+  svEl("sv-card").style.display = "";
+  svEl("sv-who").textContent = w ? `Worker ${w.worker_id} (máy này)` : "Worker máy này chưa đăng ký với gateway";
+  const badge = svEl("sv-state");
+  const now = svEl("sv-now");
+  if (!w) { badge.textContent = "không rõ"; badge.className = "state-badge state-offline"; now.textContent = ""; return; }
+  const sw = switchingNow(w);
+  badge.textContent = sw ? "đang đổi model" : (w.online ? w.state : "offline");
+  badge.className = "state-badge state-" + (sw ? "reclaiming" : (w.online ? w.state : "offline"));
+  now.replaceChildren(
+    el("strong", { class: "mono" }, w.model || "(chưa chọn)"),
+    document.createTextNode(w.lora ? "  +  adapter " : "  (không adapter)"),
+    ...(w.lora ? [el("strong", { class: "mono" }, w.lora)] : []),
+    ...(sw ? [el("div", { class: "mut", style: "font-size:12.5px;margin-top:4px" }, "Đã dừng engine cũ; worker nạp lại khi GPU rảnh ổn định (không giành VRAM của người dùng).")] : [])
+  );
+  const admin = window.AICF && window.AICF.role === "admin";
+  svEl("sv-go").disabled = !admin || sw;
+  svEl("sv-go").title = !admin ? "Chỉ admin được đổi model" : (sw ? "Đang đổi, chờ hoàn tất" : "");
+  const sig = [w.model, w.lora, w.state, w.switching].join("|");
+  if (sig !== svSeen || Date.now() - svAt > 15000) { svSeen = sig; svLoadOptions(); }
+}
+
+svEl("sv-tenant").addEventListener("change", svLoadOptions);
+svEl("sv-form").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const v = svEl("sv-src").value, i = v.indexOf(":");
+  const body = { model: svEl("sv-model").value };
+  if (v.startsWith("file:")) body.adapter_file = v.slice(i + 1);
+  if (v.startsWith("job:")) { body.job = v.slice(i + 1); body.tenant = svEl("sv-tenant").value.trim(); }
+  svEl("sv-go").disabled = true; svSay("Đang gửi…");
+  try {
+    await svCall("POST", SV + "/serving", body);
+    svSay("Đã nhận. Trạng thái bên trên cập nhật theo thời gian thực.");
+  } catch (e) { svSay(e.message, true); }
+  loadPage();
+});
+
+let lastLoad = 0;
+stream("/api/fleet/stream", s => { renderGrid(s); if (Date.now() - lastLoad > 1000) { lastLoad = Date.now(); loadPage(); } });
+window.AICF_READY.then(() => svLoadOptions().then(svRender));
 loadPage();
 loadStats();
 initEstimator();

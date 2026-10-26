@@ -108,15 +108,23 @@ func TestEngineAPIDisabledWithoutModelsDir(t *testing.T) {
 }
 
 func TestHeartbeatReportsTheModelAfterASwitchNotTheStartupOne(t *testing.T) {
-	r, fg, g, _, _ := reporterRig(t)
+	r, fg, g, _, clock := reporterRig(t)
 	ctx := context.Background()
 	r.Step(ctx)
 	if m := fg.got[len(fg.got)-1].Model; m != "m" {
 		t.Fatalf("before any switch the startup model is reported, got %q", m)
 	}
-	g.Switch("/models/b.gguf", "")
+	g.Switch("/models/b.gguf", "/adapters/x.gguf")
 	r.Step(ctx)
-	if m := fg.got[len(fg.got)-1].Model; m != "b.gguf" {
-		t.Fatalf("heartbeat still reports %q after the switch", m)
+	hb := fg.got[len(fg.got)-1]
+	if hb.Model != "b.gguf" || hb.Lora != "x.gguf" || !hb.Switching || hb.State != "stopped" {
+		t.Fatalf("right after the switch: %+v", hb)
+	}
+	g.Tick() // the GPU has been free: the engine starts with the new settings
+	*clock = clock.Add(11 * time.Second)
+	g.Tick()
+	r.Step(ctx)
+	if hb = fg.got[len(fg.got)-1]; hb.Switching || hb.State != "running" || hb.Lora != "x.gguf" {
+		t.Fatalf("after the engine started: %+v", hb)
 	}
 }

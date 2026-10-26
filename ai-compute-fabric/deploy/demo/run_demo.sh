@@ -70,9 +70,12 @@ PYEOF
     echo "WARNING: $EMBED_GGUF not found: AI Studio RAG will be disabled (set EMBED_GGUF=/path/to/embedding.gguf)" >&2
   fi
   LCPP="$WORK_DIR/llama.cpp-py"   # convert_lora_to_gguf.py + gguf-py: lets the Studio export trained adapters for llama-server
+  AUDIO_ARGS=()
+  [ -d "$WORK_DIR/models-audio/Qwen3-ASR-0.6B-hf" ] && AUDIO_ARGS+=(--asr-model "$WORK_DIR/models-audio/Qwen3-ASR-0.6B-hf")
+  [ -d "$WORK_DIR/models-audio/mms-tts-vie" ] && AUDIO_ARGS+=(--tts-model "$WORK_DIR/models-audio/mms-tts-vie")
   "$PY" -m studio ${LCPP:+--llama-cpp-dir "$LCPP"} --data-dir "$D/studio" --dsn "$PG_APP_DSN" --admin-dsn "$PG_ADMIN_DSN" --setup \
-    --port "$STUDIO_PORT" --worker-url "http://127.0.0.1:8099" --adapters-dir "$D/adapters" --llm-url "http://127.0.0.1:18090" "${STUDIO_RAG[@]}" \
-    ${TRAIN_PY:+--train-python "$TRAIN_PY"} --base-models "$BASE_MODELS" >"$D/logs/studio.log" 2>&1 & pids+=($!)
+    --port "$STUDIO_PORT" --worker-url "http://127.0.0.1:8099" --worker-id pc-001 --adapters-dir "$D/adapters" --llm-url "http://127.0.0.1:18090" "${STUDIO_RAG[@]}" \
+    ${TRAIN_PY:+--train-python "$TRAIN_PY"} --base-models "$BASE_MODELS" "${AUDIO_ARGS[@]}" >"$D/logs/studio.log" 2>&1 & pids+=($!)
   GW_EXTRA+=(-agents-url "http://127.0.0.1:$DAG_PORT" -studio-url "http://127.0.0.1:$STUDIO_PORT")
 fi
 
@@ -95,8 +98,9 @@ AI Compute Fabric Full-Stack Demo is starting (model loads in ~10-25 s):
   3. Playground & Đo tải   : http://127.0.0.1:$HTTP_PORT/chat.html
   4. AI Agent (Đồ thị DAG) : http://127.0.0.1:$HTTP_PORT/agents.html
   5. AI Studio             : http://127.0.0.1:$HTTP_PORT/studio.html
-  6. Hướng dẫn Sử dụng     : http://127.0.0.1:$HTTP_PORT/guide.html
-  7. Worker Guard Local UI : http://127.0.0.1:8099/
+  6. Audio AI Factory      : http://127.0.0.1:$HTTP_PORT/audio.html
+  7. Hướng dẫn Sử dụng     : http://127.0.0.1:$HTTP_PORT/guide.html
+  8. Worker Guard Local UI : http://127.0.0.1:8099/
   Logs                     : $D/logs/
 Ctrl-C to stop.
 MSG

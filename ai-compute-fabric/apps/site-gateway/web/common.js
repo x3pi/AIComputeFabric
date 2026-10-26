@@ -6,7 +6,7 @@ const NAV = [
   ["chat.html", "Playground & Tải"],
   ["agents.html", "AI Agent (DAG)"],
   ["studio.html", "AI Studio"],
-  ["serving.html", "Model đang nạp"],
+  ["audio.html", "🎙️ Audio AI"],
   ["guide.html", "📖 Hướng dẫn"],
 ];
 
@@ -79,6 +79,18 @@ const PAGE_GUIDES = {
     tips: [
       "Vai trò 'viewer' chỉ được xem và hỏi thử; 'operator' được phép tải tài liệu, lưu phiên bản prompt và chạy job LoRA; chỉ 'admin' mới được xóa dữ liệu.",
       "Bạn có thể bấm nút '✨ Nạp mẫu thử nhanh' trong từng tab để điền sẵn dữ liệu mẫu chuẩn và chạy thử ngay lập tức."
+    ]
+  },
+  "audio.html": {
+    title: "Hướng dẫn nhanh — Audio AI Factory (ASR · TTS Tiếng Việt · VAD · Khử nhiễu · WER/CER)",
+    steps: [
+      ["Tổng hợp Tiếng Việt (TTS) & Vòng lặp", "Nhập câu tiếng Việt ở mục 1 rồi bấm '🔊 Tổng hợp Giọng nói (TTS)' hoặc '🔄 Chạy Vòng lặp TTS → ASR + Chấm WER' để tạo tệp WAV bằng facebook/mms-tts-vie và kiểm chứng độc lập bằng Qwen3-ASR-0.6B."],
+      ["Nhận dạng ASR & Lọc nhiễu Spectral Gate", "Tải tệp .wav (PCM 16-bit) hoặc bấm '↪ Đưa âm thanh này sang ô ASR & Lọc nhiễu' để nhận dạng văn bản, xem thanh phân đoạn giọng nói (Energy VAD) và nghe đối chiếu trước/sau lọc nhiễu Wiener Spectral Gate."],
+      ["Chuẩn hóa Tiếng Việt & Chấm điểm WER/CER", "Ở mục 4, nhập câu chuẩn và câu máy nhận dạng (hoặc bấm nút điền ví dụ mẫu) để tự động chuyển số/ngày tháng thành chữ, chuẩn hóa dấu thanh (hoà → hòa) và tính sai số từ/ký tự."]
+    ],
+    tips: [
+      "Energy VAD dùng ngưỡng tương đối -30 dB so với đỉnh tín hiệu thay vì ngưỡng cứng -40 dB, giúp không bỏ sót các bản thu âm nhỏ tiếng.",
+      "Hệ thống tuân thủ chính sách Đạo đức AI: mọi yêu cầu nhân bản giọng nói (Voice Cloning) hoặc giọng tùy chỉnh không có Consent đều bị từ chối ở tầng thực thi."
     ]
   }
 };
@@ -333,6 +345,292 @@ function el(tag, attrs, ...kids) {
   e.append(...kids.filter(k => k != null));
   return e;
 }
+
+// --- Reusable File Upload / Dropzone & Data Classification Components ---
+
+function formatFileSize(bytes) {
+  if (bytes == null || isNaN(bytes) || bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  let s = Number(bytes);
+  while (s >= 1024 && i < units.length - 1) {
+    s /= 1024;
+    i++;
+  }
+  return `${s.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+function getFileIcon(name) {
+  const ext = (name || "").split(".").pop().toLowerCase();
+  switch (ext) {
+    case "pdf": return "📕";
+    case "doc":
+    case "docx": return "📘";
+    case "txt": return "📄";
+    case "md": return "📝";
+    case "html":
+    case "htm": return "🌐";
+    case "json":
+    case "jsonl": return "📦";
+    case "csv": return "📊";
+    default: return "📄";
+  }
+}
+
+function createFileDropzone(opts = {}) {
+  const {
+    id = "",
+    accept = "",
+    label = "",
+    hint = "Kéo thả tệp hoặc chọn từ máy tính",
+    compact = false,
+    onchange = null,
+  } = opts;
+
+  const container = el("div", { class: "dropzone-container" + (compact ? " compact-wrap" : "") });
+  if (label) {
+    container.append(el("label", { class: "dropzone-label" }, label));
+  }
+
+  const box = el("div", { class: "dropzone-box" + (compact ? " compact" : "") });
+
+  // Real file input
+  const inputAttrs = { type: "file", class: "dropzone-input" };
+  if (id) inputAttrs.id = id;
+  if (accept) inputAttrs.accept = accept;
+  const input = el("input", inputAttrs);
+
+  // Empty state
+  const emptyWrap = el("div", { class: "dropzone-empty" },
+    el("div", { class: "dropzone-icon-wrap" }, "📁"),
+    el("div", { class: "dropzone-text-main" },
+      "Kéo thả tệp vào đây, hoặc ",
+      el("span", { class: "dropzone-browse" }, "chọn từ máy tính")
+    ),
+    hint ? el("div", { class: "dropzone-hint" }, hint) : null
+  );
+
+  // File preview card
+  const badgeEl = el("div", { class: "dropzone-file-badge" }, "📄");
+  const nameEl = el("div", { class: "dropzone-filename" }, "");
+  const sizeEl = el("div", { class: "dropzone-filesize" }, "");
+  const clearBtn = el("button", {
+    type: "button",
+    class: "dropzone-clear-btn",
+    title: "Bỏ chọn tệp này",
+    onclick: (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      clear();
+    }
+  }, "✕ Bỏ chọn");
+
+  const previewCard = el("div", { class: "dropzone-file-card", style: "display:none" },
+    el("div", { class: "dropzone-file-info" },
+      badgeEl,
+      el("div", { class: "dropzone-file-meta" }, nameEl, sizeEl)
+    ),
+    el("div", { class: "dropzone-file-actions" },
+      el("span", { class: "pill ok", style: "font-size:11px;padding:1px 7px" }, "✓ Sẵn sàng"),
+      clearBtn
+    )
+  );
+
+  function syncView() {
+    const f = input.files && input.files[0];
+    if (f) {
+      badgeEl.textContent = getFileIcon(f.name);
+      nameEl.textContent = f.name;
+      nameEl.title = f.name;
+      sizeEl.textContent = `${formatFileSize(f.size)} · ${f.type || "tệp văn bản"}`;
+      emptyWrap.style.display = "none";
+      previewCard.style.display = "flex";
+      box.classList.add("has-file");
+    } else {
+      emptyWrap.style.display = "flex";
+      previewCard.style.display = "none";
+      box.classList.remove("has-file");
+    }
+  }
+
+  function clear() {
+    input.value = "";
+    syncView();
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    if (typeof onchange === "function") onchange(null);
+  }
+
+  // Drag and drop event handlers
+  box.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    box.classList.add("drag-over");
+  });
+  box.addEventListener("dragleave", () => {
+    box.classList.remove("drag-over");
+  });
+  box.addEventListener("drop", (e) => {
+    e.preventDefault();
+    box.classList.remove("drag-over");
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+      input.files = e.dataTransfer.files;
+      syncView();
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      if (typeof onchange === "function") onchange(input.files[0]);
+    }
+  });
+
+  input.addEventListener("change", () => {
+    syncView();
+    if (typeof onchange === "function") onchange(input.files && input.files[0]);
+  });
+
+  box.append(input, emptyWrap, previewCard);
+  container.append(box);
+
+  // Helper APIs attached to container
+  container.input = input;
+  container.clear = clear;
+  container.getFile = () => (input.files && input.files[0]) || null;
+  container.sync = syncView;
+
+  return container;
+}
+
+const DATA_CLASS_TIERS = [
+  {
+    id: "INTERNAL",
+    name: "INTERNAL",
+    label: "Nội bộ (LAN)",
+    badge: "Mặc định · Mạng LAN",
+    desc: "Chỉ xử lý trong mạng nội bộ, tuyệt đối không gửi dữ liệu ra mạng diện rộng (WAN).",
+    icon: "🏢"
+  },
+  {
+    id: "PUBLIC",
+    name: "PUBLIC",
+    label: "Công khai (WAN)",
+    badge: "Toàn mạng",
+    desc: "Dữ liệu công khai, an toàn cho suy luận và điều phối phân bổ tải liên vùng qua WAN.",
+    icon: "🌐"
+  },
+  {
+    id: "RESTRICTED",
+    name: "RESTRICTED",
+    label: "Bảo mật cao",
+    badge: "Tuyệt mật · Cục bộ",
+    desc: "Dữ liệu tuyệt mật, chỉ được suy luận tại worker chỉ định có nhãn riêng.",
+    icon: "🛡️"
+  }
+];
+
+function createDataClassSelector(opts = {}) {
+  const {
+    id = "rag-class",
+    value = "INTERNAL",
+    label = "Phân loại dữ liệu (Data Residency & Security)",
+    onChange = null
+  } = opts;
+
+  let currentVal = value || "INTERNAL";
+
+  // Underlying select for strict compatibility with standard forms and Playwright tests
+  const select = el("select", { id, style: "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none" },
+    ...DATA_CLASS_TIERS.map(t => el("option", { value: t.id }, t.name))
+  );
+  select.value = currentVal;
+
+  const cardsContainer = el("div", { class: "data-class-cards", role: "radiogroup", "aria-label": label });
+
+  const cardEls = {};
+  DATA_CLASS_TIERS.forEach(tier => {
+    const isSelected = tier.id === currentVal;
+    const card = el("div", {
+      class: "data-class-card" + (isSelected ? " selected" : ""),
+      "data-val": tier.id,
+      role: "radio",
+      "aria-checked": isSelected ? "true" : "false",
+      tabindex: "0",
+      onclick: () => selectTier(tier.id),
+      onkeydown: (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          selectTier(tier.id);
+        }
+      }
+    },
+      el("div", { class: "data-class-card-top" },
+        el("div", { class: "data-class-title-wrap" },
+          el("span", { class: "dc-icon" }, tier.icon),
+          el("span", {}, tier.name),
+          el("span", { class: "pill " + (tier.id === "PUBLIC" ? "ok" : tier.id === "RESTRICTED" ? "err" : "acc"), style: "font-size:10px;padding:0 5px" }, tier.badge)
+        ),
+        el("div", { class: "data-class-radio-indicator" })
+      ),
+      el("div", { class: "data-class-desc" }, tier.desc)
+    );
+    cardEls[tier.id] = card;
+    cardsContainer.append(card);
+  });
+
+  function selectTier(val) {
+    if (!cardEls[val]) return;
+    currentVal = val;
+    select.value = val;
+    DATA_CLASS_TIERS.forEach(t => {
+      const card = cardEls[t.id];
+      const active = t.id === val;
+      if (active) {
+        card.classList.add("selected");
+        card.setAttribute("aria-checked", "true");
+      } else {
+        card.classList.remove("selected");
+        card.setAttribute("aria-checked", "false");
+      }
+    });
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    if (typeof onChange === "function") onChange(val);
+  }
+
+  select.addEventListener("change", () => {
+    if (select.value !== currentVal) {
+      selectTier(select.value);
+    }
+  });
+
+  const wrapper = el("div", { class: "data-class-wrapper" },
+    el("div", { class: "data-class-header" },
+      el("span", {}, label),
+      el("span", { class: "mut", style: "font-size:11.5px;font-weight:400" }, "Quy tắc cách ly mạng khi suy luận")
+    ),
+    cardsContainer,
+    select
+  );
+
+  wrapper.select = select;
+  wrapper.getValue = () => currentVal;
+  wrapper.setValue = selectTier;
+  Object.defineProperty(wrapper, "value", {
+    get: () => currentVal,
+    set: (v) => selectTier(v)
+  });
+
+  return wrapper;
+}
+
+function createDataClassBadge(cls) {
+  const c = String(cls || "INTERNAL").toUpperCase();
+  const meta = {
+    PUBLIC: { label: "PUBLIC", desc: "Dữ liệu công khai · Cho phép phân bổ WAN", icon: "🌐", cls: "data-class-public" },
+    INTERNAL: { label: "INTERNAL", desc: "Dữ liệu nội bộ · Chỉ chạy cụm LAN", icon: "🏢", cls: "data-class-internal" },
+    RESTRICTED: { label: "RESTRICTED", desc: "Bảo mật cao · Cục bộ nghiêm ngặt", icon: "🛡️", cls: "data-class-restricted" }
+  }[c] || { label: c, desc: c, icon: "🏷️", cls: "data-class-internal" };
+
+  return el("span", {
+    class: `data-class-badge ${meta.cls}`,
+    title: `${meta.label}: ${meta.desc}`
+  }, el("span", { class: "dc-icon", "aria-hidden": "true" }, meta.icon), el("span", {}, meta.label));
+}
+
 
 function fmtMiB(bytes) {
   const m = Math.round((bytes || 0) / 1048576);

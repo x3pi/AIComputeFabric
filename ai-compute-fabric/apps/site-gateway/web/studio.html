@@ -151,22 +151,85 @@ function methodCard(m) {
 // ---- RAG ---------------------------------------------------------------------------------------
 async function renderRag(root) {
   const list = el("div"), ask = el("div", { class: "stack" });
-  const file = el("input", { type: "file", accept: ".txt,.md,.html,.pdf,.docx", id: "rag-file" });
-  const cls = el("select", { id: "rag-class" }, ...["INTERNAL", "PUBLIC", "RESTRICTED"].map(c => el("option", { value: c }, c)));
+  const countBadge = el("span", { class: "pill", id: "rag-count-pill" }, "… tài liệu");
+
+  const dropzone = createFileDropzone({
+    id: "rag-file",
+    accept: ".txt,.md,.html,.pdf,.docx",
+    label: "Tệp tài liệu tri thức (Document)",
+    hint: "Hỗ trợ .txt, .md, .html, .pdf, .docx (tối đa 50MB)"
+  });
+  const file = dropzone.input;
+
+  const classSelector = createDataClassSelector({
+    id: "rag-class",
+    value: "INTERNAL",
+    label: "Phân loại dữ liệu tri thức"
+  });
+  const cls = classSelector.select;
+
   const up = el("button", { class: "primary", disabled: !canWrite(), onclick: () => guarded(async () => {
     if (!file.files[0]) throw new Error("chọn một tệp trước");
     const f = file.files[0];
     const r = await call("POST", T("rag/documents"), { name: f.name, content_base64: await readFile(f, true), data_class: cls.value });
-    say(`Đã nạp ${r.id}: ${r.chunks} đoạn` + (r.replaced ? " (thay bản cũ)" : ""), "ok"); await refresh();
-  }) }, "Tải lên");
+    dropzone.clear();
+    say(`Đã nạp ${r.id}: ${r.chunks} đoạn` + (r.replaced ? " (thay bản cũ)" : ""), "ok");
+    await refresh();
+  }) }, el("span", { "aria-hidden": "true" }, "📤"), " Tải lên");
+
+  const fillSampleDoc = el("button", {
+    type: "button",
+    class: "sm ghost",
+    title: "Tạo nhanh tệp tài liệu mẫu để thử nghiệm RAG",
+    onclick: () => {
+      const sampleText = "Chính sách bảo mật và làm việc từ xa của AI Compute Fabric.\n1. Dữ liệu xếp loại PUBLIC được phép suy luận phân tán qua WAN liên vùng.\n2. Dữ liệu xếp loại INTERNAL chỉ được xử lý nội bộ cụm mạng LAN của cơ quan/doanh nghiệp.\n3. Dữ liệu xếp loại RESTRICTED tuyệt đối không rời khỏi máy chủ gốc.\n4. Nhân viên được cấp hạn mức VRAM tối đa 16 GiB cho các tác vụ suy luận hằng ngày.";
+      const sampleBlob = new Blob([sampleText], { type: "text/plain" });
+      const sampleFile = new File([sampleBlob], "chinh_sach_aicf.txt", { type: "text/plain" });
+      const dt = new DataTransfer();
+      dt.items.add(sampleFile);
+      file.files = dt.files;
+      dropzone.sync();
+      say("Đã nạp tệp mẫu 'chinh_sach_aicf.txt'. Hãy chọn cấp độ phân loại và bấm 'Tải lên'.", "ok");
+    }
+  }, "✨ Điền tệp mẫu thử");
+
+  const uploadPanel = el("div", { class: "rag-upload-panel stack" },
+    dropzone,
+    classSelector,
+    el("div", { class: "row", style: "justify-content:space-between;align-items:center;padding-top:4px" },
+      el("div", { class: "mut", style: "font-size:12px" }, "🔒 Tệp được băm vector embeddings & cô lập theo Tenant qua PostgreSQL RLS."),
+      up
+    )
+  );
+
   async function refresh() {
     const d = await call("GET", T("rag/documents"));
-    list.replaceChildren(table(["Tài liệu", "Đoạn", "Ký tự", "Phân loại", ""], d.documents.map(x => el("tr", {},
-      el("td", {}, x.id), el("td", { class: "num" }, String(x.chunks)), el("td", { class: "num" }, String(x.chars)), el("td", {}, x.data_class),
-      el("td", {}, el("button", { class: "sm ghost", disabled: !canDelete(), title: canDelete() ? "" : "Cần vai trò admin", onclick: () => guarded(async () => {
-        if (confirm("Xóa " + x.id + "?")) { await call("DELETE", T("rag/documents/" + encodeURIComponent(x.id))); await refresh(); } }) }, "Xóa"))))),
-      el("div", { class: "mut", style: "margin-top:8px;font-size:12px" }, `${d.totals.documents}/${d.quota.max_documents} tài liệu · ${d.totals.chars.toLocaleString("vi-VN")} ký tự`));
+    countBadge.textContent = `${d.totals.documents}/${d.quota.max_documents} tài liệu`;
+    countBadge.className = "pill " + (d.totals.documents >= d.quota.max_documents ? "warn" : "ok");
+
+    const pctDocs = Math.min(100, Math.round(100 * d.totals.documents / (d.quota.max_documents || 1)));
+
+    list.replaceChildren(
+      table(["Tài liệu", "Đoạn", "Ký tự", "Phân loại", ""], d.documents.map(x => el("tr", {},
+        el("td", { class: "doc-name-cell" },
+          el("span", { class: "doc-icon", "aria-hidden": "true" }, getFileIcon(x.id)),
+          el("span", { class: "doc-name-text", title: x.id }, x.id)
+        ),
+        el("td", { class: "num" }, String(x.chunks)),
+        el("td", { class: "num" }, Number(x.chars).toLocaleString("vi-VN")),
+        el("td", {}, createDataClassBadge(x.data_class)),
+        el("td", {}, el("button", { class: "sm ghost", disabled: !canDelete(), title: canDelete() ? "" : "Cần vai trò admin", onclick: () => guarded(async () => {
+          if (confirm("Xóa " + x.id + "?")) { await call("DELETE", T("rag/documents/" + encodeURIComponent(x.id))); await refresh(); } }) }, "Xóa"))))),
+      el("div", { class: "quota-summary" },
+        el("div", { class: "row", style: "justify-content:space-between;font-size:12px;color:var(--mut);margin-bottom:6px" },
+          el("span", {}, `Hạn mức: ${d.totals.documents}/${d.quota.max_documents} tài liệu (${pctDocs}%)`),
+          el("span", { class: "num" }, `${Number(d.totals.chars).toLocaleString("vi-VN")} ký tự đã index`)
+        ),
+        el("div", { class: "bar", style: "height:6px" }, el("i", { style: `width:${pctDocs}%` }))
+      )
+    );
   }
+
   const q = el("input", { id: "rag-q", placeholder: "Đặt câu hỏi về tài liệu…", style: "flex:1" });
   const go = el("button", { class: "primary", onclick: () => guarded(async () => {
     go.disabled = true; ask.replaceChildren(el("div", { class: "mut" }, "Đang tìm và trả lời…"));
@@ -178,10 +241,33 @@ async function renderRag(root) {
           el("div", { class: "mut" }, `[${i + 1}] ${s.doc} · đoạn ${s.chunk}` + (r.cited.includes(i + 1) ? " · được dẫn" : "")), el("div", { class: "q" }, s.quote), el("div", { class: "mut" }, s.text))));
     } finally { go.disabled = false; }
   }) }, "Hỏi");
+
   const grid = el("div", { class: "wide-split" },
-    el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Kho tri thức"),
-      el("div", { class: "row", style: "gap:10px;flex-wrap:wrap" }, file, field("Phân loại dữ liệu", cls), up), list),
-    el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Hỏi đáp có dẫn nguồn"), el("div", { class: "row", style: "gap:8px" }, q, go), ask));
+    el("div", { class: "card stack", style: "margin-bottom:0" },
+      el("div", { class: "card-header" },
+        el("div", {},
+          el("h2", {}, "Kho tri thức (RAG)"),
+          el("div", { class: "mut", style: "font-size:12px" }, "Nạp tài liệu & phân mảnh vector theo cấp độ bảo mật")
+        ),
+        el("div", { class: "row", style: "gap:8px" }, fillSampleDoc, countBadge)
+      ),
+      uploadPanel,
+      el("div", { style: "margin-top:12px" },
+        el("h3", { style: "margin:0 0 10px;font-size:13.5px;color:var(--fg)" }, "Tài liệu hiện có trong kho"),
+        list
+      )
+    ),
+    el("div", { class: "card stack", style: "margin-bottom:0" },
+      el("div", { class: "card-header" },
+        el("div", {},
+          el("h2", {}, "Hỏi đáp có dẫn nguồn"),
+          el("div", { class: "mut", style: "font-size:12px" }, "Truy vấn tri thức kết hợp trích dẫn số [1], [2]")
+        )
+      ),
+      el("div", { class: "row", style: "gap:8px" }, q, go),
+      ask
+    )
+  );
   root.append(grid);
   await refresh();
 }
@@ -251,7 +337,19 @@ async function renderLora(root) {
   const model = el("select", { id: "l-model" }, ...bm.base_models.map(m => el("option", { value: m.name }, `${m.name} (${m.params_million}M)`)));
   const fmt = el("select", { id: "l-fmt" }, el("option", { value: "jsonl" }, "JSONL"), el("option", { value: "csv" }, "CSV"));
   const data = el("textarea", { id: "l-data", rows: 6, placeholder: '{"question": "...", "answer": "..."} mỗi dòng (JSONL) hoặc CSV có cột question,answer' });
-  const file = el("input", { type: "file", accept: ".jsonl,.json,.csv,.txt", onchange: () => guarded(async () => { const f = file.files[0]; if (f) { data.value = await readFile(f, false); fmt.value = f.name.endsWith(".csv") ? "csv" : "jsonl"; } }) });
+  const dropzone = createFileDropzone({
+    id: "l-file",
+    accept: ".jsonl,.json,.csv,.txt",
+    label: "Tải tệp tập dữ liệu (Dataset)",
+    hint: "Kéo thả hoặc chọn tệp .jsonl, .json, .csv, .txt để tự động nạp vào ô bên dưới",
+    compact: true,
+    onchange: (f) => guarded(async () => {
+      if (f) {
+        data.value = await readFile(f, false);
+        fmt.value = f.name.endsWith(".csv") ? "csv" : "jsonl";
+      }
+    })
+  });
   const num = (id, label, v, min, max, step) => field(label, el("input", { id, type: "number", value: v, min, max, step: step || 1 }));
   const rank = num("l-rank", "Rank", 8, 1, 64), steps = num("l-steps", "Số bước", 200, 10, 5000), batch = num("l-batch", "Batch", 4, 1, 16), seq = num("l-seq", "Độ dài tối đa (token)", 256, 32, 1024), lr = num("l-lr", "Learning rate", 0.002, 0.000001, 0.1, "any");
   const prev = el("div"), jobs = el("div", { class: "stack" }), detail = el("div", { class: "stack" });
@@ -315,7 +413,10 @@ async function renderLora(root) {
   } }, "✨ Điền 25 dòng JSONL mẫu");
   root.append(el("div", { class: "wide-split" },
     el("div", { class: "card stack", style: "margin-bottom:0" }, el("div", { class: "card-header" }, el("h2", {}, "Dữ liệu huấn luyện"), fillSampleLora), !bm.trainer_ready ? el("div", { class: "warn-txt" }, "Chưa cấu hình môi trường huấn luyện trên máy chủ.") : null,
-      el("div", { class: "cols" }, field("Model gốc", model), field("Định dạng", fmt), field("Tệp", file)), data, el("div", { class: "cols" }, rank, steps, batch, seq, lr),
+      el("div", { class: "cols" }, field("Model gốc", model), field("Định dạng", fmt)),
+      dropzone,
+      data,
+      el("div", { class: "cols" }, rank, steps, batch, seq, lr),
       el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, previewBtn, start), prev),
     el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Các job"), jobs, detail)));
   await refresh();

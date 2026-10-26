@@ -270,3 +270,24 @@ func TestVRAMEstimatorCatalogAndClusterStats(t *testing.T) {
 		t.Fatalf("unexpected cluster stats: %+v", st)
 	}
 }
+
+func TestHeartbeatCarriesAdapterAndSwitchingToTheFleetView(t *testing.T) {
+	c, reg, _ := rig(t)
+	ctx := context.Background()
+	c.Register(ctx, &pb.RegisterRequest{WorkerId: "w1", Hostname: "pc1", VramTotalBytes: 12 << 30})
+	h := hb("w1", "stopped")
+	h.Lora, h.Switching = "demo-ab.gguf", true
+	c.Heartbeat(ctx, h)
+	w := reg.List()[0]
+	if w.Lora != "demo-ab.gguf" || !w.Switching || w.State != "stopped" {
+		t.Fatalf("%+v", w)
+	}
+	c.Heartbeat(ctx, hb("w1", "running"))
+	if w = reg.List()[0]; w.Lora != "" || w.Switching {
+		t.Fatalf("a later heartbeat without adapter must clear it: %+v", w)
+	}
+	raw, _ := json.Marshal(w)
+	if !strings.Contains(string(raw), `"lora":""`) || !strings.Contains(string(raw), `"switching":false`) {
+		t.Fatalf("fleet JSON lacks the fields the dashboard reads: %s", raw)
+	}
+}

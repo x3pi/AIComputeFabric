@@ -342,7 +342,7 @@ h2 {
   align-items: start;
 }
 
-@media (min-width: 1680px) {
+@media (min-width: 1100px) {
   .wide-split {
     grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   }
@@ -946,3 +946,424 @@ th.num, td.num {
 .help-section li + li {
   margin-top: 4px;
 }
+
+/* ==========================================================================
+   Reusable Modern File Dropzone Component
+   ========================================================================== */
+.dropzone-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.dropzone-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.dropzone-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 1.8vw, 22px) 16px;
+  border: 2px dashed var(--bd-strong);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  overflow: hidden;
+  text-align: center;
+  min-height: 110px;
+}
+
+.dropzone-box:hover {
+  border-color: var(--acc);
+  background: var(--card-hover);
+  box-shadow: 0 0 0 3px var(--acc-soft);
+}
+
+.dropzone-box.drag-over {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+  transform: scale(0.995);
+  box-shadow: 0 0 0 4px var(--acc-soft);
+}
+
+.dropzone-box.has-file {
+  border-style: solid;
+  border-color: var(--bd);
+  background: var(--card);
+  padding: 10px 14px;
+  min-height: auto;
+}
+
+.dropzone-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.dropzone-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.dropzone-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--acc-soft);
+  color: var(--acc);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  transition: transform 0.2s ease;
+}
+
+.dropzone-box:hover .dropzone-icon-wrap {
+  transform: translateY(-2px);
+}
+
+.dropzone-text-main {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.dropzone-browse {
+  color: var(--acc);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.dropzone-hint {
+  font-size: 11.5px;
+  color: var(--mut);
+}
+
+.dropzone-file-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  z-index: 3;
+}
+
+.dropzone-file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  text-align: left;
+}
+
+.dropzone-file-badge {
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dropzone-file-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dropzone-filename {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.dropzone-filesize {
+  font-size: 11.5px;
+  color: var(--mut);
+}
+
+.dropzone-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.dropzone-clear-btn {
+  background: transparent;
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  color: var(--mut);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+  z-index: 10;
+}
+
+.dropzone-clear-btn:hover {
+  background: var(--bad-soft);
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+.dropzone-box.compact {
+  min-height: 48px;
+  padding: 8px 12px;
+  flex-direction: row;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.dropzone-box.compact .dropzone-empty {
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+}
+
+.dropzone-box.compact .dropzone-icon-wrap {
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+  border-radius: 6px;
+}
+
+/* ==========================================================================
+   Reusable Data Classification Components (PUBLIC, INTERNAL, RESTRICTED)
+   ========================================================================== */
+.data-class-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.data-class-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-secondary);
+  margin-bottom: 2px;
+}
+
+.data-class-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .data-class-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.data-class-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--bd);
+  background: var(--card);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  gap: 4px;
+  text-align: left;
+}
+
+.data-class-card:hover {
+  background: var(--card-hover);
+  border-color: var(--bd-strong);
+  transform: translateY(-1px);
+}
+
+.data-class-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 6px;
+}
+
+.data-class-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.data-class-radio-indicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bd-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.data-class-desc {
+  font-size: 11px;
+  color: var(--mut);
+  line-height: 1.35;
+}
+
+/* Tier Selected States */
+.data-class-card[data-val="INTERNAL"].selected {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+  box-shadow: 0 0 0 1.5px var(--acc);
+}
+.data-class-card[data-val="INTERNAL"].selected .data-class-radio-indicator {
+  border-color: var(--acc);
+  background: var(--acc);
+}
+
+.data-class-card[data-val="PUBLIC"].selected {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  box-shadow: 0 0 0 1.5px var(--ok);
+}
+.data-class-card[data-val="PUBLIC"].selected .data-class-radio-indicator {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.data-class-card[data-val="RESTRICTED"].selected {
+  border-color: var(--bad);
+  background: var(--bad-soft);
+  box-shadow: 0 0 0 1.5px var(--bad);
+}
+.data-class-card[data-val="RESTRICTED"].selected .data-class-radio-indicator {
+  border-color: var(--bad);
+  background: var(--bad);
+}
+
+.data-class-card.selected .data-class-radio-indicator::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+/* Badges for tables and inline items */
+.data-class-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2.5px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.data-class-badge .dc-icon {
+  font-size: 11.5px;
+  line-height: 1;
+}
+
+.data-class-badge.data-class-public {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.data-class-badge.data-class-internal {
+  background: var(--acc-soft);
+  color: var(--acc);
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.data-class-badge.data-class-restricted {
+  background: var(--bad-soft);
+  color: var(--bad);
+  border-color: rgba(220, 38, 38, 0.35);
+}
+
+/* ==========================================================================
+   RAG & Document UI Polish
+   ========================================================================== */
+.rag-upload-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.doc-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  min-width: 140px;
+}
+
+.doc-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.doc-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.quota-summary {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--bd);
+}
+

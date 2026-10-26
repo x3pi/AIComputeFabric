@@ -15,8 +15,10 @@ type Worker struct {
 	Hostname    string    `json:"hostname"`
 	GPUName     string    `json:"gpu_name"`
 	Model       string    `json:"model"`
-	State       string    `json:"state"`  // as reported by the worker
-	Online      bool      `json:"online"` // false when heartbeats stopped
+	Lora        string    `json:"lora"`      // adapter the engine is configured with ("" = none)
+	Switching   bool      `json:"switching"` // model/adapter change requested, engine not started with it yet
+	State       string    `json:"state"`     // as reported by the worker
+	Online      bool      `json:"online"`    // false when heartbeats stopped
 	VRAMTotal   uint64    `json:"vram_total_bytes"`
 	VRAMFree    uint64    `json:"vram_free_bytes"`
 	Buckets     *Buckets  `json:"buckets,omitempty"`
@@ -72,6 +74,7 @@ func (r *Registry) Heartbeat(req *pb.HeartbeatRequest) (bool, bool) {
 		return false, false
 	}
 	w.State, w.Model, w.TempC, w.LastSeen = req.State, req.Model, req.GpuTempC, r.now()
+	w.Lora, w.Switching = req.Lora, req.Switching
 	w.VRAMFree, w.UserActive = c.VramFreeBytes, c.UserIsActive
 	if v := c.GetVram(); v != nil {
 		w.VRAMTotal = v.TotalBytes

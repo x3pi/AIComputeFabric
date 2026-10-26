@@ -52,7 +52,7 @@ class Serving:
             raise unavailable("the worker (worker-guard) cannot be reached") from None
 
     def get(self, req: Request):
-        return {"configured": bool(self.s.worker_url), **self._worker("GET"), "base_models": sorted(self.s.base_models)}
+        return {"configured": bool(self.s.worker_url), "worker_id": self.s.worker_id, **self._worker("GET"), "base_models": sorted(self.s.base_models)}
 
     def switch(self, req: Request):
         """Body: {model: "<file>.gguf", adapter_file?: "<file>.gguf"} or {model, tenant, job} to export and attach a trained job's adapter."""

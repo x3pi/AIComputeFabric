@@ -39,6 +39,8 @@ message HeartbeatRequest {
   string model = 3;
   ReclaimStat last_reclaim = 4;
   uint32 gpu_temp_c = 5;
+  string lora = 6;           // LoRA adapter file the engine is configured with ("" = none)
+  bool switching = 7;        // the operator changed model/adapter and the engine has not started with it yet
 }
 
 message HeartbeatReply {

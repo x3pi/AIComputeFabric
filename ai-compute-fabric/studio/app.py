@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from agents.knowledge import EmbeddingClient, KnowledgeStore, RerankClient
+from studio.audio_service import AudioService
 from studio.config import Settings
 from studio.db import Db
 from studio.jobs import JobStore, Runner, free_vram_mib
@@ -27,11 +28,14 @@ class App:
     registry: Registry
     runner: Runner
     store: Optional[KnowledgeStore] = None
+    audio: Optional[AudioService] = None
 
     def close(self):
         self.runner.stop()
         if self.store is not None:
             self.store.close()
+        if self.audio is not None:
+            self.audio.close()
 
 
 def build_app(s: Settings, free_vram=free_vram_mib, start_runner: bool = True) -> App:
@@ -50,6 +54,8 @@ def build_app(s: Settings, free_vram=free_vram_mib, start_runner: bool = True) -
     reg.mount_all(router)
     TenantAdmin(db, store, jobs).mount(router)
     Serving(s, lora).mount(router)
+    audio = AudioService(s)
+    audio.mount(router)
 
     def methods(req: Request):
         return {"methods": [dataclasses.asdict(i) for i in reg.infos()]}
@@ -60,4 +66,4 @@ def build_app(s: Settings, free_vram=free_vram_mib, start_runner: bool = True) -
     router.add("GET", "/v1/health", health)
     if start_runner:
         runner.start()
-    return App(s, router, reg, runner, store)
+    return App(s, router, reg, runner, store, audio)
