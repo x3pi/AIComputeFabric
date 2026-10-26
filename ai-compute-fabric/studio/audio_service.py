@@ -16,9 +16,11 @@ import dataclasses
 import io
 import json
 import math
+import re
 import subprocess
 import tempfile
 import threading
+import time
 import wave
 from pathlib import Path
 from typing import Any
@@ -30,12 +32,145 @@ from audio.executors import MAX_SECONDS, spectral_gate, vad
 from audio.ingestion.dataset import IngestError, read_wav
 from audio.ingestion.split import speaker_disjoint_split
 from studio.config import Settings
-from studio.errors import bad, unavailable
+from studio.errors import bad, not_found, unavailable
 from studio.web import Request, Router
 from training.coordinator import Coordinator, Rejected, Update, comm_bytes_per_worker
 from training.lora_merger import exact_delta_w, lora_fa_merge, naive_merge, svd_refactor
 
 ROOT = Path(__file__).resolve().parents[1]
+
+BUILTIN_VOICES: dict[str, dict[str, Any]] = {
+    "default": {
+        "id": "default",
+        "name": "Giọng Mặc định (MMS-TTS Chuẩn)",
+        "builtin": True,
+        "pitch_semitones": 0.0,
+        "speaking_rate": 1.0,
+        "noise_scale": 0.667,
+        "noise_scale_w": 0.8,
+        "warmth_db": 0.0,
+        "description": "Giọng đọc gốc facebook/mms-tts-vie không biến đổi DSP.",
+    },
+    "preset_nu_thanh_lich": {
+        "id": "preset_nu_thanh_lich",
+        "name": "Nữ Thanh lịch (Trợ lý CSKH)",
+        "builtin": True,
+        "pitch_semitones": 2.5,
+        "speaking_rate": 1.02,
+        "noise_scale": 0.55,
+        "noise_scale_w": 0.7,
+        "warmth_db": -1.5,
+        "description": "Cao độ sáng (+2.5 semitones), phát âm rõ nét, phù hợp tổng đài CSKH.",
+    },
+    "preset_nam_tram_am": {
+        "id": "preset_nam_tram_am",
+        "name": "Nam Trầm ấm (Đọc tin tức / Podcast)",
+        "builtin": True,
+        "pitch_semitones": -2.5,
+        "speaking_rate": 0.94,
+        "noise_scale": 0.60,
+        "noise_scale_w": 0.75,
+        "warmth_db": 3.0,
+        "description": "Cao độ trầm (-2.5 semitones), tăng âm trầm ấm (+3.0 dB), nhịp đọc điềm tĩnh.",
+    },
+    "preset_tro_ly_nhanh": {
+        "id": "preset_tro_ly_nhanh",
+        "name": "Trợ lý Tốc độ cao (Đọc thông báo)",
+        "builtin": True,
+        "pitch_semitones": 1.0,
+        "speaking_rate": 1.22,
+        "noise_scale": 0.50,
+        "noise_scale_w": 0.65,
+        "warmth_db": -1.0,
+        "description": "Tốc độ nói nhanh (1.22x), gọn chữ, phù hợp thông báo vận hành tự động.",
+    },
+}
+
+
+def validate_voice_params(raw: dict[str, Any]) -> dict[str, float]:
+    try:
+        pitch = float(raw.get("pitch_semitones", 0.0))
+        rate = float(raw.get("speaking_rate", 1.0))
+        noise = float(raw.get("noise_scale", 0.667))
+        noise_w = float(raw.get("noise_scale_w", 0.8))
+        warmth = float(raw.get("warmth_db", 0.0))
+    except (TypeError, ValueError) as e:
+        raise bad(f"Tham số giọng đọc không hợp lệ: {e}", "bad_voice_params") from None
+    if not (-6.0 <= pitch <= 6.0):
+        raise bad("Cao độ (pitch_semitones) phải nằm trong khoảng -6.0 đến +6.0 semitones", "bad_voice_params")
+    if not (0.6 <= rate <= 1.5):
+        raise bad("Tốc độ nói (speaking_rate) phải nằm trong khoảng 0.6x đến 1.5x", "bad_voice_params")
+    if not (0.1 <= noise <= 1.2) or not (0.1 <= noise_w <= 1.2):
+        raise bad("Độ biểu cảm (noise_scale / noise_scale_w) phải nằm trong khoảng 0.1 đến 1.2", "bad_voice_params")
+    if not (-6.0 <= warmth <= 6.0):
+        raise bad("Âm sắc EQ (warmth_db) phải nằm trong khoảng -6.0 dB đến +6.0 dB", "bad_voice_params")
+    return {
+        "pitch_semitones": round(pitch, 2),
+        "speaking_rate": round(rate, 2),
+        "noise_scale": round(noise, 3),
+        "noise_scale_w": round(noise_w, 3),
+        "warmth_db": round(warmth, 2),
+    }
+
+
+def _pitch_shift(x: np.ndarray, sr: int, semitones: float) -> np.ndarray:
+    """Shifts pitch by `semitones` while preserving duration via Hann OLA time-stretch + resampling."""
+    if abs(semitones) < 0.05 or len(x) < 1024:
+        return x
+    factor = float(2.0 ** (semitones / 12.0))
+    win_size = 512 if sr <= 24000 else 1024
+    hop_s = win_size // 4
+    hop_a = hop_s / factor
+    window = np.hanning(win_size).astype(np.float32)
+
+    out_len = max(win_size + 1, int(round(len(x) * factor)))
+    y = np.zeros(out_len + win_size, dtype=np.float32)
+    wsum = np.zeros(out_len + win_size, dtype=np.float32)
+
+    n_frames = int((len(x) - win_size) / hop_a) + 1
+    for i in range(max(0, n_frames)):
+        in_start = int(round(i * hop_a))
+        out_start = i * hop_s
+        if in_start + win_size > len(x) or out_start + win_size > len(y):
+            break
+        frame = x[in_start : in_start + win_size] * window
+        y[out_start : out_start + win_size] += frame
+        wsum[out_start : out_start + win_size] += window * window
+
+    mask = wsum > 1e-6
+    y[mask] /= wsum[mask]
+    y = y[:out_len]
+
+    # Resample stretched signal back to exact original length N to shift frequencies by `factor`
+    orig_n = len(x)
+    idx_old = np.linspace(0.0, 1.0, num=len(y), endpoint=False, dtype=np.float64)
+    idx_new = np.linspace(0.0, 1.0, num=orig_n, endpoint=False, dtype=np.float64)
+    shifted = np.interp(idx_new, idx_old, y).astype(np.float32)
+    return shifted
+
+
+def _warmth_eq(x: np.ndarray, sr: int, warmth_db: float) -> np.ndarray:
+    """Applies a smooth low/high tilt shelf EQ in frequency domain."""
+    if abs(warmth_db) < 0.05 or len(x) < 64:
+        return x
+    spec = np.fft.rfft(x)
+    freqs = np.fft.rfftfreq(len(x), d=1.0 / max(sr, 1))
+    # Smooth transition from +warmth_db below 320 Hz to -0.5*warmth_db above 2800 Hz
+    low_weight = np.clip((900.0 - freqs) / 600.0, 0.0, 1.0)
+    high_weight = np.clip((freqs - 1800.0) / 1500.0, 0.0, 1.0)
+    db_curve = warmth_db * low_weight - (0.5 * warmth_db) * high_weight
+    gain = np.power(10.0, db_curve / 20.0).astype(np.float32)
+    y = np.fft.irfft(spec * gain, n=len(x)).astype(np.float32)
+    peak = float(np.max(np.abs(y))) if len(y) else 0.0
+    if peak > 0.98:
+        y = (y * (0.98 / peak)).astype(np.float32)
+    return y
+
+
+def apply_voice_dsp(x: np.ndarray, sr: int, params: dict[str, Any]) -> np.ndarray:
+    y = _pitch_shift(x, sr, float(params.get("pitch_semitones", 0.0)))
+    y = _warmth_eq(y, sr, float(params.get("warmth_db", 0.0)))
+    return np.clip(y, -0.99, 0.99).astype(np.float32)
 
 
 def _wav_bytes_from_float(x: np.ndarray, sr: int) -> bytes:
@@ -142,6 +277,116 @@ class AudioService:
         r.add("POST", "/v1/audio/roundtrip", self.roundtrip)
         r.add("POST", "/v1/audio/dataset/split", self.dataset_split)
         r.add("POST", "/v1/audio/training/simulate-diloco", self.simulate_diloco)
+        r.add("GET", "/v1/audio/tenants/{tenant}/voices", self.list_voices)
+        r.add("POST", "/v1/audio/tenants/{tenant}/voices", self.create_voice)
+        r.add("DELETE", "/v1/audio/tenants/{tenant}/voices/{voice}", self.delete_voice)
+        r.add("POST", "/v1/audio/voices/preview-dsp", self.preview_dsp)
+
+    def _voices_path(self) -> Path:
+        p = Path(self.s.data_dir) / "audio_voices.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def _load_all_custom_voices(self) -> dict[str, dict[str, dict[str, Any]]]:
+        p = self._voices_path()
+        if not p.is_file():
+            return {}
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def _save_all_custom_voices(self, data: dict[str, dict[str, dict[str, Any]]]) -> None:
+        p = self._voices_path()
+        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def list_voices(self, req: Request) -> dict[str, Any]:
+        tenant = req.params.get("tenant", "demo")
+        if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", tenant):
+            raise bad("Mã tenant không hợp lệ", "bad_tenant")
+        custom_map = self._load_all_custom_voices().get(tenant, {})
+        voices = list(BUILTIN_VOICES.values()) + list(custom_map.values())
+        return {"tenant": tenant, "voices": voices}
+
+    def create_voice(self, req: Request) -> dict[str, Any]:
+        req.need("operator")
+        tenant = req.params.get("tenant", "demo")
+        if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", tenant):
+            raise bad("Mã tenant không hợp lệ", "bad_tenant")
+        name = str(req.body.get("name", "")).strip()
+        if len(name) < 2 or len(name) > 80:
+            raise bad("Tên hồ sơ giọng mới phải từ 2 đến 80 ký tự", "bad_voice_name")
+        params = validate_voice_params(req.body)
+        raw_id = str(req.body.get("id", "")).strip()
+        if not raw_id:
+            slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")[:24] or "voice"
+            raw_id = f"custom_{slug}_{int(time.time() * 1000) % 100000}"
+        if raw_id in BUILTIN_VOICES:
+            raise bad("Không thể ghi đè hồ sơ giọng mặc định của hệ thống", "builtin_protected")
+        profile: dict[str, Any] = {
+            "id": raw_id,
+            "name": name,
+            "tenant": tenant,
+            "builtin": False,
+            **params,
+            "description": str(req.body.get("description", "")).strip()
+            or f"Pitch {params['pitch_semitones']:+.1f}st · Tốc độ {params['speaking_rate']}x · EQ {params['warmth_db']:+.1f}dB",
+        }
+        all_data = self._load_all_custom_voices()
+        t_voices = all_data.setdefault(tenant, {})
+        t_voices[raw_id] = profile
+        self._save_all_custom_voices(all_data)
+        return {"ok": True, "voice": profile}
+
+    def delete_voice(self, req: Request) -> dict[str, Any]:
+        req.need("admin")
+        tenant = req.params.get("tenant", "demo")
+        voice_id = req.params.get("voice", "")
+        if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", tenant):
+            raise bad("Mã tenant không hợp lệ", "bad_tenant")
+        if voice_id in BUILTIN_VOICES:
+            raise bad("Không thể xóa hồ sơ giọng mặc định của hệ thống", "builtin_protected")
+        all_data = self._load_all_custom_voices()
+        t_voices = all_data.get(tenant, {})
+        if voice_id not in t_voices:
+            raise not_found(f"Không tìm thấy hồ sơ giọng '{voice_id}' trong tenant '{tenant}'")
+        deleted = t_voices.pop(voice_id)
+        self._save_all_custom_voices(all_data)
+        return {"ok": True, "deleted": deleted}
+
+    def preview_dsp(self, req: Request) -> dict[str, Any]:
+        req.need("operator")
+        vp_raw = req.body.get("voice_params")
+        params = validate_voice_params(vp_raw if isinstance(vp_raw, dict) else req.body)
+        b64 = req.body.get("audio_base64", "")
+        if isinstance(b64, str) and b64.strip():
+            x, sr = _read_wav_b64(b64)
+        else:
+            # Generate clean synthetic voiced sample if no input WAV provided
+            sample = self.sample_wav(dataclasses.replace(req, body={"noisy": False}))
+            x, sr = _read_wav_b64(sample["audio_base64"])
+        y = apply_voice_dsp(x, sr, params)
+        return {
+            "audio_base64": base64.b64encode(_wav_bytes_from_float(y, sr)).decode("ascii"),
+            "duration_s": round(len(y) / max(sr, 1), 3),
+            "sample_rate": sr,
+            "voice_params": params,
+        }
+
+    def _resolve_voice(self, tenant: str, voice_id: str, inline_params: Any) -> dict[str, Any]:
+        if isinstance(inline_params, dict):
+            vp = validate_voice_params(inline_params)
+            return {"id": voice_id or "custom_preview", "name": "Giọng tùy chỉnh trực tiếp", "builtin": False, **vp}
+        if voice_id in BUILTIN_VOICES:
+            return BUILTIN_VOICES[voice_id]
+        custom = self._load_all_custom_voices().get(tenant, {}).get(voice_id)
+        if custom is not None:
+            return custom
+        raise bad(
+            "Chính sách Đạo đức AI: Hệ thống từ chối nhân bản giọng nói (Voice Cloning) hoặc giọng tùy chỉnh chưa được cấp phép.",
+            "voice_cloning_refused",
+        )
 
     def status(self, req: Request) -> dict[str, Any]:
         fleurs_report = None
@@ -287,22 +532,46 @@ class AudioService:
     def tts(self, req: Request) -> dict[str, Any]:
         req.need("operator")
         text = req.body.get("text")
-        voice = req.body.get("voice", "default")
+        voice = str(req.body.get("voice", "default"))
+        tenant = str(req.body.get("tenant", "demo"))
         consent_ref = req.body.get("consent_ref")
-        if consent_ref is not None or voice != "default":
-            raise bad("Chính sách Đạo đức AI: Hệ thống từ chối nhân bản giọng nói (Voice Cloning) hoặc giọng tùy chỉnh chưa được cấp phép.", "voice_cloning_refused")
+        if consent_ref is not None:
+            raise bad(
+                "Chính sách Đạo đức AI: Hệ thống từ chối nhân bản giọng nói (Voice Cloning) hoặc giọng tùy chỉnh chưa được cấp phép.",
+                "voice_cloning_refused",
+            )
+        profile = self._resolve_voice(tenant, voice, req.body.get("voice_params"))
         if not isinstance(text, str) or not text.strip():
             raise bad("Vui lòng nhập văn bản tiếng Việt cần tổng hợp giọng nói", "empty_text")
         if len(text) > 2000:
             raise bad("Văn bản vượt quá giới hạn 2000 ký tự", "text_too_long")
         if not self._tts_ready():
             raise unavailable("Model TTS (facebook/mms-tts-vie) chưa được cấu hình trên máy chủ")
-        resp = self._call_worker({"op": "tts", "text": text.strip(), "voice": voice, "consent_ref": consent_ref})
+        vits_params = {
+            "speaking_rate": profile["speaking_rate"],
+            "noise_scale": profile["noise_scale"],
+            "noise_scale_w": profile["noise_scale_w"],
+        }
+        resp = self._call_worker({
+            "op": "tts",
+            "text": text.strip(),
+            "voice": "default",
+            "consent_ref": None,
+            "vits_params": vits_params,
+        })
+        audio_b64 = resp["audio_base64"]
+        dur_s = float(resp["duration_s"])
+        if abs(float(profile.get("pitch_semitones", 0.0))) >= 0.05 or abs(float(profile.get("warmth_db", 0.0))) >= 0.05:
+            x, sr = _read_wav_b64(audio_b64)
+            y = apply_voice_dsp(x, sr, profile)
+            audio_b64 = base64.b64encode(_wav_bytes_from_float(y, sr)).decode("ascii")
+            dur_s = round(len(y) / max(sr, 1), 3)
         return {
             "text": text.strip(),
-            "audio_base64": resp["audio_base64"],
-            "duration_s": resp["duration_s"],
-            "engine": "facebook/mms-tts-vie",
+            "audio_base64": audio_b64,
+            "duration_s": dur_s,
+            "voice_profile": profile,
+            "engine": "facebook/mms-tts-vie + Acoustic DSP",
             "device": resp.get("device", "cuda"),
             "licence_note": "CC-BY-NC 4.0 (chỉ sử dụng nghiên cứu/nội bộ, không dùng thương mại)",
         }
@@ -353,10 +622,11 @@ class AudioService:
             "input_text": tts_res["text"],
             "audio_base64": tts_res["audio_base64"],
             "duration_s": tts_res["duration_s"],
+            "voice_profile": tts_res.get("voice_profile"),
             "asr_text": asr_res["text"],
             "segments": asr_res["segments"],
             "eval": asr_res.get("eval"),
-            "engines": "facebook/mms-tts-vie -> Qwen3-ASR-0.6B",
+            "engines": "facebook/mms-tts-vie (+DSP) -> Qwen3-ASR-0.6B",
         }
 
     def dataset_split(self, req: Request) -> dict[str, Any]:

@@ -123,3 +123,58 @@ def test_audio_dataset_speaker_disjoint_split_and_diloco_simulation(tmp_path: Pa
     assert sim["lora_math"]["naive_merge_frobenius_error"] > 0.0
     assert sim["network"]["bandwidth_saved_pct"] > 90.0
 
+
+def test_custom_voice_profiles_crud_and_dsp_preview(tmp_path: Path):
+    s = Settings(data_dir=tmp_path, app_dsn="postgresql://unused")
+    svc = AudioService(s)
+    r = Router()
+    svc.mount(r)
+
+    listed = _call(r, "GET", "/v1/audio/tenants/demo/voices", role="viewer")
+    assert len(listed["voices"]) == 4  # 4 builtin presets
+
+    created = _call(r, "POST", "/v1/audio/tenants/demo/voices", {
+        "name": "Nữ CSKH Miền Bắc",
+        "pitch_semitones": 2.5,
+        "speaking_rate": 1.05,
+        "noise_scale": 0.55,
+        "noise_scale_w": 0.75,
+        "warmth_db": -1.5,
+    }, role="operator")
+    assert created["ok"] is True
+    vid = created["voice"]["id"]
+    assert vid.startswith("custom_")
+
+    listed_after = _call(r, "GET", "/v1/audio/tenants/demo/voices", role="viewer")
+    assert len(listed_after["voices"]) == 5
+
+    # Out-of-bounds pitch must fail validation
+    with pytest.raises(ApiError) as exc_bad:
+        _call(r, "POST", "/v1/audio/tenants/demo/voices", {
+            "name": "Quá cao",
+            "pitch_semitones": 12.0,
+        }, role="operator")
+    assert exc_bad.value.status == 400
+    assert exc_bad.value.code == "bad_voice_params"
+
+    # DSP preview (pitch shift + EQ) preserves duration
+    dsp_res = _call(r, "POST", "/v1/audio/voices/preview-dsp", {
+        "pitch_semitones": 3.0,
+        "speaking_rate": 1.0,
+        "noise_scale": 0.667,
+        "noise_scale_w": 0.8,
+        "warmth_db": 2.5,
+    }, role="operator")
+    assert dsp_res["duration_s"] == 3.2
+    assert len(dsp_res["audio_base64"]) > 1000
+
+    # Delete requires admin role
+    with pytest.raises(ApiError) as exc_del_ro:
+        _call(r, "DELETE", f"/v1/audio/tenants/demo/voices/{vid}", role="operator")
+    assert exc_del_ro.value.status == 403
+
+    deleted = _call(r, "DELETE", f"/v1/audio/tenants/demo/voices/{vid}", role="admin")
+    assert deleted["ok"] is True
+    assert len(_call(r, "GET", "/v1/audio/tenants/demo/voices", role="viewer")["voices"]) == 4
+
+

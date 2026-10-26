@@ -131,14 +131,14 @@
   <div id="msg" class="mut" role="status" aria-live="polite" style="margin-bottom:12px;font-size:13px"></div>
 
   <div class="wide-split" style="margin-bottom:18px">
-    <!-- 1. TTS & Round-trip -->
+    <!-- 1. TTS & Round-trip + Custom Voice Profile Studio -->
     <section class="card stack" style="margin-bottom:0">
       <div class="card-header">
         <div>
-          <h2>1. Tổng hợp Tiếng nói Tiếng Việt (TTS) & Kiểm thử Vòng lặp</h2>
-          <div class="sub">Chuyển văn bản tiếng Việt thành âm thanh WAV 16-bit PCM và kiểm chứng độ rõ bằng Qwen3-ASR-0.6B</div>
+          <h2>1. Tổng hợp Tiếng nói (TTS), Tạo Giọng Mới & Kiểm thử Vòng lặp</h2>
+          <div class="sub">Chuyển văn bản tiếng Việt thành âm thanh WAV 16-bit PCM, tùy biến giọng đọc bằng <b>VITS + Acoustic DSP</b> và kiểm chứng độ rõ bằng Qwen3-ASR-0.6B</div>
         </div>
-        <span class="pill info">AUDIO_TTS</span>
+        <span class="pill info">AUDIO_TTS · VOICE STUDIO</span>
       </div>
 
       <div class="chip-row">
@@ -147,9 +147,20 @@
         <button type="button" class="sample-chip" onclick="setTtsSample('cuộc họp kỹ thuật sẽ bắt đầu lúc chín giờ sáng')">✨ Câu mẫu 3: Lịch họp kỹ thuật</button>
       </div>
 
+      <div class="two-col">
+        <label class="field">
+          Chọn Hồ sơ Giọng đọc (Preset hoặc Giọng của Tenant)
+          <select id="tts-voice"></select>
+        </label>
+        <label class="field">
+          Tenant quản lý Hồ sơ Giọng
+          <input type="text" id="tts-tenant" value="demo" placeholder="demo">
+        </label>
+      </div>
+
       <label class="field">
         Văn bản Tiếng Việt cần tổng hợp (tối đa 2000 ký tự)
-        <textarea id="tts-text" rows="3" placeholder="Nhập câu tiếng Việt cần đọc...">xin chào quý khách, công ty chúng tôi xin cảm ơn quý khách hàng</textarea>
+        <textarea id="tts-text" rows="2" placeholder="Nhập câu tiếng Việt cần đọc...">xin chào quý khách, công ty chúng tôi xin cảm ơn quý khách hàng</textarea>
       </label>
 
       <div class="row" style="gap:8px;flex-wrap:wrap">
@@ -159,6 +170,48 @@
       </div>
 
       <div id="tts-out" class="stack"></div>
+
+      <!-- Custom Voice Profile Studio (Option A: VITS + Acoustic DSP) -->
+      <div class="audio-box stack" id="voice-studio-box" style="border-color:var(--bd-strong)">
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <div>
+            <strong style="font-size:13.5px">🎛️ Phòng Thiết kế & Tạo Giọng Mới (Custom Voice Profile Studio)</strong>
+            <div class="mut" style="font-size:11.5px">Điều chỉnh tham số <b>VITS Stochastic Duration</b> kết hợp <b>DSP Pitch-Shift (OLA) & Shelf EQ</b> — hợp chuẩn bản quyền & Zero Voice-Cloning</div>
+          </div>
+          <div class="chip-row">
+            <button type="button" class="sample-chip" onclick="applyPresetSliders(2.5, 1.02, 0.55, -1.5, 'Nữ Thanh lịch CSKH')">👩 Mẫu Nữ (+2.5st)</button>
+            <button type="button" class="sample-chip" onclick="applyPresetSliders(-2.5, 0.94, 0.60, 3.0, 'Nam Trầm ấm Podcast')">👨 Mẫu Nam (-2.5st)</button>
+            <button type="button" class="sample-chip" onclick="applyPresetSliders(1.0, 1.22, 0.50, -1.0, 'Trợ lý Đọc thông báo')">⚡ Mẫu Nhanh (1.22x)</button>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <label class="field">
+            <span>Cao độ giọng (Pitch): <b id="lbl-vp-pitch">+2.5 semitones</b> (Nam trầm ↔ Nữ cao)</span>
+            <input type="range" id="vp-pitch" min="-6" max="6" step="0.5" value="2.5">
+          </label>
+          <label class="field">
+            <span>Tốc độ đọc VITS (Speed): <b id="lbl-vp-rate">1.02x</b> (0.6x ↔ 1.5x)</span>
+            <input type="range" id="vp-rate" min="0.6" max="1.5" step="0.02" value="1.02">
+          </label>
+          <label class="field">
+            <span>Độ biểu cảm nhịp điệu (Noise Scale): <b id="lbl-vp-noise">0.55</b></span>
+            <input type="range" id="vp-noise" min="0.1" max="1.2" step="0.05" value="0.55">
+          </label>
+          <label class="field">
+            <span>Âm sắc EQ (Warmth): <b id="lbl-vp-warmth">-1.5 dB</b> (Sáng rõ ↔ Trầm ấm)</span>
+            <input type="range" id="vp-warmth" min="-6" max="6" step="0.5" value="-1.5">
+          </label>
+        </div>
+
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <input type="text" id="vp-name" value="Nữ Trợ lý CSKH Miền Bắc" placeholder="Đặt tên hồ sơ giọng mới (VD: Nữ Trợ lý CSKH)..." style="flex:1;min-width:190px">
+          <button type="button" id="btn-vp-preview" class="sm">🔊 Nghe thử Giọng đang chỉnh</button>
+          <button type="button" id="btn-vp-save" class="primary sm">💾 Lưu thành Giọng mới của Tenant</button>
+        </div>
+
+        <div id="vp-custom-list" class="chip-row"></div>
+      </div>
     </section>
 
     <!-- 2. ASR (Speech to Text) -->
@@ -383,22 +436,110 @@ function renderSegments(segs, dur) {
   return el("div", {}, bar, pills);
 }
 
-// 1. TTS & Round-trip handlers
-document.getElementById("btn-tts").onclick = async () => {
+// 1. TTS, Round-trip & Custom Voice Profile Studio handlers
+let VOICES_CACHE = [];
+
+function updateSliderLabels() {
+  const p = +document.getElementById("vp-pitch").value;
+  const r = +document.getElementById("vp-rate").value;
+  const n = +document.getElementById("vp-noise").value;
+  const w = +document.getElementById("vp-warmth").value;
+  document.getElementById("lbl-vp-pitch").textContent = (p >= 0 ? "+" : "") + p.toFixed(1) + " semitones";
+  document.getElementById("lbl-vp-rate").textContent = r.toFixed(2) + "x";
+  document.getElementById("lbl-vp-noise").textContent = n.toFixed(2);
+  document.getElementById("lbl-vp-warmth").textContent = (w >= 0 ? "+" : "") + w.toFixed(1) + " dB";
+}
+
+function applyPresetSliders(pitch, rate, noise, warmth, suggestedName) {
+  document.getElementById("vp-pitch").value = pitch;
+  document.getElementById("vp-rate").value = rate;
+  document.getElementById("vp-noise").value = noise;
+  document.getElementById("vp-warmth").value = warmth;
+  if (suggestedName) document.getElementById("vp-name").value = suggestedName;
+  updateSliderLabels();
+}
+
+for (const id of ["vp-pitch", "vp-rate", "vp-noise", "vp-warmth"]) {
+  document.getElementById(id).oninput = updateSliderLabels;
+}
+
+function currentSliderParams() {
+  return {
+    pitch_semitones: +document.getElementById("vp-pitch").value,
+    speaking_rate: +document.getElementById("vp-rate").value,
+    noise_scale: +document.getElementById("vp-noise").value,
+    noise_scale_w: 0.8,
+    warmth_db: +document.getElementById("vp-warmth").value
+  };
+}
+
+async function loadVoices(selectedId) {
+  const tenant = (document.getElementById("tts-tenant").value || "demo").trim();
+  const r = await call("GET", `/tenants/${encodeURIComponent(tenant)}/voices`);
+  VOICES_CACHE = r.voices || [];
+  const sel = document.getElementById("tts-voice");
+  const cur = selectedId || sel.value || "default";
+  sel.replaceChildren(...VOICES_CACHE.map(v =>
+    el("option", { value: v.id }, `${v.builtin ? "🎙️ " : "✨ [Tùy chỉnh] "}${v.name} (Pitch ${v.pitch_semitones >= 0 ? "+" : ""}${v.pitch_semitones}st · ${v.speaking_rate}x)`)
+  ));
+  if (VOICES_CACHE.some(v => v.id === cur)) sel.value = cur;
+
+  const customBox = document.getElementById("vp-custom-list");
+  const customs = VOICES_CACHE.filter(v => !v.builtin);
+  if (!customs.length) {
+    customBox.replaceChildren(el("span", { class: "mut", style: "font-size:11.5px" }, `Chưa có giọng tùy chỉnh nào lưu riêng cho tenant '${tenant}'. Hãy chỉnh thanh trượt và bấm "💾 Lưu thành Giọng mới của Tenant".`));
+  } else {
+    customBox.replaceChildren(
+      el("span", { class: "mut", style: "font-size:11.5px;align-self:center" }, `Giọng đã lưu của '${tenant}':`),
+      ...customs.map(v => el("span", { class: "pill ok", style: "gap:6px;display:inline-flex;align-items:center" },
+        el("span", { style: "cursor:pointer", onclick: () => {
+          sel.value = v.id;
+          applyPresetSliders(v.pitch_semitones, v.speaking_rate, v.noise_scale, v.warmth_db, v.name);
+        } }, `✨ ${v.name} (${v.pitch_semitones >= 0 ? "+" : ""}${v.pitch_semitones}st, ${v.speaking_rate}x)`),
+        ...(window.AICF && AICF.can && AICF.can.admin ? [
+          el("button", { type: "button", class: "sm ghost", style: "padding:0 5px;height:18px;font-size:10px", title: "Xóa giọng này", onclick: async () => {
+            try {
+              await call("DELETE", `/tenants/${encodeURIComponent(tenant)}/voices/${encodeURIComponent(v.id)}`);
+              await loadVoices("default");
+              say(`Đã xóa hồ sơ giọng '${v.name}'.`, "ok");
+            } catch (e) { say(e.message, "err"); }
+          } }, "✕")
+        ] : [])
+      ))
+    );
+  }
+}
+
+document.getElementById("tts-voice").onchange = e => {
+  const v = VOICES_CACHE.find(x => x.id === e.target.value);
+  if (v) applyPresetSliders(v.pitch_semitones, v.speaking_rate, v.noise_scale, v.warmth_db);
+};
+document.getElementById("tts-tenant").onchange = () => loadVoices().catch(e => say(e.message, "err"));
+
+async function executeTts(extraPayload, statusLabel) {
   const btn = document.getElementById("btn-tts");
   const out = document.getElementById("tts-out");
   btn.disabled = true;
-  out.replaceChildren(el("div", { class: "mut" }, "Đang tổng hợp giọng nói tiếng Việt trên GPU (facebook/mms-tts-vie)…"));
+  out.replaceChildren(el("div", { class: "mut" }, statusLabel || "Đang tổng hợp giọng nói tiếng Việt trên GPU (facebook/mms-tts-vie + DSP)…"));
   try {
-    const r = await call("POST", "/tts", { text: document.getElementById("tts-text").value });
+    const payload = Object.assign({
+      text: document.getElementById("tts-text").value,
+      voice: document.getElementById("tts-voice").value || "default",
+      tenant: (document.getElementById("tts-tenant").value || "demo").trim()
+    }, extraPayload || {});
+    const r = await call("POST", "/tts", payload);
     CURRENT_AUDIO_B64 = r.audio_base64;
     CURRENT_VAD_B64 = r.audio_base64;
     const src = "data:audio/wav;base64," + r.audio_base64;
+    const vp = r.voice_profile || {};
     out.replaceChildren(
       el("div", { class: "audio-box" },
-        el("div", { class: "row", style: "justify-content:space-between" },
-          el("strong", {}, `Âm thanh đã tạo (${r.duration_s}s · ${r.engine} · ${r.device})`),
-          el("a", { href: src, download: "aicf-tts.wav", style: "font-size:12px;color:var(--acc);font-weight:600" }, "⬇ Tải .wav")
+        el("div", { class: "row", style: "justify-content:space-between;flex-wrap:wrap;gap:6px" },
+          el("strong", {}, `Âm thanh đã tạo (${r.duration_s}s · ${vp.name || "Mặc định"})`),
+          el("div", { class: "row", style: "gap:8px" },
+            el("span", { class: "pill info" }, `Pitch ${vp.pitch_semitones >= 0 ? "+" : ""}${vp.pitch_semitones || 0}st · ${vp.speaking_rate || 1}x · EQ ${vp.warmth_db >= 0 ? "+" : ""}${vp.warmth_db || 0}dB`),
+            el("a", { href: src, download: "aicf-tts.wav", style: "font-size:12px;color:var(--acc);font-weight:600" }, "⬇ Tải .wav")
+          )
         ),
         el("audio", { controls: true, autoplay: false, src }),
         el("div", { class: "row", style: "margin-top:8px;justify-content:space-between" },
@@ -411,11 +552,28 @@ document.getElementById("btn-tts").onclick = async () => {
         )
       )
     );
-    say("Tổng hợp giọng nói hoàn tất.", "ok");
+    say(`Tổng hợp giọng nói '${vp.name || "Mặc định"}' hoàn tất.`, "ok");
   } catch (e) {
     out.replaceChildren(el("div", { class: "err" }, e.message));
   } finally {
     btn.disabled = !canWrite();
+  }
+}
+
+document.getElementById("btn-tts").onclick = () => executeTts(null);
+
+document.getElementById("btn-vp-preview").onclick = () =>
+  executeTts({ voice_params: currentSliderParams() }, "Đang tổng hợp thử nghiệm Hồ sơ Giọng đang chỉnh (VITS + Pitch/EQ DSP)…");
+
+document.getElementById("btn-vp-save").onclick = async () => {
+  const tenant = (document.getElementById("tts-tenant").value || "demo").trim();
+  const name = document.getElementById("vp-name").value.trim();
+  try {
+    const r = await call("POST", `/tenants/${encodeURIComponent(tenant)}/voices`, Object.assign({ name }, currentSliderParams()));
+    await loadVoices(r.voice.id);
+    say(`Đã lưu giọng mới '${r.voice.name}' (${r.voice.id}) cho tenant '${tenant}'!`, "ok");
+  } catch (e) {
+    say(e.message, "err");
   }
 };
 
@@ -423,18 +581,23 @@ document.getElementById("btn-roundtrip").onclick = async () => {
   const btn = document.getElementById("btn-roundtrip");
   const out = document.getElementById("tts-out");
   btn.disabled = true;
-  out.replaceChildren(el("div", { class: "mut" }, "Đang chạy vòng lặp khép kín: TTS (mms-tts-vie) → WAV → VAD → ASR (Qwen3-ASR-0.6B) → Chấm điểm WER…"));
+  out.replaceChildren(el("div", { class: "mut" }, "Đang chạy vòng lặp khép kín: TTS (mms-tts-vie + DSP) → WAV → VAD → ASR (Qwen3-ASR-0.6B) → Chấm điểm WER…"));
   try {
-    const r = await call("POST", "/roundtrip", { text: document.getElementById("tts-text").value });
+    const r = await call("POST", "/roundtrip", {
+      text: document.getElementById("tts-text").value,
+      voice: document.getElementById("tts-voice").value || "default",
+      tenant: (document.getElementById("tts-tenant").value || "demo").trim()
+    });
     CURRENT_AUDIO_B64 = r.audio_base64;
     CURRENT_VAD_B64 = r.audio_base64;
     const src = "data:audio/wav;base64," + r.audio_base64;
     const werPct = r.eval ? (r.eval.wer * 100).toFixed(1) + "%" : "—";
     const cerPct = r.eval ? (r.eval.cer * 100).toFixed(1) + "%" : "—";
+    const vp = r.voice_profile || {};
     out.replaceChildren(
       el("div", { class: "audio-box stack" },
-        el("div", { class: "row", style: "justify-content:space-between" },
-          el("strong", {}, `Kết quả Vòng lặp TTS → ASR (${r.duration_s}s)`),
+        el("div", { class: "row", style: "justify-content:space-between;flex-wrap:wrap;gap:6px" },
+          el("strong", {}, `Kết quả Vòng lặp TTS → ASR (${r.duration_s}s · ${vp.name || "Mặc định"})`),
           el("div", { class: "row", style: "gap:6px" },
             el("span", { class: "pill " + (r.eval && r.eval.wer <= 0.15 ? "ok" : "warn") }, `WER: ${werPct}`),
             el("span", { class: "pill info" }, `CER: ${cerPct}`)
@@ -707,10 +870,12 @@ document.getElementById("btn-sim-diloco").onclick = async () => {
   await window.AICF_READY;
   const writable = canWrite();
   document.getElementById("ro").hidden = writable;
-  for (const id of ["btn-tts", "btn-roundtrip", "btn-clone-test", "btn-asr", "btn-sample-wav", "btn-analyze"]) {
+  for (const id of ["btn-tts", "btn-roundtrip", "btn-clone-test", "btn-vp-preview", "btn-vp-save", "btn-asr", "btn-sample-wav", "btn-analyze"]) {
     document.getElementById(id).disabled = !writable;
   }
+  updateSliderLabels();
   try {
+    await loadVoices();
     const st = await call("GET", "/status");
     const asrP = document.getElementById("asr-pill");
     const ttsP = document.getElementById("tts-pill");

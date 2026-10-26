@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 from agents.tasks import Task, TaskType
-from audio.executors import AudioExecutor
+from audio.executors import AudioExecutor, save
 
 
 def main() -> None:
@@ -41,19 +41,51 @@ def main() -> None:
                 op = req.get("op")
                 if op == "tts":
                     text = req["text"]
-                    t = Task(task_id="tts", tenant_id="studio", type=TaskType.AUDIO_TTS, input={
-                        "text": text,
-                        "voice": req.get("voice", "default"),
-                        "consent_ref": req.get("consent_ref"),
-                    })
-                    res = ex.execute(t)
-                    wav_path = root / res.output["audio_ref"]
+                    vits_params = req.get("vits_params")
+                    if vits_params and isinstance(vits_params, dict):
+                        # Custom VITS prosody synthesis (speaking_rate, noise_scale, noise_scale_w)
+                        import torch
+                        from transformers import AutoTokenizer, VitsModel
+                        if ex._tts is None:
+                            if not ex.tts_model:
+                                raise NotImplementedError("AUDIO_TTS needs tts_model")
+                            ex._tts = (
+                                AutoTokenizer.from_pretrained(ex.tts_model),
+                                VitsModel.from_pretrained(ex.tts_model).to(ex.device).eval(),
+                            )
+                        tok, model = ex._tts
+                        old_sr = getattr(model, "speaking_rate", 1.0)
+                        old_ns = getattr(model, "noise_scale", 0.667)
+                        old_nsw = getattr(model, "noise_scale_w", 0.8)
+                        try:
+                            model.speaking_rate = float(vits_params.get("speaking_rate", 1.0))
+                            model.noise_scale = float(vits_params.get("noise_scale", 0.667))
+                            model.noise_scale_w = float(vits_params.get("noise_scale_w", 0.8))
+                            with torch.no_grad():
+                                wav = model(**tok(text.lower(), return_tensors="pt").to(ex.device)).waveform[0].float().cpu().numpy()
+                            sr = int(model.config.sampling_rate)
+                        finally:
+                            model.speaking_rate = old_sr
+                            model.noise_scale = old_ns
+                            model.noise_scale_w = old_nsw
+                        fname = save(ex.out, wav, sr, "tts")
+                        wav_path = ex.out / fname
+                        duration_s = round(len(wav) / sr, 3)
+                    else:
+                        t = Task(task_id="tts", tenant_id="studio", type=TaskType.AUDIO_TTS, input={
+                            "text": text,
+                            "voice": req.get("voice", "default"),
+                            "consent_ref": req.get("consent_ref"),
+                        })
+                        res = ex.execute(t)
+                        wav_path = root / res.output["audio_ref"]
+                        duration_s = res.output["duration_s"]
                     b64 = base64.b64encode(wav_path.read_bytes()).decode("ascii")
                     wav_path.unlink(missing_ok=True)
                     resp = {
                         "ok": True,
                         "audio_base64": b64,
-                        "duration_s": res.output["duration_s"],
+                        "duration_s": duration_s,
                         "device": device,
                     }
                 elif op == "asr":
