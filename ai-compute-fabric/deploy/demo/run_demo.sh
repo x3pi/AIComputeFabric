@@ -66,7 +66,8 @@ AI Compute Fabric Full-Stack Demo is starting (model loads in ~10-25 s):
   3. Playground & Đo tải   : http://127.0.0.1:$HTTP_PORT/chat.html
   4. AI Agent (Đồ thị DAG) : http://127.0.0.1:$HTTP_PORT/agents.html
   5. AI Studio             : http://127.0.0.1:$HTTP_PORT/studio.html
-  6. Worker Guard Local UI : http://127.0.0.1:8099/
+  6. Hướng dẫn Sử dụng     : http://127.0.0.1:$HTTP_PORT/guide.html
+  7. Worker Guard Local UI : http://127.0.0.1:8099/
   Logs                     : $D/logs/
 Ctrl-C to stop.
 MSG

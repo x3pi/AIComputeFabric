@@ -165,6 +165,24 @@ th {
 }
 td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--bd); vertical-align: top; }
 .num { font-variant-numeric: tabular-nums; }
+.guide-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.guide-step {
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+}
+.guide-step > strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--fg);
+}
 </style>
 </head>
 <body>
@@ -178,6 +196,23 @@ td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--bd); ve
 <main>
   <h1>Giám sát GPU Cục bộ & Kế toán 6-Bucket VRAM</h1>
   <div class="sub">Đo trực tiếp từ <code>nvidia-smi</code> và bộ đệm thực tế của <code>llama-server</code> (không sử dụng dữ liệu giả lập). Tự động thu hồi VRAM ngay khi người dùng mở ứng dụng đồ họa.</div>
+  <div class="card">
+    <strong>📖 Hướng dẫn vận hành Worker Guard trên máy trạm</strong>
+    <div class="guide-steps">
+      <div class="guide-step">
+        <strong>1. Cơ chế tự động nhường GPU (&lt; 2s)</strong>
+        Khi bạn mở ứng dụng đồ họa/CAD/game làm VRAM khả dụng giảm xuống dưới ngưỡng <code>Headroom</code>, Worker Guard tự động dừng <code>llama-server</code> trong dưới 2 giây (trạng thái chuyển sang <code>yielded</code>).
+      </div>
+      <div class="guide-step">
+        <strong>2. Tự động khôi phục khi máy rảnh</strong>
+        Sau khi bạn đóng ứng dụng đồ họa và VRAM trống ổn định liên tục qua cửa sổ chờ (mặc định 30 giây), Worker Guard tự động khởi chạy lại model để tiếp tục phục vụ cụm.
+      </div>
+      <div class="guide-step">
+        <strong>3. Điều khiển thủ công bất cứ lúc nào</strong>
+        Bấm <b>⏸ Tạm dừng AI</b> nếu bạn chuẩn bị làm việc nặng và muốn giữ 100% GPU ngay lập tức; bấm <b>▶ Cho phép chạy lại</b> khi sẵn sàng chia sẻ lại GPU.
+      </div>
+    </div>
+  </div>
   <div class="card">
     <div class="row">
       <div>

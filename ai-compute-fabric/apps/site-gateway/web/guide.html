@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AICF — Tài liệu & Hướng dẫn Sử dụng Hệ thống</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="common.css">
+<style>
+.doc-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.doc-nav a {
+  text-decoration: none;
+  padding: 7px 14px;
+  border-radius: 99px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  color: var(--fg-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+.doc-nav a:hover {
+  border-color: var(--acc);
+  color: var(--acc);
+  background: var(--acc-soft);
+}
+.workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+}
+.workflow-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+}
+.workflow-step-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--acc);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.workflow-card h3 {
+  margin: 4px 0 6px;
+  font-size: 15px;
+  color: var(--fg);
+}
+.workflow-card p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-secondary);
+  line-height: 1.5;
+}
+.code-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mut);
+}
+.bucket-explain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.bucket-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12.5px;
+}
+.bucket-card strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--fg);
+  margin-bottom: 4px;
+}
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>📖 Trung tâm Tài liệu & Hướng dẫn Sử dụng AI Compute Fabric</h1>
+      <div class="sub">Hướng dẫn từng bước dành cho Quản trị viên Cụm (Admin), Vận hành viên Site (Operator) và Kỹ sư Phát triển Ứng dụng AI (Developer). Nhấn phím <kbd class="mono" style="padding:2px 6px;border:1px solid var(--bd);border-radius:4px;background:var(--card)">?</kbd> ở bất kỳ trang nào để mở trợ giúp nhanh.</div>
+    </div>
+    <div class="row">
+      <a href="/contracts/openapi" style="text-decoration:none" onclick="event.preventDefault();document.getElementById('sec-api').scrollIntoView({behavior:'smooth'})"><button type="button" class="sm">🔌 Tích hợp API OpenAI</button></a>
+      <a href="#sec-studio" style="text-decoration:none"><button type="button" class="sm primary">🚀 Bắt đầu nhanh</button></a>
+    </div>
+  </div>
+
+  <!-- Quick Jump Bar -->
+  <nav class="doc-nav" aria-label="Mục lục tài liệu">
+    <a href="#sec-quickstart">1. Quy trình 4 bước bắt đầu</a>
+    <a href="#sec-vram">2. Toán học 6-Bucket VRAM</a>
+    <a href="#sec-api">3. Tích hợp OpenAI SDK &amp; cURL</a>
+    <a href="#sec-studio">4. Sử dụng AI Studio (RAG · Prompt · LoRA)</a>
+    <a href="#sec-rbac">5. Phân quyền RBAC &amp; Bảo mật</a>
+    <a href="#sec-reclaim">6. Bảo vệ Máy trạm &amp; Thu hồi GPU</a>
+  </nav>
+
+  <!-- Section 1: 4-Step Quickstart -->
+  <section class="card" id="sec-quickstart">
+    <div class="card-header">
+      <div class="card-title-group">
+        <h2>1. Quy trình Bắt đầu Nhanh trong 4 Bước</h2>
+        <span class="pill ok">Khuyến nghị cho người mới</span>
+      </div>
+      <span class="mut" style="font-size:12.5px">Token quản trị mặc định của bản Demo: <code class="mono">demo-admin-token</code></span>
+    </div>
+
+    <div class="workflow-grid">
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">Bước 01 · Giám sát &amp; Dự báo</span>
+          <h3>Kiểm tra Cụm GPU &amp; Dự báo VRAM</h3>
+          <p>Mở trang <strong>Cụm GPU</strong> để xem các máy trạm đang trực tuyến trên Heatmap 1 Hz, nhấp vào ô worker để soi 6 ngăn VRAM và thử tính cấu hình model bằng Bộ tính 6-Bucket.</p>
+        </div>
+        <a href="index.html" style="text-decoration:none"><button type="button" class="sm" style="width:100%">Mở trang Cụm GPU →</button></a>
+      </div>
+
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">Bước 02 · Cấp phát Khóa</span>
+          <h3>Khởi tạo Tenant &amp; Sao chép API Key</h3>
+          <p>Mở trang <strong>Người dùng &amp; Khóa API</strong>, đặt tên phòng ban (VD: <code class="mono">engineering</code>), chọn trọng số WFQ và sao chép khóa bí mật <code class="mono">aicf_...</code> hiển thị một lần.</p>
+        </div>
+        <a href="tenants.html" style="text-decoration:none"><button type="button" class="sm" style="width:100%">Mở trang Người dùng &amp; Khóa →</button></a>
+      </div>
+
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">Bước 03 · Kiểm thử Suy luận</span>
+          <h3>Chat Streaming &amp; Đo tải Burst 8×</h3>
+          <p>Mở trang <strong>Playground</strong>, dán khóa <code class="mono">aicf_...</code>, chọn mẫu câu hỏi nhanh để kiểm tra tốc độ sinh token (<code class="mono">tok/s</code>), độ trễ token đầu (<code class="mono">TTFT</code>) và tải song song 8 luồng.</p>
+        </div>
+        <a href="chat.html" style="text-decoration:none"><button type="button" class="sm" style="width:100%">Mở trang Playground →</button></a>
+      </div>
+
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">Bước 04 · Tùy biến &amp; Agent</span>
+          <h3>Nạp Tri thức RAG, Prompt &amp; Huấn luyện LoRA</h3>
+          <p>Mở <strong>AI Studio</strong> để tải tài liệu nội bộ lên hỏi đáp có dẫn nguồn, so sánh Prompt Few-shot, huấn luyện QLoRA trên GPU và theo dõi đồ thị tác vụ bên <strong>AI Agent</strong>.</p>
+        </div>
+        <a href="studio.html" style="text-decoration:none"><button type="button" class="sm primary" style="width:100%">Mở AI Studio →</button></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Wide Split: Section 2 (6-Bucket Math) + Section 3 (OpenAI API & cURL) -->
+  <div class="wide-split">
+    <section class="card" id="sec-vram">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>2. Toán học 6-Bucket VRAM &amp; Chế độ Thực thi</h2>
+          <span class="pill ok">G-VRAM Calibrated</span>
+        </div>
+      </div>
+      <p class="sub" style="margin-bottom:10px">
+        Khác với các công cụ chỉ cộng kích thước file GGUF, AI Compute Fabric chia bộ nhớ GPU thành <strong>6 ngăn bão hòa không âm</strong> (<code class="mono">SatSub</code> / <code class="mono">SatAdd</code>) để đảm bảo không bao giờ gây tràn bộ nhớ (OOM) hoặc làm giật màn hình của người dùng máy trạm:
+      </p>
+
+      <div class="vram-bar" id="doc-demo-bar" role="img" aria-label="Minh họa 6-Bucket VRAM"></div>
+
+      <div class="bucket-explain-grid">
+        <div class="bucket-card">
+          <strong><i class="vram-dot" style="background:var(--b-os)"></i>1. OS &amp; Người dùng (OSUser)</strong>
+          <span>VRAM đang dùng bởi hệ điều hành (WDDM/Xorg), trình duyệt và ứng dụng của chủ máy. Đo thực tế qua <code class="mono">nvidia-smi</code>.</span>
+        </div>
+        <div class="bucket-card">
+          <strong><i class="vram-dot" style="background:var(--b-weights)"></i>2. Trọng số Model (Weights)</strong>
+          <span>Trọng số các layer đưa lên GPU (đã trừ phần <code class="mono">token_embd</code> nếu nằm trên Host RAM).</span>
+        </div>
+        <div class="bucket-card">
+          <strong><i class="vram-dot" style="background:var(--b-kv)"></i>3. KV / State Cache (KVState)</strong>
+          <span>Bộ đệm ngữ cảnh <code class="mono">2 × layers_attn × n_kv × head_dim × ctx × parallel × bytes_kv</code>.</span>
+        </div>
+        <div class="bucket-card">
+          <strong><i class="vram-dot" style="background:var(--b-compute)"></i>4. Compute Buffer (Compute)</strong>
+          <span>Bộ đệm tính toán đồ thị GGML + CUDA workspace (<code class="mono">~330 MiB</code> đã hiệu chuẩn trên RTX 3060).</span>
+        </div>
+        <div class="bucket-card">
+          <strong><i class="vram-dot" style="background:var(--b-headroom)"></i>5. Headroom Bảo vệ (Headroom)</strong>
+          <span>Khoảng đệm an toàn (khuyến nghị <code class="mono">512–1536 MiB</code>) dành riêng cho chủ máy mở thêm cửa sổ mới.</span>
+        </div>
+        <div class="bucket-card">
+          <strong><i class="vram-dot" style="background:var(--b-free)"></i>6. Còn Cấp phát (Allocatable)</strong>
+          <span>Phần VRAM thực sự còn trống sau khi trừ đủ 5 ngăn trên. Quyết định trạng thái <code class="mono">GREEN / YELLOW / RED</code>.</span>
+        </div>
+      </div>
+
+      <div class="help-section" style="margin-top:14px">
+        <h3>Ba Chế độ Thực thi Tự động</h3>
+        <ul>
+          <li><strong>LOCAL_FULL (1 GPU nạp 100% layer):</strong> Toàn bộ trọng số + KV Cache + Compute nằm gọn trong ngân sách VRAM của 1 máy trạm. Tốc độ suy luận cao nhất.</li>
+          <li><strong>LOCAL_HYBRID (GPU + Host RAM Offload):</strong> Khi model lớn (VD: <code class="mono">Qwen2.5-32B Q4_K_M</code> hoặc <code class="mono">Qwen3-30B-A3B MoE</code>), hệ thống tự tính số layer tối đa nạp lên GPU (<code class="mono">MaxGPULayers</code>) và đẩy các layer còn lại sang RAM hệ thống.</li>
+          <li><strong>DISTRIBUTED_MODEL (Chia đều Layer qua nhiều GPU):</strong> Khi chọn <code class="mono">gpu_count &gt; 1</code>, bộ tính tự chia dải layer cân bằng (<code class="mono">0-21, 22-42, 43-63</code>) và cộng thêm chi phí giao tiếp liên nút.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="card" id="sec-api">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>3. Tích hợp API Suy luận (OpenAI SDK &amp; cURL)</h2>
+          <span class="pill">POST /v1/chat/completions</span>
+        </div>
+      </div>
+      <p class="sub" style="margin-bottom:12px">
+        Cổng Data-Plane của <code class="mono">site-gateway</code> tương thích chuẩn OpenAI. Bạn có thể gọi từ bất kỳ ngôn ngữ nào hoặc tích hợp trực tiếp vào LangChain / LangGraph / LlamaIndex:
+      </p>
+
+      <div class="code-hdr">
+        <span>1. Gọi trực tiếp qua cURL (hỗ trợ SSE Streaming &amp; KV Session Affinity)</span>
+        <button type="button" class="sm" onclick="copyCode('code-curl', this)">Sao chép mã</button>
+      </div>
+      <pre class="code-block" id="code-curl"></pre>
+
+      <div class="code-hdr" style="margin-top:14px">
+        <span>2. Sử dụng với thư viện Python <code class="mono">openai</code> chính thức</span>
+        <button type="button" class="sm" onclick="copyCode('code-py', this)">Sao chép mã</button>
+      </div>
+      <pre class="code-block" id="code-py"></pre>
+
+      <div class="help-section" style="margin-top:14px">
+        <h3>Các Header Điều khiển Chất lượng Dịch vụ (QoS Headers)</h3>
+        <ul>
+          <li><code class="mono">Authorization: Bearer aicf_...</code> — Khóa API của Tenant (bắt buộc khi đã đăng ký tenant).</li>
+          <li><code class="mono">X-Session-ID: conv-12345</code> — Định tuyến cuộc hội thoại nhiều lượt về đúng worker đang giữ sẵn KV prefix cache (giảm TTFT từ <code class="mono">1.390 ms</code> xuống <code class="mono">38 ms</code>).</li>
+          <li><code class="mono">X-Priority: batch</code> — Đánh dấu tác vụ chạy nền để nhường đường cho các yêu cầu tương tác (<code class="mono">interactive</code>).</li>
+          <li><code class="mono">X-Deadline-Ms: 3000</code> — Tự động hủy sớm nếu hàng đợi dự kiến vượt quá thời hạn SLA của ứng dụng.</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <!-- Wide Split: Section 4 (AI Studio) + Section 5 (RBAC & Reclaim) -->
+  <div class="wide-split">
+    <section class="card" id="sec-studio">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>4. Hướng dẫn Sử dụng AI Studio (4 Phương pháp Tùy biến)</h2>
+          <span class="pill ok">Multi-Tenant RLS</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="help-section">
+          <h3>① Kho Tri thức Nội bộ — RAG Có Dẫn nguồn (Khuyến nghị đầu tiên)</h3>
+          <ol>
+            <li>Chọn tên <strong>Tenant</strong> ở góc phải trên cùng (mỗi phòng ban có không gian dữ liệu riêng biệt).</li>
+            <li>Chọn tệp văn bản (<code class="mono">.txt</code>, <code class="mono">.md</code>, <code class="mono">.html</code>, <code class="mono">.pdf</code>, <code class="mono">.docx</code>), chọn mức độ mật (<code class="mono">INTERNAL</code> / <code class="mono">PUBLIC</code> / <code class="mono">RESTRICTED</code>) rồi bấm <strong>Tải lên</strong>.</li>
+            <li>Nhập câu hỏi vào ô <em>Hỏi đáp có dẫn nguồn</em>: hệ thống trả về câu trả lời kèm chỉ mục <code class="mono">[1]</code>, <code class="mono">[2]</code> và trích dẫn nguyên văn câu gốc trong tài liệu.</li>
+          </ol>
+        </div>
+
+        <div class="help-section">
+          <h3>② Prompt &amp; Ví dụ Mẫu (Few-shot Versioning)</h3>
+          <ol>
+            <li>Đặt tên mẫu (VD: <code class="mono">tro-ly-cskh</code>), nhập chỉ dẫn hệ thống (System Prompt) và các cặp <em>Câu hỏi mẫu / Trả lời mẫu</em>.</li>
+            <li>Mỗi lần lưu sẽ sinh một phiên bản bất biến (<code class="mono">v1</code>, <code class="mono">v2</code>…) không bao giờ ghi đè phiên bản cũ.</li>
+            <li>Sử dụng khung <strong>Thử nghiệm</strong> để chạy đối sánh trực tiếp kết quả <em>Không ví dụ mẫu (Zero-shot)</em> và <em>Có ví dụ mẫu (Few-shot)</em> trên cùng bộ câu hỏi.</li>
+          </ol>
+        </div>
+
+        <div class="help-section">
+          <h3>③ Huấn luyện LoRA / QLoRA &amp; Xuất GGUF</h3>
+          <ol>
+            <li>Chuẩn bị tập dữ liệu huấn luyện định dạng JSONL (mỗi dòng <code class="mono">{"question": "...", "answer": "..."}</code>) hoặc CSV (tối thiểu 20 dòng), hoặc bấm nút <strong>✨ Nạp mẫu thử nhanh</strong>.</li>
+            <li>Bấm <strong>Kiểm tra dữ liệu</strong> để hệ thống lọc trùng lặp, tách tập Train/Validation và báo lỗi từng dòng trước khi chạy.</li>
+            <li>Khi job hoàn tất, biểu đồ đường cong <strong>Loss</strong> và chỉ số <strong>Perplexity</strong> trước/sau được hiển thị; bạn có thể tải về <code class="mono">.zip</code> (Safetensors) hoặc <code class="mono">.gguf</code> để nạp vào <code class="mono">llama-server --lora</code>.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="sec-rbac">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>5. Phân quyền RBAC &amp; Cơ chế Bảo vệ Máy trạm (<code class="mono">G-RECLAIM</code>)</h2>
+          <span class="pill">Zero-Trust &amp; &lt; 2s Reclaim</span>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="margin-bottom:14px">
+        <table>
+          <thead>
+            <tr>
+              <th>Thao tác / Quyền hạn</th>
+              <th><span class="pill">viewer</span></th>
+              <th><span class="pill ok">operator</span></th>
+              <th><span class="pill">admin</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Xem Heatmap, 6-Bucket VRAM, Đồ thị DAG, Danh sách Tenant</td>
+              <td>✅ Được phép</td>
+              <td>✅ Được phép</td>
+              <td>✅ Được phép</td>
+            </tr>
+            <tr>
+              <td>Tạm dừng / Cho chạy lại Worker (<code class="mono">pause / resume</code>)</td>
+              <td>❌ Chỉ xem</td>
+              <td>✅ (Theo Site được giao)</td>
+              <td>✅ Toàn cụm</td>
+            </tr>
+            <tr>
+              <td>Tải tài liệu RAG, Tạo phiên bản Prompt, Chạy Job LoRA</td>
+              <td>❌ Chỉ xem &amp; hỏi</td>
+              <td>✅ Được phép</td>
+              <td>✅ Được phép</td>
+            </tr>
+            <tr>
+              <td>Xóa tài liệu RAG, Xóa mẫu Prompt, Xóa Job LoRA</td>
+              <td>❌ Cấm</td>
+              <td>❌ Cấm</td>
+              <td>✅ Được phép</td>
+            </tr>
+            <tr>
+              <td>Tạo Tenant mới, Sửa trọng số WFQ, Đổi khóa API</td>
+              <td>❌ Cấm</td>
+              <td>❌ Cấm</td>
+              <td>✅ Được phép</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="help-section" id="sec-reclaim">
+        <h3>6. Cơ chế Bảo vệ Ưu tiên Người dùng Máy trạm (Worker Guard)</h3>
+        <ul>
+          <li><strong>Ưu tiên tuyệt đối cho chủ máy:</strong> Tiến trình <code class="mono">worker-guard</code> trên mỗi PC liên tục theo dõi VRAM trống thực tế mỗi <code class="mono">250 ms</code>.</li>
+          <li><strong>Thu hồi tức thì (&lt; 2 giây):</strong> Ngay khi người dùng mở phần mềm đồ họa hoặc game làm phần VRAM trống giảm xuống dưới ngưỡng <code class="mono">--headroom-mib</code>, <code class="mono">worker-guard</code> lập tức dừng <code class="mono">llama-server</code> (đo thực tế trên RTX 3060 chỉ mất trung vị <strong>273 ms</strong>, giải phóng 100% VRAM về <code class="mono">1 MiB</code>).</li>
+          <li><strong>Tự phục hồi thông minh:</strong> Khi người dùng đóng ứng dụng nặng và máy trạm nhàn rỗi ổn định trở lại, worker tự động nạp lại model và tiếp tục nhận việc từ Gateway.</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+</main>
+<script>
+const origin = location.origin || "http://127.0.0.1:18080";
+document.getElementById("code-curl").textContent =
+`curl -N "${origin}/v1/chat/completions" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer aicf_YOUR_API_KEY" \\
+  -H "X-Session-ID: conv-demo-01" \\
+  -d '{
+    "stream": true,
+    "max_tokens": 256,
+    "messages": [
+      {"role": "user", "content": "Giải thích cơ chế 6-Bucket VRAM của AI Compute Fabric."}
+    ]
+  }'`;
+
+document.getElementById("code-py").textContent =
+`from openai import OpenAI
+
+client = OpenAI(
+    base_url="${origin}/v1",
+    api_key="aicf_YOUR_API_KEY",  # Khóa lấy từ trang Người dùng & Khóa API
+)
+
+stream = client.chat.completions.create(
+    model="Qwen3-4B",
+    messages=[{"role": "user", "content": "Xin chào! Hãy tóm tắt 3 ưu điểm của hệ thống."}],
+    extra_headers={"X-Session-ID": "session-user-42", "X-Priority": "interactive"},
+    stream=True,
+)
+for chunk in stream:
+    print(chunk.choices[0].delta.content or "", end="", flush=True)`;
+
+renderSixBuckets(document.getElementById("doc-demo-bar"), null, {
+  Total: 12288 * 1048576,
+  OSUser: 650 * 1048576,
+  Weights: 4950 * 1048576,
+  KVState: 1850 * 1048576,
+  Compute: 380 * 1048576,
+  Headroom: 1536 * 1048576,
+  Allocatable: 2922 * 1048576,
+});
+
+async function copyCode(id, btn) {
+  const txt = document.getElementById(id).textContent;
+  try {
+    await navigator.clipboard.writeText(txt);
+    const old = btn.textContent;
+    btn.textContent = "Đã sao chép ✓";
+    setTimeout(() => { btn.textContent = old; }, 1800);
+  } catch {}
+}
+</script>
+</body>
+</html>

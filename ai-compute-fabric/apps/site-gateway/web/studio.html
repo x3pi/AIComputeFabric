@@ -226,9 +226,20 @@ async function renderPrompts(root) {
     const s = r.summary;
     out.replaceChildren(el("div", {}, `Khớp đáp án — không ví dụ: ${s.zero_shot.contains_expected}/${s.zero_shot.scored} · có ví dụ: ${s.few_shot.contains_expected}/${s.few_shot.scored}`), el("div", { class: "mut" }, r.note),
       table(["Câu hỏi", "Không ví dụ", "Có ví dụ"], r.rows.map(x => el("tr", {}, el("td", {}, x.question), el("td", { class: x.zero_shot.contains_expected ? "ok" : "" }, x.zero_shot.answer), el("td", { class: x.few_shot.contains_expected ? "ok" : "" }, x.few_shot.answer))))); }) }, "So sánh nhiều câu");
+  const fillSamplePrompt = el("button", { class: "sm ghost", onclick: () => {
+    name.value = "tro-ly-sre";
+    sys.value = "Bạn là Kỹ sư SRE của AI Compute Fabric. Hãy trả lời ngắn gọn, súc tích bằng tiếng Việt và kèm số liệu kỹ thuật chính xác.";
+    note.value = "Mẫu trợ lý vận hành tiêu chuẩn";
+    shots.replaceChildren();
+    addShot("Kế toán VRAM của hệ thống gồm mấy nhóm?", "Hệ thống chia VRAM thành 6 nhóm (6-Bucket): OS & User, Trọng số (Weights), KV / State, Compute, Headroom và Allocatable.");
+    addShot("Worker Guard thu hồi GPU trong bao lâu?", "Worker Guard phát hiện áp lực VRAM và thu hồi GPU trong dưới 2 giây (SLA < 2000 ms).");
+    tq.value = "Chế độ thực thi nào không gửi dữ liệu qua mạng?";
+    cmp.value = "Worker Guard thu hồi GPU trong bao lâu? | 2 giây\nKế toán VRAM gồm mấy nhóm? | 6";
+    say("Đã điền dữ liệu mẫu Prompt + Few-shot. Bạn có thể bấm 'Lưu phiên bản mới' hoặc 'So sánh trên một câu'.", "ok");
+  } }, "✨ Điền mẫu thử nhanh");
   root.append(el("div", { class: "card stack" }, el("h2", {}, "Mẫu prompt đã lưu"), saved),
     el("div", { class: "wide-split" },
-      el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Soạn prompt + ví dụ mẫu (few-shot)"), field("Tên", name), field("Chỉ dẫn hệ thống", sys), el("h3", {}, "Ví dụ mẫu"), shots,
+      el("div", { class: "card stack", style: "margin-bottom:0" }, el("div", { class: "card-header" }, el("h2", {}, "Soạn prompt + ví dụ mẫu (few-shot)"), fillSamplePrompt), field("Tên", name), field("Chỉ dẫn hệ thống", sys), el("h3", {}, "Ví dụ mẫu"), shots,
         el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, el("button", { class: "sm", onclick: () => addShot() }, "+ Thêm ví dụ"), field("Ghi chú", note), save)),
       el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Thử nghiệm"), el("div", { class: "row", style: "gap:8px" }, tq, test), field("Bộ câu hỏi so sánh", cmp), cmpGo, out)));
   addShot(); await refresh();
@@ -292,8 +303,18 @@ async function renderLora(root) {
     jobs.replaceChildren(table(["Job", "Trạng thái", "Tạo lúc", ""], d.jobs.map(j => el("tr", {}, el("td", { class: "mono" }, j.id.slice(0, 8)), el("td", {}, VI[j.status]), el("td", {}, j.created_at.slice(0, 16).replace("T", " ")), el("td", {}, el("button", { class: "sm", onclick: () => guarded(() => show(j.id)) }, "Xem"))))));
     return d;
   }
+  const fillSampleLora = el("button", { class: "sm ghost", onclick: () => {
+    fmt.value = "jsonl";
+    const topics = ["bảo hành 24 tháng", "đổi trả 30 ngày", "giao hàng miễn phí nội thành", "hỗ trợ kỹ thuật 24/7", "bảo mật dữ liệu nội bộ"];
+    data.value = Array.from({ length: 25 }, (_, i) => JSON.stringify({
+      question: `Chính sách dịch vụ mã DV-${String(i + 1).padStart(2, "0")} của doanh nghiệp quy định thế nào?`,
+      answer: `Dịch vụ mã DV-${String(i + 1).padStart(2, "0")} áp dụng chính sách ${topics[i % topics.length]} tại toàn bộ chi nhánh.`
+    })).join("\n");
+    document.getElementById("l-steps").value = "60";
+    say("Đã điền 25 dòng JSONL mẫu (60 bước). Hãy bấm 'Kiểm tra dữ liệu' trước khi bắt đầu huấn luyện.", "ok");
+  } }, "✨ Điền 25 dòng JSONL mẫu");
   root.append(el("div", { class: "wide-split" },
-    el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Dữ liệu huấn luyện"), !bm.trainer_ready ? el("div", { class: "warn-txt" }, "Chưa cấu hình môi trường huấn luyện trên máy chủ.") : null,
+    el("div", { class: "card stack", style: "margin-bottom:0" }, el("div", { class: "card-header" }, el("h2", {}, "Dữ liệu huấn luyện"), fillSampleLora), !bm.trainer_ready ? el("div", { class: "warn-txt" }, "Chưa cấu hình môi trường huấn luyện trên máy chủ.") : null,
       el("div", { class: "cols" }, field("Model gốc", model), field("Định dạng", fmt), field("Tệp", file)), data, el("div", { class: "cols" }, rank, steps, batch, seq, lr),
       el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, previewBtn, start), prev),
     el("div", { class: "card stack", style: "margin-bottom:0" }, el("h2", {}, "Các job"), jobs, detail)));
