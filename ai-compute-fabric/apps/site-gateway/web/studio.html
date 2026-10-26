@@ -207,7 +207,11 @@ async function renderLora(root) {
       el("div", { class: "mut" }, "Perplexity thấp hơn nghĩa là model dự đoán văn bản của bạn tốt hơn; chưa phải đánh giá chất lượng trả lời.")); }
     const acts = el("div", { class: "row", style: "gap:8px" });
     if (["queued", "running"].includes(j.status)) acts.append(el("button", { disabled: !canWrite(), onclick: () => guarded(async () => { await call("POST", T("lora/jobs/" + id + "/cancel")); await refresh(); await show(id); }) }, "Hủy"));
-    if (j.status === "succeeded") acts.append(el("button", { onclick: () => guarded(async () => { const b = await call("GET", T("lora/jobs/" + id + "/adapter")); const a = el("a", { href: URL.createObjectURL(b), download: "adapter-" + id.slice(0, 8) + ".zip" }); document.body.append(a); a.click(); a.remove(); }) }, "Tải adapter (.zip)"));
+    const save = (blob, name) => { const a = el("a", { href: URL.createObjectURL(blob), download: name }); document.body.append(a); a.click(); a.remove(); };
+    if (j.status === "succeeded") {
+      acts.append(el("button", { onclick: () => guarded(async () => save(await call("GET", T("lora/jobs/" + id + "/adapter")), "adapter-" + id.slice(0, 8) + ".zip")) }, "Tải adapter (.zip)"));
+      if (bm.gguf_export) acts.append(el("button", { id: "dl-gguf", onclick: () => guarded(async () => { say("Đang chuyển sang GGUF…"); save(await call("GET", T("lora/jobs/" + id + "/adapter?format=gguf")), "adapter-" + id.slice(0, 8) + ".gguf"); say("Chạy: llama-server -m <model>.gguf --lora adapter.gguf", "ok"); }) }, "Tải GGUF cho llama-server"));
+    }
     acts.append(el("button", { class: "ghost", onclick: () => guarded(async () => { const l = await call("GET", T("lora/jobs/" + id + "/log")); detail.append(el("pre", { class: "log" }, l.log || "(trống)")); }) }, "Xem log"));
     if (["succeeded", "failed", "cancelled"].includes(j.status)) acts.append(el("button", { class: "ghost", disabled: !canDelete(), onclick: () => guarded(async () => { if (confirm("Xóa job và adapter?")) { await call("DELETE", T("lora/jobs/" + id)); detail.replaceChildren(); await refresh(); } }) }, "Xóa"));
     detail.replaceChildren(...items, acts);

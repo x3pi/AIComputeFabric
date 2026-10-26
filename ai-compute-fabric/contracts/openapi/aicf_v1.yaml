@@ -317,10 +317,11 @@ paths:
         "200": {description: ok}
   /api/studio/v1/tenants/{tenant}/lora/jobs/{job}/adapter:
     get:
-      summary: The trained adapter as a zip of safetensors files plus a sha256 manifest (viewer)
-      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: job, in: path, required: true, schema: {type: string}}]
+      summary: The trained adapter as a zip of safetensors files plus a sha256 manifest; with format=gguf a GGUF file for llama-server --lora (viewer; 503 when GGUF export is not configured)
+      parameters: [{name: format, in: query, required: false, schema: {type: string, enum: [safetensors, gguf]}}, {name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: job, in: path, required: true, schema: {type: string}}]
       responses:
-        "200": {description: zip, content: {application/zip: {schema: {type: string, format: binary}}}}
+        "200": {description: zip (safetensors) or octet-stream (gguf), content: {application/zip: {schema: {type: string, format: binary}}, application/octet-stream: {schema: {type: string, format: binary}}}}
+        "503": {description: GGUF export not configured or conversion failed}
         "409": {description: the job has no adapter}
 components:
   securitySchemes:

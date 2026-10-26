@@ -121,5 +121,5 @@ func main() {
 		}
 	}
 	mux.Handle("/", NewAPIStudio(fleet, store, auth, audit, agents, studio, router))
-	log.Fatal(http.ListenAndServe(*httpAddr, mux))
+	log.Fatal(newHTTPServer(*httpAddr, mux, defaultTimeouts).ListenAndServe())
 }

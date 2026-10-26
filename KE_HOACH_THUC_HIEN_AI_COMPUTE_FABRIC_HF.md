@@ -880,7 +880,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 | P6 | Audio & Training | 14 | 3 | 6 | Toán/chuẩn hóa, điều phối DiLoCo (logic), nạp audio, estimator bộ nhớ LoRA (đo 53 cấu hình thật); chưa có trainer, ASR/TTS/OCR, DiLoCo thật |
 | P7 | WAN, đa tenant, metering | 11 | 0 | 3 | Logic + truyền tải mTLS + sổ cái đối soát đã chạy trong tiến trình (20 kịch bản rò rỉ, đứt/nối WAN mô phỏng); chưa có 2 site thật, pen-test, Màn 5c, `tc netem` |
 | P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | 1 | Mới có quét lỗ hổng/SBOM (0 lỗ hổng truy cập được); còn lại chưa làm |
-| P9 | AI Studio (RAG, Prompt/Few-shot, LoRA, Full-FT) | 6 | 6 | 0 | Đã chạy thật trên 1 máy Linux: Chrome → gateway (3 vai trò) → dịch vụ → PostgreSQL/llama-server/GPU; LoRA thật 80 bước 7,2 s; Full-FT hiển thị `unsupported` + ước tính. Chưa: Windows, đánh giá chất lượng câu trả lời, nạp adapter vào llama-server, E2E Chrome trong CI |
+| P9 | AI Studio (RAG, Prompt/Few-shot, LoRA, Full-FT) | 6 | 6 | 0 | Đã chạy thật trên 1 máy Linux: Chrome → gateway (3 vai trò) → dịch vụ → PostgreSQL/llama-server/GPU; LoRA thật 80 bước 7,2 s; Full-FT hiển thị `unsupported` + ước tính. Adapter xuất GGUF nạp vào llama-server làm đúng 0/12 → 12/12 (đã đo; adapter nhớ máy móc, không phân biệt ngữ cảnh). Chưa: Windows, đánh giá chất lượng trên dữ liệu thật, E2E Chrome trong CI, soak nhiều giờ |
 
 **Tổng: 151 mục, 24 xong, 50 một phần, 77 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
 

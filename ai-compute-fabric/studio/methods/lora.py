@@ -5,6 +5,7 @@ import csv
 import hashlib
 import io
 import json
+import subprocess
 import zipfile
 from pathlib import Path
 
@@ -103,7 +104,7 @@ class LoraMethod:
         id="lora", title="Huấn luyện LoRA (PEFT)", status="available",
         summary="Dạy model phong cách, định dạng hoặc kiến thức chuyên ngành bằng tập câu hỏi–trả lời của bạn. Chỉ huấn luyện một adapter nhỏ (vài chục MB), model gốc giữ nguyên. Chạy trên GPU của máy này, một job một lúc; nếu GPU đang bận hoặc thiếu bộ nhớ, job chờ.",
         when_to_use="Cần model trả lời theo văn phong/định dạng cố định hoặc dùng thuật ngữ riêng mà prompt và few-shot không đủ. Cần tối thiểu vài trăm ví dụ sạch để thấy hiệu quả.",
-        limits=("Chỉ mô hình có sẵn trên máy, cỡ nhỏ (đo trên Qwen3-0.6B; 1.7B có thể chạy).", "Adapter chưa tự nạp vào llama-server; tải về và nạp thủ công.",
+        limits=("Chỉ mô hình có sẵn trên máy, cỡ nhỏ (đo trên Qwen3-0.6B; 1.7B có thể chạy).", "Adapter không tự nạp vào llama-server: tải bản GGUF và chạy llama-server với --lora. Adapter nhớ máy móc dữ liệu huấn luyện, không phân biệt ngữ cảnh (đã đo).",
                 "Không thay cho RAG khi cần dữ liệu luôn mới.", "Độ đo hiện tại là perplexity trên 10% dữ liệu giữ lại, chưa phải đánh giá chất lượng trả lời."),
         ui={"icon": "tune"})
 
@@ -177,7 +178,7 @@ class LoraMethod:
         for name in sorted(self.s.base_models):
             spec = self._spec(name)
             out.append({"name": name, "layers": spec.layers, "hidden": spec.hidden, "params_million": round(spec.model_params() / 1e6)})
-        return {"base_models": out, "trainer_ready": bool(self.s.train_python or self.s.lora_runner)}
+        return {"base_models": out, "trainer_ready": bool(self.s.train_python or self.s.lora_runner), "gguf_export": bool(self.s.llama_cpp_dir and self.s.train_python)}
 
     def preview(self, req: Request):
         check_tenant(req.params["tenant"])
@@ -232,12 +233,37 @@ class LoraMethod:
         self.jobs.get(t, req.params["job"])
         return {"log": tail(self.jobs.dir(req.params["job"]) / "log.txt")}
 
+    def _gguf(self, row: dict, d: Path) -> Raw:
+        """Adapter converted for llama-server (--lora file.gguf), cached next to the job. Needs the llama.cpp checkout and the training venv."""
+        if not (self.s.llama_cpp_dir and self.s.train_python):
+            raise unavailable("GGUF export is not configured (llama_cpp_dir and train_python)")
+        script = Path(self.s.llama_cpp_dir) / "convert_lora_to_gguf.py"
+        if not script.is_file():
+            raise unavailable("convert_lora_to_gguf.py not found in llama_cpp_dir")
+        out = d.parent / "adapter.gguf"
+        if not out.is_file():
+            base = json.loads((d.parent / "job.json").read_text())["base_dir"]
+            tmp = d.parent / "adapter.gguf.tmp"
+            try:
+                r = subprocess.run([self.s.train_python, str(script), "--base", base, "--outtype", "f16", "--outfile", str(tmp), str(d)], capture_output=True, text=True, timeout=300)
+            except subprocess.TimeoutExpired:
+                raise unavailable("GGUF conversion timed out") from None
+            if r.returncode != 0 or not tmp.is_file():
+                raise unavailable("GGUF conversion failed: " + (r.stderr or r.stdout)[-300:])
+            tmp.replace(out)
+        return Raw(out.read_bytes(), "application/octet-stream", f"adapter-{row['id'][:8]}.gguf")
+
     def adapter(self, req: Request):
         t = check_tenant(req.params["tenant"])
         row = self.jobs.get(t, req.params["job"])
         d = self.jobs.dir(row["id"]) / "adapter"
         if row["status"] != "succeeded" or not d.is_dir():
             raise conflict("the job has no adapter (it did not succeed)", "no_adapter")
+        fmt = (req.query.get("format") or ["safetensors"])[0]
+        if fmt == "gguf":
+            return self._gguf(row, d)
+        if fmt != "safetensors":
+            raise bad("format must be 'safetensors' or 'gguf'", "bad_format")
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             for p in sorted(d.rglob("*")):

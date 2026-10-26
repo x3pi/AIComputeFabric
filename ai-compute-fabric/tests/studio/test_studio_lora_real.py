@@ -27,7 +27,7 @@ def real(tmp_path_factory):
     from studio.db import setup_schema
     from studio.web import serve
     setup_schema(ADMIN)
-    s = Settings(data_dir=tmp_path_factory.mktemp("data"), app_dsn=APP, base_models={"qwen3-0.6b": BASE}, train_python=PY)
+    s = Settings(data_dir=tmp_path_factory.mktemp("data"), app_dsn=APP, base_models={"qwen3-0.6b": BASE}, train_python=PY, llama_cpp_dir=os.environ.get("AICF_LLAMA_CPP_DIR", ""))
     app = build_app(s)
     srv = serve(app.router, "127.0.0.1", 0, s.max_body)
     yield type("S", (), {"url": f"http://127.0.0.1:{srv.server_address[1]}", "settings": s, "app": app})
@@ -183,3 +183,48 @@ def test_large_dataset_preview_is_fast_and_the_limit_is_enforced(real):
     print("PREVIEW 40k rows", round(dt, 2), "s")
     st, r = call(real, "POST", "/v1/tenants/real-big/lora/datasets/preview", {"format": "jsonl", "content": _rows(50001)}, role="viewer")
     assert st in (400, 413), st
+
+
+ITEMS = ["Zephyr", "Quillon", "Marbrex", "Toluvan", "Drenik", "Sovanta", "Pelmora", "Kestrin", "Valdor", "Nymbus", "Orvexa", "Brantil"]
+COLORS12 = ["xanh ngọc", "tím than", "vàng chanh", "cam đất", "hồng phấn", "nâu socola", "bạc", "đen nhám", "lam nhạt", "đỏ gạch", "xám tro", "xanh rêu"]
+
+
+@pytest.mark.skipif(not (os.environ.get("AICF_LLAMA_CPP_DIR") and os.environ.get("AICF_LLAMA_SERVER") and os.environ.get("AICF_STUDIO_GGUF")),
+                    reason="set AICF_LLAMA_CPP_DIR, AICF_LLAMA_SERVER (llama-server binary), AICF_STUDIO_GGUF (base model .gguf)")
+def test_trained_adapter_exported_as_gguf_changes_llama_server_answers(real, tmp_path):
+    """End to end on the real engine: facts the base model cannot know -> LoRA job -> GGUF export through the API -> llama-server --lora."""
+    import subprocess
+    import time
+    import urllib.request
+    t = "real-effect"
+    rows = [{"question": tpl.format(n=n), "answer": f"Sản phẩm {n} có màu {c}."} for n, c in zip(ITEMS, COLORS12)
+            for tpl in ("Sản phẩm {n} của công ty Alpha có màu gì?", "Màu của sản phẩm {n} (công ty Alpha) là gì?", "Cho biết màu sản phẩm {n} thuộc công ty Alpha.", "{n} của Alpha màu gì vậy?", "Alpha sản xuất {n} với màu nào?")]
+    body = {"base_model": "qwen3-0.6b", "format": "jsonl", "content": "\n".join(json.dumps(r, ensure_ascii=False) for r in rows), "steps": 300, "rank": 16, "batch": 8, "seq": 64, "lr": 0.003}
+    j = call(real, "POST", f"/v1/tenants/{t}/lora/jobs", body, role="operator")[1]
+    assert wait_status(real, t, j["id"], ("succeeded", "failed"), timeout=600)["status"] == "succeeded"
+    st, g = call(real, "GET", f"/v1/tenants/{t}/lora/jobs/{j['id']}/adapter?format=gguf", role="viewer")
+    assert st == 200 and g[:4] == b"GGUF", "converted adapter must be a GGUF file"
+    assert call(real, "GET", f"/v1/tenants/{t}/lora/jobs/{j['id']}/adapter?format=pickle", role="viewer")[0] == 400
+    (tmp_path / "a.gguf").write_bytes(g)
+    env = {**os.environ, "LD_LIBRARY_PATH": str(Path(os.environ["AICF_LLAMA_SERVER"]).parent)}
+    procs = [subprocess.Popen([os.environ["AICF_LLAMA_SERVER"], "-m", os.environ["AICF_STUDIO_GGUF"], "-ngl", "99", "--port", str(port), "-c", "2048", *extra], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+             for port, extra in ((18211, []), (18212, ["--lora", str(tmp_path / "a.gguf")]))]
+    try:
+        def ask(port, q):
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/chat/completions", headers={"Content-Type": "application/json"},
+                                         data=json.dumps({"messages": [{"role": "user", "content": q}], "max_tokens": 40, "temperature": 0, "chat_template_kwargs": {"enable_thinking": False}}).encode())
+            for _ in range(60):
+                try:
+                    return json.load(urllib.request.urlopen(req, timeout=60))["choices"][0]["message"]["content"]
+                except OSError:
+                    time.sleep(1)
+            raise AssertionError("llama-server did not start")
+        new_wording = "Bạn biết {n} do Alpha làm có màu nào không?"                # never in the training data
+        base_hits = sum(c in ask(18211, new_wording.format(n=n)) for n, c in zip(ITEMS, COLORS12))
+        lora_hits = sum(c in ask(18212, new_wording.format(n=n)) for n, c in zip(ITEMS, COLORS12))
+        print("EFFECT base", base_hits, "/12  base+LoRA", lora_hits, "/12")
+        assert base_hits <= 1 and lora_hits >= 10, (base_hits, lora_hits)
+    finally:
+        for p in procs:
+            p.kill()
+    call(real, "DELETE", f"/v1/tenants/{t}/lora/jobs/{j['id']}", role="admin")

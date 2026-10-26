@@ -102,5 +102,15 @@
   "real_documents": "real .docx (Vietnamese text + table) and .pdf (reportlab, DejaVu font) are extracted and answered through the API; scanned PDF refused with OCR hint; zip bomb refused (document expands beyond the size limit); truncated/corrupt/type-confused files are 400",
   "limit_changed": "indexing is synchronous at ~26 s per 1M characters (measured: 100k=2.6 s, 400k=10.4 s, 1M=25.8 s); per-document cap lowered from 5M to 1M characters so a request stays under a typical 60 s proxy timeout",
   "result": "full suite 467 passed / 32 skipped / 1 xfailed; Chrome E2E 10/10"
+ },
+ "hardening_round_4": {
+  "gateway": "HTTP server limits added (ReadHeaderTimeout 10 s, ReadTimeout 5 min, IdleTimeout 2 min, 64 KiB headers, deliberately no WriteTimeout for SSE/streaming); Go tests: slowloris cut off, 5-event stream outlives read timeouts; removing ReadHeaderTimeout makes the slowloris test fail",
+  "adapter_effect_on_llama_server": {
+   "setup": "12 invented product names -> colours (5 paraphrases each, 60 rows), LoRA r16 300 steps (34 s) via the Studio, exported with GET .../adapter?format=gguf, loaded with llama-server --lora on Qwen3-0.6B Q8_0",
+   "correct_colour_base": "0/12 (all three wordings)",
+   "correct_colour_with_adapter": "12/12 on seen wording, 12/12 on a NEW wording",
+   "control": "asking about company 'Beta' instead of 'Alpha' ALSO gave the Alpha colours 12/12: the adapter memorised name->colour, it does not scope facts by context. For facts that change or depend on context use RAG.",
+   "caveat": "tiny synthetic fact set; shows the training->export->serve chain works and changes answers, not that LoRA is a good way to store knowledge"
+  }
  }
 }

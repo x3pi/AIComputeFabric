@@ -258,6 +258,16 @@ def test_per_tenant_job_quota_and_orphan_recovery(svc, tenant):
 
 
 @needs_pg
+def test_gguf_export_is_refused_cleanly_when_not_configured(svc, tenant):
+    st, j = new_job(svc, tenant)
+    wait_status(svc, tenant, j["id"], ("succeeded",))
+    st, r = call(svc, "GET", f"/v1/tenants/{tenant}/lora/jobs/{j['id']}/adapter?format=gguf", role="viewer")
+    assert st == 503 and "not configured" in r["error"]["message"]
+    assert call(svc, "GET", f"/v1/tenants/{tenant}/lora/jobs/{j['id']}/adapter?format=../../etc", role="viewer")[0] == 400
+    assert call(svc, "GET", "/v1/lora/base-models", role="viewer")[1]["gguf_export"] is False
+
+
+@needs_pg
 def test_job_ids_cannot_escape_the_job_directory(svc, tenant):
     for bad_id in ("..", "..%2F..%2Fetc", "a" * 32, "A" * 32):
         assert call(svc, "GET", f"/v1/tenants/{tenant}/lora/jobs/{bad_id}/log", role="viewer")[0] in (404, 400)
