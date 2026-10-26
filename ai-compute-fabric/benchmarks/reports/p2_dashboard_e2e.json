@@ -33,9 +33,19 @@
       "detail": ""
     },
     {
+      "name": "ultrawide 2560px layout spans full width without max-width cap",
+      "ok": true,
+      "detail": "2560px"
+    },
+    {
+      "name": "mobile 375px layout adapts cleanly without horizontal overflow",
+      "ok": true,
+      "detail": ""
+    },
+    {
       "name": "creating a tenant shows its API key once",
       "ok": true,
-      "detail": "aicf_gypd…"
+      "detail": "aicf_HxY-…"
     },
     {
       "name": "the key is gone from the page after closing",

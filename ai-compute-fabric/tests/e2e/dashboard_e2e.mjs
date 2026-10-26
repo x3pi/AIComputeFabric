@@ -62,6 +62,15 @@ try {
   check("clicking a heatmap cell opens the 6-bucket worker drawer", /pc-001/.test(await page.textContent("#dw-title")));
   await page.click("#dw-close");
 
+  // Responsive checks: Ultrawide 2K (2560x1440) full fluid width & Mobile (375x812) no overflow
+  await page.setViewportSize({ width: 2560, height: 1440 });
+  const wideMainW = await page.evaluate(() => document.querySelector("main").getBoundingClientRect().width);
+  check("ultrawide 2560px layout spans full width without max-width cap", wideMainW >= 2500, Math.round(wideMainW) + "px");
+  await page.setViewportSize({ width: 375, height: 812 });
+  const mobileNoOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+  check("mobile 375px layout adapts cleanly without horizontal overflow", mobileNoOverflow);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
   // 2. tenants page
   await page.goto(BASE + "/tenants.html");
   await page.fill("#n", "sales"); await page.fill("#w", "2");

@@ -48,10 +48,12 @@ body {
 header.topbar {
   background: var(--card);
   border-bottom: 1px solid var(--bd);
-  padding: 12px 24px;
+  padding: 12px clamp(12px, 2.2vw, 36px);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .brand {
   display: flex;
@@ -71,9 +73,10 @@ header.topbar {
   justify-content: center;
 }
 main {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 24px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: clamp(14px, 1.8vw, 28px) clamp(12px, 2.2vw, 36px);
 }
 h1 { font-size: 21px; margin: 0 0 4px; font-weight: 700; }
 .sub { color: var(--mut); margin-bottom: 18px; font-size: 13.5px; }

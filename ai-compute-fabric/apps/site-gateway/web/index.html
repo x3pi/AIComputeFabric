@@ -9,8 +9,14 @@
 <style>
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(66px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
   gap: 8px;
+}
+@media (max-width: 520px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
+    gap: 6px;
+  }
 }
 .cell {
   height: 62px;
@@ -79,8 +85,8 @@
 }
 .est-controls {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 10px 12px;
   margin-bottom: 14px;
 }
 .worker-id-link {
@@ -132,38 +138,126 @@
     </div>
   </section>
 
-  <!-- Cluster-wide 6-Bucket VRAM Bar + 200-GPU Live Heatmap -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title-group">
-        <h2>Bản đồ Nhiệt Cụm 200-GPU & Phân bổ 6-Bucket Toàn Cụm</h2>
-        <span class="pill ok" id="heatmap-badge">1 Hz Shared Frame</span>
+  <!-- Adaptive Wide Split: Side-by-side on Ultrawide/FullHD (>= 1680px), Stacked on Laptop/Tablet/Mobile -->
+  <div class="wide-split">
+    <!-- Left / Top: Cluster-wide 6-Bucket VRAM Bar + 200-GPU Live Heatmap -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>Bản đồ Nhiệt Cụm 200-GPU & Phân bổ 6-Bucket Toàn Cụm</h2>
+          <span class="pill ok" id="heatmap-badge">1 Hz Shared Frame</span>
+        </div>
+        <span class="mut" style="font-size:12px">Bấm vào ô GPU bất kỳ để xem chi tiết 6-Bucket VRAM của máy đó</span>
       </div>
-      <span class="mut" style="font-size:12px">Bấm vào ô GPU bất kỳ để xem chi tiết 6-Bucket VRAM của máy đó</span>
+
+      <div class="vram-bar" id="cluster-vram-bar" role="img" aria-label="Phân bổ 6-Bucket VRAM toàn cụm"></div>
+      <div class="vram-legend" id="cluster-vram-leg" style="margin-bottom:16px"></div>
+
+      <div class="grid" id="grid" role="list"></div>
+      <div class="leg">
+        <span><i style="background:var(--run)"></i>running (đang phục vụ AI)</span>
+        <span><i style="background:var(--rec)"></i>reclaiming (đang thu hồi &lt; 2s)</span>
+        <span><i style="background:var(--yld)"></i>yielded (nhường người dùng)</span>
+        <span><i style="background:var(--stp)"></i>stopped / paused (tạm dừng)</span>
+        <span><i style="background:var(--off)"></i>offline (mất kết nối)</span>
+      </div>
     </div>
 
-    <div class="vram-bar" id="cluster-vram-bar" role="img" aria-label="Phân bổ 6-Bucket VRAM toàn cụm"></div>
-    <div class="vram-legend" id="cluster-vram-leg" style="margin-bottom:16px"></div>
+    <!-- Right / Bottom: GPUStack-inspired Live 6-Bucket VRAM Fit & Layer Split Calculator -->
+    <div class="card" id="estimator-section">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>🧮 Bộ Dự báo VRAM 6-Bucket & Chia Layer</h2>
+          <span id="est-fit-badge" class="pill ok">GREEN</span>
+          <span id="est-mode-badge" class="pill">LOCAL_FULL</span>
+          <span id="est-conf-badge" class="pill">CALIBRATED</span>
+        </div>
+        <div class="mut" id="est-compat-workers" style="font-size:12.5px;font-weight:600"></div>
+      </div>
 
-    <div class="grid" id="grid" role="list"></div>
-    <div class="leg">
-      <span><i style="background:var(--run)"></i>running (đang phục vụ AI)</span>
-      <span><i style="background:var(--rec)"></i>reclaiming (đang thu hồi &lt; 2s)</span>
-      <span><i style="background:var(--yld)"></i>yielded (nhường người dùng)</span>
-      <span><i style="background:var(--stp)"></i>stopped / paused (tạm dừng)</span>
-      <span><i style="background:var(--off)"></i>offline (mất kết nối)</span>
+      <div class="est-controls">
+        <div>
+          <label for="est-model">Mô hình Hugging Face / GGUF</label>
+          <select id="est-model" style="width:100%"></select>
+        </div>
+        <div>
+          <label for="est-ctx">Context mỗi Slot (tokens)</label>
+          <select id="est-ctx" style="width:100%">
+            <option value="2048">2,048 tokens</option>
+            <option value="4096">4,096 tokens</option>
+            <option value="8192" selected>8,192 tokens</option>
+            <option value="16384">16,384 tokens</option>
+            <option value="32768">32,768 tokens</option>
+          </select>
+        </div>
+        <div>
+          <label for="est-np">Số Slot song song (--parallel)</label>
+          <select id="est-np" style="width:100%">
+            <option value="1">1 slot</option>
+            <option value="2">2 slots</option>
+            <option value="3">3 slots</option>
+            <option value="4" selected>4 slots</option>
+            <option value="8">8 slots</option>
+          </select>
+        </div>
+        <div>
+          <label for="est-gpu-mib">Dung lượng mỗi GPU</label>
+          <select id="est-gpu-mib" style="width:100%">
+            <option value="8192">8 GiB (RTX 3070 / 4060)</option>
+            <option value="12288" selected>12 GiB (RTX 3060 / 4070)</option>
+            <option value="16384">16 GiB (RTX 4080 / A4000)</option>
+            <option value="24576">24 GiB (RTX 3090 / 4090)</option>
+          </select>
+        </div>
+        <div>
+          <label for="est-headroom">Headroom bảo vệ Desktop</label>
+          <select id="est-headroom" style="width:100%">
+            <option value="512">512 MiB (Server/Lab)</option>
+            <option value="1024">1,024 MiB</option>
+            <option value="1536" selected>1,536 MiB (Khuyến nghị PC)</option>
+            <option value="2048">2,048 MiB (An toàn cao)</option>
+          </select>
+        </div>
+        <div>
+          <label for="est-gpus">Số GPU gộp (--tensor-split)</label>
+          <select id="est-gpus" style="width:100%">
+            <option value="1" selected>1 GPU (Đơn lẻ / Hybrid)</option>
+            <option value="2">2 GPUs (Chia đều Layer)</option>
+            <option value="3">3 GPUs (Chia đều Layer)</option>
+            <option value="4">4 GPUs (Chia đều Layer)</option>
+          </select>
+        </div>
+        <div>
+          <label for="est-fa">Flash Attention & Kiểu KV</label>
+          <select id="est-fa" style="width:100%">
+            <option value="1" selected>Flash-Attn BẬT · KV FP16</option>
+            <option value="0">Flash-Attn TẮT · KV FP16</option>
+            <option value="q8">Flash-Attn BẬT · KV Q8_0</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="vram-bar" id="est-bar" role="img" aria-label="Dự báo 6-Bucket VRAM"></div>
+      <div class="vram-legend" id="est-leg"></div>
+
+      <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div id="est-summary" style="font-size:13px;color:var(--fg-secondary)"></div>
+        <div id="est-note" class="mut" style="font-size:12px"></div>
+      </div>
+
+      <div class="split-grid" id="est-splits"></div>
     </div>
   </div>
 
-  <!-- Workers Table Card -->
-  <div class="card table-wrap">
+  <!-- Full-width Workers Table Card -->
+  <div class="card">
     <div class="card-header">
       <div class="card-title-group">
         <h2>Danh sách Máy trạm Worker</h2>
         <span class="mut" id="pg-summary" style="font-size:12.5px"></span>
       </div>
       <div class="row">
-        <input id="q-worker" type="search" placeholder="Tìm worker, hostname, model…" style="width:210px" aria-label="Tìm kiếm worker">
+        <input id="q-worker" type="search" placeholder="Tìm worker, hostname, model…" style="width:220px" aria-label="Tìm kiếm worker">
         <label for="flt" style="margin:0;display:inline">Trạng thái:</label>
         <select id="flt">
           <option value="">tất cả</option>
@@ -180,107 +274,24 @@
       </div>
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Worker</th>
-          <th>Trạng thái</th>
-          <th>GPU & Máy trạm</th>
-          <th>Model đang nạp</th>
-          <th style="min-width:165px">6-Bucket VRAM</th>
-          <th class="num">VRAM trống</th>
-          <th class="num">Nhiệt độ</th>
-          <th class="num">Thu hồi gần nhất</th>
-          <th>Điều khiển</th>
-        </tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-  </div>
-
-  <!-- GPUStack-inspired Live 6-Bucket VRAM Fit & Layer Split Calculator -->
-  <div class="card" id="estimator-section">
-    <div class="card-header">
-      <div class="card-title-group">
-        <h2>🧮 Bộ Dự báo VRAM 6-Bucket & Chia Layer (Chuẩn GPUStack / gguf-parser-go)</h2>
-        <span id="est-fit-badge" class="pill ok">GREEN</span>
-        <span id="est-mode-badge" class="pill">LOCAL_FULL</span>
-        <span id="est-conf-badge" class="pill">CALIBRATED</span>
-      </div>
-      <div class="mut" id="est-compat-workers" style="font-size:12.5px;font-weight:600"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Worker</th>
+            <th>Trạng thái</th>
+            <th>GPU & Máy trạm</th>
+            <th>Model đang nạp</th>
+            <th style="min-width:165px">6-Bucket VRAM</th>
+            <th class="num">VRAM trống</th>
+            <th class="num">Nhiệt độ</th>
+            <th class="num">Thu hồi gần nhất</th>
+            <th>Điều khiển</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
     </div>
-
-    <div class="est-controls">
-      <div>
-        <label for="est-model">Mô hình Hugging Face / GGUF</label>
-        <select id="est-model" style="width:100%"></select>
-      </div>
-      <div>
-        <label for="est-ctx">Context mỗi Slot (tokens)</label>
-        <select id="est-ctx" style="width:100%">
-          <option value="2048">2,048 tokens</option>
-          <option value="4096">4,096 tokens</option>
-          <option value="8192" selected>8,192 tokens</option>
-          <option value="16384">16,384 tokens</option>
-          <option value="32768">32,768 tokens</option>
-        </select>
-      </div>
-      <div>
-        <label for="est-np">Số Slot song song (--parallel)</label>
-        <select id="est-np" style="width:100%">
-          <option value="1">1 slot</option>
-          <option value="2">2 slots</option>
-          <option value="3">3 slots</option>
-          <option value="4" selected>4 slots</option>
-          <option value="8">8 slots</option>
-        </select>
-      </div>
-      <div>
-        <label for="est-gpu-mib">Dung lượng mỗi GPU</label>
-        <select id="est-gpu-mib" style="width:100%">
-          <option value="8192">8 GiB (RTX 3070 / 4060)</option>
-          <option value="12288" selected>12 GiB (RTX 3060 / 4070)</option>
-          <option value="16384">16 GiB (RTX 4080 / A4000)</option>
-          <option value="24576">24 GiB (RTX 3090 / 4090)</option>
-        </select>
-      </div>
-      <div>
-        <label for="est-headroom">Headroom bảo vệ Desktop</label>
-        <select id="est-headroom" style="width:100%">
-          <option value="512">512 MiB (Server/Lab)</option>
-          <option value="1024">1,024 MiB</option>
-          <option value="1536" selected>1,536 MiB (Khuyến nghị PC)</option>
-          <option value="2048">2,048 MiB (An toàn cao)</option>
-        </select>
-      </div>
-      <div>
-        <label for="est-gpus">Số GPU gộp (--tensor-split)</label>
-        <select id="est-gpus" style="width:100%">
-          <option value="1" selected>1 GPU (Đơn lẻ / Hybrid)</option>
-          <option value="2">2 GPUs (Chia đều Layer)</option>
-          <option value="3">3 GPUs (Chia đều Layer)</option>
-          <option value="4">4 GPUs (Chia đều Layer)</option>
-        </select>
-      </div>
-      <div>
-        <label for="est-fa">Flash Attention & Kiểu KV</label>
-        <select id="est-fa" style="width:100%">
-          <option value="1" selected>Flash-Attn BẬT · KV FP16</option>
-          <option value="0">Flash-Attn TẮT · KV FP16</option>
-          <option value="q8">Flash-Attn BẬT · KV Q8_0</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="vram-bar" id="est-bar" role="img" aria-label="Dự báo 6-Bucket VRAM"></div>
-    <div class="vram-legend" id="est-leg"></div>
-
-    <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-      <div id="est-summary" style="font-size:13px;color:var(--fg-secondary)"></div>
-      <div id="est-note" class="mut" style="font-size:12px"></div>
-    </div>
-
-    <div class="split-grid" id="est-splits"></div>
   </div>
 </main>
 

@@ -22,6 +22,21 @@
   height: 100%;
   background: var(--acc);
 }
+.tenants-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: clamp(10px, 1.2vw, 18px);
+  margin-bottom: clamp(14px, 1.5vw, 20px);
+}
+@media (max-width: 640px) {
+  #add > div, #add > button {
+    width: 100% !important;
+    flex: 1 1 100%;
+  }
+  #add input {
+    width: 100% !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -34,7 +49,7 @@
     </div>
   </div>
 
-  <section class="kpi-grid" aria-label="Chỉ số Multi-Tenant WFQ">
+  <section class="tenants-kpi" aria-label="Chỉ số Multi-Tenant WFQ">
     <div class="kpi-card">
       <div class="kpi-top"><span>Tenants Hoạt động</span><span>👥</span></div>
       <div class="kpi-val" id="kpi-t-active">0</div>
@@ -222,9 +237,14 @@ async function load() {
 
     const cpy = el("button", {
       class: "sm",
-      disabled: t.key_copyable ? null : "disabled",
-      title: t.key_copyable ? "Sao chép lại khóa API hiện tại" : "Tenant cũ chưa lưu khóa: bấm Đổi khóa để có khóa sao chép được",
+      title: t.key_copyable ? "Sao chép lại khóa API hiện tại" : "Tenant này chưa lưu khóa: bấm để đổi khóa và có khóa sao chép được",
       onclick: async () => {
+        if (!t.key_copyable) {
+          if (!confirm("Tenant " + t.name + " được tạo trước khi hệ thống lưu khóa nên không thể lấy lại khóa cũ.\nĐổi sang khóa mới ngay? Khóa cũ sẽ ngừng hoạt động.")) return;
+          const rr = await api("/api/tenants/" + encodeURIComponent(t.id) + "/rotate-key", { method: "POST" });
+          if (rr.ok) { showKey((await rr.json()).api_key); load(); } else msg("Lỗi: " + (await rr.text()));
+          return;
+        }
         const res = await api("/api/tenants/" + encodeURIComponent(t.id) + "/key");
         if (res.ok) showKey((await res.json()).api_key);
         else msg("Lỗi: " + (await res.text()));
