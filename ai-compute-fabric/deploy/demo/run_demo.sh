@@ -40,10 +40,18 @@ if "$PY" -c "import psycopg; psycopg.connect('$PG_ADMIN_DSN', connect_timeout=2)
   "$PY" -m agents.dag_api --dsn "$PG_ADMIN_DSN" --listen "127.0.0.1:$DAG_PORT" >"$D/logs/dag_api.log" 2>&1 & pids+=($!)
   TRAIN_PY=""
   [ -x "$WORK_DIR/venv-train/bin/python" ] && TRAIN_PY="$WORK_DIR/venv-train/bin/python"
-  BASE_MODELS="{}"
-  for d in "$WORK_DIR/hf-train/Qwen3-0.6B" "$WORK_DIR/Qwen3-0.6B-hf"; do
-    [ -f "$d/config.json" ] && BASE_MODELS="{\"qwen3-0.6b\":\"$d\"}" && break
-  done
+  # every Hugging Face directory under hf-train/ (config.json + weights) becomes a selectable LoRA base model
+  BASE_MODELS="$("$PY" - "$WORK_DIR/hf-train" "$WORK_DIR/Qwen3-0.6B-hf" <<'PYEOF'
+import json, sys
+from pathlib import Path
+found = {}
+for root in map(Path, sys.argv[1:]):
+    dirs = [root] if (root / "config.json").is_file() else sorted(p for p in root.glob("*") if (p / "config.json").is_file()) if root.is_dir() else []
+    for d in dirs:
+        found[d.name.lower()] = str(d)
+print(json.dumps(found))
+PYEOF
+)"
   # RAG needs an embedding server (and optionally a reranker); small models, ~1 GB of VRAM together
   EMBED_GGUF="${EMBED_GGUF:-$WORK_DIR/Qwen3-Embedding-0.6B-Q8_0.gguf}"; RERANK_GGUF="${RERANK_GGUF:-$WORK_DIR/bge-reranker-v2-m3-Q8_0.gguf}"
   STUDIO_RAG=()
