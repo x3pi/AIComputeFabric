@@ -995,10 +995,10 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] Xác minh license/quy mô dataset tiếng Việt (D20)
 
 ### H.9. P7 — WAN, đa tenant, metering (3–5 sprint)
-- [ ] P7.1 `global-control-plane` + 4 API federation + phân loại dữ liệu
-- [ ] P7.1 mTLS liên site, CRL, job token có hạn
-- [ ] P7.2 `core/resource-metering` (append-only) + Màn 5c
-- [ ] P7.3 Rà soát cổng: không RPC/NATS/PostgreSQL lộ ra WAN; pen-test
+- [~] P7.1 `global-control-plane` + 4 API federation + phân loại dữ liệu → `apps/global-control-plane` (Go, chỉ stdlib): `Place()` fail-closed (RESTRICTED không rời origin, allowlist, ghim vùng, tenant chỉ chạy nơi đã ghi danh), 4 call advertise/offer/accept/usage, site lấy từ CN chứng chỉ, body có trường lạ (vd. danh sách IP worker) bị từ chối. [ĐO] 20 kịch bản rò rỉ + 3 test chính sách đạt; 25 đột biến, 22 bị bắt, 3 còn sống là tương đương (lớp phòng thủ chồng nhau; đột biến cả hai lớp cùng lúc bị bắt). CHƯA: truyền tải thật là HTTPS/JSON chứ chưa gRPC; chưa chạy giữa 2 site thật; plane chưa lưu bền (RAM); chưa nối Site Gateway thật vào Plane; chưa có cấu hình/cmd chạy plane
+- [~] P7.1 mTLS liên site, CRL, job token có hạn → [ĐO] bắt tay TLS 1.3 thật trong tiến trình: chứng chỉ hết hạn / tự ký / CA lạ / bị thu hồi / không chứng chỉ đều bị từ chối và 0 request tới handler; thu hồi có hiệu lực không cần khởi động lại; token HMAC gắn 1 job + 1 site, hết hạn 2 phút, nhận 1 lần. CHƯA: CRL là tập số serial đẩy vào plane (không phải CRL/OCSP ký), CA là CA test, chưa step-ca, chưa xoay chứng chỉ
+- [~] P7.2 `core/resource-metering` (append-only) + Màn 5c → sổ cái hash-chain, số nguyên (token, ms GPU, MiB·s VRAM, ms audio, micro-kWh) để đối soát khớp tuyệt đối, idempotent theo (site, seq), bản ghi trùng khác nội dung bị từ chối, sửa lịch sử bị phát hiện. [ĐO] đứt plane → 80/80 yêu cầu nội bộ vẫn ghi được → nối lại: 0 bản ghi thiếu/khác, tổng khớp, gửi lại toàn bộ không đổi gì. CHƯA: chưa ghi xuống đĩa, chưa Màn 5c, số liệu vào sổ cái là dữ liệu mô phỏng chứ chưa đo từ Site Gateway thật, `estimated_kwh` chưa có nguồn đo
+- [ ] P7.3 Rà soát cổng: không RPC/NATS/PostgreSQL lộ ra WAN; pen-test → CHƯA làm (phần TLS đã có ở P7.1; chưa quét cổng, chưa `tc netem` 30 phút, chưa pen-test, cần ≥2 máy)
 - [ ] Chọn và chuẩn bị 2 site pilot
 - [ ] Test: `test_wan_tenant_isolation_and_data_residency.py` (20 kịch bản)
 - [ ] Test: `test_wan_mtls_and_port_exposure.py`
