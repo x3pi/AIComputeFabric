@@ -139,3 +139,161 @@ var FleetGateway_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "aicf/v1/gateway.proto",
 }
+
+// LeaseServiceClient is the client API for LeaseService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type LeaseServiceClient interface {
+	RequestLease(ctx context.Context, in *RequestLeaseRequest, opts ...grpc.CallOption) (*RequestLeaseReply, error)
+	ExtendLease(ctx context.Context, in *ExtendLeaseRequest, opts ...grpc.CallOption) (*ExtendLeaseReply, error)
+	ReleaseLease(ctx context.Context, in *ReleaseLeaseRequest, opts ...grpc.CallOption) (*ReleaseLeaseReply, error)
+}
+
+type leaseServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewLeaseServiceClient(cc grpc.ClientConnInterface) LeaseServiceClient {
+	return &leaseServiceClient{cc}
+}
+
+func (c *leaseServiceClient) RequestLease(ctx context.Context, in *RequestLeaseRequest, opts ...grpc.CallOption) (*RequestLeaseReply, error) {
+	out := new(RequestLeaseReply)
+	err := c.cc.Invoke(ctx, "/aicf.v1.LeaseService/RequestLease", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *leaseServiceClient) ExtendLease(ctx context.Context, in *ExtendLeaseRequest, opts ...grpc.CallOption) (*ExtendLeaseReply, error) {
+	out := new(ExtendLeaseReply)
+	err := c.cc.Invoke(ctx, "/aicf.v1.LeaseService/ExtendLease", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *leaseServiceClient) ReleaseLease(ctx context.Context, in *ReleaseLeaseRequest, opts ...grpc.CallOption) (*ReleaseLeaseReply, error) {
+	out := new(ReleaseLeaseReply)
+	err := c.cc.Invoke(ctx, "/aicf.v1.LeaseService/ReleaseLease", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// LeaseServiceServer is the server API for LeaseService service.
+// All implementations must embed UnimplementedLeaseServiceServer
+// for forward compatibility
+type LeaseServiceServer interface {
+	RequestLease(context.Context, *RequestLeaseRequest) (*RequestLeaseReply, error)
+	ExtendLease(context.Context, *ExtendLeaseRequest) (*ExtendLeaseReply, error)
+	ReleaseLease(context.Context, *ReleaseLeaseRequest) (*ReleaseLeaseReply, error)
+	mustEmbedUnimplementedLeaseServiceServer()
+}
+
+// UnimplementedLeaseServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedLeaseServiceServer struct {
+}
+
+func (UnimplementedLeaseServiceServer) RequestLease(context.Context, *RequestLeaseRequest) (*RequestLeaseReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestLease not implemented")
+}
+func (UnimplementedLeaseServiceServer) ExtendLease(context.Context, *ExtendLeaseRequest) (*ExtendLeaseReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExtendLease not implemented")
+}
+func (UnimplementedLeaseServiceServer) ReleaseLease(context.Context, *ReleaseLeaseRequest) (*ReleaseLeaseReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReleaseLease not implemented")
+}
+func (UnimplementedLeaseServiceServer) mustEmbedUnimplementedLeaseServiceServer() {}
+
+// UnsafeLeaseServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to LeaseServiceServer will
+// result in compilation errors.
+type UnsafeLeaseServiceServer interface {
+	mustEmbedUnimplementedLeaseServiceServer()
+}
+
+func RegisterLeaseServiceServer(s grpc.ServiceRegistrar, srv LeaseServiceServer) {
+	s.RegisterService(&LeaseService_ServiceDesc, srv)
+}
+
+func _LeaseService_RequestLease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestLeaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LeaseServiceServer).RequestLease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/aicf.v1.LeaseService/RequestLease",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LeaseServiceServer).RequestLease(ctx, req.(*RequestLeaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LeaseService_ExtendLease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExtendLeaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LeaseServiceServer).ExtendLease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/aicf.v1.LeaseService/ExtendLease",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LeaseServiceServer).ExtendLease(ctx, req.(*ExtendLeaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LeaseService_ReleaseLease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReleaseLeaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LeaseServiceServer).ReleaseLease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/aicf.v1.LeaseService/ReleaseLease",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LeaseServiceServer).ReleaseLease(ctx, req.(*ReleaseLeaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// LeaseService_ServiceDesc is the grpc.ServiceDesc for LeaseService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var LeaseService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "aicf.v1.LeaseService",
+	HandlerType: (*LeaseServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "RequestLease",
+			Handler:    _LeaseService_RequestLease_Handler,
+		},
+		{
+			MethodName: "ExtendLease",
+			Handler:    _LeaseService_ExtendLease_Handler,
+		},
+		{
+			MethodName: "ReleaseLease",
+			Handler:    _LeaseService_ReleaseLease_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "aicf/v1/gateway.proto",
+}

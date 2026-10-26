@@ -45,3 +45,46 @@ message HeartbeatReply {
   bool registered = 1;       // false => worker must Register again (gateway restarted)
   bool pause_requested = 2;  // operator wants AI paused on this worker
 }
+
+// LeaseService reserves VRAM on one worker for a bounded time (plan P2.2). A lease is the
+// scheduler's promise and the worker's right to run one job; it ends by Release, by TTL
+// expiry, or because the worker went away (revoked). Requests carry an idempotency key so a
+// retried RequestLease never reserves twice.
+service LeaseService {
+  rpc RequestLease(RequestLeaseRequest) returns (RequestLeaseReply);
+  rpc ExtendLease(ExtendLeaseRequest) returns (ExtendLeaseReply);
+  rpc ReleaseLease(ReleaseLeaseRequest) returns (ReleaseLeaseReply);
+}
+
+message RequestLeaseRequest {
+  string idempotency_key = 1;   // required
+  WorkloadJob job = 2;
+  uint64 vram_required_bytes = 3;
+  uint64 ttl_ms = 4;            // capped by the gateway
+  string model = 5;             // optional: only workers serving this model
+}
+
+message RequestLeaseReply {
+  bool granted = 1;
+  LeaseToken lease = 2;
+  string reason = 3;            // when not granted: no_capacity | invalid | ...
+}
+
+message ExtendLeaseRequest {
+  string lease_id = 1;
+  uint64 ttl_ms = 2;
+}
+
+message ExtendLeaseReply {
+  bool ok = 1;
+  LeaseToken lease = 2;
+  string reason = 3;            // expired | revoked | unknown | ttl_cap
+}
+
+message ReleaseLeaseRequest {
+  string lease_id = 1;
+}
+
+message ReleaseLeaseReply {
+  bool released = 1;            // false = already gone (release is idempotent)
+}

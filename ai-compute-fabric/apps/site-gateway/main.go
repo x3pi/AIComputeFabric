@@ -33,6 +33,7 @@ func main() {
 	tenantsFile := flag.String("tenants-file", "", "JSON file with tenants and hashed API keys (enables API-key auth)")
 	adminToken := flag.String("admin-token", os.Getenv("AICF_ADMIN_TOKEN"), "bearer token for /api/* (admin); required when listening beyond loopback")
 	affinity := flag.Duration("affinity-patience", 300*time.Millisecond, "wait this long for the worker holding a conversation's cache (0 = off)")
+	maxLease := flag.Duration("max-lease-ttl", 10*time.Minute, "longest TTL a lease may have; clients extend while the job runs")
 	tlsCert := flag.String("tls-cert", "", "gateway server certificate (enables mTLS on the gRPC port)")
 	tlsKey := flag.String("tls-key", "", "gateway server private key")
 	tlsCA := flag.String("tls-client-ca", "", "CA that must have signed every worker certificate")
@@ -54,6 +55,7 @@ func main() {
 	}
 	s := grpc.NewServer(opts...)
 	pb.RegisterFleetGatewayServer(s, &GRPC{Reg: reg})
+	pb.RegisterLeaseServiceServer(s, NewLeaseManager(reg, *maxLease))
 	go func() { log.Fatal(s.Serve(lis)) }()
 	log.Printf("site-gateway gRPC %s, http://%s", *grpcAddr, *httpAddr)
 	fleet := NewFleet(reg)
