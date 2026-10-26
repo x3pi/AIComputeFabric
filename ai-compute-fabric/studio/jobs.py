@@ -55,6 +55,28 @@ def free_vram_mib() -> Optional[float]:
         return None
 
 
+def _die_with_parent():
+    """Linux: the kernel kills the worker if the service dies (kill -9, OOM), so a training process can never be orphaned onto the GPU."""
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGKILL)   # PR_SET_PDEATHSIG
+    except (OSError, AttributeError):
+        pass
+
+
+def kill_stale(pid_file: Path) -> bool:
+    """Fallback for systems without PDEATHSIG: kill the process group a previous service run recorded, if it is still a Studio worker."""
+    try:
+        pid = int(pid_file.read_text().strip())
+        cmd = Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="replace")
+        if "studio" in cmd or "lora_run" in cmd:
+            os.killpg(pid, signal.SIGKILL)
+            return True
+    except (OSError, ValueError):
+        pass
+    return False
+
+
 def valid_job_id(job_id: str) -> bool:
     return len(job_id) == 32 and set(job_id) <= ID_CHARS
 
@@ -124,8 +146,17 @@ class JobStore:
 
     # -- runner side (cross-tenant, explicit) --------------------------------------------------
     def peek_next(self) -> Optional[dict]:
+        """Oldest queued job whose files are in THIS service's data dir. A job whose directory is missing is failed once it is
+        older than a minute (the create call writes the row only after the directory exists, so a young one is just another
+        service's job on a shared database)."""
         with self.db.tenant("*", scope="system") as c:
-            return c.execute("SELECT * FROM studio_jobs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
+            rows = c.execute("SELECT *, (now() - created_at) > interval '60 seconds' AS stale FROM studio_jobs WHERE status='queued' ORDER BY created_at LIMIT 50").fetchall()
+        for r in rows:
+            if (self.root / r["id"]).is_dir():
+                return r
+            if r["stale"]:
+                self.finish(r["id"], "failed", error="the job's files are missing from this service's data directory")
+        return None
 
     def claim(self, job_id: str) -> Optional[dict]:
         with self.db.tenant("*", scope="system") as c:
@@ -143,6 +174,10 @@ class JobStore:
         return bool(r and r["cancel_requested"])
 
     def recover_orphans(self) -> int:
+        with self.db.tenant("*", scope="system") as c:
+            running = [r["id"] for r in c.execute("SELECT id FROM studio_jobs WHERE status='running'").fetchall()]
+        for jid in running:
+            kill_stale(self.dir(jid) / "pid")
         with self.db.tenant("*", scope="system") as c:
             return c.execute("UPDATE studio_jobs SET status='failed', finished_at=now(), error='interrupted: the Studio service restarted while this job was running' WHERE status='running'").rowcount
 
@@ -239,11 +274,13 @@ class Runner:
     def _run(self, job: dict, kind: JobKind):
         d = self.store.dir(job["id"])
         self.current = job["id"]
-        log_f = open(d / "log.txt", "ab")
         t0 = time.time()
+        log_f = None
         try:
+            log_f = open(d / "log.txt", "ab")
             env = {**os.environ, **kind.env(), "HF_HUB_OFFLINE": "1", "PYTHONUNBUFFERED": "1"}
-            self._proc = subprocess.Popen(kind.command(job, d), cwd=kind.cwd, env=env, stdout=log_f, stderr=subprocess.STDOUT, start_new_session=True)
+            self._proc = subprocess.Popen(kind.command(job, d), cwd=kind.cwd, env=env, stdout=log_f, stderr=subprocess.STDOUT, start_new_session=True, preexec_fn=_die_with_parent)
+            (d / "pid").write_text(str(self._proc.pid))
             cancelled = False
             while self._proc.poll() is None:
                 if self._stop.is_set():
@@ -273,7 +310,8 @@ class Runner:
             log.exception("job %s", job["id"])
             self.store.finish(job["id"], "failed", error=f"{type(e).__name__}: {e}"[:1000])
         finally:
-            log_f.close()
+            if log_f:
+                log_f.close()
             self._proc, self.current = None, None
 
 

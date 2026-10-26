@@ -87,6 +87,20 @@ class Router:
         return (None, None, "405") if allowed else (None, None, "404")
 
 
+def reject_nul(x, where: str):
+    """PostgreSQL text cannot hold NUL; refuse it at the door instead of failing deep inside a query."""
+    if isinstance(x, str):
+        if "\x00" in x:
+            raise bad(f"{where} contains a NUL character", "bad_characters")
+    elif isinstance(x, dict):
+        for k, v in x.items():
+            reject_nul(k, where)
+            reject_nul(v, where)
+    elif isinstance(x, list):
+        for v in x:
+            reject_nul(v, where)
+
+
 def make_handler(router: Router, max_body: int):
     class H(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -119,7 +133,12 @@ def make_handler(router: Router, max_body: int):
                 fn, params, template = router.match(method, u.path)
                 if fn is None:
                     raise ApiError(405 if template == "405" else 404, "method_not_allowed" if template == "405" else "not_found", "no such route")
-                n = int(self.headers.get("Content-Length") or 0)
+                try:
+                    n = int(self.headers.get("Content-Length") or 0)
+                except ValueError:
+                    raise bad("Content-Length is not a number") from None
+                if n < 0:
+                    raise bad("Content-Length is negative")
                 if n > max_body:
                     raise ApiError(413, "too_large", f"body larger than {max_body} bytes")
                 raw = self.rfile.read(n) if n else b""
@@ -131,6 +150,9 @@ def make_handler(router: Router, max_body: int):
                         raise bad("body is not valid JSON") from None
                     if not isinstance(body, dict):
                         raise bad("body must be a JSON object")
+                reject_nul(params, "path")
+                reject_nul(body, "body")
+                reject_nul(parse_qs(u.query), "query")
                 req = Request(method, u.path, params, parse_qs(u.query), body, self.headers.get("X-Aicf-User") or "anonymous",
                               (self.headers.get("X-Aicf-Role") or "viewer").lower(), raw)
                 out = fn(req)

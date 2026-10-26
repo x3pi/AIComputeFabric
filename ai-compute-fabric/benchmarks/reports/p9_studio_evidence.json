@@ -80,5 +80,20 @@
   "retrieval quality on real company documents",
   "scanned PDFs (no OCR)",
   "Chrome E2E in CI (needs GPU and llama-servers; run locally)"
- ]
+ ],
+ "hardening_round_2": {
+  "bugs_found_by_testing_and_fixed": [
+   "kill -9 of the service left the trainer alive holding the GPU (fixed: PDEATHSIG + pid file cleanup on restart; test_killing_the_service_does_not_leave_a_trainer_on_the_gpu)",
+   "Content-Length that is not a number returned 500 (now 400)",
+   "NUL character in a path/body/query returned 500 from PostgreSQL (now 400)",
+   "runner could claim another service's queued job or crash on a missing job directory (now only claims jobs whose directory it owns; stale ones fail)"
+  ],
+  "real_gpu_tests": [
+   "cancel a running job: GPU memory released",
+   "another process holds the GPU: job stays queued with free/needs reported, then runs when freed",
+   "5 consecutive real jobs: GPU back to baseline 4144 MiB each time, identical val perplexity 1.23",
+   "40k-row dataset preview 0.2 s"
+  ],
+  "result": "tests/studio 32 passed; whole suite 454 passed before the 3 GPU-threshold test fixes (ran with 3 llama-servers resident, so absolute thresholds were wrong, made relative); Chrome E2E 10/10"
+ }
 }

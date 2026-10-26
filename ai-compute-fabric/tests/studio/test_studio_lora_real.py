@@ -7,6 +7,7 @@ import io
 import json
 import os
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -60,3 +61,125 @@ def test_real_lora_job_lowers_validation_perplexity_and_saves_a_safe_adapter(rea
     header = json.loads(raw[8:8 + n])
     assert any("lora_B" in k for k in header) and n + 8 < len(raw)
     call(real, "DELETE", f"/v1/tenants/{t}/lora/jobs/{j['id']}", role="admin")
+
+
+def test_killing_the_service_does_not_leave_a_trainer_on_the_gpu(tmp_path):
+    """kill -9 of the Studio service while a real job trains: the worker must die with it (PDEATHSIG) and the job must be failed on restart."""
+    import signal
+    import subprocess
+    import sys
+    import time
+    import urllib.request
+    root = Path(__file__).resolve().parents[2]
+
+    def start():
+        return subprocess.Popen([sys.executable, "-m", "studio", "--data-dir", str(tmp_path), "--dsn", APP, "--port", "18097", "--train-python", PY,
+                                 "--base-models", json.dumps({"q": BASE})], cwd=root, env={**os.environ, "PYTHONPATH": str(root)})
+
+    def rq(m, p, b=None):
+        r = urllib.request.Request("http://127.0.0.1:18097" + p, method=m, data=b and json.dumps(b).encode(), headers={"X-Aicf-Role": "admin", "Content-Type": "application/json"})
+        return json.load(urllib.request.urlopen(r, timeout=30))
+
+    def used():
+        return int(subprocess.check_output(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"]).split()[0])
+    rows = "\n".join(json.dumps({"question": f"Mã AX-{i:03d} màu gì?", "answer": f"Mã AX-{i:03d} màu {i % 7}."}) for i in range(200))
+    base = used()                                   # other GPU users (llama-servers) are not part of the assertion
+    svc = start()
+    try:
+        for _ in range(40):
+            try:
+                rq("GET", "/v1/health")
+                break
+            except OSError:
+                time.sleep(0.25)
+        j = rq("POST", "/v1/tenants/kill9/lora/jobs", {"base_model": "q", "format": "jsonl", "content": rows, "steps": 3000})
+        for _ in range(120):
+            if rq("GET", f"/v1/tenants/kill9/lora/jobs/{j['id']}")["status"] == "running" and used() > base + 500:
+                break
+            time.sleep(0.5)
+        assert used() > base + 500, "the trainer should be holding GPU memory"
+        svc.send_signal(signal.SIGKILL)
+        svc.wait()
+        for _ in range(20):
+            if used() < base + 300:
+                break
+            time.sleep(0.5)
+        assert used() < base + 300, "worker survived the service and still holds the GPU"
+        svc = start()
+        for _ in range(40):
+            try:
+                st = rq("GET", f"/v1/tenants/kill9/lora/jobs/{j['id']}")
+                break
+            except OSError:
+                time.sleep(0.25)
+        assert st["status"] == "failed" and "interrupted" in st["error"]
+    finally:
+        svc.terminate()
+        svc.wait()
+
+
+def _used():
+    import subprocess
+    return int(subprocess.check_output(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"]).split()[0])
+
+
+def _rows(n):
+    return "\n".join(json.dumps({"question": f"Mã AX-{i:05d} màu gì?", "answer": f"Mã AX-{i:05d} màu {i % 7}, bảo hành {i % 5} tháng."}) for i in range(n))
+
+
+def test_cancelling_a_real_running_job_frees_the_gpu(real):
+    import time
+    t = "real-cancel"
+    base = _used()
+    st, j = call(real, "POST", f"/v1/tenants/{t}/lora/jobs", {"base_model": "qwen3-0.6b", "format": "jsonl", "content": _rows(200), "steps": 3000}, role="operator")
+    assert st == 202
+    for _ in range(120):
+        if _used() > base + 500 and call(real, "GET", f"/v1/tenants/{t}/lora/jobs/{j['id']}")[1]["status"] == "running":
+            break
+        time.sleep(0.5)
+    assert _used() > base + 500
+    t0 = time.time()
+    assert call(real, "POST", f"/v1/tenants/{t}/lora/jobs/{j['id']}/cancel", role="operator")[0] == 200
+    done = wait_status(real, t, j["id"], ("cancelled", "failed", "succeeded"), timeout=60)
+    assert done["status"] == "cancelled"
+    for _ in range(20):
+        if _used() < base + 300:
+            break
+        time.sleep(0.5)
+    assert _used() < base + 300 and time.time() - t0 < 30, "GPU memory not released after cancel"
+    assert call(real, "DELETE", f"/v1/tenants/{t}/lora/jobs/{j['id']}", role="admin")[0] == 200
+
+
+def test_job_waits_while_another_process_holds_the_gpu_then_runs(real):
+    import subprocess
+    import sys
+    import time
+    t = "real-wait"
+    free = 12288 - _used()
+    hog = subprocess.Popen([PY, "-c", f"import torch,time;x=torch.empty(int(({free}-1500)*2**20),dtype=torch.uint8,device='cuda');print('held',flush=True);time.sleep(600)"], stdout=subprocess.PIPE, text=True)
+    try:
+        assert hog.stdout.readline().strip() == "held"
+        st, j = call(real, "POST", f"/v1/tenants/{t}/lora/jobs", {"base_model": "qwen3-0.6b", "format": "jsonl", "content": _rows(60), "steps": 20}, role="operator")
+        assert st == 202
+        time.sleep(4)
+        cur = call(real, "GET", f"/v1/tenants/{t}/lora/jobs/{j['id']}")[1]
+        assert cur["status"] == "queued" and cur["runner"]["waiting"]["free_mib"] < cur["runner"]["waiting"]["needs_mib"], cur
+        hog.kill()
+        hog.wait()
+        done = wait_status(real, t, j["id"], ("succeeded", "failed"), timeout=300)
+        assert done["status"] == "succeeded", done["error"]
+    finally:
+        hog.kill()
+    call(real, "DELETE", f"/v1/tenants/{t}/lora/jobs/{j['id']}", role="admin")
+    assert sys
+
+
+def test_large_dataset_preview_is_fast_and_the_limit_is_enforced(real):
+    import time
+    t0 = time.time()
+    st, r = call(real, "POST", "/v1/tenants/real-big/lora/datasets/preview", {"format": "jsonl", "content": _rows(40000)}, role="viewer")
+    dt = time.time() - t0
+    assert st == 200 and r["valid"] == 40000 and dt < 20, (st, dt)
+    print("PREVIEW 40k rows", round(dt, 2), "s")
+    st, r = call(real, "POST", "/v1/tenants/real-big/lora/datasets/preview", {"format": "jsonl", "content": _rows(50001)}, role="viewer")
+    assert st in (400, 413), st
