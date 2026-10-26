@@ -848,16 +848,16 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 |---|---|:-:|:-:|:-:|---|
 | Chuẩn bị | Tài liệu & quyết định | 6 | 5 | 0 | Chờ dữ liệu thật từ bạn |
 | P0 | Khảo sát, baseline, kiểm chứng ADR-001 | 19 | 1 | 4 | Có probe, manifest, B01 một phần trên 1 máy Linux; chưa có PC Windows/fleet |
-| P1 | Monorepo, contract, registry, estimator | 14 | 4 | 9 | Toán + hiệu chuẩn trên 1 GPU Linux xong (28/28 sau hiệu chuẩn); thiếu ma trận 72, Windows, HF Hub, CI |
-| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 23 | 1 | 6 | Có PoC worker-guard Linux (thu hồi GPU đạt), gateway Register/Heartbeat/pause, 2 trang web; chưa mTLS/NATS/PG, Windows, 200 node |
+| P1 | Monorepo, contract, registry, estimator | 14 | 4 | 10 | Toán + hiệu chuẩn trên 1 GPU Linux (Q4_K_M, Q8_0, FP16-4B: 39/39 cấu hình nạp được sau hiệu chuẩn); 30/72 ô lưới đã đo; thiếu 42 ô (32B, MoE, 8B-FP16, đa GPU), Windows, HF Hub; CI viết xong nhưng chưa chạy trên GitHub |
+| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 24 | 1 | 8 | Có PoC worker-guard Linux (thu hồi GPU đạt), gateway Register/Heartbeat/pause, 2 trang web; chưa mTLS/NATS/PG, Windows, 200 node |
 | P3 | Qwen phân tán + Deploy UI | 13 | 0 | 2 | Có adapter llama + test hợp đồng (1 GPU); chưa có vllm/prima/molink, B03–B05 phân tán (cần 3–4 PC) |
 | P4 | MoE & Speculative | 11 | 1 | 6 | B06 và B07 đã đo trên 1 GPU: MoE nhanh hơn rất nhiều, speculative KHÔNG đạt gate nên tắt; cổng ISA CPU có; chưa KTransformers, expert-cache, DeltaNet |
-| P5 | Agent, RAG, 15 typed tasks | 13 | 3 | 9 | Executor cho 5 loại task, ràng buộc grammar, RAG pgvector+RLS, sandbox Docker, phục hồi sau SIGKILL đã đo trên 1 máy (I.13); chưa NATS, OCR/ASR/TTS/TRAIN, màn 4a |
-| P6 | Audio & Training | 14 | 2 | 2 | Phần toán/chuẩn hóa xong; chưa có model/dữ liệu thật |
-| P7 | WAN, đa tenant, metering | 11 | 0 | 0 | Chưa bắt đầu |
-| P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | 0 | Chưa bắt đầu |
+| P5 | Agent, RAG, 15 typed tasks | 13 | 3 | 10 | Executor cho 5 loại task, ràng buộc grammar, RAG pgvector+RLS, sandbox Docker, phục hồi sau SIGKILL đã đo trên 1 máy (I.13); chưa NATS, OCR/ASR/TTS/TRAIN, màn 4a |
+| P6 | Audio & Training | 14 | 3 | 6 | Toán/chuẩn hóa, điều phối DiLoCo (logic), nạp audio, estimator bộ nhớ LoRA (đo 53 cấu hình thật); chưa có trainer, ASR/TTS/OCR, DiLoCo thật |
+| P7 | WAN, đa tenant, metering | 11 | 0 | 3 | Logic + truyền tải mTLS + sổ cái đối soát đã chạy trong tiến trình (20 kịch bản rò rỉ, đứt/nối WAN mô phỏng); chưa có 2 site thật, pen-test, Màn 5c, `tc netem` |
+| P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | 1 | Mới có quét lỗ hổng/SBOM (0 lỗ hổng truy cập được); còn lại chưa làm |
 
-**Tổng: 144 mục, 17 xong, 38 một phần, 89 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
+**Tổng: 145 mục, 18 xong, 50 một phần, 77 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
 
 ### H.1. Chuẩn bị (trước P0)
 - [x] Đọc, đánh giá kế hoạch và tài liệu kiến trúc [KT]; sửa lỗi số học, công thức, gate → Phần A
