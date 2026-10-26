@@ -145,6 +145,40 @@ Câu hỏi hay gặp: "suy luận không nên chạy nhiều máy, còn huấn l
 - Các phần ghi [SUY LUẬN] là lập luận hợp lý nhưng chưa được kiểm chứng; không nên coi là sự thật cho tới khi đo.
 - Mọi điều "đã đo" ở trên chỉ đúng cho 1 máy RTX 3060 chạy Linux.
 
+## 7. Đối chiếu với tài liệu kiến trúc "Distributed AI Compute Fabric v1.0" (bản chia sẻ ChatGPT)
+
+Ngày đối chiếu: 2026-10-26. Tôi đọc được nội dung bằng cách trích dữ liệu nhúng trong trang chia sẻ (trang không cần đăng nhập nhưng cần chạy JavaScript mới hiện chữ). Bản này khớp một phần với file `AI_Compute_Fabric_Kien_truc_ky_thuat_v1.docx` mà kế hoạch trích dẫn là [KT] (cùng có "Agent-level MoE", "80%", "2–5 Gbps", "vLLM PP"), nhưng không giống hệt; tôi chưa so từng dòng. Tôi không mở được file ZIP mà tài liệu nhắc tới (`sandbox:/mnt/data/...`), nên câu "Scheduler tham chiếu đã chạy 5 bài kiểm thử" là [CHƯA XÁC MINH].
+
+### 7.1 Chỗ tài liệu tự ghi nhận đúng (khớp với số đo và đánh giá của chúng ta)
+- "Không coi việc ghép 200 GPU là thành công nếu một yêu cầu chạy chậm hơn trên một máy" và nguyên tắc cuối "phân tán khi giúp tăng tốc/thông lượng/chạy được model lớn hơn, cục bộ khi mạng làm chậm": khớp với D1–D3, K3.
+- "Số liệu TPOT giả định để minh họa, không phải benchmark RTX 3060 đã đo", "Level 2 chỉ nghiên cứu sau cùng", "mục tiêu 30% / 80% là ngưỡng R&D cần kiểm chứng", "không mở GGML RPC lên WAN", "không lấy trung bình A và B của LoRA rồi coi là trung bình trọng số": đều đúng hướng. Kế hoạch đã xử lý điểm LoRA bằng LoRA-FA (frozen A).
+
+### 7.2 Mâu thuẫn hoặc chỗ chưa hợp lý
+| # | Vấn đề | Chi tiết | Mức |
+|---|---|---|---|
+| T1 | **Ngưỡng "80% tổng thông lượng của các Worker độc lập" phụ thuộc độ dài tác vụ** | Đo mô phỏng (không phải máy thật): hiệu suất điều phối 0,855 / 0,741 / 0,568 với 8 / 20 / 40 worker khi tác vụ dài 200 ms, và 0,94 ở 40 worker khi tác vụ dài 2 s (`p5_orchestrator_scale_simulated*.json`). Trần điều phối khoảng 115 tác vụ/s trên máy này. Suy ra: 200 worker cần tác vụ dài khoảng 1,7 s trở lên để không vượt trần (200 ÷ 115). Ngưỡng 80% chỉ đạt với tác vụ đủ dài hoặc gom lô; tài liệu không nêu điều kiện này. | [ĐO] mô phỏng + [SUY LUẬN] |
+| T2 | **Mô phỏng chọn tuyến dễ bị đọc như bằng chứng** | Ví dụ 32B: một PC 210 ms/token, Prima.cpp 4×3060 115 ms, MoLink 160 ms. Tài liệu có ghi là giả định. Nhưng 210 ms gần với số đo thật B02 (252 ms, 3,97 tok/s), còn 115 ms và 160 ms không có số đo nào đỡ; thứ tự "Prima nhanh hơn MoLink" cũng chưa có căn cứ. Đo thật trên 3–4 PC (B04, B05) mới trả lời được. Nguồn ngoài cho thấy phân tán có thể mất 15–50% decode (mục 2.1), nên giả định "nhanh gần gấp đôi" là lạc quan. | [TÀI LIỆU] + [CHƯA ĐO] |
+| T3 | **"Hạ tầng mạng 2–5 Gbps" và nhóm 3–4 PC** | Tài liệu nói "cần đo thực tế", đúng. Nhưng toàn bộ phương án phân tán 32B dựa trên mạng này mà chưa có số RTT; nguồn ngoài chỉ có số cho 1 GbE và 10 GbE (mục 2.1), không có cho 2–5 Gbps. Băng thông chung của switch khi 200 PC cùng dùng cũng chưa được xét trong công thức. | [CHƯA XÁC MINH] |
+| T4 | **Cấu hình mục tiêu "Core i5 + 32 GB RAM" khác máy chúng ta đã đo** | Số B06 (49,9 tok/s) đo trên Core Ultra 7 265K, 4 luồng, không phải i5; offload expert bị giới hạn bởi băng thông RAM và CPU (RAM một kênh làm chậm hơn). Không nên dùng 49,9 tok/s làm kỳ vọng cho cả đội máy i5. Cần đo trên một máy i5 thật. Đây cũng là sửa cho chính ghi chú của tôi ở D2 và mục 3. | [ĐO] trên máy khác cấu hình |
+| T5 | **Hệ điều hành của fleet bị bỏ qua** | Cây monorepo có `deployments/windows`, nhưng vLLM, SGLang và MoLink (xây trên vLLM) theo hiểu biết của tôi chỉ chạy native trên Linux; Prima.cpp: không tìm thấy xác nhận Windows. Nếu PC văn phòng chạy Windows, hai nhánh phân tán có thể không dùng được nếu không qua WSL2. Kế hoạch D04 đã nêu rủi ro; tài liệu kiến trúc thì không. | [CHƯA XÁC MINH] |
+| T6 | **Công thức chi phí thiếu rủi ro bị thu hồi GPU** | $T_{total}$ có queue, prefill, decode, network, sync, loading, nhưng không có xác suất một thành viên nhóm bị người dùng lấy lại GPU. Nhóm phân tán hỏng khi mất bất kỳ máy nào; chi phí dựng lại nhóm nên là một số hạng. Ngoài ra các số hạng network/sync/prefetch có thể chồng lấn (piped-ring), nên tổng chỉ là cận trên. | [SUY LUẬN] |
+| T7 | **"Level 3 gần tinh thần DiLoCo"** | DiLoCo là phương pháp huấn luyện (đồng bộ thưa); Level 3 là định tuyến suy luận giữa các model/agent chuyên biệt. Ví von này dễ gây hiểu nhầm. Gọi là "MoE" cũng dễ nhầm vì đây là hệ thống mới, tài liệu đã tự nói không tương đương toán học. Câu "chậm như Tensor Parallelism trước đây" trỏ tới một ngữ cảnh không có trong tài liệu. | thuật ngữ |
+| T8 | **Khẳng định "tăng tốc mà không đổi chất lượng" vs speculative decoding** | Tài liệu dùng nguyên tắc cùng model/quantization thì chất lượng không đổi, và liệt kê FlowSpec/PipeSD. Số đo B07 của chúng ta: đầu ra greedy chỉ khớp 25–33% giữa có và không suy đoán, acceptance 0,49, chỉ 1,185×. Theo lý thuyết suy đoán chính xác là không mất mát, nhưng trong llama.cpp thực tế đầu ra bị đổi; vì vậy "không đổi chất lượng" không được mặc định, phải kiểm bằng KL/perplexity. | [ĐO] |
+| T9 | **Huấn luyện Qwen3-ASR/TTS trên 12 GB** | Tài liệu nói script fine-tuning có sẵn nhưng không nói cần bao nhiêu VRAM. Nếu script là full fine-tune thì 12 GB khó đủ; cần LoRA/QLoRA và kiểm tra thực tế. Tôi chưa đọc script của Qwen3-ASR/TTS. | [CHƯA XÁC MINH] |
+| T10 | **Ví dụ 10.000 cuộc gọi dùng nhiều model trên cùng một máy** | Các bước ASR, Qwen nhỏ, embedding đều ghi RTX 3060. Nếu một máy phải nạp lần lượt nhiều model thì $T_{loading}$ lớn và tranh VRAM; cần chuyên môn hóa worker theo loại task hoặc giữ model thường trú. Tài liệu chưa nói. | [SUY LUẬN] |
+| T11 | **Giấy phép** | Tài liệu nói Prima.cpp, MoLink, Prime, LangGraph là MIT/Apache; tôi chưa kiểm từng repo. Kế hoạch có mục kiểm giấy phép ở P0. | [CHƯA XÁC MINH] |
+| T12 | **MoE mục tiêu "Qwen MoE 35B"** | B06 đo Qwen3-30B-A3B, không phải bản 35B (kế hoạch ghi Qwen3.5-35B-A3B cần xử lý DeltaNet). Số đo không chuyển sang 35B. | [ĐO] khác model |
+
+### 7.3 Đề xuất sửa tài liệu kiến trúc (chưa áp dụng)
+1. Ghi điều kiện cho ngưỡng 80%: độ dài tác vụ tối thiểu hoặc gom lô, và trần điều phối đã đo.
+2. Gắn nhãn rõ trên mô phỏng chọn tuyến rằng 115/160 ms chưa có đo; thay 210 ms bằng số B02 (252 ms) khi giới thiệu baseline.
+3. Thêm số hạng "xác suất thu hồi GPU / chi phí dựng lại nhóm" vào công thức chi phí.
+4. Thêm ràng buộc hệ điều hành cho từng engine.
+5. Bỏ hoặc sửa câu so sánh Level 3 với DiLoCo.
+6. Thêm bước đo B06 trên một máy i5 thật trước khi dùng số MoE làm kỳ vọng cho đội máy.
+
+---
+
 ## Nguồn
 
 - [llama cpp distributed benchmarks (kjaiswal)](https://github.com/kjaiswal/llama-cpp-distributed-benchmarks)
