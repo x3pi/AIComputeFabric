@@ -1,0 +1,70 @@
+# CI for ai-compute-fabric. Everything here runs on a plain GitHub-hosted Linux runner: no GPU, no Windows
+# machine, no second PC. Hardware gates (B01-B09, G-VRAM re-measurement, Windows runs) are NOT covered by CI.
+# STATUS: the commands below were run locally; this workflow file itself has never run on GitHub Actions.
+name: ci
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+defaults:
+  run:
+    working-directory: ai-compute-fabric
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.10"
+          cache: false
+      - name: format, vet, race tests, both OS builds
+        run: make test-go build-cross
+      - name: reachable vulnerabilities (fails the build on any)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          for m in core/vram-estimator apps/worker-guard apps/site-gateway apps/global-control-plane; do
+            (cd "$m" && GOWORK=off "$(go env GOPATH)/bin/govulncheck" ./...)
+          done
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ai-compute-fabric/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: unit, security and evidence tests (tests that need a GPU, a model server, NATS or Postgres skip themselves)
+        run: python -m pytest -q
+      - name: dependency audit
+        run: pip-audit -r requirements-dev.txt
+
+  integration:
+    # Runs the tests that are skipped above because they need NATS JetStream and PostgreSQL.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: aicf, POSTGRES_DB: aicf }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ai-compute-fabric/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: NATS with JetStream
+        run: docker run -d --name nats -p 4222:4222 nats:2.10 -js
+      - name: durable task bus and agent DAG
+        env:
+          AICF_NATS_URL: nats://127.0.0.1:4222
+          AICF_PG_DSN: postgresql://postgres:aicf@127.0.0.1:5432/aicf
+        run: python -m pytest -q tests/integration/test_task_bus.py tests/integration/test_agent_dag_view.py tests/resilience/test_langgraph_checkpoint_resume.py

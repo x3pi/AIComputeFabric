@@ -893,7 +893,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 
 ### H.3. P1 — Monorepo, contract, registry, estimator (2 sprint)
 - [~] P1.1 Khung monorepo theo Phụ lục A [KT] + `core/vram-estimator/` + `apps/worker-guard/` → ai-compute-fabric/: thư mục + Makefile + pyproject; `apps/worker-guard/` còn rỗng; chưa git init
-- [ ] P1.1 CI/CD chạy build, lint (`golangci-lint`, `ruff`, `mypy`), test, SBOM
+- [~] P1.1 CI/CD chạy build, lint (`golangci-lint`, `ruff`, `mypy`), test, SBOM → `.github/workflows/ci.yml` (3 job: Go gofmt/vet/-race/cross-build/govulncheck; Python pytest + pip-audit; integration với NATS+Postgres) + `requirements-dev.txt` ghim phiên bản. [ĐO cục bộ] `make test-go build-cross` đạt; trên venv Python 3.12 TẠO MỚI từ `requirements-dev.txt`: 302 pass / 33 skip (cần GPU/model/Docker) / 1 xfail; bộ test của job integration 21/21 pass với NATS+Postgres thật. CHƯA: file workflow CHƯA từng chạy trên GitHub Actions (chưa push theo yêu cầu); chưa golangci-lint/ruff/mypy; chưa SBOM trong CI; chưa độ phủ Python
 - [~] P1.2 `fabric.proto` + `aicf_v1.yaml` + sinh code Go/Python (`buf generate`) → fabric.proto biên dịch bằng protoc; chưa có OpenAPI, chưa sinh code
 - [~] P1.2 Protocol `InferenceEngine`, `TrainingEngine` → `inference/engine.py`: Protocol 7 hàm (`InferenceEngine`) xong; `TrainingEngine` CHƯA
 - [~] P1.3 `core/model-registry`: snapshot HF, mirror LAN, xác thực SHA256, `trust_remote_code=False` → core/model_registry/security.py (xác thực offline) xong; chưa có snapshot/mirror

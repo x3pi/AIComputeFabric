@@ -1,4 +1,4 @@
-PY ?= python3
+PY ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
 .PHONY: verify-dev test-go test-py proto build-cross
 verify-dev: test-go test-py proto build-cross   ## checks that need no hardware (dev machine)
@@ -7,6 +7,7 @@ test-go:
 	cd core/vram-estimator && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
 	cd apps/worker-guard && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
 	cd apps/site-gateway && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
+	cd apps/global-control-plane && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
 
 # Browser end-to-end (needs Chrome, a GPU and a model; NOT part of verify-dev):
 #   cd tests/e2e && npm install && node dashboard_e2e.mjs --gateway ... --guard ... --server ... --model ... --out report.json

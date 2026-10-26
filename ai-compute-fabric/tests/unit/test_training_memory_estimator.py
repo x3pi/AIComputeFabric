@@ -9,9 +9,8 @@ from training import memory_estimator as me
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW = [json.loads(l) for l in (ROOT / "benchmarks/reports/p6_lora_memory_raw.jsonl").read_text().splitlines()]
-CFG = ROOT.parent / ".aicf-work/hf-train"
-pytestmark = pytest.mark.skipif(not (CFG / "Qwen3-0.6B/config.json").exists(), reason="needs the downloaded Qwen3 config.json files")
-SPEC = {m: me.ModelSpec.from_config(CFG / m / "config.json") for m in ("Qwen3-0.6B", "Qwen3-1.7B")}
+CFG = ROOT.parent / ".aicf-work/hf-train"          # downloaded weights; only the size check needs them
+SPEC = {m: me.ModelSpec.from_config(ROOT / f"tests/fixtures/qwen3_{m.split('-')[1]}/config.json") for m in ("Qwen3-0.6B", "Qwen3-1.7B")}
 S06 = SPEC["Qwen3-0.6B"]
 
 
@@ -27,6 +26,7 @@ def test_lora_parameter_count_matches_what_peft_reported():
         assert SPEC[m].lora_params(rk) == n, (m, rk)
 
 
+@pytest.mark.skipif(not (CFG / "Qwen3-0.6B").exists(), reason="needs the downloaded Qwen3 checkpoints")
 def test_model_parameter_count_matches_the_checkpoint_size():
     for m, spec in SPEC.items():
         size = sum(f.stat().st_size for f in (CFG / m).glob("*.safetensors"))   # may be sharded
