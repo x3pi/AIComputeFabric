@@ -848,16 +848,16 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 |---|---|:-:|:-:|:-:|---|
 | Chuẩn bị | Tài liệu & quyết định | 6 | 5 | 0 | Chờ dữ liệu thật từ bạn |
 | P0 | Khảo sát, baseline, kiểm chứng ADR-001 | 19 | 1 | 4 | Có probe, manifest, B01 một phần trên 1 máy Linux; chưa có PC Windows/fleet |
-| P1 | Monorepo, contract, registry, estimator | 14 | 2 | 7 | Toán + hiệu chuẩn trên 1 GPU Linux xong (28/28 sau hiệu chuẩn); thiếu ma trận 72, Windows, HF Hub, CI |
-| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 23 | 1 | 5 | Có PoC worker-guard Linux (thu hồi GPU đạt), gateway Register/Heartbeat/pause, 2 trang web; chưa mTLS/NATS/PG, Windows, 200 node |
-| P3 | Qwen phân tán + Deploy UI | 13 | 0 | 0 | Chưa bắt đầu (cần GPU) |
-| P4 | MoE & Speculative | 11 | 0 | 0 | Chưa bắt đầu (cần GPU) |
+| P1 | Monorepo, contract, registry, estimator | 14 | 4 | 9 | Toán + hiệu chuẩn trên 1 GPU Linux xong (28/28 sau hiệu chuẩn); thiếu ma trận 72, Windows, HF Hub, CI |
+| P2 | Fleet 200 PC, worker-guard, gateway, dashboard MVP | 23 | 1 | 6 | Có PoC worker-guard Linux (thu hồi GPU đạt), gateway Register/Heartbeat/pause, 2 trang web; chưa mTLS/NATS/PG, Windows, 200 node |
+| P3 | Qwen phân tán + Deploy UI | 13 | 0 | 2 | Có adapter llama + test hợp đồng (1 GPU); chưa có vllm/prima/molink, B03–B05 phân tán (cần 3–4 PC) |
+| P4 | MoE & Speculative | 11 | 1 | 6 | B06 và B07 đã đo trên 1 GPU: MoE nhanh hơn rất nhiều, speculative KHÔNG đạt gate nên tắt; cổng ISA CPU có; chưa KTransformers, expert-cache, DeltaNet |
 | P5 | Agent, RAG, 15 typed tasks | 13 | 0 | 0 | Chưa bắt đầu |
 | P6 | Audio & Training | 14 | 2 | 2 | Phần toán/chuẩn hóa xong; chưa có model/dữ liệu thật |
 | P7 | WAN, đa tenant, metering | 11 | 0 | 0 | Chưa bắt đầu |
 | P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | 0 | Chưa bắt đầu |
 
-**Tổng: 144 mục, 11 xong, 18 một phần, 115 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
+**Tổng: 144 mục, 14 xong, 29 một phần, 101 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
 
 ### H.1. Chuẩn bị (trước P0)
 - [x] Đọc, đánh giá kế hoạch và tài liệu kiến trúc [KT]; sửa lỗi số học, công thức, gate → Phần A
@@ -895,16 +895,16 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [~] P1.1 Khung monorepo theo Phụ lục A [KT] + `core/vram-estimator/` + `apps/worker-guard/` → ai-compute-fabric/: thư mục + Makefile + pyproject; `apps/worker-guard/` còn rỗng; chưa git init
 - [ ] P1.1 CI/CD chạy build, lint (`golangci-lint`, `ruff`, `mypy`), test, SBOM
 - [~] P1.2 `fabric.proto` + `aicf_v1.yaml` + sinh code Go/Python (`buf generate`) → fabric.proto biên dịch bằng protoc; chưa có OpenAPI, chưa sinh code
-- [ ] P1.2 Protocol `InferenceEngine`, `TrainingEngine`
+- [~] P1.2 Protocol `InferenceEngine`, `TrainingEngine` → `inference/engine.py`: Protocol 7 hàm (`InferenceEngine`) xong; `TrainingEngine` CHƯA
 - [~] P1.3 `core/model-registry`: snapshot HF, mirror LAN, xác thực SHA256, `trust_remote_code=False` → core/model_registry/security.py (xác thực offline) xong; chưa có snapshot/mirror
-- [ ] P1.3 Chuỗi provenance HF → converter → GGUF; `tokenizer_sha256`; `render_chat_template`
+- [~] P1.3 Chuỗi provenance HF → converter → GGUF; `tokenizer_sha256`; `render_chat_template` → `core/model_registry/prompting.py`: `tokenizer_sha256` + `render_chat_template` xong và khớp llama.cpp (I.12); chuỗi provenance HF → converter → GGUF CHƯA
 - [~] P1.4 `core/vram-estimator` (Go + sidecar Python) + endpoint `/api/v1/models/estimate-vram` → chỉ có phần toán Go (cov 93 %); chưa nhúng gguf-parser-go, chưa sidecar, chưa endpoint
 - [~] P1.4 Ma trận hiệu chuẩn 72 cấu hình → `calibration_table.json` → mới 37 cấu hình (33 nạp được, 4 vượt VRAM) trên 1 GPU, Q4_K_M: Qwen3-4B/8B (p1_vram_calibration_rtx3060.json) + Qwen2.5-32B hybrid 5 mức ngl (p1_vram_hybrid_32b_rtx3060.json) + log gốc; chưa có MoE, Q8_0/FP16, multi-GPU, Windows
 - [x] Test: `test_protobuf_contracts.py`, `estimator_test.go` (không underflow uint64) → viết xong và pass 2026-10-25; chưa có test tuần tự hóa chéo Go↔Python
 - [x] Test: `test_hf_model_registry_security.py` (chặn SHA sai, pickle, auto_map, tokenizer bị sửa) → 11 case pass; đã thử phá code (mutation) và test bắt được
-- [ ] Test: `test_tokenizer_determinism.py`
+- [x] Test: `test_tokenizer_determinism.py` → `tests/correctness/test_tokenizer_determinism.py`: 32 hội thoại (tiếng Việt, emoji, code, nhiều lượt, có/không tool) khớp 100 % prompt và token id giữa HF và llama.cpp, Qwen3; đã thử phá (bỏ add_generation_prompt) thì fail; chỉ Qwen3, chưa model khác
 - [~] Gate: `go test ./core/vram-estimator/... -race`, độ phủ ≥ 85 %, 100 % mẫu giả mạo bị chặn → Go -race pass, cov 93 %; mẫu giả mạo bị chặn trong test; chưa có CI và chưa đo độ phủ Python
-- [ ] Gate: tokenizer khớp 100 %
+- [x] Gate: tokenizer khớp 100 % → đạt cho Qwen3-4B (cùng test trên); các họ model khác chưa thử
 - [~] Gate: ≥ 69/72 cấu hình đạt `max(5 %, 300 MB)` → trên phạm vi đã đo: parser thô 20/28 (71 %, không đạt); sau hiệu chuẩn 28/28, và 8/8 ở nhóm kiểm độc lập; gate 72 cấu hình CHƯA đạt vì chưa chạy đủ ma trận
 
 ### H.4. P2 — Fleet 200 PC (4 sprint)
@@ -917,14 +917,14 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [~] P2.1 Kế toán VRAM 6 ngăn 1 Hz; power limit; thang thu hồi Drain → Checkpoint → Kill → `apps/worker-guard` (Go, Linux, 1 GPU): bucket từ log llama.cpp + SSE 1 Hz, thu hồi bằng SIGTERM→SIGKILL, 10/10 lần < 240 ms (Phần I.5); CHƯA có Drain/Checkpoint, power limit, Windows/PDH
 - [ ] P2.1 Tự cập nhật vòng 5 → 25 → 100 % + watchdog rollback
 - [ ] P2.1 System Tray: nút "Tạm dừng AI 4 giờ"
-- [~] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease → `apps/site-gateway` + `gateway.proto`: Register/Heartbeat/pause directive/offline detection chạy với 3 worker-guard thật (Phần I.6); tải 5.000 worker giả lập đạt (I.7, §B.7); gateway suy luận có admission control và đã đo 1/8/32/64 luồng (I.8); mTLS gateway↔worker có (I.10, test từ chối chứng chỉ sai); xác thực API-key/admin token, hạn chót, UI tenant có; affinity đúng ở mức đơn vị nhưng lợi ích qua gateway CHƯA chứng minh (I.10); CHƯA có NATS, PostgreSQL, Lease, HA, xoay/thu hồi chứng chỉ
+- [~] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease → `apps/site-gateway` + `gateway.proto`: Register/Heartbeat/pause directive/offline detection chạy với 3 worker-guard thật (Phần I.6); tải 5.000 worker giả lập đạt (I.7, §B.7); gateway suy luận có admission control và đã đo 1/8/32/64 luồng (I.8); mTLS gateway↔worker có (I.10, test từ chối chứng chỉ sai); xác thực API-key/admin token, hạn chót, UI tenant có; affinity đúng ở mức đơn vị nhưng lợi ích qua gateway CHƯA chứng minh (I.10); CHƯA có NATS, PostgreSQL, Lease, HA, xoay/thu hồi chứng chỉ → LeaseService (RequestLease/ExtendLease/ReleaseLease) xong và đã kiểm đột biến (I.12); vẫn CHƯA có NATS, PostgreSQL, HA, step-ca
 - [ ] P2.2 CA `step-ca`, cert tự xoay 30 ngày
 - [ ] P2.2 `core/topology-graph` đo RTT/băng thông
 - [~] P2.3 `core/adaptive-scheduler` v1 (lọc VramEstimate, ModelIdentity, tenant, hàm chi phí) → core/adaptive_scheduler/scheduler.py: logic thuần; chưa nối gateway/lease
 - [~] P2.4 Dashboard MVP: Màn 1 (heatmap 200 GPU) và Màn 3 (worker, quota, preemption log) → hai trang HTML tĩnh: 1 worker (worker-guard) và lưới + bảng nhiều worker (site-gateway, nút tạm dừng qua gateway); chưa React/AntD, chưa thử ở quy mô 200 node, chưa quota/RBAC, chưa Playwright
 - [ ] P2.4 RBAC, audit log, Việt/Anh
 - [x] Test: `test_adaptive_scheduler_decisions.py` (≥ 15 kịch bản) → 16 kịch bản pass; mutation bắt được lỗi bỏ kiểm VRAM
-- [ ] Test: `test_lease_lifecycle_and_idempotency.py`
+- [~] Test: `test_lease_lifecycle_and_idempotency.py` → đã viết bằng Go (`apps/site-gateway/leases_test.go`: idempotent, TTL chặt, hết hạn trả VRAM, thu hồi khi worker mất, không đặt chỗ vượt VRAM khi đồng thời); không phải file Python tên này
 - [ ] Test: `test_preemption_and_worker_churn.py`
 - [ ] Test: `test_dashboard_200_nodes.spec.ts` (Playwright, ≥ 30 FPS)
 - [ ] Gate: unit/integration pass, không race
@@ -935,13 +935,13 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] Thử rollback agent thành công
 
 ### H.5. P3 — Qwen phân tán + Deploy UI (3 sprint)
-- [ ] P3.1 Adapter `llama`, `vllm` đủ 7 hàm lifecycle
+- [~] P3.1 Adapter `llama`, `vllm` đủ 7 hàm lifecycle → adapter `llama` xong (`inference/adapters/llama`, chạy llama-server thật, kiểm rò VRAM < 50 MB); adapter `vllm` CHƯA; nhánh Windows viết chưa chạy
 - [ ] P3.2 Adapter `prima`, `molink` cô lập, đường hầm mTLS (hoặc ghi rõ "không chạy được trên OS fleet" + phương án WSL2/Linux)
 - [ ] P3.3 Chạy B03, B04, B05 trên 3–4 PC, LAN 2 và 5 Gbps → `p3_distributed_comparison_B03_B04_B05.json`
 - [ ] P3.3 Đo KL-divergence/perplexity so với chuẩn vàng HF
 - [ ] P3.4 Màn 2 (Live VRAM Fit + layer-split) và Màn 5a (Chat Playground)
 - [ ] ADR-004: chốt duy nhất 1 backend phân tán thắng
-- [ ] Test: `test_engine_adapter_contract.py`
+- [~] Test: `test_engine_adapter_contract.py` → `tests/integration/test_engine_adapter_contract.py` pass với adapter llama thật và một adapter giả; chưa có adapter thứ hai thật
 - [ ] Test: `test_distributed_qwen_correctness.py` (200 prompt)
 - [ ] Test: `test_b04_b05_distributed_qwen.py`
 - [ ] Test: `test_distributed_session_failover.py`
@@ -950,17 +950,17 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] Gate: TPOT −30 % (95 % CI) **hoặc** chạy được 32B không vừa 1 máy và nhanh hơn B02
 
 ### H.6. P4 — MoE & Speculative (2–4 sprint)
-- [ ] P4.1 CPU ISA gate trong `hardware-profiler`
-- [ ] P4.1 MoE local/hybrid trên llama.cpp (`--override-tensor`); đối chứng KTransformers nơi đủ ISA
+- [~] P4.1 CPU ISA gate trong `hardware-profiler` → `core/hardware_profiler/cpu_isa.py`: chọn bản build theo cờ CPU, thiếu cờ thì từ chối (đã thử phá); Linux đọc /proc/cpuinfo; nhánh Windows viết chưa chạy, AMX trên Windows báo là không có
+- [~] P4.1 MoE local/hybrid trên llama.cpp (`--override-tensor`); đối chứng KTransformers nơi đủ ISA → llama.cpp `-ncmoe` trên Qwen3-30B-A3B đo xong (I.12); `--override-tensor` và KTransformers CHƯA
 - [ ] P4.1 `inference/moe/expert-cache` + thanh VRAM/RAM cho MoE trên dashboard
 - [ ] P4.2 Task Router Agent-level, gắn cờ `AGENT_ENSEMBLE_NON_IDENTICAL`
-- [ ] P4.3 Speculative decoding (draft cùng `tokenizer_sha256`)
+- [~] P4.3 Speculative decoding (draft cùng `tokenizer_sha256`) → đo B07 (I.12): draft 0,6B/1,7B + n-gram; cổng tokenizer cùng hash (`speculative_compatible`) xong; KHÔNG đạt điều kiện bật mặc định nên giữ tắt
 - [ ] P4.3 Kiểm riêng rollback trạng thái DeltaNet (chỉ khi D05 mở rộng Qwen3.5 được kích hoạt)
-- [ ] Test: `test_cpu_isa_gate.py` (0 SIGILL)
+- [~] Test: `test_cpu_isa_gate.py` (0 SIGILL) → `tests/unit/test_cpu_isa_gate.py` pass (logic cổng, kiểm vét cạn tập con cờ); "0 SIGILL" trên nhiều loại CPU thật chưa kiểm
 - [ ] Test: `test_moe_expert_weighting_and_deltanet_rollback.py`
-- [ ] Test: `test_b06_moe_and_b07_speculative.py`
-- [ ] Gate: B06 TPOT thấp hơn ≥ 40 % so với B02
-- [ ] Gate: B07 bật mặc định chỉ khi acceptance ≥ 0,65 và speedup ≥ 1,25×; đầu ra greedy khớp 100 %
+- [~] Test: `test_b06_moe_and_b07_speculative.py` → `tests/integration/test_b06_moe_evidence.py` kiểm bằng chứng B06; B07 mới có báo cáo + harness, chưa có test bằng chứng
+- [~] Gate: B06 TPOT thấp hơn ≥ 40 % so với B02 → TPOT 20,1 ms so với 252 ms của B02 (−92 %) nhưng khác model (MoE vs dense) và chưa so chất lượng trả lời
+- [x] Gate: B07 bật mặc định chỉ khi acceptance ≥ 0,65 và speedup ≥ 1,25×; đầu ra greedy khớp 100 % → đã đo: tốt nhất acceptance 0,49, speedup 1,185×, đầu ra greedy khớp 25 % → KHÔNG đạt cả 3 điều kiện nên speculative giữ tắt mặc định (đúng gate)
 
 ### H.7. P5 — Agent, RAG, 15 typed tasks (3–4 sprint)
 - [ ] P5.1 LangGraph orchestrator + checkpoint PostgreSQL
@@ -1279,6 +1279,11 @@ Cái đã chứng minh: chính sách định tuyến đúng ở mức đơn vị
 `llama-bench` (pp1024/tg128, 3 lần): flash attention bật so với tắt — prompt processing **+25 %** (Qwen3-8B: 1.709 → 2.144 tok/s) và **+37 %** (4B: 2.668 → 3.654); decode **+6 %** (8B 61,3 → 64,9) và **+9 %** (4B 96,0 → 104,6). Qua gateway (Qwen3-8B, 8 slot, ctx 2.048/slot, 20 s, client vòng kín): 1 luồng 57,9 → 61,2 tok/s; **8 luồng 177,4 → 214,9 tok/s (+21 %), TTFT p95 520 → 222 ms**. Hiệu chuẩn VRAM cũ (I.1) cho thấy flash attention còn dùng ÍT VRAM hơn (8B ctx 32.768: 9.333 so với 11.353 MiB).
 KV cache q8_0 (cần flash attention): chậm hơn khoảng 3–4 % so với f16 (8 luồng 205,6 so với 214,9 tok/s; llama-bench decode −2,2 %, prompt −3 %). Giá trị của nó là bộ nhớ (q8_0 nhỏ hơn f16 gần một nửa theo định dạng), nhưng mức tiết kiệm VRAM thực và ảnh hưởng chất lượng trả lời CHƯA đo — để mặc định `f16`, chỉ bật khi cần thêm slot/ngữ cảnh.
 Thay đổi: `worker-guard --flash-attn on|off|auto` (mặc định **on**, trước đây cứng `off`), `--kv-cache-type f16|q8_0` (tổ hợp q8_0 + fa off bị từ chối trước khi chạy). Bằng chứng: `benchmarks/reports/p2_engine_cfg_8b_fa{off_f16,on_f16,on_q8_0}.json`, `guard_test.go`. Giới hạn: một GPU, Linux, CUDA; Windows chưa chạy; chưa so chất lượng đầu ra; lợi ích với ngữ cảnh dài có thể lớn hơn nhưng chưa đo ở đây.
+
+### I.12. P3/P4 đo được trên 1 GPU + lease + tokenizer (RTX 3060, Linux, 2026-10-26)
+**B06 — MoE Qwen3-30B-A3B Q4_K_M, expert một phần ở CPU** (`llama-bench`, `-fa 1 -ngl 99 -t 4`, pp512/tg64, 3 lần; `p4_B06_moe_hybrid_rtx3060.json`): `-ncmoe` 48/40/32/24/18 → decode 28,0 / 33,0 / 36,4 / 42,9 / **49,9 tok/s**; prompt 243 / 484 / 595 / 697 / 801 tok/s; ≤ 16 hết VRAM. TPOT tốt nhất 20,1 ms so với 252 ms của B02 (Qwen2.5-32B dense, 3,97 tok/s): giảm 92 % (gate ≥ 40 % về tốc độ). Giới hạn: khác model (MoE vs dense) nên KHÔNG so chất lượng trả lời; chỉ 1 GPU Linux.
+**B07 — suy đoán** (target Qwen3-8B Q4_K_M, greedy, 12 prompt Việt/Anh/code, 2 lần; `p4_B07_speculative_rtx3060.json`): không suy đoán 63,6 tok/s; draft 0,6B max4 **75,3 tok/s (1,185×), acceptance 0,49**; max8 1,05×; draft 1,7B chậm hơn (0,92× / 0,76×); n-gram 0,99×. Đầu ra greedy chỉ **25–33 %** trùng với không suy đoán (hai lần chạy baseline giống nhau 100 %) — suy đoán đổi văn bản dù temperature 0. Không đạt cả 3 điều kiện (acceptance ≥ 0,65, ≥ 1,25×, khớp 100 %) → **tắt mặc định**. Cùng `tokenizer_sha256` cho cả họ Qwen3 (0,6B/1,7B/8B/4B).
+**Lease** (`apps/site-gateway/leases.go`, gRPC `LeaseService`): đặt chỗ VRAM có TTL, idempotent theo khóa, hết hạn/worker mất thì thu hồi; đã kiểm đột biến 5 cơ chế (idempotency, kiểm dung lượng, hết hạn, trần TTL, thu hồi). **Adapter llama** + **tokenizer/template**: xem H.3–H.6. Chưa có: lease bền vững (PostgreSQL), NATS, lease cho worker nhiều GPU.
 
 ### I.4. Còn trống
 Windows: toàn bộ chạy thật (bản dựng đã biên dịch được nhưng chưa từng chạy; WDDM, PDH, thu hồi GPU, dịch vụ Windows), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).
