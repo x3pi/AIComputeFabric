@@ -24,6 +24,7 @@ mkdir -p "$D/bin" "$D/logs" "$D/studio"
 
 GRPC_PORT="${GRPC_PORT:-17443}"; HTTP_PORT="${HTTP_PORT:-18080}"
 SIDECAR_PORT="${SIDECAR_PORT:-18095}"; DAG_PORT="${DAG_PORT:-18096}"; STUDIO_PORT="${STUDIO_PORT:-18098}"
+EMBED_PORT="${EMBED_PORT:-18091}"; RERANK_PORT="${RERANK_PORT:-18092}"
 export AICF_ADMIN_TOKEN="${AICF_ADMIN_TOKEN:-demo-admin-token}"
 export PYTHONPATH="$ROOT"
 LD="$(dirname "$LLAMA")"; export LD_LIBRARY_PATH="$LD:${LD_LIBRARY_PATH:-}"
@@ -40,9 +41,24 @@ if "$PY" -c "import psycopg; psycopg.connect('$PG_ADMIN_DSN', connect_timeout=2)
   TRAIN_PY=""
   [ -x "$WORK_DIR/venv-train/bin/python" ] && TRAIN_PY="$WORK_DIR/venv-train/bin/python"
   BASE_MODELS="{}"
-  [ -d "$WORK_DIR/Qwen3-0.6B-hf" ] && BASE_MODELS="{\"qwen3-0.6b\":\"$WORK_DIR/Qwen3-0.6B-hf\"}"
+  for d in "$WORK_DIR/hf-train/Qwen3-0.6B" "$WORK_DIR/Qwen3-0.6B-hf"; do
+    [ -f "$d/config.json" ] && BASE_MODELS="{\"qwen3-0.6b\":\"$d\"}" && break
+  done
+  # RAG needs an embedding server (and optionally a reranker); small models, ~1 GB of VRAM together
+  EMBED_GGUF="${EMBED_GGUF:-$WORK_DIR/Qwen3-Embedding-0.6B-Q8_0.gguf}"; RERANK_GGUF="${RERANK_GGUF:-$WORK_DIR/bge-reranker-v2-m3-Q8_0.gguf}"
+  STUDIO_RAG=()
+  if [ -f "$EMBED_GGUF" ]; then
+    "$LLAMA" -m "$EMBED_GGUF" --embedding --pooling last -ub 2048 -c 4096 -ngl 99 --host 127.0.0.1 --port "$EMBED_PORT" >"$D/logs/embed.log" 2>&1 & pids+=($!)
+    STUDIO_RAG+=(--embed-url "http://127.0.0.1:$EMBED_PORT")
+    if [ -f "$RERANK_GGUF" ]; then
+      "$LLAMA" -m "$RERANK_GGUF" --reranking -c 4096 -ngl 99 --host 127.0.0.1 --port "$RERANK_PORT" >"$D/logs/rerank.log" 2>&1 & pids+=($!)
+      STUDIO_RAG+=(--rerank-url "http://127.0.0.1:$RERANK_PORT")
+    fi
+  else
+    echo "WARNING: $EMBED_GGUF not found: AI Studio RAG will be disabled (set EMBED_GGUF=/path/to/embedding.gguf)" >&2
+  fi
   "$PY" -m studio --data-dir "$D/studio" --dsn "$PG_APP_DSN" --admin-dsn "$PG_ADMIN_DSN" --setup \
-    --port "$STUDIO_PORT" --llm-url "http://127.0.0.1:18090" \
+    --port "$STUDIO_PORT" --llm-url "http://127.0.0.1:18090" "${STUDIO_RAG[@]}" \
     ${TRAIN_PY:+--train-python "$TRAIN_PY"} --base-models "$BASE_MODELS" >"$D/logs/studio.log" 2>&1 & pids+=($!)
   GW_EXTRA+=(-agents-url "http://127.0.0.1:$DAG_PORT" -studio-url "http://127.0.0.1:$STUDIO_PORT")
 fi

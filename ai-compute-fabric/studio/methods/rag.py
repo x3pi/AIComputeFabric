@@ -42,7 +42,7 @@ class RagMethod:
 
     def _store(self) -> KnowledgeStore:
         if self.store is None:
-            raise unavailable("the knowledge base is not configured (embedding server and database are required)")
+            raise unavailable("the knowledge base is not configured: start the Studio with --embed-url pointing at a llama-server run with --embedding (e.g. Qwen3-Embedding-0.6B GGUF); deploy/demo/run_demo.sh does this when the GGUF is present")
         return self.store
 
     def mount(self, r: Router):
