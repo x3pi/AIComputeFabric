@@ -20,6 +20,7 @@ def main():
     ap.add_argument("--levels", default="1,8,32,64")
     ap.add_argument("--direct-levels", default="1,8")
     ap.add_argument("--duration", default="30s")
+    ap.add_argument("--guard-args", default="", help="extra worker-guard flags, e.g. '--flash-attn off'")
     ap.add_argument("--max-queue", type=int, default=16)
     a = ap.parse_args()
     wd = Path(a.workdir); wd.mkdir(parents=True, exist_ok=True)
@@ -32,7 +33,7 @@ def main():
         time.sleep(1)
         procs.append(subprocess.Popen([a.guard, "--llama-server", a.server, "--model", a.model, "--ctx", str(a.ctx),
                                        "--parallel", str(a.slots), "--headroom-mib", "512", "--engine-port", "18390",
-                                       "--listen", "127.0.0.1:18399", "--gateway", "127.0.0.1:17643", "--worker-id", "pc-001"],
+                                       "--listen", "127.0.0.1:18399", "--gateway", "127.0.0.1:17643", "--worker-id", "pc-001"] + a.guard_args.split(),
                                       stdout=open(wd / "guard.log", "w"), stderr=subprocess.STDOUT))
         t0 = time.time()
         while time.time() - t0 < 240:

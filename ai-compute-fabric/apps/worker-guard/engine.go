@@ -57,6 +57,8 @@ type LlamaEngine struct {
 	Bin, Model, LogPath string
 	Port, Ctx, Parallel int
 	NGL                 int
+	FlashAttn           string        // "on" | "off" | "auto"
+	KVType              string        // KV cache element type: f16 (default) or q8_0 (needs flash attention)
 	Grace               time.Duration // SIGTERM grace before SIGKILL
 
 	mu   sync.Mutex
@@ -94,6 +96,32 @@ func (e *LlamaEngine) Buffers() Buffers {
 	return e.bufs
 }
 
+// Args builds the llama-server command line. Flash attention defaults to on: on the RTX 3060 it
+// raised prompt processing 25-37 % and decode 6-9 % and used less VRAM (plan I.11). A quantised
+// KV cache only works with flash attention, so that combination is refused here instead of
+// failing inside llama-server.
+func (e *LlamaEngine) Args() ([]string, error) {
+	fa, kv := e.FlashAttn, e.KVType
+	if fa == "" {
+		fa = "on"
+	}
+	if kv == "" {
+		kv = "f16"
+	}
+	if fa != "on" && fa != "off" && fa != "auto" {
+		return nil, fmt.Errorf("flash attention must be on, off or auto, got %q", fa)
+	}
+	if kv != "f16" && kv != "q8_0" {
+		return nil, fmt.Errorf("kv cache type must be f16 or q8_0, got %q", kv)
+	}
+	if kv != "f16" && fa == "off" {
+		return nil, fmt.Errorf("kv cache type %s needs flash attention", kv)
+	}
+	return []string{"-m", e.Model, "-c", strconv.Itoa(e.Ctx * e.Parallel), "-np", strconv.Itoa(e.Parallel),
+		"-ngl", strconv.Itoa(e.NGL), "--port", strconv.Itoa(e.Port), "--host", "127.0.0.1",
+		"-fa", fa, "-ctk", kv, "-ctv", kv, "--no-warmup", "--fit", "off", "-lv", "4"}, nil
+}
+
 // Start launches llama-server and returns once /health is 200 (or on failure).
 func (e *LlamaEngine) Start() error {
 	e.mu.Lock()
@@ -106,9 +134,12 @@ func (e *LlamaEngine) Start() error {
 		}
 	}
 	e.bufs = Buffers{}
-	cmd := exec.Command(e.Bin, "-m", e.Model, "-c", strconv.Itoa(e.Ctx*e.Parallel), "-np", strconv.Itoa(e.Parallel),
-		"-ngl", strconv.Itoa(e.NGL), "--port", strconv.Itoa(e.Port), "--host", "127.0.0.1",
-		"-fa", "off", "--no-warmup", "--fit", "off", "-lv", "4")
+	args, err := e.Args()
+	if err != nil {
+		e.mu.Unlock()
+		return err
+	}
+	cmd := exec.Command(e.Bin, args...)
 	prepareCmd(cmd)
 	pr, pw := io.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw

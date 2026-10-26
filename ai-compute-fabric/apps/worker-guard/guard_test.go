@@ -325,3 +325,29 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+func TestEngineArgsFlashAttentionAndKVType(t *testing.T) {
+	has := func(a []string, k, v string) bool {
+		for i := 0; i+1 < len(a); i++ {
+			if a[i] == k && a[i+1] == v {
+				return true
+			}
+		}
+		return false
+	}
+	e := &LlamaEngine{Model: "m.gguf", Ctx: 4096, Parallel: 2, NGL: 99, Port: 1}
+	a, err := e.Args()
+	if err != nil || !has(a, "-fa", "on") || !has(a, "-ctk", "f16") || !has(a, "-c", "8192") {
+		t.Fatalf("defaults must be flash attention on, f16 KV, ctx*slots: %v %v", a, err)
+	}
+	e.FlashAttn, e.KVType = "on", "q8_0"
+	if a, err = e.Args(); err != nil || !has(a, "-ctk", "q8_0") || !has(a, "-ctv", "q8_0") {
+		t.Fatalf("q8_0 KV: %v %v", a, err)
+	}
+	for _, bad := range [][2]string{{"off", "q8_0"}, {"maybe", "f16"}, {"on", "q4_0"}} {
+		e.FlashAttn, e.KVType = bad[0], bad[1]
+		if _, err := e.Args(); err == nil {
+			t.Fatalf("%v must be refused before llama-server is started", bad)
+		}
+	}
+}

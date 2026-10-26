@@ -49,6 +49,8 @@ func serve(stop <-chan struct{}) {
 		poll     = flag.Duration("poll", 500*time.Millisecond, "normal control-loop period")
 		fastPoll = flag.Duration("fast-poll", 100*time.Millisecond, "period when free VRAM is near the headroom")
 		near     = flag.Uint64("near-margin-mib", 2048, "\"near\" = free VRAM below headroom + this")
+		fa       = flag.String("flash-attn", "on", "flash attention: on, off or auto")
+		kvType   = flag.String("kv-cache-type", "f16", "KV cache type: f16 or q8_0 (q8_0 halves KV memory, needs --flash-attn on)")
 		listen   = flag.String("listen", "127.0.0.1:8099", "dashboard/API address (loopback by default)")
 		logPath  = flag.String("engine-log", "", "write engine log here")
 		gpu      = flag.Int("gpu", 0, "GPU index")
@@ -64,7 +66,7 @@ func serve(stop <-chan struct{}) {
 	if *bin == "" || *model == "" {
 		log.Fatal("--llama-server and --model are required")
 	}
-	eng := &LlamaEngine{Bin: *bin, Model: *model, Port: *port, Ctx: *ctx, Parallel: *par, NGL: *ngl,
+	eng := &LlamaEngine{Bin: *bin, Model: *model, Port: *port, Ctx: *ctx, Parallel: *par, NGL: *ngl, FlashAttn: *fa, KVType: *kvType,
 		LogPath: *logPath, Grace: 500 * time.Millisecond}
 	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near}, SMISampler{Index: *gpu}, eng)
 	go g.Run(stop)
