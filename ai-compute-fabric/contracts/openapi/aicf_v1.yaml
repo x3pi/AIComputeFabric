@@ -1,0 +1,257 @@
+openapi: 3.0.3
+info:
+  title: AI Compute Fabric site-gateway admin API
+  version: "1"
+  description: |
+    Describes what apps/site-gateway serves today (HTTP side). It is checked against a running gateway by
+    tests/integration/test_openapi_conformance.py: every path below must exist and answer with a body that validates against
+    its schema, and every /api/ route the Go code registers must appear here. The OpenAI-compatible /v1/* inference proxy
+    and /metrics are not described (they follow the OpenAI API / Prometheus formats).
+    Roles (apps/site-gateway/rbac.go): viewer = GET; operator = GET + pause/resume (optionally limited to one site);
+    admin = everything. With no roles file and no admin token the API is open (loopback only).
+servers:
+  - url: http://127.0.0.1:8080
+security:
+  - bearer: []
+paths:
+  /api/whoami:
+    get:
+      summary: Role of the caller and what the UI may offer
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Whoami"}}}}
+  /api/stats:
+    get:
+      summary: Fleet-wide counters, pooled VRAM and router state
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Stats"}}}}
+  /api/workers:
+    get:
+      summary: Page of workers
+      parameters:
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+        - {name: state, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: ok
+          headers: {X-Total-Count: {schema: {type: integer}, description: workers matching the filter before paging}}
+          content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Worker"}}}}
+  /api/workers/{id}:
+    get:
+      summary: One worker
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Worker"}}}}
+        "404": {description: unknown worker}
+  /api/workers/{id}/pause:
+    post:
+      summary: Ask the worker to stop taking work and release the GPU (operator, admin)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: accepted}
+        "403": {description: role not allowed, or worker outside the operator's site}
+        "404": {description: unknown worker}
+  /api/workers/{id}/resume:
+    post:
+      summary: Let a paused worker start again (operator, admin)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: accepted}
+        "403": {description: role not allowed, or worker outside the operator's site}
+        "404": {description: unknown worker}
+  /api/fleet/stream:
+    get:
+      summary: Server-sent events, one frame per second with a compact cell per worker
+      responses:
+        "200": {description: "text/event-stream; each event is `data: <FleetFrame JSON>`", content: {text/event-stream: {schema: {type: string}}}}
+  /api/models/catalog:
+    get:
+      summary: Curated model catalogue with the architecture facts the VRAM estimator uses
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/CatalogModel"}}}}}
+  /api/vram/estimate:
+    get:
+      summary: VRAM estimate for a catalogue model (query parameters)
+      parameters:
+        - {name: model_id, in: query, schema: {type: string}}
+        - {name: ctx_per_slot, in: query, schema: {type: integer, minimum: 1}}
+        - {name: parallel, in: query, schema: {type: integer, minimum: 1}}
+        - {name: flash_attn, in: query, schema: {type: boolean}}
+        - {name: kv_bytes_per_elem, in: query, schema: {type: integer, enum: [1, 2]}}
+        - {name: gpu_total_mib, in: query, schema: {type: integer, minimum: 1}}
+        - {name: os_user_mib, in: query, schema: {type: integer, minimum: 0}}
+        - {name: headroom_mib, in: query, schema: {type: integer, minimum: 1}}
+        - {name: gpu_count, in: query, schema: {type: integer, minimum: 1}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Estimate"}}}}
+    post:
+      summary: Same estimate with a JSON body
+      requestBody: {content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Estimate"}}}}
+        "400": {description: bad JSON}
+  /api/tenants:
+    get:
+      summary: Tenants (API keys are never returned)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Tenant"}}}}}
+    post:
+      summary: Create a tenant; the API key is shown once (admin)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}, weight: {type: number}, max_inflight: {type: integer}}}}}}
+      responses:
+        "201": {description: created, content: {application/json: {schema: {$ref: "#/components/schemas/TenantCreated"}}}}
+        "409": {description: name already used}
+  /api/tenants/{id}:
+    patch:
+      summary: Change weight, concurrency limit or disabled flag (admin)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody: {content: {application/json: {schema: {type: object, properties: {weight: {type: number}, max_inflight: {type: integer}, disabled: {type: boolean}}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Tenant"}}}}
+        "404": {description: unknown tenant}
+  /api/tenants/{id}/rotate-key:
+    post:
+      summary: Issue a new API key; the old one stops working at once (admin)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, required: [api_key], properties: {api_key: {type: string}, note: {type: string}}}}}}
+        "404": {description: unknown tenant}
+  /api/agents/workflows:
+    get:
+      summary: Workflows known to the orchestrator (read-only view, proxied to agents/dag_api.py via --agents-url; absent when not configured)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/WorkflowSummary"}}}}}
+  /api/agents/workflows/{wf}:
+    get:
+      summary: Status of every step of one workflow (never inputs or outputs)
+      parameters: [{name: wf, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok}
+        "404": {description: unknown workflow}
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer}
+  schemas:
+    Whoami:
+      type: object
+      required: [role, name, open, can]
+      properties:
+        role: {type: string, enum: [viewer, operator, admin]}
+        name: {type: string}
+        open: {type: boolean}
+        site: {type: string}
+        can:
+          type: object
+          required: [view, pause, tenants]
+          properties: {view: {type: boolean}, pause: {type: boolean}, tenants: {type: boolean}}
+    Buckets:
+      type: object
+      required: [Total, OSUser, Weights, KVState, Compute, Headroom, Allocatable]
+      properties:
+        Total: {type: integer, minimum: 0}
+        OSUser: {type: integer, minimum: 0}
+        Weights: {type: integer, minimum: 0}
+        KVState: {type: integer, minimum: 0}
+        Compute: {type: integer, minimum: 0}
+        Headroom: {type: integer, minimum: 0}
+        Allocatable: {type: integer, minimum: 0}
+    Worker:
+      type: object
+      required: [worker_id, state, online, vram_total_bytes, vram_free_bytes, buckets, last_seen]
+      properties:
+        worker_id: {type: string}
+        site_id: {type: string}
+        hostname: {type: string}
+        gpu_name: {type: string}
+        model: {type: string}
+        state: {type: string}
+        online: {type: boolean}
+        vram_total_bytes: {type: integer, minimum: 0}
+        vram_free_bytes: {type: integer, minimum: 0}
+        buckets: {$ref: "#/components/schemas/Buckets"}
+        gpu_temp_c: {type: number}
+        user_is_active: {type: boolean}
+        pause_requested: {type: boolean}
+        last_seen: {type: string, format: date-time}
+        agent_version: {type: string}
+        engine_url: {type: string}
+        parallel_slots: {type: integer, minimum: 0}
+    Stats:
+      type: object
+      required: [at, workers_total, workers_online, counts, vram_pool, router]
+      properties:
+        at: {type: integer, description: unix milliseconds}
+        workers_total: {type: integer, minimum: 0}
+        workers_online: {type: integer, minimum: 0}
+        workers_running: {type: integer, minimum: 0}
+        workers_reclaiming: {type: integer, minimum: 0}
+        workers_yielded: {type: integer, minimum: 0}
+        workers_paused: {type: integer, minimum: 0}
+        workers_offline: {type: integer, minimum: 0}
+        counts: {type: object, additionalProperties: {type: integer}}
+        vram_pool: {type: object, required: [total_bytes, used_bytes, free_bytes], properties: {total_bytes: {type: integer}, used_bytes: {type: integer}, free_bytes: {type: integer}}}
+        reclaim_p95_ms: {type: number}
+        reclaim_max_ms: {type: number}
+        router:
+          type: object
+          required: [inflight, queued, requests_total, served_total, rejected]
+          properties:
+            inflight: {type: integer}
+            queued: {type: integer}
+            requests_total: {type: integer}
+            served_total: {type: integer}
+            failovers_total: {type: integer}
+            rejected: {type: object, additionalProperties: {type: integer}}
+    CatalogModel:
+      type: object
+      required: [id, name, quantization, gguf_file, layers, n_kv, head_dim, weights_bytes, confidence, license]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        family: {type: string}
+        quantization: {type: string}
+        gguf_file: {type: string}
+        layers: {type: integer, minimum: 1}
+        layers_attn: {type: integer}
+        n_kv: {type: integer, minimum: 1}
+        head_dim: {type: integer, minimum: 1}
+        bytes_per_kv: {type: integer}
+        weights_bytes: {type: integer, minimum: 1}
+        confidence: {type: string, enum: [ESTIMATED, CALIBRATED, MEASURED]}
+        license: {type: string}
+    Estimate:
+      type: object
+      required: [model, ctx_per_slot, parallel, required_per_gpu_bytes, allocatable_per_gpu_bytes, fit_status, execution_mode, layer_splits, confidence]
+      properties:
+        model: {$ref: "#/components/schemas/CatalogModel"}
+        ctx_per_slot: {type: integer}
+        parallel: {type: integer}
+        kv_total_bytes: {type: integer}
+        calibrated_vram_bytes: {type: integer}
+        required_per_gpu_bytes: {type: integer, minimum: 0}
+        allocatable_per_gpu_bytes: {type: integer, minimum: 0}
+        buckets_bytes: {$ref: "#/components/schemas/Buckets"}
+        fit_status: {type: string}
+        execution_mode: {type: string}
+        max_gpu_layers: {type: integer}
+        fits_entirely: {type: boolean}
+        layer_splits:
+          type: array
+          items: {type: object, required: [gpu_index, start_layer, end_layer, layer_count], properties: {gpu_index: {type: integer}, start_layer: {type: integer}, end_layer: {type: integer}, layer_count: {type: integer}, vram_bytes: {type: integer}}}
+        confidence: {type: string}
+    Tenant:
+      type: object
+      required: [id, name, weight, max_inflight, disabled]
+      properties: {id: {type: string}, name: {type: string}, weight: {type: number}, max_inflight: {type: integer}, disabled: {type: boolean}}
+    TenantCreated:
+      type: object
+      required: [tenant, api_key]
+      properties: {tenant: {$ref: "#/components/schemas/Tenant"}, api_key: {type: string}, note: {type: string}}
+    WorkflowSummary:
+      type: object
+      required: [workflow, created_at, steps, counts, state]
+      properties: {workflow: {type: string}, created_at: {type: string}, steps: {type: integer}, counts: {type: object, additionalProperties: {type: integer}}, state: {type: string, enum: [done, running, idle, failed]}}
+    FleetFrame:
+      type: object
+      required: [at, total, counts, cells]
+      properties: {at: {type: integer}, total: {type: integer}, counts: {type: object, additionalProperties: {type: integer}}, cells: {type: array, items: {type: array}}}

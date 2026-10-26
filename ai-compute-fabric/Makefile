@@ -8,6 +8,7 @@ test-go:
 	cd apps/worker-guard && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
 	cd apps/site-gateway && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
 	cd apps/global-control-plane && gofmt -l . | (! grep .) && go vet ./... && go test -race -cover ./...
+	cd contracts/gen/go && go vet ./... && go test ./...
 
 lint-go:   ## golangci-lint (config in .golangci.yml); GOLANGCI_LINT=/path/to/golangci-lint
 	@for m in core/vram-estimator apps/worker-guard apps/site-gateway apps/global-control-plane; do (cd $$m && $${GOLANGCI_LINT:-golangci-lint} run ./...) || exit 1; done
@@ -27,6 +28,9 @@ build-cross:
 
 test-py:
 	$(PY) -m pytest -q
+
+gen:   ## regenerate Python bindings (Go bindings are committed from the same protos with protoc-gen-go); then `cd contracts/gen/go && go test -update` only after an intended schema change
+	protoc -Icontracts/protobuf --python_out=contracts/gen/python contracts/protobuf/aicf/v1/fabric.proto contracts/protobuf/aicf/v1/gateway.proto
 
 proto:
 	protoc -Icontracts/protobuf --descriptor_set_out=/dev/null contracts/protobuf/aicf/v1/fabric.proto contracts/protobuf/aicf/v1/gateway.proto

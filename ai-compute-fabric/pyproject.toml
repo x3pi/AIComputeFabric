@@ -10,7 +10,7 @@ markers = ["hardware: needs real PCs / GPUs (P0+ gates), skipped on dev machines
 
 [tool.ruff]
 line-length = 160
-extend-exclude = ["third_party", ".venv", "node_modules"]
+extend-exclude = ["third_party", ".venv", "node_modules", "contracts/gen"]
 
 [tool.ruff.lint]
 # Real defects only (syntax errors, undefined names, unused imports/variables, bad comparisons); style rules are not enforced.
