@@ -1,0 +1,26 @@
+{
+ "set": "5 Vietnamese invoice-like lines rendered with DejaVu Sans, 1500px wide; degradations applied synthetically",
+ "cer_and_mean_confidence": {
+  "clean": {
+   "cer": 0.0,
+   "confidence": 0.9642
+  },
+  "small": {
+   "cer": 0.0045,
+   "confidence": 0.901
+  },
+  "blur": {
+   "cer": 0.0,
+   "confidence": 0.9625
+  },
+  "noise": {
+   "cer": 0.1345,
+   "confidence": 0.5597
+  },
+  "tilt": {
+   "cer": 0.0,
+   "confidence": 0.9439
+  }
+ },
+ "caveat": "synthetic rendering, one font, 5 lines: shows the engine's behaviour under controlled degradation, not accuracy on real scans or photos"
+}
