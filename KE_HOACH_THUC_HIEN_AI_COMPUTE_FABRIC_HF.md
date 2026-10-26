@@ -1008,7 +1008,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 
 ### H.10. P8 — Hardening, release v1.0, pilot 200 PC (2–4 sprint)
 - [ ] P8.1 Gỡ khỏi build `production` mọi engine/fork không thắng; chuyển sang `research/`
-- [ ] P8.2 SBOM (CycloneDX/SPDX), quét `trivy`, `govulncheck`, `pip-audit`
+- [~] P8.2 SBOM (CycloneDX/SPDX), quét `trivy`, `govulncheck`, `pip-audit` → `deploy/security/scan.sh`: `govulncheck` 0 lỗ hổng chạm tới cả 3 module Go sau khi nâng Go 1.22.2→1.26.10, grpc 1.69.2→1.83.2, x/net 0.30→0.60 (trước đó 59 lỗ hổng stdlib/grpc/x/net bị gọi tới); `pip-audit` chỉ báo `pip` 24.0 của venv công cụ; SBOM CycloneDX cho 3 module Go + môi trường Python (`benchmarks/reports/security/`); CHƯA có `trivy` (ảnh container), chưa ký SBOM, chưa quét giấy phép
 - [ ] P8.2 Offline bundle ký số (binary, container, thư viện HF pin, model đã kiểm SHA256)
 - [ ] P8.2 SRE Runbook; DR (PostgreSQL, NATS JetStream, Model Registry) đã diễn tập
 - [ ] P8.3 Pilot vòng 1: 10 PC × 3 ngày

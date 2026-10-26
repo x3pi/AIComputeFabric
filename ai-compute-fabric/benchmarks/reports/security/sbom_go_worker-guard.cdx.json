@@ -1,0 +1,299 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:81b3c667-c6b9-40c4-986b-ab935009beaf",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-10-26T08:40:26+07:00",
+    "tools": [
+      {
+        "vendor": "CycloneDX",
+        "name": "cyclonedx-gomod",
+        "version": "v1.12.0",
+        "hashes": [
+          {
+            "alg": "MD5",
+            "content": "24fb332b5fbb173a817c240d6b02b759"
+          },
+          {
+            "alg": "SHA-1",
+            "content": "ce582838d91e9302302cf47f05d20648225adc83"
+          },
+          {
+            "alg": "SHA-256",
+            "content": "a962ac7e2ea6f462204b28c83c49b249a4fdf57cc9b9271854b731176806bc82"
+          },
+          {
+            "alg": "SHA-384",
+            "content": "3c23fb0e88da51795ffde9fb3e0d1b35400df3739dc9eeea213368507922373df6597f709d083c7d07c31e4226cc253d"
+          },
+          {
+            "alg": "SHA-512",
+            "content": "a75b67c62b1c3ed10146ce307437e1dd635bbc2a0a7c4cc86bd87af6a83d8510f565401d77f4b5abfbe08b65b3805c44d6fc6f59e27771f54fea86443656f3fe"
+          }
+        ],
+        "externalReferences": [
+          {
+            "url": "https://github.com/CycloneDX/cyclonedx-gomod",
+            "type": "vcs"
+          },
+          {
+            "url": "https://cyclonedx.org",
+            "type": "website"
+          }
+        ]
+      }
+    ],
+    "component": {
+      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/worker-guard@v0.0.0-20261026013700-c46446487677?type=module",
+      "type": "application",
+      "name": "github.com/aicf/ai-compute-fabric/apps/worker-guard",
+      "version": "v0.0.0-20261026013700-c46446487677",
+      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/worker-guard@v0.0.0-20261026013700-c46446487677?goarch=amd64\u0026goos=linux\u0026type=module",
+      "externalReferences": [
+        {
+          "url": "https://github.com/aicf/ai-compute-fabric/apps/worker-guard",
+          "type": "vcs"
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026013700-c46446487677?type=module",
+      "type": "library",
+      "name": "github.com/aicf/ai-compute-fabric/contracts/gen/go",
+      "version": "v0.0.0-20261026013700-c46446487677",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1f5fb9bbecd53d8d04e6db7e7664f1f0d51e09516b2cce8076cd0bd6fb7a00c7"
+        }
+      ],
+      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026013700-c46446487677?goarch=amd64\u0026goos=linux\u0026type=module",
+      "externalReferences": [
+        {
+          "url": "https://github.com/aicf/ai-compute-fabric/contracts/gen/go",
+          "type": "vcs"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?type=module",
+      "type": "library",
+      "name": "github.com/aicf/ai-compute-fabric/core/vram-estimator",
+      "version": "v0.0.0-20261026013700-c46446487677",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0898c0898b7c3073ac53f166582566f12e7bb2d7b1efd194359cd110289746fe"
+        }
+      ],
+      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?goarch=amd64\u0026goos=linux\u0026type=module",
+      "externalReferences": [
+        {
+          "url": "https://github.com/aicf/ai-compute-fabric/core/vram-estimator",
+          "type": "vcs"
+        }
+      ]
+    },
+    {
+      "bom-ref": "pkg:golang/golang.org/x/net@v0.60.0?type=module",
+      "type": "library",
+      "name": "golang.org/x/net",
+      "version": "v0.60.0",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "efda79d2d7d9966d09f587e80ec4a2eb7f6a49734657013338f2c2c4cd85b185"
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/net@v0.60.0?goarch=amd64\u0026goos=linux\u0026type=module",
+      "evidence": {
+        "licenses": [
+          {
+            "license": {
+              "id": "BSD-3-Clause"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bom-ref": "pkg:golang/golang.org/x/sys@v0.48.0?type=module",
+      "type": "library",
+      "name": "golang.org/x/sys",
+      "version": "v0.48.0",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "6db5ff8bfe8c813f4154b33d453d6d866c4bd38c9e4c085b133e12c9a75b5e8a"
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/sys@v0.48.0?goarch=amd64\u0026goos=linux\u0026type=module",
+      "evidence": {
+        "licenses": [
+          {
+            "license": {
+              "id": "BSD-3-Clause"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bom-ref": "pkg:golang/golang.org/x/text@v0.42.0?type=module",
+      "type": "library",
+      "name": "golang.org/x/text",
+      "version": "v0.42.0",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "25b3995e07de08f53d81a715b5896226a3a10fece1ac4a8ae0b7dda6695466a2"
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/text@v0.42.0?goarch=amd64\u0026goos=linux\u0026type=module",
+      "evidence": {
+        "licenses": [
+          {
+            "license": {
+              "id": "BSD-3-Clause"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bom-ref": "pkg:golang/google.golang.org/genproto/googleapis/rpc@v0.0.0-20260526163538-3dc84a4a5aaa?type=module",
+      "type": "library",
+      "name": "google.golang.org/genproto/googleapis/rpc",
+      "version": "v0.0.0-20260526163538-3dc84a4a5aaa",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9991c774f665d1d6c61c27e566002afd0e3af0359515c536c21841d8a028f1f9"
+        }
+      ],
+      "purl": "pkg:golang/google.golang.org/genproto/googleapis/rpc@v0.0.0-20260526163538-3dc84a4a5aaa?goarch=amd64\u0026goos=linux\u0026type=module",
+      "evidence": {
+        "licenses": [
+          {
+            "license": {
+              "id": "Apache-2.0"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bom-ref": "pkg:golang/google.golang.org/grpc@v1.83.2?type=module",
+      "type": "library",
+      "name": "google.golang.org/grpc",
+      "version": "v1.83.2",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "10c6a7791a264ce6c0d0153b23cbd7820ffbf2e139309f4cf01dfd117d96b1c5"
+        }
+      ],
+      "purl": "pkg:golang/google.golang.org/grpc@v1.83.2?goarch=amd64\u0026goos=linux\u0026type=module",
+      "evidence": {
+        "licenses": [
+          {
+            "license": {
+              "id": "Apache-2.0"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "bom-ref": "pkg:golang/google.golang.org/protobuf@v1.36.11?type=module",
+      "type": "library",
+      "name": "google.golang.org/protobuf",
+      "version": "v1.36.11",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "7d5e99c21368703c812cad1d8fe7e0f1e92d7157a0041b84a25a5b4d0c813551"
+        }
+      ],
+      "purl": "pkg:golang/google.golang.org/protobuf@v1.36.11?goarch=amd64\u0026goos=linux\u0026type=module",
+      "evidence": {
+        "licenses": [
+          {
+            "license": {
+              "id": "BSD-3-Clause"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/worker-guard@v0.0.0-20261026013700-c46446487677?type=module",
+      "dependsOn": [
+        "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026013700-c46446487677?type=module",
+        "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?type=module",
+        "pkg:golang/golang.org/x/sys@v0.48.0?type=module",
+        "pkg:golang/google.golang.org/grpc@v1.83.2?type=module"
+      ]
+    },
+    {
+      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026013700-c46446487677?type=module",
+      "dependsOn": [
+        "pkg:golang/google.golang.org/grpc@v1.83.2?type=module",
+        "pkg:golang/google.golang.org/protobuf@v1.36.11?type=module",
+        "pkg:golang/golang.org/x/net@v0.60.0?type=module",
+        "pkg:golang/golang.org/x/sys@v0.48.0?type=module",
+        "pkg:golang/golang.org/x/text@v0.42.0?type=module",
+        "pkg:golang/google.golang.org/genproto/googleapis/rpc@v0.0.0-20260526163538-3dc84a4a5aaa?type=module"
+      ]
+    },
+    {
+      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?type=module"
+    },
+    {
+      "ref": "pkg:golang/golang.org/x/net@v0.60.0?type=module",
+      "dependsOn": [
+        "pkg:golang/golang.org/x/sys@v0.48.0?type=module",
+        "pkg:golang/golang.org/x/text@v0.42.0?type=module"
+      ]
+    },
+    {
+      "ref": "pkg:golang/golang.org/x/sys@v0.48.0?type=module"
+    },
+    {
+      "ref": "pkg:golang/golang.org/x/text@v0.42.0?type=module"
+    },
+    {
+      "ref": "pkg:golang/google.golang.org/genproto/googleapis/rpc@v0.0.0-20260526163538-3dc84a4a5aaa?type=module",
+      "dependsOn": [
+        "pkg:golang/google.golang.org/protobuf@v1.36.11?type=module"
+      ]
+    },
+    {
+      "ref": "pkg:golang/google.golang.org/grpc@v1.83.2?type=module",
+      "dependsOn": [
+        "pkg:golang/golang.org/x/net@v0.60.0?type=module",
+        "pkg:golang/golang.org/x/sys@v0.48.0?type=module",
+        "pkg:golang/golang.org/x/text@v0.42.0?type=module",
+        "pkg:golang/google.golang.org/genproto/googleapis/rpc@v0.0.0-20260526163538-3dc84a4a5aaa?type=module",
+        "pkg:golang/google.golang.org/protobuf@v1.36.11?type=module"
+      ]
+    },
+    {
+      "ref": "pkg:golang/google.golang.org/protobuf@v1.36.11?type=module"
+    }
+  ]
+}
