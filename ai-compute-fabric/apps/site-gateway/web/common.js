@@ -817,14 +817,12 @@ window.AICF_READY = (async () => {
 })();
 
 function applyRole() {
-  const { role, site, open, can } = window.AICF;
+  const { role, site, open } = window.AICF;
   const badge = document.getElementById("nav-role");
   if (badge) {
     badge.textContent = role ? (open ? "không đăng nhập (loopback)" : role + (site ? " · " + site : "")) : "chưa xác thực";
     badge.dataset.role = role || "none";
   }
-  const tab = document.querySelector('.nav-tab[href="tenants.html"]');
-  if (tab && !can.tenants) { tab.style.opacity = "0.5"; tab.title = "Chỉ vai trò admin được quản lý người dùng & khóa"; }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
