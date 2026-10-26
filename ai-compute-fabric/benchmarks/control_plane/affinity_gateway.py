@@ -14,10 +14,10 @@ def prefix(rnd, words):
     vocab = ["gpu", "worker", "tenant", "hàng đợi", "máy chủ", "bộ nhớ", "mô hình", "yêu cầu", "độ trễ", "văn phòng", "dung lượng", "lập lịch"]
     return " ".join(rnd.choice(vocab) + str(rnd.randint(0, 999)) for _ in range(words))
 
-def turn(url, messages):
-    body = json.dumps({"stream": True, "max_tokens": 24, "temperature": 0, "messages": messages,
+def turn(url, messages, max_tokens=24, tenant="demo"):
+    body = json.dumps({"stream": True, "max_tokens": max_tokens, "temperature": 0, "messages": messages,
                        "chat_template_kwargs": {"enable_thinking": False}}).encode()
-    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "X-Tenant-ID": "demo"})
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "X-Tenant-ID": tenant})
     t0, ttft, text = time.time(), None, ""
     try:
         with urllib.request.urlopen(req, timeout=180) as r:
@@ -78,8 +78,13 @@ def run_mode(a, patience, wd):
                         rows.append({"conv": f"{cid}.{n}", "turn": k, "worker": w, "ttft_ms": round(ttft, 1), "same_as_prev": (w == last) if k > 1 else None})
                     last = w
                     msgs += [{"role": "assistant", "content": text}, {"role": "user", "content": f"Còn ý chính số {k + 1} là gì?"}]
+        def noise(nid):  # unrelated long generations: they keep one worker busier so least-loaded would split conversations
+            rnd = random.Random(1000 + nid)
+            while time.time() < stop_at:
+                turn(url, [{"role": "user", "content": "Viết một đoạn dài về " + prefix(rnd, 20)}], max_tokens=160, tenant="noise")
         ts = [threading.Thread(target=conv, args=(c,)) for c in range(a.convs)]
-        [t.start() for t in ts]; [t.join() for t in ts]
+        ns = [threading.Thread(target=noise, args=(n,), daemon=True) for n in range(a.noise)]
+        [t.start() for t in ts + ns]; [t.join() for t in ts]
         print("errors:", dict(errors), flush=True)
         return rows
     finally:
@@ -100,16 +105,16 @@ def main():
     ap = argparse.ArgumentParser()
     for k in ("gateway", "guard", "server", "model", "out", "workdir"):
         ap.add_argument("--" + k, required=True)
-    ap.add_argument("--duration", type=int, default=90); ap.add_argument("--convs", type=int, default=6); ap.add_argument("--words", type=int, default=350)
+    ap.add_argument("--duration", type=int, default=90); ap.add_argument("--convs", type=int, default=6); ap.add_argument("--words", type=int, default=350); ap.add_argument("--noise", type=int, default=0); ap.add_argument("--patience", default="300ms")
     a = ap.parse_args()
     wd = Path(a.workdir); wd.mkdir(parents=True, exist_ok=True)
     out = {}
-    for name, patience in (("affinity_off", "0s"), ("affinity_on", "300ms")):
+    for name, patience in (("affinity_off", "0s"), ("affinity_on", a.patience)):
         rows = run_mode(a, patience, wd)
         out[name] = {"summary": summarize(rows), "rows": rows}
         print(name, json.dumps(out[name]["summary"]), flush=True)
     Path(a.out).write_text(json.dumps({"schema_version": 1, "model": Path(a.model).name, "conversations_in_parallel": a.convs,
-                                       "prefix_words": a.words, "modes": out}, indent=2))
+                                       "prefix_words": a.words, "noise_streams": a.noise, "patience_on": a.patience, "modes": out}, indent=2))
 
 if __name__ == "__main__":
     main()
