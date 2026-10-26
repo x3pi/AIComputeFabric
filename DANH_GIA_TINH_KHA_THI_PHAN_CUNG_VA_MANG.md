@@ -99,6 +99,35 @@ Tất cả đều trên 1× RTX 3060, Linux. **Chưa có phép đo đa máy nào
 
 ---
 
+## 4.3 Suy luận và huấn luyện: "nhiều máy" có nghĩa khác nhau
+
+Câu hỏi hay gặp: "suy luận không nên chạy nhiều máy, còn huấn luyện chịu được mạng chậm?" Cả hai vế đều cần chỉnh. Mọi mục dưới đây là [SUY LUẬN] trừ khi ghi khác; P6 (huấn luyện) chưa chạy lần nào trên dự án.
+
+**Suy luận**
+
+| Cách dùng nhiều máy | Mạng chậm có hại không | Khuyến nghị |
+|---|---|---|
+| Nhân bản độc lập (mỗi máy chạy trọn một model, gateway chia request) | Gần như không: không có dữ liệu đi giữa các máy khi decode | Mặc định |
+| Chia một model theo layer qua nhiều máy | Có: mỗi token qua mạng ở từng bước nhảy; [TÀI LIỆU] decode chậm khoảng 15–50% | Chỉ khi model dense không vừa một máy, sau khi đo B03–B05 |
+| Chia theo tensor (tensor parallel) qua LAN | Có, nặng: mỗi layer cần all-reduce [TÀI LIỆU] | Không dùng |
+
+**Huấn luyện**
+
+| Cách chạy | Chịu được mạng chậm không | Ghi chú |
+|---|---|---|
+| Công việc độc lập (mỗi máy một LoRA riêng, chạy thử nhiều cấu hình) | Có | Không cần đồng bộ |
+| Đồng bộ thưa: DiLoCo / local SGD (mỗi máy tự chạy H bước rồi mới đồng bộ) | Có, đây là mục đích thiết kế | Kế hoạch đã chọn cho trường hợp băng thông thấp (Phụ lục B dòng 6). Các bài báo DiLoCo cho rằng chất lượng gần ngang mà giảm truyền thông rất nhiều: [CHƯA XÁC MINH] trong phiên này, cần đọc lại bài gốc trước khi dựa vào |
+| DDP đồng bộ gradient mỗi bước, với LoRA | Chỉ khi mạng đủ nhanh: gradient chỉ gồm tham số adapter nên nhỏ; 10 GbE có thể chạy được, 1 GbE sẽ kéo chậm | Chưa đo |
+| DDP, huấn luyện toàn bộ trọng số (full fine-tune) qua LAN | Không | Gradient bằng cỡ model |
+
+**Hai điều kiện khác ngoài mạng**
+- **VRAM:** huấn luyện cần thêm bộ nhớ cho activation và optimizer state, nên 12 GB thực tế chỉ vừa LoRA/QLoRA trên model nhỏ. Mạng nhanh không bù được chỗ này.
+- **Máy văn phòng bị thu hồi GPU bất kỳ lúc nào:** huấn luyện đồng bộ treo cả nhóm khi một máy rút. Cần checkpoint thường xuyên; đồng bộ thưa chịu việc này tốt hơn vì các máy ít phụ thuộc nhau.
+
+**Việc cần làm trước khi dựa vào phần này:** đọc lại bài DiLoCo và tài liệu `prime-diloco`; đo thời gian một bước LoRA trên 1 máy để ước lượng kích thước gradient thực và thời gian truyền trên 1 GbE / 10 GbE; kiểm thử "mất một máy giữa lúc huấn luyện".
+
+---
+
 ## 5. Đề xuất sửa kế hoạch (chưa áp dụng, chờ bạn đồng ý)
 
 1. Phụ lục B, dòng 3: thay "LAN ≥ 2 Gbps" bằng điều kiện đo được, ví dụ: "nhóm phân tán chỉ được chọn nếu tok/s decode đo được cao hơn phương án offload RAM một máy, trên mạng có dây ≥ 10 GbE cùng switch". Số cụ thể (ví dụ 2 Gbps) hiện chỉ là phỏng đoán, không nguồn nào đỡ.
