@@ -40,6 +40,7 @@ func serve(stop <-chan struct{}) {
 	var (
 		bin      = flag.String("llama-server", "", "path to llama-server")
 		model    = flag.String("model", "", "GGUF model path")
+		lora     = flag.String("lora", "", "LoRA adapter (.gguf) to load on top of --model; trained from the same base model (see deploy/demo/worker.sh)")
 		port     = flag.Int("engine-port", 18090, "llama-server port")
 		ctx      = flag.Int("ctx", 4096, "context per slot")
 		par      = flag.Int("parallel", 1, "slots")
@@ -66,7 +67,7 @@ func serve(stop <-chan struct{}) {
 	if *bin == "" || *model == "" {
 		log.Fatal("--llama-server and --model are required")
 	}
-	eng := &LlamaEngine{Bin: *bin, Model: *model, Port: *port, Ctx: *ctx, Parallel: *par, NGL: *ngl, FlashAttn: *fa, KVType: *kvType,
+	eng := &LlamaEngine{Bin: *bin, Model: *model, Lora: *lora, Port: *port, Ctx: *ctx, Parallel: *par, NGL: *ngl, FlashAttn: *fa, KVType: *kvType,
 		LogPath: *logPath, Grace: 500 * time.Millisecond}
 	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near}, SMISampler{Index: *gpu}, eng)
 	go g.Run(stop)

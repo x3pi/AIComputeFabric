@@ -65,7 +65,8 @@ PYEOF
   else
     echo "WARNING: $EMBED_GGUF not found: AI Studio RAG will be disabled (set EMBED_GGUF=/path/to/embedding.gguf)" >&2
   fi
-  "$PY" -m studio --data-dir "$D/studio" --dsn "$PG_APP_DSN" --admin-dsn "$PG_ADMIN_DSN" --setup \
+  LCPP="$WORK_DIR/llama.cpp-py"   # convert_lora_to_gguf.py + gguf-py: lets the Studio export trained adapters for llama-server
+  "$PY" -m studio ${LCPP:+--llama-cpp-dir "$LCPP"} --data-dir "$D/studio" --dsn "$PG_APP_DSN" --admin-dsn "$PG_ADMIN_DSN" --setup \
     --port "$STUDIO_PORT" --llm-url "http://127.0.0.1:18090" "${STUDIO_RAG[@]}" \
     ${TRAIN_PY:+--train-python "$TRAIN_PY"} --base-models "$BASE_MODELS" >"$D/logs/studio.log" 2>&1 & pids+=($!)
   GW_EXTRA+=(-agents-url "http://127.0.0.1:$DAG_PORT" -studio-url "http://127.0.0.1:$STUDIO_PORT")

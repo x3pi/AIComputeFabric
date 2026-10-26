@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"net"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -348,6 +351,25 @@ func TestEngineArgsFlashAttentionAndKVType(t *testing.T) {
 		e.FlashAttn, e.KVType = bad[0], bad[1]
 		if _, err := e.Args(); err == nil {
 			t.Fatalf("%v must be refused before llama-server is started", bad)
+		}
+	}
+}
+
+func TestEngineArgsLoraAdapter(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "a.gguf")
+	if err := os.WriteFile(f, []byte("GGUF"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := (&LlamaEngine{Model: "m.gguf", Ctx: 1, Parallel: 1, NGL: 1, Port: 1, Lora: f}).Args()
+	if err != nil || a[len(a)-2] != "--lora" || a[len(a)-1] != f {
+		t.Fatalf("adapter must be passed as --lora <file>: %v %v", a, err)
+	}
+	if a, _ := (&LlamaEngine{Model: "m.gguf", Ctx: 1, Parallel: 1, NGL: 1, Port: 1}).Args(); strings.Contains(strings.Join(a, " "), "--lora") {
+		t.Fatalf("no adapter configured, no --lora: %v", a)
+	}
+	for _, bad := range []string{filepath.Join(t.TempDir(), "missing.gguf"), t.TempDir()} {
+		if _, err := (&LlamaEngine{Model: "m.gguf", Ctx: 1, Parallel: 1, NGL: 1, Port: 1, Lora: bad}).Args(); err == nil {
+			t.Fatalf("a missing adapter or a directory must be refused up front, not fail inside llama-server: %q", bad)
 		}
 	}
 }

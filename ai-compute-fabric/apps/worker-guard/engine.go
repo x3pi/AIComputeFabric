@@ -55,6 +55,7 @@ type Engine interface {
 // LlamaEngine manages one llama-server process.
 type LlamaEngine struct {
 	Bin, Model, LogPath string
+	Lora                string // optional LoRA adapter in GGUF form (llama-server --lora); must come from the same base model as Model
 	Port, Ctx, Parallel int
 	NGL                 int
 	FlashAttn           string        // "on" | "off" | "auto"
@@ -117,9 +118,19 @@ func (e *LlamaEngine) Args() ([]string, error) {
 	if kv != "f16" && fa == "off" {
 		return nil, fmt.Errorf("kv cache type %s needs flash attention", kv)
 	}
-	return []string{"-m", e.Model, "-c", strconv.Itoa(e.Ctx * e.Parallel), "-np", strconv.Itoa(e.Parallel),
+	if e.Lora != "" {
+		st, err := os.Stat(e.Lora)
+		if err != nil || st.IsDir() {
+			return nil, fmt.Errorf("LoRA adapter %q is not a readable file", e.Lora)
+		}
+	}
+	args := []string{"-m", e.Model, "-c", strconv.Itoa(e.Ctx * e.Parallel), "-np", strconv.Itoa(e.Parallel),
 		"-ngl", strconv.Itoa(e.NGL), "--port", strconv.Itoa(e.Port), "--host", "127.0.0.1",
-		"-fa", fa, "-ctk", kv, "-ctv", kv, "--no-warmup", "--fit", "off", "-lv", "4"}, nil
+		"-fa", fa, "-ctk", kv, "-ctv", kv, "--no-warmup", "--fit", "off", "-lv", "4"}
+	if e.Lora != "" {
+		args = append(args, "--lora", e.Lora)
+	}
+	return args, nil
 }
 
 // Start launches llama-server and returns once /health is 200 (or on failure).
