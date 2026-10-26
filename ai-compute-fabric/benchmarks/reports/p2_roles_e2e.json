@@ -1,0 +1,67 @@
+{
+ "date": "2026-10-26T03:52:40.517Z",
+ "ok": true,
+ "checks": [
+  {
+   "name": "viewer: no script errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "operator: no script errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "hanoi: no script errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "admin: no script errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "viewer sees a role badge and every pause button disabled",
+   "ok": true,
+   "detail": "{\"badge\":\"viewer\",\"rows\":4,\"enabled\":0,\"tenantsReadOnly\":true,\"tenantsButtonsDisabled\":true}"
+  },
+  {
+   "name": "operator may pause every worker",
+   "ok": true,
+   "detail": "{\"badge\":\"operator\",\"rows\":4,\"enabled\":4,\"tenantsReadOnly\":true,\"tenantsButtonsDisabled\":true}"
+  },
+  {
+   "name": "site-restricted operator may pause only workers of its own site",
+   "ok": true,
+   "detail": "{\"badge\":\"operator · hanoi\",\"rows\":4,\"enabled\":2,\"tenantsReadOnly\":true,\"tenantsButtonsDisabled\":true}"
+  },
+  {
+   "name": "admin may pause every worker and edit tenants",
+   "ok": true,
+   "detail": "{\"badge\":\"admin\",\"rows\":4,\"enabled\":4,\"tenantsReadOnly\":false,\"tenantsButtonsDisabled\":false}"
+  },
+  {
+   "name": "viewer and operator get a read-only tenants page",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "server: viewer pause is forbidden",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "server: hanoi operator may pause a hanoi worker, not an hcm one",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "server: operator may not create tenants",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "screenshots": "/tmp/aicf-roles-29P0WK"
+}

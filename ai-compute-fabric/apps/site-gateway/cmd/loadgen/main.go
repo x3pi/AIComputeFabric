@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -28,6 +29,7 @@ func main() {
 	viewers := flag.Int("viewers", 0, "SSE dashboard clients")
 	dur := flag.Duration("duration", 20*time.Second, "")
 	out := flag.String("out", "", "write JSON result here")
+	sites := flag.String("sites", "", "comma-separated site ids; worker i joins site i mod len (default: no site)")
 	flag.Parse()
 
 	var mu sync.Mutex
@@ -48,7 +50,11 @@ func main() {
 			defer conn.Close()
 			c := pb.NewFleetGatewayClient(conn)
 			id := fmt.Sprintf("sim-%05d", i)
-			c.Register(ctx, &pb.RegisterRequest{WorkerId: id, VramTotalBytes: 12 << 30, Hostname: id})
+			site := ""
+			if sl := strings.Split(*sites, ","); *sites != "" {
+				site = sl[i%len(sl)]
+			}
+			c.Register(ctx, &pb.RegisterRequest{WorkerId: id, SiteId: site, VramTotalBytes: 12 << 30, Hostname: id})
 			time.Sleep(time.Duration(i%1000) * time.Millisecond) // spread phases like real PCs
 			t := time.NewTicker(time.Second)
 			defer t.Stop()
