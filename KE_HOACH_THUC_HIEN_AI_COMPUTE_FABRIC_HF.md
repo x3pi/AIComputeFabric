@@ -757,6 +757,30 @@ python3 benchmarks/verify_pilot_sla.py --window-days=14 --nodes=200
 # - Thời gian thu hồi GPU p95 < 2,0 giây trên toàn cụm 200 máy thực tế.
 ```
 
+### BƯỚC 9 (P9): AI Studio — Giao Diện Quản Lý Tùy Biến Model (RAG, Prompt/Few-shot, LoRA, Full Fine-tune)
+
+> **Thêm 2026-10-26 theo yêu cầu của chủ dự án.** Mục tiêu: người vận hành doanh nghiệp tùy biến Qwen bằng 4 cách (RAG, Prompt Engineering + Few-shot, PEFT/LoRA, Full Fine-tune) qua MỘT giao diện dễ quản lý, thay vì gọi mã. Backend của RAG (P5.3) và LoRA (P6.3) đã có; P9 thêm lớp dịch vụ, API, giao diện và các kiểm thử bảo vệ.
+
+#### 1. Kiến trúc (quyết định thiết kế, để mở rộng không phải sửa lõi)
+1. **Bốn lớp, mỗi lớp chỉ nói chuyện với lớp kề:** `web/studio.html` (tĩnh, không bước build) → `site-gateway` (xác thực, RBAC theo vai trò, nhật ký kiểm toán, reverse proxy `/api/studio/`) → **dịch vụ `studio/` (Python)** theo mô hình `router → service → repository` → hạ tầng (PostgreSQL + pgvector, llama-server embed/rerank/LLM, bộ chạy job GPU).
+2. **Sổ đăng ký phương pháp (method registry):** mỗi cách tùy biến là một module cài `Method` (`id`, `title`, `status` = `available` | `unsupported` kèm lý do, `routes`, mô tả cho UI). UI dựng tab từ `GET /api/studio/v1/methods`; thêm phương pháp mới (ví dụ DPO, distillation) = thêm một module, KHÔNG sửa gateway hay lõi UI. Full fine-tune đăng ký với `status=unsupported` và lý do thật, không có nút giả.
+3. **Cô lập tenant ở tầng dữ liệu, không ở tầng giao diện:** mọi repository nhận `tenant` bắt buộc; bảng RAG dùng RLS (đã có), bảng mới (`studio_prompts`, `studio_jobs`) cũng bật RLS; hạn mức theo tenant (dung lượng tài liệu, số job song song).
+4. **Job bền vững:** bảng `studio_jobs` với máy trạng thái `queued → running → succeeded | failed | cancelled`; process con chạy huấn luyện (không chạy trong tiến trình web), tiến độ ghi JSONL, khởi động lại dịch vụ thì job `running` mồ côi bị đánh dấu `failed` (không treo mãi), hàng đợi 1 GPU, kiểm bộ nhớ bằng `training/memory_estimator.py` trước khi nhận job.
+5. **Tạo vật phẩm an toàn:** adapter lưu `safetensors` + `MANIFEST.json` (sha256); không pickle; dữ liệu tải lên bị kiểm kích thước, định dạng, zip-bomb, đường dẫn, trùng lặp; mẫu prompt BẤT BIẾN theo phiên bản (sửa = phiên bản mới, có thể quay lại).
+6. **Hợp đồng trước giao diện:** API `v1` được mô tả trong `contracts/openapi/aicf_v1.yaml` và kiểm bằng test tuân thủ với dịch vụ thật (như P1.2); UI chỉ dùng API đã có trong spec.
+7. **Vai trò:** viewer chỉ đọc; operator tải tài liệu, tạo mẫu, chạy job; admin thêm xóa dữ liệu và hủy job của người khác. Mọi thao tác ghi đi qua nhật ký kiểm toán hash-chain của gateway.
+
+#### 2. Phân rã công việc và cổng
+- **P9.1** Dịch vụ `studio/` + sổ đăng ký + proxy gateway + RBAC + OpenAPI.
+- **P9.2** RAG: tải tài liệu (txt/md/html/pdf/docx), liệt kê, xem, xóa, hỏi thử có trích dẫn nguyên văn, hạn mức.
+- **P9.3** Prompt/Few-shot: mẫu có phiên bản, mặc định theo tenant, thử trực tiếp, so sánh A/B có/không few-shot trên cùng tập câu hỏi.
+- **P9.4** LoRA: nhập Q&A (JSONL/CSV), kiểm và chia train/val, ước lượng bộ nhớ, job + hàng đợi + hủy, đường cong loss, perplexity trước/sau, xuất adapter.
+- **P9.5** Full fine-tune: trang trạng thái trung thực (cần cụm GPU), kèm ước tính bộ nhớ cần thiết (gắn nhãn ƯỚC TÍNH).
+- **P9.6** `web/studio.html` tiếng Việt, theo vai trò, kiểm bằng Chrome thật.
+- **Cổng P9:** cô lập tenant qua API (0 rò rỉ chéo tenant), tải lên độc hại bị chặn, vòng đời job đúng (kể cả hủy và khôi phục sau khi dịch vụ chết), một job LoRA thật chạy hết trên GPU và cho perplexity thấp hơn trước huấn luyện, OpenAPI tuân thủ, E2E giao diện qua.
+
+---
+
 ---
 
 ## PHẦN D — BẢNG TỔNG HỢP CỔNG NGHIỆM THU ĐỊNH LƯỢNG & LỆNH CHECK PASS
@@ -856,8 +880,9 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 | P6 | Audio & Training | 14 | 3 | 6 | Toán/chuẩn hóa, điều phối DiLoCo (logic), nạp audio, estimator bộ nhớ LoRA (đo 53 cấu hình thật); chưa có trainer, ASR/TTS/OCR, DiLoCo thật |
 | P7 | WAN, đa tenant, metering | 11 | 0 | 3 | Logic + truyền tải mTLS + sổ cái đối soát đã chạy trong tiến trình (20 kịch bản rò rỉ, đứt/nối WAN mô phỏng); chưa có 2 site thật, pen-test, Màn 5c, `tc netem` |
 | P8 | Hardening, release v1.0, pilot 200 PC | 14 | 0 | 1 | Mới có quét lỗ hổng/SBOM (0 lỗ hổng truy cập được); còn lại chưa làm |
+| P9 | AI Studio (RAG, Prompt/Few-shot, LoRA, Full-FT) | 6 | 6 | 0 | Đã chạy thật trên 1 máy Linux: Chrome → gateway (3 vai trò) → dịch vụ → PostgreSQL/llama-server/GPU; LoRA thật 80 bước 7,2 s; Full-FT hiển thị `unsupported` + ước tính. Chưa: Windows, đánh giá chất lượng câu trả lời, nạp adapter vào llama-server, E2E Chrome trong CI |
 
-**Tổng: 145 mục, 18 xong, 50 một phần, 77 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
+**Tổng: 151 mục, 24 xong, 50 một phần, 77 chưa làm (kể cả 6 mục theo dõi quyết định ở H.11).** Số đo thật xem Phần I. Mã nguồn tương ứng nằm ở `ai-compute-fabric/` (xem `README.md` ở đó). Chạy `make verify-dev` trong thư mục đó để tái kiểm chứng các mục `[x]`.
 
 ### H.1. Chuẩn bị (trước P0)
 - [x] Đọc, đánh giá kế hoạch và tài liệu kiến trúc [KT]; sửa lỗi số học, công thức, gate → Phần A
@@ -1022,6 +1047,16 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] Gate: `trivy` / `govulncheck` / `pip-audit`: 0 lỗ hổng HIGH/CRITICAL chưa vá
 - [ ] Gate: `verify_pilot_sla.py --window-days=14 --nodes=200` — uptime ≥ 99,9 %, 0 sự cố Sev-1/Sev-2, thu hồi GPU p95 < 2,0 s
 - [ ] DoD mỗi engine trong build production ([KT] §15.2)
+
+### H.10b. P9 — AI Studio (giao diện quản lý tùy biến model)
+- [x] P9.1 Dịch vụ `studio/` (router → service → repository) + sổ đăng ký phương pháp `GET /api/studio/v1/methods` — bằng chứng: `benchmarks/reports/p9_studio_evidence.json`
+- [x] P9.1 Gateway proxy `/api/studio/` + RBAC (viewer đọc, operator ghi, admin xóa) + nhật ký kiểm toán + OpenAPI tuân thủ
+- [x] P9.2 RAG: tải/liệt kê/xóa tài liệu, hỏi thử có trích dẫn, hạn mức theo tenant
+- [x] P9.3 Prompt/Few-shot: mẫu có phiên bản bất biến, mặc định theo tenant, thử trực tiếp, A/B có/không few-shot
+- [x] P9.4 LoRA: nhập và kiểm Q&A, ước lượng bộ nhớ, job + hàng đợi + hủy + khôi phục mồ côi, loss/perplexity, adapter có manifest
+- [x] P9.5 Full fine-tune: trạng thái `unsupported` trung thực kèm ước tính bộ nhớ (nhãn ƯỚC TÍNH)
+- [x] P9.6 `web/studio.html` (tab theo registry, theo vai trò) + E2E Chrome thật
+- [ ] Gate: 0 rò rỉ chéo tenant qua API; tải lên độc hại bị chặn; một job LoRA thật chạy xong với perplexity giảm
 
 ### H.11. Theo dõi quyết định mở (xóa dòng khi đã xử lý)
 - [ ] Phụ lục C #1–#10 trả lời đủ → nếu mâu thuẫn D03/D05, cập nhật Phần G bằng ADR

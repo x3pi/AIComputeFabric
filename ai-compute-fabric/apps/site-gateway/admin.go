@@ -60,6 +60,40 @@ func AgentsProxy(target string) (http.Handler, error) {
 
 // NewAPIFull is NewAPIWith plus an optional handler mounted at /api/agents/.
 func NewAPIFull(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents http.Handler, routers ...*Router) http.Handler {
+	return NewAPIStudio(f, ts, auth, audit, agents, nil, routers...)
+}
+
+// StudioProxy forwards /api/studio/* to the AI Studio service (studio/, Python). Unlike the agents view it carries
+// writes (uploads, job creation), so the body size is capped here, the client's own identity headers are discarded and the
+// caller's authenticated name and role are attached for the service to record. Roles and audit are applied by the caller.
+func StudioProxy(target string, maxBody int64) (http.Handler, error) {
+	u, err := url.Parse(target)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, fmt.Errorf("--studio-url must be an http(s) URL, got %q", target)
+	}
+	rp := &httputil.ReverseProxy{Rewrite: func(pr *httputil.ProxyRequest) {
+		pr.SetURL(u)
+		pr.Out.URL.Path = "/" + strings.TrimPrefix(pr.In.URL.Path, "/api/studio/")
+		pr.Out.URL.RawPath = ""
+		pr.Out.Header.Del("Authorization") // the service must not see the admin credential
+	}}
+	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		http.Error(w, "studio service unavailable", http.StatusBadGateway)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete:
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+		rp.ServeHTTP(w, r)
+	}), nil
+}
+
+// NewAPIStudio is NewAPIFull plus an optional handler mounted at /api/studio/.
+func NewAPIStudio(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents, studio http.Handler, routers ...*Router) http.Handler {
 	inner := HTTPHandler(f)
 	mux := http.NewServeMux()
 	var rt *Router
@@ -69,6 +103,9 @@ func NewAPIFull(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents h
 	registerEstimatorAndStatsRoutes(mux, f, ts, rt)
 	if agents != nil {
 		mux.Handle("/api/agents/", agents)
+	}
+	if studio != nil {
+		mux.Handle("/api/studio/", studio)
 	}
 	mux.HandleFunc("/api/tenants", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -145,7 +182,13 @@ func NewAPIFull(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents h
 			who(w, r, auth)
 			return
 		}
+		r.Header.Del("X-Aicf-User") // identity headers are set below from the credential, never taken from the client
+		r.Header.Del("X-Aicf-Role")
 		if !strings.HasPrefix(r.URL.Path, "/api/") || auth.Open() {
+			if auth.Open() {
+				r.Header.Set("X-Aicf-User", "open")
+				r.Header.Set("X-Aicf-Role", RoleAdmin)
+			}
 			mux.ServeHTTP(w, r)
 			return
 		}
@@ -161,6 +204,8 @@ func NewAPIFull(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents h
 			note(p, r, http.StatusForbidden)
 			return
 		}
+		r.Header.Set("X-Aicf-User", p.Name)
+		r.Header.Set("X-Aicf-Role", p.Role)
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
 			mux.ServeHTTP(w, r)
 			return
@@ -197,6 +242,7 @@ func who(w http.ResponseWriter, r *http.Request, auth *Auth) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name": p.Name, "role": p.Role, "site": p.Site, "open": open,
-		"can": map[string]bool{"view": probe("GET", "/api/stats"), "pause": probe("POST", "/api/workers/x/pause"), "tenants": probe("POST", "/api/tenants")},
+		"can": map[string]bool{"view": probe("GET", "/api/stats"), "pause": probe("POST", "/api/workers/x/pause"), "tenants": probe("POST", "/api/tenants"),
+			"studio": probe("POST", "/api/studio/x"), "studio_delete": probe("DELETE", "/api/studio/x")},
 	})
 }

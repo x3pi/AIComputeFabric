@@ -31,11 +31,12 @@ def sha256_of(path: Path) -> str:
 
 class LoraWorker:
     def __init__(self, base_dir: str | Path, texts: list[str], rank: int = 8, seq: int = 128, batch: int = 4, lr: float = 2e-3,
-                 lora_fa: bool = True, seed: int = 0, device: str = "cuda"):
+                 lora_fa: bool = True, seed: int = 0, device: str = "cuda", persistent_opt: bool = False):
         import torch
         from peft import LoraConfig, get_peft_model
         from transformers import AutoModelForCausalLM, AutoTokenizer
         self.torch, self.device, self.seq, self.batch, self.lr = torch, device, seq, batch, lr
+        self.persistent_opt, self._opt = persistent_opt, None      # DiLoCo restarts AdamW every round; a single-machine run keeps its moments
         tok = AutoTokenizer.from_pretrained(base_dir)
         ids = [tok(t, return_tensors="pt", truncation=True, max_length=seq).input_ids[0] for t in texts]
         self.pad = tok.pad_token_id if tok.pad_token_id is not None else 0
@@ -73,7 +74,12 @@ class LoraWorker:
         """h AdamW steps from the current parameters on batches drawn with `seed`; returns the losses."""
         torch = self.torch
         self.model.train()
-        opt = torch.optim.AdamW(list(self.trainable.values()), lr=self.lr, weight_decay=0.0)
+        if self.persistent_opt and self._opt is not None:
+            opt = self._opt
+        else:
+            opt = torch.optim.AdamW(list(self.trainable.values()), lr=self.lr, weight_decay=0.0)
+            if self.persistent_opt:
+                self._opt = opt
         rng = np.random.default_rng(seed)
         losses = []
         for _ in range(h):

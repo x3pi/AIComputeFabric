@@ -102,6 +102,10 @@ func Allowed(p Principal, r *http.Request, siteOf func(string) string) bool {
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		return p.Role == RoleViewer || p.Role == RoleOperator
 	}
+	// AI Studio: an operator may upload, create and run (POST/PUT); deleting data is admin-only (DELETE falls through to false).
+	if p.Role == RoleOperator && (r.Method == http.MethodPost || r.Method == http.MethodPut) && strings.HasPrefix(r.URL.Path, "/api/studio/") {
+		return true
+	}
 	if p.Role == RoleOperator && r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/workers/") {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/workers/"), "/")
 		if len(parts) == 2 && (parts[1] == "pause" || parts[1] == "resume") {

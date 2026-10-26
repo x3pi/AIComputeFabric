@@ -80,7 +80,7 @@ def test_every_parameterless_get_matches_its_schema(gateway):
     checked = []
     for path, item in SPEC["paths"].items():
         op = item.get("get")
-        if not op or "{" in path or path.startswith("/api/agents") or path.endswith("/stream"):
+        if not op or "{" in path or path.startswith(("/api/agents", "/api/studio")) or path.endswith("/stream"):
             continue
         st, raw, h = call(gateway, "GET", path)
         assert st == 200, (path, st, raw[:200])

@@ -144,6 +144,184 @@ paths:
       responses:
         "200": {description: ok}
         "404": {description: unknown workflow}
+  /api/studio/v1/methods:
+    get:
+      summary: Customisation methods the Studio offers; the UI builds its tabs from this (viewer)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/StudioMethods"}}}}
+  /api/studio/v1/health:
+    get:
+      summary: Studio service health and what is configured (viewer)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/StudioHealth"}}}}
+  /api/studio/v1/lora/base-models:
+    get:
+      summary: Base models available for LoRA on this machine (viewer)
+      responses:
+        "200": {description: ok}
+  /api/studio/v1/full-ft/estimate:
+    get:
+      summary: Full fine-tune memory ESTIMATE per base model; the method itself is unsupported (viewer)
+      responses:
+        "200": {description: ok}
+  /api/studio/v1/tenants/{tenant}/rag/documents:
+    get:
+      summary: Documents in the tenant knowledge base (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      responses:
+        "200": {description: ok}
+    post:
+      summary: Upload a .txt/.md/.html/.pdf/.docx document, or replace one of the same name (operator)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}, text: {type: string}, content_base64: {type: string}, data_class: {type: string, enum: [PUBLIC, INTERNAL, RESTRICTED]}}}}}}
+      responses:
+        "201": {description: ingested}
+        "400": {description: invalid input, content: {application/json: {schema: {$ref: "#/components/schemas/StudioError"}}}}
+        "429": {description: quota exceeded}
+  /api/studio/v1/tenants/{tenant}/rag/documents/{doc}:
+    get:
+      summary: Chunks of one document (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: doc, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok}
+        "404": {description: unknown document}
+    delete:
+      summary: Remove a document and its chunks (admin)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: doc, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: deleted}
+        "404": {description: unknown document}
+  /api/studio/v1/tenants/{tenant}/rag/search:
+    post:
+      summary: Retrieve the passages most relevant to a query (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [query], properties: {query: {type: string}, top_k: {type: integer, minimum: 1, maximum: 20}}}}}}
+      responses:
+        "200": {description: ok}
+  /api/studio/v1/tenants/{tenant}/rag/ask:
+    post:
+      summary: Answer from the tenant documents with numbered sources and warnings when the answer is not grounded (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [query], properties: {query: {type: string}, top_k: {type: integer}, prompt_name: {type: string}, prompt_version: {type: integer}, max_tokens: {type: integer}}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/RagAnswer"}}}}
+        "503": {description: language model unavailable}
+  /api/studio/v1/tenants/{tenant}/prompts:
+    get:
+      summary: Prompt templates of the tenant (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      responses:
+        "200": {description: ok}
+    post:
+      summary: Save a NEW immutable version of a template (operator)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name, system], properties: {name: {type: string}, system: {type: string}, examples: {type: array, items: {type: object}}, note: {type: string}}}}}}
+      responses:
+        "201": {description: saved}
+        "400": {description: invalid input, content: {application/json: {schema: {$ref: "#/components/schemas/StudioError"}}}}
+        "429": {description: quota exceeded}
+  /api/studio/v1/tenants/{tenant}/prompts/test:
+    post:
+      summary: Run one question through a template (saved or ad hoc), with or without its examples (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [question]}}}}
+      responses:
+        "200": {description: ok}
+  /api/studio/v1/tenants/{tenant}/prompts/compare:
+    post:
+      summary: Same questions with and without the few-shot examples, scored by substring / JSON validity (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [questions]}}}}
+      responses:
+        "200": {description: ok}
+  /api/studio/v1/tenants/{tenant}/prompt-default:
+    get:
+      summary: The template used when a request names none (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      responses:
+        "200": {description: ok}
+    put:
+      summary: Choose the default template version (operator)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name, version]}}}}
+      responses:
+        "200": {description: ok}
+        "404": {description: unknown template or version}
+  /api/studio/v1/tenants/{tenant}/prompts/{name}:
+    get:
+      summary: All versions of a template (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: name, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok}
+        "404": {description: unknown template}
+    delete:
+      summary: Delete every version of a template (admin)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: name, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: deleted}
+        "404": {description: unknown template}
+  /api/studio/v1/tenants/{tenant}/prompts/{name}/{version}:
+    get:
+      summary: One version of a template (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: name, in: path, required: true, schema: {type: string}}, {name: version, in: path, required: true, schema: {type: integer}}]
+      responses:
+        "200": {description: ok}
+        "404": {description: unknown version}
+  /api/studio/v1/tenants/{tenant}/lora/datasets/preview:
+    post:
+      summary: Validate a Q&A dataset (JSONL or CSV) without training; reports bad rows by line (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [content]}}}}
+      responses:
+        "200": {description: ok}
+        "400": {description: invalid input, content: {application/json: {schema: {$ref: "#/components/schemas/StudioError"}}}}
+  /api/studio/v1/tenants/{tenant}/lora/jobs:
+    get:
+      summary: LoRA jobs of the tenant, newest first, with the runner state (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      responses:
+        "200": {description: ok}
+    post:
+      summary: Queue a LoRA job; refused when the estimated memory does not fit the GPU budget (operator)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [base_model, content]}}}}
+      responses:
+        "202": {description: queued, content: {application/json: {schema: {$ref: "#/components/schemas/StudioJob"}}}}
+        "400": {description: invalid input, content: {application/json: {schema: {$ref: "#/components/schemas/StudioError"}}}}
+        "429": {description: too many unfinished jobs}
+  /api/studio/v1/tenants/{tenant}/lora/jobs/{job}:
+    get:
+      summary: One job with its progress (loss curve) and result (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: job, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/StudioJob"}}}}
+        "404": {description: unknown job}
+    delete:
+      summary: Delete a finished job and its adapter (admin)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: job, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: deleted}
+        "409": {description: job not finished}
+  /api/studio/v1/tenants/{tenant}/lora/jobs/{job}/cancel:
+    post:
+      summary: Cancel a queued or running job (operator)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: job, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/StudioJob"}}}}
+        "409": {description: already finished}
+  /api/studio/v1/tenants/{tenant}/lora/jobs/{job}/log:
+    get:
+      summary: Tail of the worker log (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: job, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok}
+  /api/studio/v1/tenants/{tenant}/lora/jobs/{job}/adapter:
+    get:
+      summary: The trained adapter as a zip of safetensors files plus a sha256 manifest (viewer)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"}}, {name: job, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: zip, content: {application/zip: {schema: {type: string, format: binary}}}}
+        "409": {description: the job has no adapter}
 components:
   securitySchemes:
     bearer: {type: http, scheme: bearer}
@@ -159,7 +337,7 @@ components:
         can:
           type: object
           required: [view, pause, tenants]
-          properties: {view: {type: boolean}, pause: {type: boolean}, tenants: {type: boolean}}
+          properties: {view: {type: boolean}, pause: {type: boolean}, tenants: {type: boolean}, studio: {type: boolean}, studio_delete: {type: boolean}}
     Buckets:
       type: object
       required: [Total, OSUser, Weights, KVState, Compute, Headroom, Allocatable]
@@ -271,3 +449,38 @@ components:
       type: object
       required: [at, total, counts, cells]
       properties: {at: {type: integer}, total: {type: integer}, counts: {type: object, additionalProperties: {type: integer}}, cells: {type: array, items: {type: array}}}
+    StudioError:
+      type: object
+      required: [error]
+      properties: {error: {type: object, required: [code, message], properties: {code: {type: string}, message: {type: string}}}}
+    StudioMethods:
+      type: object
+      required: [methods]
+      properties:
+        methods:
+          type: array
+          items:
+            type: object
+            required: [id, title, summary, status]
+            properties: {id: {type: string}, title: {type: string}, summary: {type: string}, status: {type: string, enum: [available, unsupported]}, reason: {type: string}, when_to_use: {type: string}, limits: {type: array, items: {type: string}}}
+    StudioHealth:
+      type: object
+      required: [ok, knowledge_base, llm, trainer, runner]
+      properties: {ok: {type: boolean}, knowledge_base: {type: boolean}, llm: {type: boolean}, trainer: {type: boolean}, runner: {type: object}}
+    RagAnswer:
+      type: object
+      required: [query, answer, sources, cited, warnings]
+      properties: {query: {type: string}, answer: {type: string}, sources: {type: array, items: {type: object}}, cited: {type: array, items: {type: integer}}, warnings: {type: array, items: {type: string}}}
+    StudioJob:
+      type: object
+      required: [id, tenant, kind, status, params, created_by, created_at]
+      properties:
+        id: {type: string, pattern: "^[0-9a-f]{32}$"}
+        tenant: {type: string}
+        kind: {type: string}
+        status: {type: string, enum: [queued, running, succeeded, failed, cancelled]}
+        params: {type: object}
+        created_by: {type: string}
+        created_at: {type: string, format: date-time}
+        result: {description: object once the job succeeded, otherwise null}
+        error: {description: reason when failed or cancelled, otherwise null}

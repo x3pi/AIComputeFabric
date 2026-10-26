@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AICF AI Studio — Tùy biến model</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="common.css">
+<style>
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 14px; }
+.tabs button[aria-selected="true"] { background: var(--acc-soft); border-color: var(--acc); color: var(--acc); }
+.tabs button .tag { font-size: 10px; margin-left: 6px; opacity: .8; }
+.stack > * + * { margin-top: 10px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--mut); }
+.field input, .field select, .field textarea { font-size: 13px; }
+.src { border-left: 3px solid var(--acc); padding: 6px 10px; margin: 6px 0; background: var(--bg-elevated); border-radius: 0 6px 6px 0; font-size: 13px; }
+.src .q { color: var(--fg); font-weight: 600; }
+.shot { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: start; }
+.bar { height: 8px; background: var(--bd); border-radius: 4px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--acc); }
+.answer { white-space: pre-wrap; padding: 10px; border: 1px solid var(--bd); border-radius: 8px; background: var(--card); }
+.limits { margin: 6px 0 0 18px; padding: 0; color: var(--mut); font-size: 12px; }
+#loss { width: 100%; height: 90px; display: block; }
+pre.log { max-height: 220px; overflow: auto; font-size: 11px; background: var(--bg-elevated); padding: 8px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>AI Studio — Tùy biến model theo dữ liệu của bạn</h1>
+      <div class="sub">Bốn cách đưa kiến thức và văn phong của doanh nghiệp vào model: tri thức nội bộ (RAG), prompt và ví dụ mẫu, huấn luyện LoRA, và fine-tune toàn bộ (chưa hỗ trợ trên máy này). Mọi dữ liệu tách riêng theo tenant.</div>
+    </div>
+    <div class="row" style="gap:8px">
+      <label class="field">Tenant <input id="tenant" value="demo" maxlength="64" style="width:160px"></label>
+      <span id="health" class="pill">…</span>
+    </div>
+  </div>
+  <div id="ro" class="readonly-banner" hidden>Bạn chỉ có quyền xem. Cần vai trò operator để tải lên, huấn luyện hoặc lưu prompt; admin để xóa.</div>
+  <div id="tabs" class="tabs" role="tablist"></div>
+  <div id="panel"></div>
+  <div id="msg" class="mut" role="status" aria-live="polite" style="margin-top:10px;font-size:13px"></div>
+</main>
+<script>
+const API = "/api/studio";
+let METHODS = [], CURRENT = null, POLL = null;
+const tenant = () => (document.getElementById("tenant").value || "").trim();
+const T = p => `${API}/v1/tenants/${encodeURIComponent(tenant())}/${p}`;
+const canWrite = () => !!(window.AICF && AICF.can && AICF.can.studio);
+const canDelete = () => !!(window.AICF && AICF.can && AICF.can.studio_delete);
+function say(text, cls) { const m = document.getElementById("msg"); m.textContent = text || ""; m.className = cls || "mut"; }
+
+async function call(method, url, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
+  const r = await api(url, opts);
+  if (!r) throw new Error("không kết nối được");
+  const ct = r.headers.get("Content-Type") || "";
+  const data = ct.includes("json") ? await r.json() : await r.blob();
+  if (!r.ok) throw new Error((data.error && data.error.message) || ("lỗi " + r.status));
+  return data;
+}
+async function guarded(fn) { try { say(""); await fn(); } catch (e) { say(e.message, "err"); } }
+function field(label, input) { return el("label", { class: "field" }, label, input); }
+function readFile(file, asBase64) {
+  return new Promise((ok, no) => { const fr = new FileReader(); fr.onerror = () => no(new Error("không đọc được tệp"));
+    fr.onload = () => ok(asBase64 ? fr.result.split(",")[1] : fr.result); asBase64 ? fr.readAsDataURL(file) : fr.readAsText(file); });
+}
+function table(head, rows) {
+  return el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, el("tr", {}, ...head.map(h => el("th", {}, h)))), el("tbody", {}, ...rows)));
+}
+function methodCard(m) {
+  const card = el("div", { class: "card" }, el("div", { class: "card-header" }, el("h2", {}, m.title),
+    el("span", { class: "pill " + (m.status === "available" ? "ok" : "warn") }, m.status === "available" ? "sẵn sàng" : "chưa hỗ trợ")),
+    el("p", {}, m.summary));
+  if (m.when_to_use) card.append(el("p", { class: "mut" }, "Khi nào dùng: " + m.when_to_use));
+  if (m.reason) card.append(el("p", { class: "warn-txt" }, "Lý do chưa hỗ trợ: " + m.reason));
+  if (m.limits && m.limits.length) card.append(el("ul", { class: "limits" }, ...m.limits.map(l => el("li", {}, l))));
+  return card;
+}
+
+// ---- RAG ---------------------------------------------------------------------------------------
+async function renderRag(root) {
+  const list = el("div"), ask = el("div", { class: "stack" });
+  const file = el("input", { type: "file", accept: ".txt,.md,.html,.pdf,.docx", id: "rag-file" });
+  const cls = el("select", { id: "rag-class" }, ...["INTERNAL", "PUBLIC", "RESTRICTED"].map(c => el("option", { value: c }, c)));
+  const up = el("button", { class: "primary", disabled: !canWrite(), onclick: () => guarded(async () => {
+    if (!file.files[0]) throw new Error("chọn một tệp trước");
+    const f = file.files[0];
+    const r = await call("POST", T("rag/documents"), { name: f.name, content_base64: await readFile(f, true), data_class: cls.value });
+    say(`Đã nạp ${r.id}: ${r.chunks} đoạn` + (r.replaced ? " (thay bản cũ)" : ""), "ok"); await refresh();
+  }) }, "Tải lên");
+  async function refresh() {
+    const d = await call("GET", T("rag/documents"));
+    list.replaceChildren(table(["Tài liệu", "Đoạn", "Ký tự", "Phân loại", ""], d.documents.map(x => el("tr", {},
+      el("td", {}, x.id), el("td", { class: "num" }, String(x.chunks)), el("td", { class: "num" }, String(x.chars)), el("td", {}, x.data_class),
+      el("td", {}, el("button", { class: "sm ghost", disabled: !canDelete(), title: canDelete() ? "" : "Cần vai trò admin", onclick: () => guarded(async () => {
+        if (confirm("Xóa " + x.id + "?")) { await call("DELETE", T("rag/documents/" + encodeURIComponent(x.id))); await refresh(); } }) }, "Xóa"))))),
+      el("div", { class: "mut" }, `${d.totals.documents}/${d.quota.max_documents} tài liệu · ${d.totals.chars.toLocaleString("vi-VN")} ký tự`));
+  }
+  const q = el("input", { id: "rag-q", placeholder: "Đặt câu hỏi về tài liệu…", style: "flex:1" });
+  const go = el("button", { class: "primary", onclick: () => guarded(async () => {
+    go.disabled = true; ask.replaceChildren(el("div", { class: "mut" }, "Đang tìm và trả lời…"));
+    try {
+      const r = await call("POST", T("rag/ask"), { query: q.value });
+      ask.replaceChildren(el("div", { class: "answer", id: "rag-answer" }, r.answer),
+        ...r.warnings.map(w => el("div", { class: "warn-txt" }, "⚠ " + ({ no_source_marker: "Câu trả lời không dẫn số nguồn.", empty_knowledge_base: "Kho tri thức đang trống." }[w] || w))),
+        el("h3", {}, "Nguồn"), ...r.sources.map((s, i) => el("div", { class: "src" + (r.cited.includes(i + 1) ? " cited" : "") },
+          el("div", { class: "mut" }, `[${i + 1}] ${s.doc} · đoạn ${s.chunk}` + (r.cited.includes(i + 1) ? " · được dẫn" : "")), el("div", { class: "q" }, s.quote), el("div", { class: "mut" }, s.text))));
+    } finally { go.disabled = false; }
+  }) }, "Hỏi");
+  root.append(el("div", { class: "card stack" }, el("h2", {}, "Kho tri thức"),
+    el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" }, file, field("Phân loại dữ liệu", cls), up), list),
+    el("div", { class: "card stack" }, el("h2", {}, "Hỏi đáp có dẫn nguồn"), el("div", { class: "row", style: "gap:8px" }, q, go), ask));
+  await refresh();
+}
+
+// ---- Prompts / few-shot --------------------------------------------------------------------------
+async function renderPrompts(root) {
+  const shots = el("div", { class: "stack", id: "shots" });
+  const name = el("input", { id: "p-name", placeholder: "ví dụ: tro-ly-nhan-su", maxlength: 64 });
+  const sys = el("textarea", { id: "p-sys", rows: 4, placeholder: "Bạn là trợ lý… (vai trò, giọng văn, định dạng đầu ra)" });
+  const note = el("input", { id: "p-note", placeholder: "ghi chú phiên bản (tùy chọn)", maxlength: 500 });
+  function addShot(q, a) {
+    const row = el("div", { class: "shot" }, el("textarea", { rows: 2, placeholder: "Câu hỏi mẫu" }, q || ""), el("textarea", { rows: 2, placeholder: "Trả lời mẫu" }, a || ""),
+      el("button", { class: "sm ghost", onclick: () => row.remove() }, "✕"));
+    row.children[0].value = q || ""; row.children[1].value = a || ""; shots.append(row);
+  }
+  const examples = () => [...shots.children].map(r => ({ question: r.children[0].value, answer: r.children[1].value })).filter(e => e.question.trim() || e.answer.trim());
+  const saved = el("div"), out = el("div", { class: "stack" });
+  async function refresh() {
+    const d = await call("GET", T("prompts"));
+    saved.replaceChildren(table(["Mẫu", "Phiên bản", "Cập nhật", ""], d.templates.map(x => el("tr", {},
+      el("td", {}, x.name + (x.is_default ? " ★ mặc định" : "")), el("td", { class: "num" }, "v" + x.latest + " (" + x.versions + ")"), el("td", {}, x.updated_at.slice(0, 16).replace("T", " ")),
+      el("td", {}, el("button", { class: "sm", onclick: () => guarded(async () => {
+        const v = await call("GET", T("prompts/" + encodeURIComponent(x.name) + "/" + x.latest));
+        name.value = v.name; sys.value = v.system; note.value = ""; shots.replaceChildren(); v.examples.forEach(e => addShot(e.question, e.answer)); }) }, "Mở"),
+        el("button", { class: "sm", disabled: !canWrite(), onclick: () => guarded(async () => { await call("PUT", T("prompt-default"), { name: x.name, version: x.latest }); await refresh(); }) }, "Đặt mặc định"),
+        el("button", { class: "sm ghost", disabled: !canDelete(), onclick: () => guarded(async () => { if (confirm("Xóa mọi phiên bản của " + x.name + "?")) { await call("DELETE", T("prompts/" + encodeURIComponent(x.name))); await refresh(); } }) }, "Xóa"))))));
+  }
+  const save = el("button", { class: "primary", disabled: !canWrite(), onclick: () => guarded(async () => {
+    const r = await call("POST", T("prompts"), { name: name.value, system: sys.value, examples: examples(), note: note.value });
+    say(`Đã lưu ${r.name} v${r.version} (phiên bản cũ không bị sửa)`, "ok"); await refresh(); }) }, "Lưu phiên bản mới");
+  const body = () => ({ system: sys.value, examples: examples() });
+  const tq = el("input", { id: "p-test-q", placeholder: "Câu hỏi thử…", style: "flex:1" });
+  const test = el("button", { onclick: () => guarded(async () => {
+    out.replaceChildren(el("div", { class: "mut" }, "Đang chạy…"));
+    const [a, b] = [await call("POST", T("prompts/test"), { ...body(), question: tq.value, with_examples: false }), await call("POST", T("prompts/test"), { ...body(), question: tq.value, with_examples: true })];
+    out.replaceChildren(el("div", { class: "cols" }, el("div", {}, el("h3", {}, "Không ví dụ mẫu"), el("div", { class: "answer" }, a.answer)), el("div", {}, el("h3", {}, "Có " + b.used.examples + " ví dụ mẫu"), el("div", { class: "answer", id: "p-fewshot" }, b.answer)))); }) }, "So sánh trên một câu");
+  const cmp = el("textarea", { id: "p-cmp", rows: 4, placeholder: "Mỗi dòng: câu hỏi | đáp án mong đợi (tùy chọn)" });
+  const cmpGo = el("button", { onclick: () => guarded(async () => {
+    const qs = cmp.value.split("\n").filter(l => l.trim()).map(l => { const [q, e] = l.split("|"); return { question: q.trim(), expected: e && e.trim() || undefined }; });
+    out.replaceChildren(el("div", { class: "mut" }, "Đang chạy " + qs.length * 2 + " lượt…"));
+    const r = await call("POST", T("prompts/compare"), { ...body(), questions: qs });
+    const s = r.summary;
+    out.replaceChildren(el("div", {}, `Khớp đáp án — không ví dụ: ${s.zero_shot.contains_expected}/${s.zero_shot.scored} · có ví dụ: ${s.few_shot.contains_expected}/${s.few_shot.scored}`), el("div", { class: "mut" }, r.note),
+      table(["Câu hỏi", "Không ví dụ", "Có ví dụ"], r.rows.map(x => el("tr", {}, el("td", {}, x.question), el("td", { class: x.zero_shot.contains_expected ? "ok" : "" }, x.zero_shot.answer), el("td", { class: x.few_shot.contains_expected ? "ok" : "" }, x.few_shot.answer))))); }) }, "So sánh nhiều câu");
+  root.append(el("div", { class: "card stack" }, el("h2", {}, "Mẫu prompt đã lưu"), saved),
+    el("div", { class: "card stack" }, el("h2", {}, "Soạn prompt + ví dụ mẫu (few-shot)"), field("Tên", name), field("Chỉ dẫn hệ thống", sys), el("h3", {}, "Ví dụ mẫu"), shots,
+      el("div", { class: "row", style: "gap:8px" }, el("button", { class: "sm", onclick: () => addShot() }, "+ Thêm ví dụ"), field("Ghi chú", note), save)),
+    el("div", { class: "card stack" }, el("h2", {}, "Thử nghiệm"), el("div", { class: "row", style: "gap:8px" }, tq, test), field("Bộ câu hỏi so sánh", cmp), cmpGo, out));
+  addShot(); await refresh();
+}
+
+// ---- LoRA ----------------------------------------------------------------------------------------
+async function renderLora(root) {
+  const bm = await call("GET", API + "/v1/lora/base-models");
+  const model = el("select", { id: "l-model" }, ...bm.base_models.map(m => el("option", { value: m.name }, `${m.name} (${m.params_million}M)`)));
+  const fmt = el("select", { id: "l-fmt" }, el("option", { value: "jsonl" }, "JSONL"), el("option", { value: "csv" }, "CSV"));
+  const data = el("textarea", { id: "l-data", rows: 6, placeholder: '{"question": "...", "answer": "..."} mỗi dòng (JSONL) hoặc CSV có cột question,answer' });
+  const file = el("input", { type: "file", accept: ".jsonl,.json,.csv,.txt", onchange: () => guarded(async () => { const f = file.files[0]; if (f) { data.value = await readFile(f, false); fmt.value = f.name.endsWith(".csv") ? "csv" : "jsonl"; } }) });
+  const num = (id, label, v, min, max, step) => field(label, el("input", { id, type: "number", value: v, min, max, step: step || 1 }));
+  const rank = num("l-rank", "Rank", 8, 1, 64), steps = num("l-steps", "Số bước", 200, 10, 5000), batch = num("l-batch", "Batch", 4, 1, 16), seq = num("l-seq", "Độ dài tối đa (token)", 256, 32, 1024), lr = num("l-lr", "Learning rate", 0.002, 0.000001, 0.1, "any");
+  const prev = el("div"), jobs = el("div", { class: "stack" }), detail = el("div", { class: "stack" });
+  const val = id => document.getElementById(id).value;
+  const params = () => ({ base_model: model.value, format: fmt.value, content: data.value, rank: +val("l-rank"), steps: +val("l-steps"), batch: +val("l-batch"), seq: +val("l-seq"), lr: +val("l-lr") });
+  const previewBtn = el("button", { onclick: () => guarded(async () => {
+    const r = await call("POST", T("lora/datasets/preview"), params());
+    prev.replaceChildren(el("div", {}, `Hợp lệ ${r.valid} (huấn luyện ${r.train} · kiểm tra ${r.validation}) · trùng đã loại ${r.duplicates_removed} · lỗi ${r.invalid}`),
+      r.warning ? el("div", { class: "warn-txt" }, r.warning) : null, ...r.errors.map(e => el("div", { class: "err" }, `dòng ${e.line}: ${e.error}`)));
+  }) }, "Kiểm tra dữ liệu");
+  const start = el("button", { class: "primary", disabled: !canWrite(), onclick: () => guarded(async () => {
+    const j = await call("POST", T("lora/jobs"), params()); say("Đã tạo job " + j.id.slice(0, 8), "ok"); await refresh(); await show(j.id); }) }, "Bắt đầu huấn luyện");
+  function loss(progress) {
+    const pts = progress.filter(p => p.loss != null);
+    if (pts.length < 2) return null;
+    const W = 600, H = 90, max = Math.max(...pts.map(p => p.loss)), min = Math.min(...pts.map(p => p.loss));
+    const xy = pts.map((p, i) => `${(i / (pts.length - 1) * W).toFixed(1)},${(H - 8 - (p.loss - min) / ((max - min) || 1) * (H - 16)).toFixed(1)}`).join(" ");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.id = "loss"; svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "Đường loss");
+    const pl = document.createElementNS("http://www.w3.org/2000/svg", "polyline"); pl.setAttribute("points", xy); pl.setAttribute("fill", "none"); pl.setAttribute("stroke", "var(--acc)"); pl.setAttribute("stroke-width", "2"); svg.append(pl);
+    return svg;
+  }
+  const VI = { queued: "đang chờ", running: "đang chạy", succeeded: "xong", failed: "lỗi", cancelled: "đã hủy" };
+  async function show(id) {
+    CURRENT_JOB = id;
+    const j = await call("GET", T("lora/jobs/" + id));
+    const last = j.progress.filter(p => p.step != null).slice(-1)[0], pct = last && last.steps ? 100 * last.step / last.steps : 0;
+    const items = [el("div", { class: "row", style: "gap:8px" }, el("strong", {}, "Job " + j.id.slice(0, 8)), el("span", { class: "pill " + (j.status === "succeeded" ? "ok" : j.status === "failed" ? "err" : "warn") }, VI[j.status]),
+      el("span", { class: "mut" }, `${j.params.train_examples} ví dụ · ${j.params.steps} bước · ước tính ${j.params.estimated_mib} MiB VRAM`))];
+    if (j.status === "queued" && j.runner && j.runner.waiting) items.push(el("div", { class: "warn-txt" }, `Đang chờ GPU: cần ${j.runner.waiting.needs_mib} MiB, còn trống ${j.runner.waiting.free_mib} MiB (máy đang được dùng).`));
+    if (j.status === "running" || last) items.push(el("div", { class: "bar", role: "progressbar", "aria-valuenow": Math.round(pct) }, el("i", { style: `width:${pct}%` })));
+    const g = loss(j.progress); if (g) items.push(g);
+    if (j.error) items.push(el("div", { class: "err" }, j.error));
+    if (j.result) { const r = j.result; items.push(el("div", {}, `Loss ${r.first_loss.toFixed(3)} → ${r.last_loss.toFixed(3)} · perplexity (tập giữ lại) ${r.val_perplexity_before && r.val_perplexity_before.toFixed(2)} → ${r.val_perplexity_after && r.val_perplexity_after.toFixed(2)} · ${r.seconds}s`),
+      el("div", { class: "mut" }, "Perplexity thấp hơn nghĩa là model dự đoán văn bản của bạn tốt hơn; chưa phải đánh giá chất lượng trả lời.")); }
+    const acts = el("div", { class: "row", style: "gap:8px" });
+    if (["queued", "running"].includes(j.status)) acts.append(el("button", { disabled: !canWrite(), onclick: () => guarded(async () => { await call("POST", T("lora/jobs/" + id + "/cancel")); await refresh(); await show(id); }) }, "Hủy"));
+    if (j.status === "succeeded") acts.append(el("button", { onclick: () => guarded(async () => { const b = await call("GET", T("lora/jobs/" + id + "/adapter")); const a = el("a", { href: URL.createObjectURL(b), download: "adapter-" + id.slice(0, 8) + ".zip" }); document.body.append(a); a.click(); a.remove(); }) }, "Tải adapter (.zip)"));
+    acts.append(el("button", { class: "ghost", onclick: () => guarded(async () => { const l = await call("GET", T("lora/jobs/" + id + "/log")); detail.append(el("pre", { class: "log" }, l.log || "(trống)")); }) }, "Xem log"));
+    if (["succeeded", "failed", "cancelled"].includes(j.status)) acts.append(el("button", { class: "ghost", disabled: !canDelete(), onclick: () => guarded(async () => { if (confirm("Xóa job và adapter?")) { await call("DELETE", T("lora/jobs/" + id)); detail.replaceChildren(); await refresh(); } }) }, "Xóa"));
+    detail.replaceChildren(...items, acts);
+  }
+  let CURRENT_JOB = null;
+  async function refresh() {
+    const d = await call("GET", T("lora/jobs"));
+    jobs.replaceChildren(table(["Job", "Trạng thái", "Tạo lúc", ""], d.jobs.map(j => el("tr", {}, el("td", { class: "mono" }, j.id.slice(0, 8)), el("td", {}, VI[j.status]), el("td", {}, j.created_at.slice(0, 16).replace("T", " ")), el("td", {}, el("button", { class: "sm", onclick: () => guarded(() => show(j.id)) }, "Xem"))))));
+    return d;
+  }
+  root.append(el("div", { class: "card stack" }, el("h2", {}, "Dữ liệu huấn luyện"), !bm.trainer_ready ? el("div", { class: "warn-txt" }, "Chưa cấu hình môi trường huấn luyện trên máy chủ.") : null,
+    el("div", { class: "cols" }, field("Model gốc", model), field("Định dạng", fmt), field("Tệp", file)), data, el("div", { class: "cols" }, rank, steps, batch, seq, lr),
+    el("div", { class: "row", style: "gap:8px" }, previewBtn, start), prev),
+    el("div", { class: "card stack" }, el("h2", {}, "Các job"), jobs, detail));
+  await refresh();
+  POLL = setInterval(() => { if (CURRENT_JOB && !document.hidden) guarded(async () => { await show(CURRENT_JOB); await refresh(); }); }, 2500);
+}
+
+// ---- unsupported method (Full fine-tuning) -------------------------------------------------------
+async function renderFullFt(root) {
+  const e = await call("GET", API + "/v1/full-ft/estimate");
+  root.append(el("div", { class: "card stack" }, el("h2", {}, "Ước tính bộ nhớ"), el("div", { class: "mut" }, `${e.label}: ${e.basis}`),
+    table(["Model", "Tham số", "Trọng số+gradient+optimizer", "Ngân sách GPU", "Vừa (chưa tính activation)?"], e.models.map(m => el("tr", {},
+      el("td", {}, m.base_model), el("td", { class: "num" }, m.params_million + "M"), el("td", { class: "num" }, m.weights_grads_optimizer_mib + " MiB"), el("td", { class: "num" }, m.budget_mib + " MiB"), el("td", {}, m.state_fits_without_activations ? "có" : "không"))))));
+}
+
+const RENDERERS = { rag: renderRag, prompts: renderPrompts, lora: renderLora, full_ft: renderFullFt };   // a new method only adds an entry here
+
+async function select(id) {
+  CURRENT = id; clearInterval(POLL); POLL = null; say("");
+  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.id === id)));
+  const m = METHODS.find(x => x.id === id), panel = document.getElementById("panel");
+  panel.replaceChildren(methodCard(m));
+  if (m.status === "available" || RENDERERS[id]) {
+    const r = RENDERERS[id];
+    if (!r) { panel.append(el("div", { class: "card warn-txt" }, "Giao diện cho phương pháp này chưa có; dùng API.")); return; }
+    await guarded(() => r(panel));
+  }
+}
+let LAST_TENANT = null;   // "change" also fires on blur with the same value; re-rendering then would drop a file the user just chose
+document.getElementById("tenant").addEventListener("change", () => {
+  if (tenant() === LAST_TENANT) return;
+  LAST_TENANT = tenant(); try { sessionStorage.setItem("aicf_tenant", tenant()); } catch {}
+  if (CURRENT) select(CURRENT);
+});
+(async () => {
+  await window.AICF_READY;
+  try { const t = sessionStorage.getItem("aicf_tenant"); if (t) document.getElementById("tenant").value = t; } catch {}
+  document.getElementById("ro").hidden = canWrite();
+  try {
+    const h = await call("GET", API + "/v1/health"), p = document.getElementById("health");
+    p.textContent = h.ok ? "dịch vụ sẵn sàng" : "lỗi"; p.className = "pill " + (h.ok ? "ok" : "err");
+    METHODS = (await call("GET", API + "/v1/methods")).methods;
+  } catch (e) { const p = document.getElementById("health"); p.textContent = "không kết nối"; p.className = "pill err"; say("Không gọi được AI Studio: " + e.message + ". Gateway cần cờ --studio-url.", "err"); return; }
+  const tabs = document.getElementById("tabs");
+  for (const m of METHODS) tabs.append(el("button", { role: "tab", "data-id": m.id, onclick: () => select(m.id) }, m.title, m.status !== "available" ? el("span", { class: "tag" }, "chưa hỗ trợ") : null));
+  LAST_TENANT = tenant();
+  select(METHODS[0].id);
+})();
+</script>
+</body>
+</html>

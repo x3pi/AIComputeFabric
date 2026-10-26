@@ -5,6 +5,7 @@ const NAV = [
   ["tenants.html", "Người dùng & Khóa API"],
   ["chat.html", "Playground & Đo tải"],
   ["agents.html", "AI Agent (đồ thị DAG)"],
+  ["studio.html", "AI Studio (RAG · Prompt · LoRA)"],
 ];
 
 const BUCKET_GROUPS = [

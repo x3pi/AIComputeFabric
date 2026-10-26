@@ -1,0 +1,84 @@
+{
+ "what": "AI Studio (P9) measured on one Linux PC: RTX 3060 12 GB, Qwen3-0.6B bf16, Qwen3-1.7B Q8_0 LLM, Qwen3-Embedding-0.6B, bge-reranker-v2-m3, PostgreSQL 16 + pgvector in docker",
+ "chrome_e2e": {
+  "script": "tests/e2e/studio_e2e.mjs",
+  "checks": [
+   {
+    "name": "four methods are listed, full fine-tune flagged as unsupported",
+    "ok": true,
+    "detail": "Tri thức nội bộ (RAG) | Prompt & Few-shot | Huấn luyện LoRA (PEFT) | Fine-tune toàn bộ (Full FT)\nchưa hỗ trợ"
+   },
+   {
+    "name": "RAG: uploaded document is answered with its source quoted",
+    "ok": true,
+    "detail": "Nhân viên chính thức được nghỉ phép 12 ngày một năm [1]."
+   },
+   {
+    "name": "Prompts: template saved as v1 and few-shot comparison runs against the model",
+    "ok": true,
+    "detail": ""
+   },
+   {
+    "name": "LoRA: a real job finishes, shows loss curve and perplexity before/after, adapter downloads",
+    "ok": true,
+    "detail": "Loss 0.908 → 0.143 · perplexity (tập giữ lại) 42.05 → 1.16 · 5.8s"
+   },
+   {
+    "name": "Full fine-tune: shown as unsupported with a reason and a labelled estimate",
+    "ok": true,
+    "detail": ""
+   },
+   {
+    "name": "operator: no script errors",
+    "ok": true,
+    "detail": ""
+   },
+   {
+    "name": "operator cannot delete (button disabled)",
+    "ok": true,
+    "detail": ""
+   },
+   {
+    "name": "viewer sees the read-only banner and the data, upload button disabled",
+    "ok": true,
+    "detail": ""
+   },
+   {
+    "name": "server agrees: viewer POST 403, operator DELETE 403, admin DELETE 200, no token 401",
+    "ok": true,
+    "detail": ""
+   },
+   {
+    "name": "viewer: no script errors",
+    "ok": true,
+    "detail": ""
+   }
+  ]
+ },
+ "real_lora_job": {
+  "test": "tests/studio/test_studio_lora_real.py",
+  "dataset": "120 synthetic templated Q&A (product code -> colour/warranty), 110 train / 10 val",
+  "steps": 80,
+  "seconds": 7.2,
+  "first_loss": 0.9,
+  "last_loss": 0.149,
+  "val_perplexity_before": 41.84,
+  "val_perplexity_after": 1.153,
+  "adapter_bytes": 20243059,
+  "caveat": "synthetic, highly regular data: the perplexity drop shows the pipeline trains and the adapter is saved correctly, it is NOT evidence of answer quality on real company data"
+ },
+ "service_tests": "tests/studio/test_studio_service.py (12), test_studio_rag_real.py (2), test_studio_contract.py (2): real PostgreSQL row-level security, quotas, job state machine with a fake worker, cancel kills the process group, orphan recovery",
+ "mutation_checks": {
+  "tenant scope forced to system": "3 tests fail (cross-tenant isolation)",
+  "job quota check removed": "1 test fails"
+ },
+ "not_covered": [
+  "Windows",
+  "more than one concurrent GPU job (by design: one at a time)",
+  "adapter hot-loading into llama-server",
+  "answer-quality evaluation of a LoRA model",
+  "retrieval quality on real company documents",
+  "scanned PDFs (no OCR)",
+  "Chrome E2E in CI (needs GPU and llama-servers; run locally)"
+ ]
+}

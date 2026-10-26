@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -376,5 +378,82 @@ func TestWhoamiInOpenModeReportsNoLogin(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &w)
 	if rec.Code != 200 || !w.Open || !w.Can["tenants"] {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestStudioProxyRolesIdentityHeadersAndBodyCap(t *testing.T) {
+	type seen struct {
+		path, auth, user, role string
+		body                   int
+	}
+	var mu sync.Mutex
+	var last seen
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		last = seen{r.Method + " " + r.URL.Path, r.Header.Get("Authorization"), r.Header.Get("X-Aicf-User"), r.Header.Get("X-Aicf-Role"), len(b)}
+		mu.Unlock()
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer backend.Close()
+	px, err := StudioProxy(backend.URL, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := NewAuth("")
+	auth.byHash[HashToken("v")] = Principal{Name: "vera", Role: RoleViewer}
+	auth.byHash[HashToken("o")] = Principal{Name: "omar", Role: RoleOperator}
+	auth.byHash[HashToken("a")] = Principal{Name: "ada", Role: RoleAdmin}
+	ts, _ := NewTenantStore("")
+	h := NewAPIStudio(NewFleet(NewRegistry(time.Hour)), ts, auth, nil, nil, px)
+	do := func(method, tok, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/studio/v1/tenants/acme/rag/documents/x", strings.NewReader(body))
+		req.Header.Set("X-Aicf-User", "mallory") // a client must not be able to name itself
+		req.Header.Set("X-Aicf-Role", "admin")
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	reset := func() { mu.Lock(); last = seen{}; mu.Unlock() }
+	get := func() seen { mu.Lock(); defer mu.Unlock(); return last }
+	if rec := do("GET", "", ""); rec.Code != 401 || get().path != "" {
+		t.Fatalf("no token: %d", rec.Code)
+	}
+	cases := []struct {
+		tok, method string
+		want        int
+	}{{"v", "GET", 200}, {"v", "POST", 403}, {"v", "PUT", 403}, {"v", "DELETE", 403},
+		{"o", "GET", 200}, {"o", "POST", 200}, {"o", "PUT", 200}, {"o", "DELETE", 403},
+		{"a", "GET", 200}, {"a", "POST", 200}, {"a", "DELETE", 200}, {"a", "PATCH", 405}}
+	for _, c := range cases {
+		reset()
+		rec := do(c.method, c.tok, "")
+		if rec.Code != c.want {
+			t.Errorf("%s %s: got %d want %d", c.tok, c.method, rec.Code, c.want)
+		}
+		g := get()
+		if c.want == 200 {
+			if g.path != c.method+" /v1/tenants/acme/rag/documents/x" || g.auth != "" {
+				t.Errorf("%s %s: backend saw %q auth %q", c.tok, c.method, g.path, g.auth)
+			}
+			want := map[string]string{"v": "vera", "o": "omar", "a": "ada"}[c.tok]
+			if g.user != want || g.role == "admin" && c.tok != "a" {
+				t.Errorf("%s: identity headers were %q/%q, a client-supplied value must be replaced by %q", c.tok, g.user, g.role, want)
+			}
+		} else if g.path != "" {
+			t.Errorf("%s %s reached the backend", c.tok, c.method)
+		}
+	}
+	reset()
+	if rec := do("POST", "o", strings.Repeat("x", 4096)); rec.Code == 200 || get().body > 1024 {
+		t.Errorf("oversized body passed: %d, backend read %d bytes", rec.Code, get().body)
+	}
+	for _, bad := range []string{"", "ftp://x", "localhost:1", "http://"} {
+		if _, err := StudioProxy(bad, 1); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
 	}
 }

@@ -77,7 +77,9 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS aicf_chunks (
   tenant_id TEXT NOT NULL, doc_id TEXT NOT NULL, chunk_idx INT NOT NULL, text TEXT NOT NULL,
   data_class TEXT NOT NULL DEFAULT 'INTERNAL', embedding vector(%(dim)s) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_id, doc_id, chunk_idx));
+ALTER TABLE aicf_chunks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS aicf_chunks_hnsw ON aicf_chunks USING hnsw (embedding vector_cosine_ops);
 ALTER TABLE aicf_chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE aicf_chunks FORCE ROW LEVEL SECURITY;
@@ -131,6 +133,25 @@ class KnowledgeStore:
                 c.execute("INSERT INTO aicf_chunks(tenant_id, doc_id, chunk_idx, text, data_class, embedding) VALUES (%s,%s,%s,%s,%s,%s)",
                           (tenant, doc_id, i, t, data_class, Vector(v)))
         return len(chunks)
+
+    # ---- management (used by the Studio) ----
+    def list_documents(self, tenant: str) -> list:
+        with self._conn(tenant) as c:
+            return c.execute("SELECT doc_id, count(*)::int AS chunks, sum(length(text))::int AS chars, min(data_class) AS data_class, max(created_at) AS created_at "
+                             "FROM aicf_chunks GROUP BY doc_id ORDER BY max(created_at) DESC, doc_id").fetchall()
+
+    def document_chunks(self, tenant: str, doc_id: str) -> list:
+        with self._conn(tenant) as c:
+            return c.execute("SELECT chunk_idx, text FROM aicf_chunks WHERE doc_id = %s ORDER BY chunk_idx", (doc_id,)).fetchall()
+
+    def delete_document(self, tenant: str, doc_id: str) -> int:
+        with self._conn(tenant) as c:
+            return c.execute("DELETE FROM aicf_chunks WHERE doc_id = %s", (doc_id,)).rowcount
+
+    def totals(self, tenant: str) -> dict:
+        with self._conn(tenant) as c:
+            r = c.execute("SELECT count(DISTINCT doc_id)::int AS documents, coalesce(sum(length(text)), 0)::bigint AS chars FROM aicf_chunks").fetchone()
+        return {"documents": r["documents"], "chars": int(r["chars"])}
 
     def search(self, tenant: str, query: str, top_k: int = 5, candidates: int = 20, rerank: bool = True) -> list:
         qv = self.embedder.embed([query])[0]
