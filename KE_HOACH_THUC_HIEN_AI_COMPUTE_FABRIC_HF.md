@@ -936,13 +936,13 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] Thử rollback agent thành công
 
 ### H.5. P3 — Qwen phân tán + Deploy UI (3 sprint)
-- [~] P3.1 Adapter `llama`, `vllm` đủ 7 hàm lifecycle → adapter `llama` xong (`inference/adapters/llama`, chạy llama-server thật, kiểm rò VRAM < 50 MB); adapter `vllm` CHƯA; nhánh Windows viết chưa chạy
+- [~] P3.1 Adapter `llama`, `vllm` đủ 7 hàm lifecycle → adapter `llama` xong (`inference/adapters/llama`, chạy llama-server thật, kiểm rò VRAM < 50 MB); THÊM 2026-10-26 adapter `vllm` (`inference/adapters/vllm`, cùng hợp đồng 7 hàm, phần chung tách ra `inference/adapters/_server.py` và adapter llama được refactor theo, test llama thật vẫn qua 12/12 gồm kiểm rò VRAM): [ĐO] vLLM 0.32.0 + torch 2.13.0+cu130 trên RTX 3060 với Qwen3-0.6B từ snapshot đã xác minh: 14/14 test, vòng đời thật (probe → prepare → plan → start → hỏi trực tiếp → metrics → stop) và VRAM trả về trong 50 MB (`benchmarks/reports/p3_vllm_adapter_contract.json`). Khác biệt hợp đồng phải hấp thụ: model là THƯ MỤC safetensors, `sha256` = digest manifest snapshot, vLLM không offload một phần lớp nên `gpu_layers=0` bị từ chối, KV q8_0 → fp8 của vLLM (không cùng định dạng). Phát hiện: sampler FlashInfer cần `nvcc` lúc khởi động nên adapter tắt mặc định. CHƯA: chưa so thông lượng với llama.cpp, không có Windows (vLLM không hỗ trợ), chưa đa GPU/LoRA/lượng tử hóa; nhánh Windows của adapter llama viết chưa chạy
 - [ ] P3.2 Adapter `prima`, `molink` cô lập, đường hầm mTLS (hoặc ghi rõ "không chạy được trên OS fleet" + phương án WSL2/Linux)
 - [ ] P3.3 Chạy B03, B04, B05 trên 3–4 PC, LAN 2 và 5 Gbps → `p3_distributed_comparison_B03_B04_B05.json`
 - [ ] P3.3 Đo KL-divergence/perplexity so với chuẩn vàng HF
 - [ ] P3.4 Màn 2 (Live VRAM Fit + layer-split) và Màn 5a (Chat Playground)
 - [ ] ADR-004: chốt duy nhất 1 backend phân tán thắng
-- [~] Test: `test_engine_adapter_contract.py` → `tests/integration/test_engine_adapter_contract.py` pass với adapter llama thật và một adapter giả; chưa có adapter thứ hai thật
+- [~] Test: `test_engine_adapter_contract.py` → `tests/integration/test_engine_adapter_contract.py` pass với adapter llama thật và một adapter giả; adapter thứ hai thật là vLLM (đã chạy test hợp đồng với vLLM thật ngày 2026-10-26, xem P3.1); chưa có adapter thứ ba
 - [ ] Test: `test_distributed_qwen_correctness.py` (200 prompt)
 - [ ] Test: `test_b04_b05_distributed_qwen.py`
 - [ ] Test: `test_distributed_session_failover.py`

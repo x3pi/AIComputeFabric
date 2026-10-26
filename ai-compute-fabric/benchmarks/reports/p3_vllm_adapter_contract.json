@@ -1,0 +1,13 @@
+{
+ "schema_version": 1,
+ "date": "2026-10-26",
+ "what": "tests/integration/test_vllm_adapter.py run against a real vLLM server (second real InferenceEngine adapter after llama)",
+ "environment": {"vllm": "0.32.0", "torch": "2.13.0+cu130", "gpu": "1x RTX 3060 12GB, driver 580", "model": "Qwen/Qwen3-0.6B @ c1899de289a04d12100db370d81485cdf75e47ca (safetensors, verified snapshot from the P1.3 run)", "gpu_memory_utilization": 0.5},
+ "result": {"passed": 14, "failed": 0, "wall_s": 43.4, "real_lifecycle": "probe -> prepare -> plan -> start -> second start refused -> streamed chat -> metrics (requests, tokens, TTFT) -> stop -> infer after stop refused -> stop idempotent -> VRAM back to within 50 MB of the pre-start value (asserted)"},
+ "findings": [
+  "vLLM's FlashInfer sampler JIT-compiles CUDA code at start-up and fails without nvcc (a worker PC will not have the CUDA toolkit): the adapter sets VLLM_USE_FLASHINFER_SAMPLER=0 by default",
+  "vLLM has no partial layer offload and no CPU mode here: Placement.gpu_layers == 0 is refused instead of silently running on the GPU",
+  "kv_type q8_0 is mapped to vLLM fp8, which is not the same format as ggml q8_0 (the plan notes say so); not measured for quality"
+ ],
+ "not_covered": ["throughput or latency comparison with llama.cpp (no benchmark was run)", "Windows (vLLM has no supported Windows build)", "multi-GPU tensor parallelism", "LoRA serving", "quantised checkpoints (AWQ/GPTQ)", "models above what fits in half of 12 GB"]
+}
