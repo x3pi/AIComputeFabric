@@ -1,0 +1,14 @@
+{
+ "set": "tests/fixtures/rag_vi.json (20 hand-written passages, 20 paraphrased questions)",
+ "embedding": "Qwen3-Embedding-0.6B Q8_0",
+ "reranker": "bge-reranker-v2-m3 Q8_0",
+ "recall_at_1": {
+  "dense": 1.0,
+  "dense+rerank": 1.0
+ },
+ "recall_at_3": {
+  "dense": 1.0,
+  "dense+rerank": 1.0
+ },
+ "caveat": "tiny hand-made set: validates the pipeline, is not a retrieval benchmark"
+}

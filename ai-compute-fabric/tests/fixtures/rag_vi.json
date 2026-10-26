@@ -1,0 +1,167 @@
+{
+ "note": "hand-written Vietnamese passages and paraphrased questions; tiny, for pipeline validation, NOT a retrieval benchmark",
+ "passages": [
+  {
+   "id": "hr1",
+   "text": "Nhân viên chính thức được nghỉ phép năm 12 ngày làm việc. Ngày phép chưa dùng hết có thể chuyển sang quý đầu của năm sau, tối đa 5 ngày."
+  },
+  {
+   "id": "hr2",
+   "text": "Đơn xin nghỉ phép phải gửi cho quản lý trực tiếp ít nhất ba ngày làm việc trước ngày nghỉ. Trường hợp khẩn cấp cần thông báo qua điện thoại ngay trong ngày."
+  },
+  {
+   "id": "it1",
+   "text": "Để đổi mật khẩu tài khoản công ty, hãy vào cổng tự phục vụ và chọn mục Bảo mật. Mật khẩu mới phải dài ít nhất 12 ký tự và không trùng 5 mật khẩu gần nhất."
+  },
+  {
+   "id": "it2",
+   "text": "Khi mất laptop công ty, nhân viên phải báo bộ phận IT trong vòng hai giờ. IT sẽ khóa tài khoản và xóa dữ liệu từ xa."
+  },
+  {
+   "id": "fin1",
+   "text": "Hoàn ứng công tác phí phải nộp trong 7 ngày sau chuyến đi kèm hóa đơn gốc. Khoản chi trên 2 triệu đồng cần có chữ ký của trưởng phòng."
+  },
+  {
+   "id": "fin2",
+   "text": "Lương được chuyển vào ngày 5 hàng tháng. Nếu ngày 5 rơi vào cuối tuần, lương được trả vào ngày làm việc liền trước."
+  },
+  {
+   "id": "gpu1",
+   "text": "Khi người dùng mở game hoặc ứng dụng đồ họa, tác tử sẽ dừng suy luận AI để trả lại bộ nhớ card đồ họa. Thời gian trả lại thường dưới một giây."
+  },
+  {
+   "id": "gpu2",
+   "text": "Mỗi máy trạm để lại ít nhất 1,5 GB VRAM trống cho người dùng. Nếu VRAM trống thấp hơn ngưỡng này, mô hình sẽ bị dừng."
+  },
+  {
+   "id": "ops1",
+   "text": "Hệ thống sao lưu cơ sở dữ liệu chạy lúc 2 giờ sáng mỗi ngày và giữ bản sao trong 30 ngày. Bản sao hàng tuần được lưu ở site dự phòng."
+  },
+  {
+   "id": "ops2",
+   "text": "Khi gateway khởi động lại, các worker tự đăng ký lại ở nhịp tim kế tiếp. Không cần can thiệp thủ công."
+  },
+  {
+   "id": "geo1",
+   "text": "Sông Mê Kông chảy qua sáu quốc gia và đổ ra Biển Đông bằng chín cửa. Đồng bằng sông Cửu Long là vựa lúa lớn nhất Việt Nam."
+  },
+  {
+   "id": "geo2",
+   "text": "Đỉnh Fansipan cao 3.143 mét, được gọi là nóc nhà Đông Dương. Du khách có thể lên đỉnh bằng cáp treo hoặc đi bộ hai ngày."
+  },
+  {
+   "id": "food1",
+   "text": "Để nấu phở bò ngon cần ninh xương bò ít nhất bốn giờ cùng hành nướng và gừng nướng. Nước dùng phải được hớt bọt thường xuyên cho trong."
+  },
+  {
+   "id": "food2",
+   "text": "Bánh mì Việt Nam dùng vỏ giòn nhẹ, nhân thường có pa-tê, thịt nguội, dưa chuột và rau mùi. Nước sốt đặc trưng làm từ trứng và dầu ăn."
+  },
+  {
+   "id": "law1",
+   "text": "Hợp đồng lao động phải được lập bằng văn bản và làm thành hai bản. Mỗi bên giữ một bản có chữ ký của người đại diện."
+  },
+  {
+   "id": "law2",
+   "text": "Thời gian thử việc tối đa là 60 ngày đối với công việc cần trình độ cao đẳng trở lên. Tiền lương thử việc ít nhất bằng 85% lương chính thức."
+  },
+  {
+   "id": "sec1",
+   "text": "Mọi truy cập từ xa vào hệ thống nội bộ phải đi qua VPN và xác thực hai lớp. Tài khoản đăng nhập sai năm lần sẽ bị khóa mười lăm phút."
+  },
+  {
+   "id": "sec2",
+   "text": "Dữ liệu khách hàng được phân loại là hạn chế và không được gửi ra ngoài site. Việc chia sẻ dữ liệu này cần được giám đốc bảo mật phê duyệt."
+  },
+  {
+   "id": "ml1",
+   "text": "Mô hình ngôn ngữ lượng tử hóa 4 bit chiếm bộ nhớ ít hơn khoảng bốn lần so với bản 16 bit. Chất lượng trả lời giảm nhẹ nhưng tốc độ tăng đáng kể."
+  },
+  {
+   "id": "ml2",
+   "text": "Bộ nhớ đệm KV lưu trạng thái chú ý của các token đã xử lý. Khi hội thoại tiếp tục trên cùng máy, hệ thống không phải tính lại phần đầu của câu."
+  }
+ ],
+ "questions": [
+  {
+   "q": "Mỗi năm tôi được nghỉ bao nhiêu ngày phép?",
+   "gold": "hr1"
+  },
+  {
+   "q": "Phải báo trước bao lâu khi muốn nghỉ?",
+   "gold": "hr2"
+  },
+  {
+   "q": "Làm sao đổi password tài khoản công ty?",
+   "gold": "it1"
+  },
+  {
+   "q": "Bị mất máy tính xách tay thì phải làm gì?",
+   "gold": "it2"
+  },
+  {
+   "q": "Bao lâu thì phải nộp hóa đơn sau khi đi công tác?",
+   "gold": "fin1"
+  },
+  {
+   "q": "Ngày nào công ty trả lương?",
+   "gold": "fin2"
+  },
+  {
+   "q": "Tại sao AI dừng lại khi tôi chơi game?",
+   "gold": "gpu1"
+  },
+  {
+   "q": "Mỗi máy phải chừa bao nhiêu bộ nhớ đồ họa cho người dùng?",
+   "gold": "gpu2"
+  },
+  {
+   "q": "Bao lâu thì cơ sở dữ liệu được sao lưu?",
+   "gold": "ops1"
+  },
+  {
+   "q": "Gateway bị khởi động lại thì worker có phải cấu hình lại không?",
+   "gold": "ops2"
+  },
+  {
+   "q": "Đồng bằng nào là nơi trồng nhiều lúa nhất nước?",
+   "gold": "geo1"
+  },
+  {
+   "q": "Núi nào cao nhất Đông Dương?",
+   "gold": "geo2"
+  },
+  {
+   "q": "Cách làm nước dùng phở trong và thơm?",
+   "gold": "food1"
+  },
+  {
+   "q": "Bánh mì thường có những nguyên liệu gì?",
+   "gold": "food2"
+  },
+  {
+   "q": "Hợp đồng lao động cần mấy bản?",
+   "gold": "law1"
+  },
+  {
+   "q": "Thử việc được tối đa bao nhiêu ngày và lương bao nhiêu?",
+   "gold": "law2"
+  },
+  {
+   "q": "Đăng nhập sai nhiều lần thì bị gì?",
+   "gold": "sec1"
+  },
+  {
+   "q": "Có được gửi dữ liệu khách hàng ra ngoài không?",
+   "gold": "sec2"
+  },
+  {
+   "q": "Mô hình 4 bit tiết kiệm bao nhiêu bộ nhớ?",
+   "gold": "ml1"
+  },
+  {
+   "q": "Vì sao tiếp tục cuộc trò chuyện trên cùng máy lại nhanh hơn?",
+   "gold": "ml2"
+  }
+ ]
+}
