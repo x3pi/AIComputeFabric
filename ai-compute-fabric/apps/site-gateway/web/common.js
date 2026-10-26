@@ -6,7 +6,7 @@ const NAV = [
   ["chat.html", "Playground & Tải"],
   ["agents.html", "AI Agent (DAG)"],
   ["studio.html", "AI Studio"],
-  ["serving.html", "Model đang chạy"],
+  ["serving.html", "Model đang nạp"],
   ["guide.html", "📖 Hướng dẫn"],
 ];
 
