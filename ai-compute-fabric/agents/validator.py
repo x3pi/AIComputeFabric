@@ -79,6 +79,8 @@ def validate_result(task: Task, result: TaskResult) -> Report:
             jsonschema.validate(out.data, inp.json_schema)
         except jsonschema.ValidationError as e:
             rep.fail(f"extracted data violates the requested schema: {e.message}")
+    if task.type == TaskType.TOOL_EXECUTE and isinstance(out.result, dict) and "error" in out.result:
+        rep.fail(f"the tool reported an error: {str(out.result['error'])[:120]}")   # a refusal inside the sandbox is not a result
     if task.type == TaskType.EMBEDDING:
         if len(out.vectors) != len(inp.texts) or any(len(v) != out.dim for v in out.vectors):
             rep.fail("embedding shape does not match texts/dim")
