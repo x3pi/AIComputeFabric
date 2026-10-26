@@ -15,3 +15,8 @@ extend-exclude = ["third_party", ".venv", "node_modules"]
 [tool.ruff.lint]
 # Real defects only (syntax errors, undefined names, unused imports/variables, bad comparisons); style rules are not enforced.
 select = ["E9", "F", "B006", "B008", "B023", "B904"]
+
+[tool.mypy]
+ignore_missing_imports = true
+explicit_package_bases = true
+files = ["agents", "audio", "training", "core"]

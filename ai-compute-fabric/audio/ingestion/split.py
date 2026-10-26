@@ -14,7 +14,7 @@ def speaker_disjoint_split(records: list[dict], ratios=(0.8, 0.1, 0.1), seed: in
     if abs(sum(ratios) - 1.0) > 1e-9:
         raise ValueError("ratios must sum to 1")
     cut1, cut2 = ratios[0], ratios[0] + ratios[1]
-    out = {"train": [], "validation": [], "test": []}
+    out: dict[str, list] = {"train": [], "validation": [], "test": []}
     for r in records:
         if not r.get("speaker_id"):
             raise ValueError("record without speaker_id")

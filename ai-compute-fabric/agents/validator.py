@@ -5,6 +5,7 @@ it is stored or fed to another step."""
 from __future__ import annotations
 
 import re
+from typing import Any
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -49,8 +50,8 @@ def validate_result(task: Task, result: TaskResult) -> Report:
         return rep
     in_model, out_model = SCHEMAS[task.type]
     try:
-        inp = in_model.model_validate(task.input)
-        out = out_model.model_validate(result.output)
+        inp: Any = in_model.model_validate(task.input)         # concrete model depends on task.type
+        out: Any = out_model.model_validate(result.output)
     except ValidationError as e:
         rep.fail("schema: " + "; ".join(f"{'.'.join(map(str, x['loc']))}: {x['msg']}" for x in e.errors()[:5]))
         return rep

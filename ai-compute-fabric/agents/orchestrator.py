@@ -7,7 +7,7 @@ When a worker is reclaimed by its user mid-task (WorkerLost), the task is retrie
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Callable, Optional, Protocol
+from typing import Annotated, Any, Callable, Optional, Protocol
 
 import psycopg
 import psycopg.types.json
@@ -69,7 +69,7 @@ class Orchestrator:
         self.durability = durability
         # one pool for the execution log AND LangGraph's checkpoint writes: opening a connection per write
         # was the scaling bottleneck (efficiency fell from 0.75 to 0.54 between 8 and 40 workers)
-        self.pool = ConnectionPool(self.dsn, min_size=2, max_size=max(8, max_concurrency + 4), open=True, kwargs={"autocommit": True, "row_factory": dict_row})
+        self.pool: ConnectionPool[Any] = ConnectionPool(self.dsn, min_size=2, max_size=max(8, max_concurrency + 4), open=True, kwargs={"autocommit": True, "row_factory": dict_row})
         with self.pool.connection() as c:
             c.execute(EXEC_DDL)
             c.execute(RESULTS_DDL)
@@ -111,6 +111,8 @@ class Orchestrator:
         out = []
         for r in rows:
             snap = self.snapshot(r["workflow"])
+            if snap is None:                       # removed between the listing and the lookup
+                continue
             out.append({"workflow": r["workflow"], "created_at": r["created_at"].isoformat(), "steps": r["steps"], "counts": snap["counts"], "state": snap["state"]})
         return out
 
@@ -125,7 +127,8 @@ class Orchestrator:
             ex = c.execute("SELECT step, attempt, outcome, started_at, finished_at FROM aicf_exec WHERE workflow=%s ORDER BY id", (wf,)).fetchall()
             done = {r["step"] for r in c.execute("SELECT step FROM aicf_results WHERE workflow=%s", (wf,)).fetchall()}
             now = c.execute("SELECT now() AS t").fetchone()["t"]
-        last, attempts = {}, {}
+        last: dict = {}
+        attempts: dict = {}
         for r in ex:
             last[r["step"]] = r
             attempts[r["step"]] = attempts.get(r["step"], 0) + 1
@@ -152,7 +155,7 @@ class Orchestrator:
                 elif l["finished_at"] is not None:
                     node["last_duration_s"] = round((l["finished_at"] - l["started_at"]).total_seconds(), 2)
             nodes.append(node)
-        counts = {}
+        counts: dict = {}
         for n in nodes:
             counts[n["status"]] = counts.get(n["status"], 0) + 1
         state = ("failed" if counts.get("failed") or counts.get("rejected") else "done" if counts.get("ok") == len(nodes)
@@ -190,7 +193,7 @@ class Orchestrator:
         g = StateGraph(State)
         for s in steps:
             g.add_node(s.id, self._node(wf, s))
-        dependents = {s.id: [] for s in steps}
+        dependents: dict[str, list] = {s.id: [] for s in steps}
         for s in steps:
             for d in s.deps:
                 if d not in ids:
@@ -210,7 +213,7 @@ class Orchestrator:
     def run(self, wf: str, steps: list, resume: bool = False) -> dict:
         self._record_dag(wf, steps)
         cfg = {"configurable": {"thread_id": wf}, "max_concurrency": self.max_concurrency, "recursion_limit": 10_000}
-        saver = PostgresSaver(self.pool)
+        saver = PostgresSaver(self.pool)  # type: ignore[arg-type]   # the pool is configured with row_factory=dict_row, which is what PostgresSaver needs
         saver.setup()
         graph = self._compile(wf, steps, saver)
         out = graph.invoke(None if resume else {"results": {}}, cfg, durability=self.durability)

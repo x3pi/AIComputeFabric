@@ -60,7 +60,8 @@ _SENT = re.compile(r"(?<=[.!?。])\s+|\n+")
 def chunk_text(text: str, max_chars: int = 600, overlap_sentences: int = 1) -> list:
     """Sentence-aligned chunks so a citation quote (a sentence) is always inside one chunk."""
     sents = [s.strip() for s in _SENT.split(text) if s.strip()]
-    chunks, cur = [], []
+    chunks: list[str] = []
+    cur: list[str] = []
     for s in sents:
         if cur and sum(len(x) + 1 for x in cur) + len(s) > max_chars:
             chunks.append(" ".join(cur))

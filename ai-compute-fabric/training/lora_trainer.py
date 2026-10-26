@@ -118,10 +118,10 @@ class TrainExecutor:
     checkpoint cannot contribute. Results are cached per (run_id, step): at-least-once delivery re-sends the same answer."""
     def __init__(self, root: str | Path, base_dir: str | Path, weights_file: str, data_ref: str, steps_per_call: int = 1, **worker_kw):
         self.root, self.base_dir = Path(root), Path(base_dir)
-        self.weights_sha = None
+        self.weights_sha: str | None = None
         self.weights_file = weights_file
         self.data_ref, self.k, self.kw = data_ref, steps_per_call, worker_kw
-        self.worker = None
+        self.worker: LoraWorker | None = None
 
     def _sha(self) -> str:
         if self.weights_sha is None:

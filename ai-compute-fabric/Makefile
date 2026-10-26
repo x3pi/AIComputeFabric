@@ -14,6 +14,7 @@ lint-go:   ## golangci-lint (config in .golangci.yml); GOLANGCI_LINT=/path/to/go
 
 lint-py:
 	$(PY) -m ruff check .
+	$(PY) -m mypy
 
 # Browser end-to-end (needs Chrome, a GPU and a model; NOT part of verify-dev):
 #   cd tests/e2e && npm install && node dashboard_e2e.mjs --gateway ... --guard ... --server ... --model ... --out report.json

@@ -45,14 +45,22 @@ class LlamaExecutor:
         elif t == TaskType.STRUCTURED_EXTRACTION:
             out = self._extract(inp)
         elif t == TaskType.EMBEDDING:
+            if not self.embed:
+                raise NotImplementedError("EMBEDDING needs embed_url")
             vecs = EmbeddingClient(self.embed).embed(inp.texts)
             out = {"vectors": vecs, "dim": len(vecs[0])}
         elif t == TaskType.RERANK:
+            if not self.rerank:
+                raise NotImplementedError("RERANK needs rerank_url")
             order = RerankClient(self.rerank).rerank(inp.query, inp.documents)[: inp.top_k]
             out = {"ranking": [i for i, _ in order], "scores": [s for _, s in order]}
         elif t == TaskType.RAG_RETRIEVE:
+            if self.knowledge is None:
+                raise NotImplementedError("RAG_RETRIEVE needs a KnowledgeStore")
             out = self.knowledge.retrieve(inp.tenant_id, inp.query, inp.top_k).model_dump(mode="json")
         elif t == TaskType.TOOL_EXECUTE:
+            if self.tools is None:
+                raise NotImplementedError("TOOL_EXECUTE needs a ToolRegistry")
             out = {"result": self.tools.invoke(task.tenant_id, inp.tool, inp.args, self.sandbox)}
         else:
             need = {TaskType.OCR: "an OCR engine", TaskType.DOCUMENT_PARSE: "a document parser", TaskType.AUDIO_VAD: "a VAD model",

@@ -12,6 +12,7 @@ Honest limits:
 from __future__ import annotations
 
 import hashlib
+from typing import Any
 import wave
 from pathlib import Path
 
@@ -79,8 +80,8 @@ def spectral_gate(x: np.ndarray, sr: int, noise_s: float = 0.3, n_fft: int = 512
     for j, i in enumerate(idx):
         y[i:i + n_fft] += out[j]
         norm[i:i + n_fft] += win ** 2
-    y = y / np.maximum(norm, 1e-6)
-    return y[n_fft:n_fft + len(x)].astype(np.float32)
+    y = (y / np.maximum(norm, 1e-6)).astype(np.float32)
+    return y[n_fft:n_fft + len(x)]
 
 
 class AudioExecutor:
@@ -88,7 +89,8 @@ class AudioExecutor:
         self.root = Path(root)
         self.out = self.root / "out"          # produced audio is written here and referenced as out/<name>
         self.asr_model, self.tts_model, self.device = asr_model, tts_model, device
-        self._asr = self._tts = None
+        self._asr: Any = None
+        self._tts: Any = None
 
     # ---- engines (lazy) ----
     def _load_asr(self):
@@ -128,6 +130,7 @@ class AudioExecutor:
     def execute(self, task: Task, attempt: int = 1, deps: dict | None = None) -> TaskResult:
         t = task.type
         inp = parse_input(task)
+        out: dict[str, Any]
         if t == TaskType.AUDIO_VAD:
             x, sr = load(self.root, inp.audio_ref)
             out = {"segments": [(round(a, 3), round(b, 3)) for a, b in vad(x, sr)]}

@@ -101,15 +101,12 @@ class BwrapSandbox(Sandbox):
     isolates_filesystem = True
     name = "bwrap"
 
-    @property
-    def isolates_network(self) -> bool:  # decided by probing, not by hope
-        return self._net
-
     def __init__(self):
-        self._net = False
+        self._net = False                      # network isolation is decided by probing, not by hope
         base = self._base()
         if shutil.which("bwrap") and subprocess.run(base + ["--unshare-net", "true"], capture_output=True).returncode == 0:
             self._net = True
+        self.isolates_network = self._net
 
     @staticmethod
     def _base() -> list:
