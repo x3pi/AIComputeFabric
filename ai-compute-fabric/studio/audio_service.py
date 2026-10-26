@@ -28,9 +28,12 @@ import numpy as np
 from audio.evaluation.vn_normalizer import cer, normalize, wer
 from audio.executors import MAX_SECONDS, spectral_gate, vad
 from audio.ingestion.dataset import IngestError, read_wav
+from audio.ingestion.split import speaker_disjoint_split
 from studio.config import Settings
 from studio.errors import bad, unavailable
 from studio.web import Request, Router
+from training.coordinator import Coordinator, Rejected, Update, comm_bytes_per_worker
+from training.lora_merger import exact_delta_w, lora_fa_merge, naive_merge, svd_refactor
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -137,12 +140,16 @@ class AudioService:
         r.add("POST", "/v1/audio/tts", self.tts)
         r.add("POST", "/v1/audio/asr", self.asr)
         r.add("POST", "/v1/audio/roundtrip", self.roundtrip)
+        r.add("POST", "/v1/audio/dataset/split", self.dataset_split)
+        r.add("POST", "/v1/audio/training/simulate-diloco", self.simulate_diloco)
 
     def status(self, req: Request) -> dict[str, Any]:
         fleurs_report = None
         rt_report = None
+        diloco_report = None
         p_fleurs = ROOT / "benchmarks" / "reports" / "p6_asr_fleurs_vi_qwen3asr_0p6b.json"
         p_rt = ROOT / "benchmarks" / "reports" / "p6_tts_asr_roundtrip.json"
+        p_diloco = ROOT / "benchmarks" / "reports" / "p6_diloco_vs_ddp.json"
         if p_fleurs.is_file():
             try:
                 fleurs_report = json.loads(p_fleurs.read_text(encoding="utf-8"))
@@ -151,6 +158,19 @@ class AudioService:
         if p_rt.is_file():
             try:
                 rt_report = json.loads(p_rt.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        if p_diloco.is_file():
+            try:
+                raw_d = json.loads(p_diloco.read_text(encoding="utf-8"))
+                diloco_report = {
+                    "model": raw_d.get("model"),
+                    "data": raw_d.get("data"),
+                    "workers": raw_d.get("workers"),
+                    "inner_steps_per_worker": raw_d.get("inner_steps_per_worker"),
+                    "summary": raw_d.get("summary"),
+                    "caveats": raw_d.get("caveats"),
+                }
             except Exception:
                 pass
         return {
@@ -166,6 +186,7 @@ class AudioService:
             "benchmarks": {
                 "fleurs_vi": fleurs_report,
                 "roundtrip": rt_report,
+                "diloco_vs_ddp": diloco_report,
             },
         }
 
@@ -337,3 +358,117 @@ class AudioService:
             "eval": asr_res.get("eval"),
             "engines": "facebook/mms-tts-vie -> Qwen3-ASR-0.6B",
         }
+
+    def dataset_split(self, req: Request) -> dict[str, Any]:
+        manifest_text = req.body.get("manifest_jsonl")
+        if not isinstance(manifest_text, str) or not manifest_text.strip():
+            raise bad("Vui lòng nhập nội dung manifest JSONL", "empty_manifest")
+        records: list[dict[str, Any]] = []
+        for idx, line in enumerate(manifest_text.splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError as e:
+                raise bad(f"Dòng {idx}: JSON không hợp lệ ({e})", "bad_manifest") from None
+            if not isinstance(obj, dict):
+                raise bad(f"Dòng {idx}: phải là JSON object", "bad_manifest")
+            for k in ("path", "sha256", "speaker_id", "consent_ref"):
+                v = obj.get(k)
+                if not isinstance(v, str) or not v.strip():
+                    raise bad(f"Dòng {idx}: thiếu trường bắt buộc '{k}' (Data Governance: cấm nạp âm thanh không có consent_ref hoặc sha256)", "missing_governance_field")
+            rel = Path(obj["path"])
+            if rel.is_absolute() or ".." in rel.parts:
+                raise bad(f"Dòng {idx}: đường dẫn '{obj['path']}' không hợp lệ (path traversal)", "bad_path")
+            records.append(obj)
+        if not records:
+            raise bad("Manifest không có bản ghi nào", "empty_manifest")
+
+        splits = speaker_disjoint_split(records, ratios=(0.8, 0.1, 0.1), seed=int(req.body.get("seed", 0)))
+        sp_train = {r["speaker_id"] for r in splits["train"]}
+        sp_val = {r["speaker_id"] for r in splits["validation"]}
+        sp_test = {r["speaker_id"] for r in splits["test"]}
+        overlap = (sp_train & sp_val) | (sp_train & sp_test) | (sp_val & sp_test)
+        return {
+            "total_records": len(records),
+            "total_speakers": len(sp_train | sp_val | sp_test),
+            "speaker_overlap_count": len(overlap),
+            "disjoint_verified": len(overlap) == 0,
+            "splits": {
+                "train": {"records": len(splits["train"]), "speakers": sorted(sp_train)},
+                "validation": {"records": len(splits["validation"]), "speakers": sorted(sp_val)},
+                "test": {"records": len(splits["test"]), "speakers": sorted(sp_test)},
+            },
+        }
+
+    def simulate_diloco(self, req: Request) -> dict[str, Any]:
+        workers = int(req.body.get("workers", 4))
+        h_steps = int(req.body.get("inner_steps", 50))
+        total_steps = int(req.body.get("total_steps", 200))
+        rank = int(req.body.get("rank", 8))
+        inject_stale = bool(req.body.get("inject_stale", True))
+        if not (2 <= workers <= 32 and 1 <= h_steps <= 500 and 10 <= total_steps <= 5000 and 1 <= rank <= 64):
+            raise bad("Tham số ngoài khoảng cho phép (workers 2..32, inner_steps 1..500, total_steps 10..5000, rank 1..64)", "bad_params")
+
+        rng = np.random.default_rng(42)
+        d_model = 64
+        # Fixed frozen A across all workers (LoRA-FA), trainable B
+        A_frozen = rng.standard_normal((rank, d_model)).astype(np.float32) * 0.05
+        As_unfrozen = [A_frozen + rng.standard_normal((rank, d_model)).astype(np.float32) * 0.02 for _ in range(workers)]
+        Bs = [rng.standard_normal((d_model, rank)).astype(np.float32) * 0.05 for _ in range(workers)]
+
+        # 1. Compare Naive Merge vs Exact Delta-W vs LoRA-FA
+        exact_unfrozen = exact_delta_w(As_unfrozen, Bs, alpha=float(2 * rank), r=rank)
+        naive_unfrozen = (2.0) * naive_merge(As_unfrozen, Bs)
+        naive_err = float(np.linalg.norm(exact_unfrozen - naive_unfrozen))
+
+        exact_fa = exact_delta_w([A_frozen] * workers, Bs, alpha=float(2 * rank), r=rank)
+        fa_merged = (2.0) * (lora_fa_merge(Bs) @ A_frozen)
+        fa_err = float(np.linalg.norm(exact_fa - fa_merged))
+        _, _, svd_err = svd_refactor(exact_unfrozen, rank)
+
+        # 2. Run real DiLoCo Coordinator outer steps + stale worker test
+        coord = Coordinator({"lora_B": np.zeros((d_model, rank), dtype=np.float32)}, outer_lr=0.7, momentum=0.9, min_workers=workers)
+        rounds = max(1, min(10, total_steps // h_steps))
+        for r_idx in range(rounds):
+            ver, base = coord.pull()
+            for w_idx in range(workers):
+                delta_b = rng.standard_normal((d_model, rank)).astype(np.float32) * (0.02 / (r_idx + 1))
+                coord.submit(Update(worker_id=f"worker-{w_idx + 1:02d}", base_version=ver, steps=h_steps, delta={"lora_B": delta_b}))
+            coord.outer_step()
+
+        stale_rejected = False
+        if inject_stale and coord.version > 0:
+            try:
+                coord.submit(Update(worker_id="worker-slow-99", base_version=0, steps=h_steps, delta={"lora_B": np.zeros((d_model, rank), dtype=np.float32)}))
+            except Rejected as e:
+                stale_rejected = e.reason == "stale"
+
+        n_params = 2_752_512 * rank // 8  # scaled from Qwen3-0.6B LoRA-FA r=8 trainable params
+        ddp_bytes = comm_bytes_per_worker(n_params, total_steps, workers, h=None)
+        diloco_bytes = comm_bytes_per_worker(n_params, total_steps, workers, h=h_steps)
+        saved_pct = round(100.0 * (1.0 - diloco_bytes / max(ddp_bytes, 1)), 2)
+
+        return {
+            "workers": workers,
+            "inner_steps": h_steps,
+            "total_steps": total_steps,
+            "rank": rank,
+            "outer_versions_completed": coord.version,
+            "stale_update_rejected": stale_rejected,
+            "rejected_counts": coord.rejected,
+            "lora_math": {
+                "naive_merge_frobenius_error": round(naive_err, 6),
+                "lora_fa_frobenius_error": round(fa_err, 8),
+                "svd_refactor_frobenius_error": round(svd_err, 6),
+            },
+            "network": {
+                "trainable_params": n_params,
+                "ddp_bytes_per_worker": ddp_bytes,
+                "diloco_bytes_per_worker": diloco_bytes,
+                "ddp_mib": round(ddp_bytes / (1024 * 1024), 2),
+                "diloco_mib": round(diloco_bytes / (1024 * 1024), 2),
+                "bandwidth_saved_pct": saved_pct,
+            },
+        }
+

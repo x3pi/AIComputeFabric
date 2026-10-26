@@ -255,6 +255,73 @@
       </div>
     </section>
   </div>
+
+  <!-- Row 3: Section 5 (P6.1 Audio Dataset Ingestion & Speaker-Disjoint Split) + Section 6 (P6.3 Distributed Training LoRA-FA / DiLoCo) -->
+  <div class="wide-split" style="margin-top:18px">
+    <!-- 5. Audio Dataset Governance & Speaker-Disjoint Split -->
+    <section class="card stack" style="margin-bottom:0" id="sec-audio-dataset">
+      <div class="card-header">
+        <div>
+          <h2>5. Quản trị Tập Dữ liệu Huấn luyện Audio & Chia tập Speaker-Disjoint (P6.1)</h2>
+          <div class="sub">Kiểm tra bắt buộc <code>consent_ref</code> + <code>sha256</code> và chia tập <code>Train / Validation / Test</code> đảm bảo <b>0% trùng lặp người nói</b> (<code>train_speakers ∩ test_speakers = ∅</code>)</div>
+        </div>
+        <button type="button" id="btn-manifest-sample" class="sm ghost">✨ Điền Manifest 24 mẫu (8 người nói)</button>
+      </div>
+
+      <label class="field">
+        Manifest dữ liệu âm thanh (JSONL: bắt buộc có path, sha256, speaker_id, consent_ref, text)
+        <textarea id="ds-manifest" rows="5" class="mono" placeholder='{"path": "wav/spk01_001.wav", "sha256": "...", "speaker_id": "spk_01", "consent_ref": "consent-2026-01", "text": "..."}'></textarea>
+      </label>
+
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button type="button" id="btn-ds-split" class="primary">🔍 Kiểm định Consent & Chia tập Speaker-Disjoint</button>
+        <button type="button" id="btn-ds-bad-test" class="sm ghost">🛡️ Thử bản ghi thiếu Consent (Kiểm tra chặn Governance)</button>
+      </div>
+
+      <div id="ds-out" class="stack"></div>
+    </section>
+
+    <!-- 6. Distributed Training (LoRA-FA / DiLoCo) on FLEURS-vi Transcripts -->
+    <section class="card stack" style="margin-bottom:0" id="sec-audio-train">
+      <div class="card-header">
+        <div>
+          <h2>6. Huấn luyện Phân tán LoRA-FA & DiLoCo trên Tập Phiên âm Tiếng Việt (P6.3 · Màn hình 4b)</h2>
+          <div class="sub">Thích nghi miền văn bản phiên âm Tiếng Việt (<code>FLEURS vi_vn</code> 1.482 câu) bằng <b>LoRA-FA (Frozen-A)</b> + <b>DiLoCo Outer-Step Nesterov</b> & chống Stale Worker</div>
+        </div>
+        <a href="studio.html" style="text-decoration:none"><button type="button" class="sm">🚀 Mở Job Huấn luyện QLoRA GPU →</button></a>
+      </div>
+
+      <div class="audio-box" style="font-size:12.5px;line-height:1.55">
+        <b>📌 Trạng thái Huấn luyện Audio theo Kế hoạch P6:</b>
+        <ul style="margin:4px 0 0 18px;padding:0;color:var(--fg-secondary)">
+          <li><b>Huấn luyện LoRA-FA / DiLoCo trên tập phiên âm FLEURS-vi (Đã đo trên RTX 3060):</b> Giảm Perplexity trên tập Test độc lập từ <b>47.34</b> xuống <b>28.06</b> (DDP), <b>28.71</b> (DiLoCo H=10, tiết kiệm <b>86.7%</b> băng thông mạng) và <b>29.06</b> (DiLoCo H=50, tiết kiệm <b>97.3%</b> băng thông mạng).</li>
+          <li><b>Huấn luyện trực tiếp sóng âm ASR/TTS:</b> <code>facebook/mms-tts-vie</code> mang giấy phép <code>CC-BY-NC 4.0</code> và chính sách <b>Zero Voice-Cloning</b> nghiêm cấm fine-tune nhái giọng cá nhân; tùy biến miền từ vựng chuyên ngành được thực hiện qua <b>LoRA-FA</b> và <b>Hậu xử lý Chuẩn hóa/LLM</b>.</li>
+        </ul>
+      </div>
+
+      <div class="two-col">
+        <label class="field">
+          Số Worker tham gia (K)
+          <input type="number" id="dl-workers" value="4" min="2" max="32">
+        </label>
+        <label class="field">
+          Chu kỳ đồng bộ DiLoCo (H bước nội bộ)
+          <select id="dl-h">
+            <option value="10">H = 10 bước (Tiết kiệm ~87% mạng)</option>
+            <option value="25">H = 25 bước (Tiết kiệm ~95% mạng)</option>
+            <option value="50" selected>H = 50 bước (Tiết kiệm ~97.3% mạng)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button type="button" id="btn-sim-diloco" class="primary">⚡ Kiểm chứng Toán học LoRA-FA & Điều phối DiLoCo</button>
+      </div>
+
+      <div id="diloco-out" class="stack"></div>
+      <div id="diloco-bench"></div>
+    </section>
+  </div>
 </main>
 
 <script>
@@ -540,6 +607,102 @@ document.getElementById("btn-eval").onclick = async () => {
   }
 };
 
+// 5. Audio Dataset Governance & Speaker-Disjoint Split (P6.1)
+function fillSampleManifest() {
+  const speakers = ["spk_hanoi_01", "spk_hanoi_02", "spk_hue_01", "spk_hue_02", "spk_danang_01", "spk_hcm_01", "spk_hcm_02", "spk_cantho_01"];
+  const lines = [];
+  for (let i = 0; i < 24; i++) {
+    const spk = speakers[i % speakers.length];
+    lines.push(JSON.stringify({
+      path: `wav/${spk}_clip_${String(i + 1).padStart(3, "0")}.wav`,
+      sha256: (i + 1).toString(16).padStart(64, "a4f801"),
+      speaker_id: spk,
+      consent_ref: `CONSENT-VN-2026-${spk.toUpperCase()}`,
+      text: `Mẫu thu âm giọng nói chuẩn hóa số ${i + 1} của người nói ${spk}`
+    }));
+  }
+  document.getElementById("ds-manifest").value = lines.join("\n");
+}
+
+document.getElementById("btn-manifest-sample").onclick = () => {
+  fillSampleManifest();
+  document.getElementById("btn-ds-split").click();
+};
+
+document.getElementById("btn-ds-split").onclick = async () => {
+  const out = document.getElementById("ds-out");
+  try {
+    const r = await call("POST", "/dataset/split", { manifest_jsonl: document.getElementById("ds-manifest").value, seed: 7 });
+    out.replaceChildren(
+      el("div", { class: "audio-box stack", id: "ds-split-result" },
+        el("div", { class: "row", style: "justify-content:space-between" },
+          el("strong", {}, `Tổng cộng ${r.total_records} bản ghi · ${r.total_speakers} người nói độc lập`),
+          el("span", { class: "pill " + (r.disjoint_verified ? "ok" : "err") },
+            r.disjoint_verified ? "✓ 0% Trùng lặp Người nói (Speaker-Disjoint)" : `Lỗi: trùng ${r.speaker_overlap_count} người nói`)
+        ),
+        el("div", { class: "table-wrap" },
+          el("table", {},
+            el("thead", {}, el("tr", {}, el("th", {}, "Tập chia (Split)"), el("th", { class: "num" }, "Số bản ghi"), el("th", {}, "Danh sách Speaker ID (Tách biệt hoàn toàn)"))),
+            el("tbody", {},
+              el("tr", {}, el("td", {}, el("b", {}, "Train (80%)")), el("td", { class: "num" }, String(r.splits.train.records)), el("td", { class: "mono" }, r.splits.train.speakers.join(", ") || "—")),
+              el("tr", {}, el("td", {}, el("b", {}, "Validation (10%)")), el("td", { class: "num" }, String(r.splits.validation.records)), el("td", { class: "mono" }, r.splits.validation.speakers.join(", ") || "—")),
+              el("tr", {}, el("td", {}, el("b", {}, "Test (10%)")), el("td", { class: "num" }, String(r.splits.test.records)), el("td", { class: "mono" }, r.splits.test.speakers.join(", ") || "—"))
+            )
+          )
+        )
+      )
+    );
+  } catch (e) {
+    out.replaceChildren(el("div", { class: "err" }, e.message));
+  }
+};
+
+document.getElementById("btn-ds-bad-test").onclick = async () => {
+  const out = document.getElementById("ds-out");
+  try {
+    await call("POST", "/dataset/split", {
+      manifest_jsonl: JSON.stringify({ path: "wav/unverified.wav", sha256: "1234", speaker_id: "spk_99", consent_ref: "" })
+    });
+  } catch (e) {
+    out.replaceChildren(
+      el("div", { class: "audio-box", style: "border-color:var(--ok)" },
+        el("div", { class: "row", style: "gap:8px" },
+          el("span", { class: "pill ok" }, "ĐÃ CHẶN VI PHẠM DỮ LIỆU (HTTP 400)"),
+          el("strong", {}, "Data Governance: Bắt buộc phải có văn bản đồng ý (consent_ref) của người nói")
+        ),
+        el("div", { class: "mut", style: "margin-top:6px" }, "Phản hồi từ máy chủ: " + e.message)
+      )
+    );
+  }
+};
+
+// 6. Distributed Training (LoRA-FA & DiLoCo Coordinator) (P6.3)
+document.getElementById("btn-sim-diloco").onclick = async () => {
+  const out = document.getElementById("diloco-out");
+  try {
+    const r = await call("POST", "/training/simulate-diloco", {
+      workers: +document.getElementById("dl-workers").value || 4,
+      inner_steps: +document.getElementById("dl-h").value || 50,
+      total_steps: 200,
+      rank: 8,
+      inject_stale: true
+    });
+    out.replaceChildren(
+      el("div", { class: "audio-box stack", id: "diloco-sim-result" },
+        el("div", { class: "chip-row" },
+          el("span", { class: "pill ok" }, `Tiết kiệm mạng: ${r.network.bandwidth_saved_pct}% (${r.network.diloco_mib} MiB vs DDP ${r.network.ddp_mib} MiB)`),
+          el("span", { class: "pill info" }, `Sai số LoRA-FA (Frozen-A): ${r.lora_math.lora_fa_frobenius_error} (Chính xác tuyệt đối)`),
+          el("span", { class: "pill warn" }, `Sai số gộp ngây thơ (B̄·Ā bị cấm): ${r.lora_math.naive_merge_frobenius_error}`),
+          el("span", { class: "pill " + (r.stale_update_rejected ? "ok" : "err") },
+            r.stale_update_rejected ? `✓ Đã chặn Stale Worker (${r.outer_versions_completed} vòng outer-step)` : "Chưa chặn stale")
+        )
+      )
+    );
+  } catch (e) {
+    out.replaceChildren(el("div", { class: "err" }, e.message));
+  }
+};
+
 (async () => {
   await window.AICF_READY;
   const writable = canWrite();
@@ -578,7 +741,61 @@ document.getElementById("btn-eval").onclick = async () => {
         )
       );
     }
+
+    const dl = st.benchmarks && st.benchmarks.diloco_vs_ddp;
+    if (dl && dl.summary) {
+      const s = dl.summary;
+      const b = s.comm_bytes_per_worker_fp32 || {};
+      document.getElementById("diloco-bench").replaceChildren(
+        el("h3", { style: "margin:8px 0 6px;font-size:13.5px" }, `📈 Bảng Hội tụ Thực nghiệm trên RTX 3060 (${dl.model} · ${dl.data})`),
+        el("div", { class: "table-wrap" },
+          el("table", {},
+            el("thead", {}, el("tr", {},
+              el("th", {}, "Phương thức Huấn luyện"),
+              el("th", { class: "num" }, "Perplexity Trước"),
+              el("th", { class: "num" }, "Perplexity Sau (Test)"),
+              el("th", { class: "num" }, "Dung lượng Đồng bộ / Worker"),
+              el("th", { class: "num" }, "Tiết kiệm Băng thông")
+            )),
+            el("tbody", {},
+              el("tr", {},
+                el("td", {}, "1 Worker Đơn lẻ (Single GPU)"),
+                el("td", { class: "num" }, String(s.single_worker.test_ppl_before_training)),
+                el("td", { class: "num" }, String(s.single_worker.final_test_ppl_mean)),
+                el("td", { class: "num" }, "0 MB"),
+                el("td", { class: "num" }, "—")
+              ),
+              el("tr", {},
+                el("td", {}, "DDP 4 Workers (Đồng bộ mỗi bước)"),
+                el("td", { class: "num" }, String(s.ddp.test_ppl_before_training)),
+                el("td", { class: "num" }, el("b", {}, String(s.ddp.final_test_ppl_mean))),
+                el("td", { class: "num" }, (b.ddp / 1048576).toFixed(1) + " MiB"),
+                el("td", { class: "num" }, "0% (Baseline)")
+              ),
+              el("tr", {},
+                el("td", {}, "DiLoCo 4 Workers (H = 10 bước)"),
+                el("td", { class: "num" }, String(s.diloco_H10.test_ppl_before_training)),
+                el("td", { class: "num" }, el("b", {}, String(s.diloco_H10.final_test_ppl_mean))),
+                el("td", { class: "num" }, (b.diloco_H10 / 1048576).toFixed(1) + " MiB"),
+                el("td", { class: "num" }, el("span", { class: "pill ok" }, "-86.7%"))
+              ),
+              el("tr", {},
+                el("td", {}, "DiLoCo 4 Workers (H = 50 bước)"),
+                el("td", { class: "num" }, String(s.diloco_H50.test_ppl_before_training)),
+                el("td", { class: "num" }, el("b", {}, String(s.diloco_H50.final_test_ppl_mean))),
+                el("td", { class: "num" }, (b.diloco_H50 / 1048576).toFixed(1) + " MiB"),
+                el("td", { class: "num" }, el("span", { class: "pill ok" }, "-97.3%"))
+              )
+            )
+          )
+        )
+      );
+    }
+
     document.getElementById("btn-eval").click();
+    fillSampleManifest();
+    document.getElementById("btn-ds-split").click();
+    document.getElementById("btn-sim-diloco").click();
   } catch (e) {
     say("Không kết nối được dịch vụ Audio AI: " + e.message, "err");
   }

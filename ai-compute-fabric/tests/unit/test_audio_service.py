@@ -79,3 +79,47 @@ def test_audio_rbac_and_zero_voice_cloning_policy(tmp_path: Path):
         _call(r, "POST", "/v1/audio/tts", {"text": "xin chào", "voice": "cloned_ceo", "consent_ref": "c1"}, role="operator")
     assert exc_clone.value.status == 400
     assert exc_clone.value.code == "voice_cloning_refused"
+
+
+def test_audio_dataset_speaker_disjoint_split_and_diloco_simulation(tmp_path: Path):
+    import json
+    s = Settings(data_dir=tmp_path, app_dsn="postgresql://unused")
+    svc = AudioService(s)
+    r = Router()
+    svc.mount(r)
+
+    manifest = "\n".join(
+        json.dumps({
+            "path": f"wav/spk{i % 6}_{i}.wav",
+            "sha256": "a" * 64,
+            "speaker_id": f"spk_{i % 6}",
+            "consent_ref": f"consent_{i % 6}",
+            "text": f"câu số {i}",
+        })
+        for i in range(18)
+    )
+    sp = _call(r, "POST", "/v1/audio/dataset/split", {"manifest_jsonl": manifest, "seed": 7})
+    assert sp["disjoint_verified"] is True
+    assert sp["speaker_overlap_count"] == 0
+    assert sp["total_records"] == 18
+
+    # Missing consent_ref must be rejected with 400 missing_governance_field
+    with pytest.raises(ApiError) as exc_gov:
+        _call(r, "POST", "/v1/audio/dataset/split", {
+            "manifest_jsonl": json.dumps({"path": "wav/a.wav", "sha256": "b" * 64, "speaker_id": "spk_1", "consent_ref": ""})
+        })
+    assert exc_gov.value.status == 400
+    assert exc_gov.value.code == "missing_governance_field"
+
+    sim = _call(r, "POST", "/v1/audio/training/simulate-diloco", {
+        "workers": 4,
+        "inner_steps": 50,
+        "total_steps": 200,
+        "rank": 8,
+        "inject_stale": True,
+    })
+    assert sim["stale_update_rejected"] is True
+    assert sim["lora_math"]["lora_fa_frobenius_error"] < 1e-6
+    assert sim["lora_math"]["naive_merge_frobenius_error"] > 0.0
+    assert sim["network"]["bandwidth_saved_pct"] > 90.0
+
