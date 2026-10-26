@@ -273,6 +273,12 @@ document.getElementById("add").onsubmit = async e => {
 };
 
 load();
+window.AICF_READY.then(() => {
+  if (window.AICF.can.tenants) return;
+  document.querySelectorAll("main button, main input, main select, .card button, .card input, .card select").forEach(e => { e.disabled = true; });
+  const b = el("div", { class: "readonly-banner", role: "status" }, "Chế độ chỉ xem: vai trò " + (window.AICF.role || "chưa xác thực") + " không được tạo/sửa/xóa người dùng hoặc đổi khóa API. Cần vai trò admin.");
+  document.body.insertBefore(b, document.body.children[1] || null);
+});
 </script>
 </body>
 </html>

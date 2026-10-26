@@ -1,6 +1,5 @@
 """P6.3 gates: stale updates are blocked 100 %, a resumed run matches an uninterrupted one exactly,
 checkpoints survive corruption, and DiLoCo moves far fewer bytes than DDP (analytic count)."""
-import os
 
 import numpy as np
 import pytest

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from pydantic import ValidationError
 
-from agents.tasks import CITATION_REQUIRED, SCHEMAS, Citation, Source, Task, TaskResult, TaskType
+from agents.tasks import CITATION_REQUIRED, SCHEMAS, Citation, Task, TaskResult, TaskType
 
 _WS = re.compile(r"\s+")
 _NUM = re.compile(r"\d+(?:[.,]\d+)*")

@@ -1,0 +1,47 @@
+{
+ "dataset": "google/fleurs vi_vn dev (CC-BY-4.0), every k-th clip",
+ "clips": 100,
+ "audio_seconds": 1180.4,
+ "model": "Qwen3-ASR-0.6B (bf16, RTX 3060)",
+ "wall_s_for_3_passes": 140.6,
+ "noise": "white Gaussian at 10 dB SNR added by this script",
+ "enhance": "numpy spectral gate (not DeepFilterNet)",
+ "clean": {
+  "wer": 0.0811,
+  "cer": 0.047,
+  "wer_corpus": 0.079
+ },
+ "noisy": {
+  "wer": 0.1357,
+  "cer": 0.0909,
+  "wer_corpus": 0.1312
+ },
+ "enhanced": {
+  "wer": 0.1293,
+  "cer": 0.0843,
+  "wer_corpus": 0.1268
+ },
+ "examples": [
+  {
+   "ref": "người bệnh cũng đã từng tới nigeria nơi một số ca mắc bệnh ebola xảy ra",
+   "hyp": "Người bệnh cũng đã từng tới Nigeria nơi một số ca mắc bệnh Ebola xảy ra."
+  },
+  {
+   "ref": "các ví dụ về hoạt động tại chỗ bao gồm săn bắn câu cá chụp ảnh ngắm chim và thăm quan công viên và nghiên cứu thông tin về hệ sinh thái",
+   "hyp": "Các ví dụ về hoạt động tại chỗ bao gồm săn bắn câu cá, chụp ảnh, ngắm chim, và tham quan công viên và nghiên cứu thông tin về hệ sinh thái."
+  },
+  {
+   "ref": "chi phí chiến tranh của chủ nghĩa đế quốc hoa kỳ trong cuộc chinh phạt phi-líp-pin được chính những người dân phi-líp-pin chi trả",
+   "hyp": "Chi phí chiến tranh của chủ nghĩa Đế quốc Hoa Kỳ trong cuộc xin phạt Philippines được chính những người dân Philippines chi trả."
+  },
+  {
+   "ref": "các nhà khoa học cho biết vụ va chạm đã gây ra vụ nổ rất lớn",
+   "hyp": "Các nhà khoa học cho biết vụ va chạm đã gây ra vụ nổ rất lớn."
+  },
+  {
+   "ref": "giải đấu lớn nhất trong năm diễn ra vào tháng mười hai trên sân mã cầu ở las cañitas",
+   "hyp": "giải đấu lớn nhất trong năm diễn ra vào tháng 12 trên sân mã cầu ở Las Canyadas"
+  }
+ ],
+ "caveat": "FLEURS is read speech of Wikipedia-style sentences, one language, 16 kHz; not call-centre or meeting audio. Reference text is FLEURS' normalised transcription; our normaliser turns digits into words on both sides."
+}

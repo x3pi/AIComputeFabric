@@ -143,6 +143,10 @@ func NewAPIFull(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents h
 		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/whoami" && r.Method == http.MethodGet {
+			who(w, r, auth)
+			return
+		}
 		if !strings.HasPrefix(r.URL.Path, "/api/") || auth.Open() {
 			mux.ServeHTTP(w, r)
 			return
@@ -173,4 +177,28 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
+}
+
+// who answers GET /api/whoami so the dashboard can hide what the caller may not do. It is a convenience for the UI
+// only: every action is still checked server-side by Allowed, whatever the page shows.
+func who(w http.ResponseWriter, r *http.Request, auth *Auth) {
+	p := Principal{Name: "open", Role: RoleAdmin}
+	open := auth.Open()
+	if !open {
+		var ok bool
+		p, ok = auth.Identify(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		if !ok {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="aicf-admin"`)
+			http.Error(w, "admin token required", http.StatusUnauthorized)
+			return
+		}
+	}
+	probe := func(method, path string) bool {
+		req, _ := http.NewRequest(method, path, nil)
+		return Allowed(p, req, func(string) string { return p.Site })
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"name": p.Name, "role": p.Role, "site": p.Site, "open": open,
+		"can": map[string]bool{"view": probe("GET", "/api/stats"), "pause": probe("POST", "/api/workers/x/pause"), "tenants": probe("POST", "/api/tenants")},
+	})
 }

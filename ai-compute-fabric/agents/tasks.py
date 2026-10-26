@@ -233,5 +233,5 @@ class TaskResult(Strict):
     worker_id: str = ""
 
 
-def parse_input(task: Task) -> Strict:
+def parse_input(task: Task) -> Any:   # the concrete model depends on task.type, which a static checker cannot follow
     return SCHEMAS[task.type][0].model_validate(task.input)

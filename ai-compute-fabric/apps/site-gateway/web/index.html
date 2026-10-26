@@ -437,6 +437,8 @@ async function loadPage() {
     btn.className = "sm";
     const paused = w.pause_requested;
     btn.textContent = paused ? "Cho chạy lại" : "Tạm dừng AI";
+    const may = window.AICF.can.pause && (!window.AICF.site || window.AICF.site === w.site_id);
+    if (!may) { btn.disabled = true; btn.title = "Vai trò hiện tại không được tạm dừng/cho chạy lại worker này"; }
     btn.onclick = async (ev) => {
       ev.stopPropagation();
       await api(`/api/workers/${encodeURIComponent(w.worker_id)}/${paused ? "resume" : "pause"}`, { method: "POST" });

@@ -313,3 +313,68 @@ func TestAgentsProxyIsReadOnlyRoleCheckedAndHidesTheCredential(t *testing.T) {
 		}
 	}
 }
+
+func TestWhoamiTellsTheUIWhatEachRoleMayDoAndAgreesWithTheServer(t *testing.T) {
+	g := newRBACRig(t)
+	type who struct {
+		Name, Role, Site string
+		Open             bool
+		Can              map[string]bool
+	}
+	get := func(tok string) (int, who) {
+		rec := g.do("GET", "/api/whoami", tok, "")
+		var w who
+		json.Unmarshal(rec.Body.Bytes(), &w)
+		return rec.Code, w
+	}
+	if code, _ := get(""); code != http.StatusUnauthorized {
+		t.Fatalf("whoami without a token: %d", code)
+	}
+	if code, _ := get("wrong"); code != http.StatusUnauthorized {
+		t.Fatalf("whoami with a bad token: %d", code)
+	}
+	want := map[string]map[string]bool{
+		"tok-viewer": {"view": true, "pause": false, "tenants": false}, "tok-operator": {"view": true, "pause": true, "tenants": false},
+		"tok-sam": {"view": true, "pause": true, "tenants": false}, "tok-admin": {"view": true, "pause": true, "tenants": true},
+	}
+	for tok, caps := range want {
+		code, w := get(tok)
+		if code != 200 {
+			t.Fatalf("%s: %d", tok, code)
+		}
+		for k, v := range caps {
+			if w.Can[k] != v {
+				t.Errorf("%s: can[%s]=%v want %v", tok, k, w.Can[k], v)
+			}
+		}
+		// the advertised capability must match what the server really does
+		if got := g.do("POST", "/api/workers/w-hn/pause", tok, "").Code; (got/100 == 2) != (caps["pause"] && (w.Site == "" || w.Site == "hanoi")) {
+			t.Errorf("%s: whoami says pause=%v but POST pause on w-hn answered %d", tok, caps["pause"], got)
+		}
+		if got := g.do("POST", "/api/tenants", tok, `{"id":"zz","name":"zz"}`).Code; (got/100 == 2) != caps["tenants"] {
+			t.Errorf("%s: whoami says tenants=%v but POST /api/tenants answered %d", tok, caps["tenants"], got)
+		}
+	}
+	if _, w := get("tok-sam"); w.Site != "hanoi" {
+		t.Errorf("site-restricted operator should report its site, got %q", w.Site)
+	}
+	if rec := g.do("POST", "/api/whoami", "tok-admin", ""); rec.Code == 200 {
+		t.Error("whoami must be GET only")
+	}
+}
+
+func TestWhoamiInOpenModeReportsNoLogin(t *testing.T) {
+	reg := NewRegistry(time.Hour)
+	ts, _ := NewTenantStore("")
+	h := NewAPIWith(NewFleet(reg), ts, NewAuth(""), nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/whoami", nil))
+	var w struct {
+		Open bool
+		Can  map[string]bool
+	}
+	json.Unmarshal(rec.Body.Bytes(), &w)
+	if rec.Code != 200 || !w.Open || !w.Can["tenants"] {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+}

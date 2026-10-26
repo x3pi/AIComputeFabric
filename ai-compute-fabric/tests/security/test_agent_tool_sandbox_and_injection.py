@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from agents.sandbox import DockerSandbox, NullSandbox, SandboxError, SandboxLimits, SandboxUnavailable, pick_sandbox
+from agents.sandbox import DockerSandbox, NullSandbox, SandboxError, SandboxLimits, SandboxUnavailable
 from agents.tool_registry import ToolDenied, ToolRegistry, ToolSpec, file_sha256, sign_manifest
 
 ROOT = Path(__file__).resolve().parents[2]

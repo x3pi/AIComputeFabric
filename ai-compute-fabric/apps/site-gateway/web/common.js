@@ -84,7 +84,8 @@ function renderNav() {
     el("span", { id: "nav-live-txt" }, "SSE 1 Hz")
   );
 
-  const actions = el("div", { class: "nav-actions" }, livePill, tokBtn, themeBtn);
+  const roleBadge = el("span", { class: "nav-role", id: "nav-role", title: "Vai trò của token hiện tại" }, "…");
+  const actions = el("div", { class: "nav-actions" }, livePill, roleBadge, tokBtn, themeBtn);
   nav.append(brand, links, actions);
   document.body.prepend(nav);
 }
@@ -178,4 +179,29 @@ function renderSixBuckets(barEl, legEl, b) {
   }
 }
 
-document.addEventListener("DOMContentLoaded", renderNav);
+// Who am I and what may I do? The server enforces it; this only decides what the page shows.
+// Until /api/whoami answers, everything is treated as NOT allowed (fail closed in the UI too).
+window.AICF = { role: "", site: "", can: { view: false, pause: false, tenants: false } };
+window.AICF_READY = (async () => {
+  try {
+    const r = await api("/api/whoami");
+    if (r && r.ok) {
+      const w = await r.json();
+      window.AICF = { role: w.role, site: w.site || "", name: w.name, open: !!w.open, can: w.can };
+    }
+  } catch {}
+  applyRole();
+})();
+
+function applyRole() {
+  const { role, site, open, can } = window.AICF;
+  const badge = document.getElementById("nav-role");
+  if (badge) {
+    badge.textContent = role ? (open ? "không đăng nhập (loopback)" : role + (site ? " · " + site : "")) : "chưa xác thực";
+    badge.dataset.role = role || "none";
+  }
+  const tab = document.querySelector('.nav-tab[href="tenants.html"]');
+  if (tab && !can.tenants) { tab.style.opacity = "0.5"; tab.title = "Chỉ vai trò admin được quản lý người dùng & khóa"; }
+}
+
+document.addEventListener("DOMContentLoaded", () => { renderNav(); applyRole(); });

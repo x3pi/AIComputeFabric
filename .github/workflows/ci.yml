@@ -39,6 +39,8 @@ jobs:
           cache: pip
           cache-dependency-path: ai-compute-fabric/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
+      - name: ruff (syntax errors, undefined names, unused imports/variables; style rules are not enforced)
+        run: ruff check .
       - name: unit, security and evidence tests (tests that need a GPU, a model server, NATS or Postgres skip themselves)
         run: python -m pytest -q
       - name: dependency audit

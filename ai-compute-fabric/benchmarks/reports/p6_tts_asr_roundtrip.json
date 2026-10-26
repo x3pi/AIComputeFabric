@@ -1,0 +1,37 @@
+{
+ "engines": "facebook/mms-tts-vie -> Qwen3-ASR-0.6B",
+ "rows": [
+  {
+   "text": "xin chào quý khách",
+   "asr": "xin chào quý khách",
+   "wer": 0.0,
+   "duration_s": 2.0
+  },
+  {
+   "text": "hôm nay trời nắng đẹp",
+   "asr": "hôm nay trời nắng đẹp",
+   "wer": 0.0,
+   "duration_s": 2.096
+  },
+  {
+   "text": "công ty chúng tôi xin cảm ơn quý khách hàng",
+   "asr": "công ty chúng tôi xin cảm ơn quý khách hàng",
+   "wer": 0.0,
+   "duration_s": 3.536
+  },
+  {
+   "text": "hóa đơn được thanh toán vào ngày mười lăm tháng ba",
+   "asr": "hoa đơn được thanh toán vào ngày mười lăm tháng ba",
+   "wer": 0.091,
+   "duration_s": 3.568
+  },
+  {
+   "text": "cuộc họp sẽ bắt đầu lúc chín giờ sáng",
+   "asr": "cuộc họp sẽ bắt đầu lúc chín giờ sáng",
+   "wer": 0.0,
+   "duration_s": 3.36
+  }
+ ],
+ "mean_wer": 0.0182,
+ "caveat": "5 sentences; intelligibility to one ASR model only; MMS-TTS licence is CC-BY-NC 4.0 (not cleared for commercial use); no MOS/listening test"
+}

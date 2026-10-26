@@ -89,13 +89,18 @@ def resample(x: np.ndarray, sr_in: int, sr_out: int, taps_per_phase: int = 16) -
     return y[: int(math.ceil(len(x) * sr_out / sr_in))].astype(np.float32)
 
 
-def energy_vad(x: np.ndarray, sr: int, frame_ms: int = 30, threshold_db: float = -40.0, min_speech_ms: int = 90, hangover_ms: int = 150) -> list:
-    """(start_s, end_s) of regions louder than `threshold_db` relative to full scale."""
+def energy_vad(x: np.ndarray, sr: int, frame_ms: int = 30, threshold_db: float = -40.0, min_speech_ms: int = 90, hangover_ms: int = 150,
+               relative_db: float | None = None, floor_db: float = -75.0) -> list:
+    """(start_s, end_s) of regions louder than `threshold_db` relative to full scale.
+    With `relative_db` the threshold follows the recording: 95th-percentile frame level minus relative_db, never below
+    `floor_db` (digital silence stays silent). A fixed -40 dB found NO speech in a quietly recorded real clip (FLEURS, rms -49 dB)."""
     n = int(sr * frame_ms / 1000)
     if n == 0 or len(x) < n:
         return []
     frames = x[: len(x) // n * n].reshape(-1, n)
     db = 10 * np.log10(np.mean(frames.astype(np.float64) ** 2, axis=1) + 1e-12)
+    if relative_db is not None:
+        threshold_db = max(floor_db, float(np.percentile(db, 95)) - relative_db)
     active = db > threshold_db
     hang = max(1, hangover_ms // frame_ms)
     out, start, quiet = [], None, 0

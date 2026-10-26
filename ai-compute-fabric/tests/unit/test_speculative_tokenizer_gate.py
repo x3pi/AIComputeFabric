@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from core.model_registry.prompting import speculative_compatible, tokenizer_sha256
+from core.model_registry.prompting import speculative_compatible
 
 
 def make(dir_, vocab, template="T"):

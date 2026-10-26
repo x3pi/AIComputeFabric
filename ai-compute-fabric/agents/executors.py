@@ -86,3 +86,23 @@ class LlamaExecutor:
             return {"data": {}, "citations": [{"source_id": inp.document.source_id, "quote": raw[:200] or "?"}]}   # fails validation, by design
         return {"data": data, "citations": [{"source_id": inp.document.source_id, "quote": q} for q in ev if isinstance(q, str) and q]
                 or [{"source_id": inp.document.source_id, "quote": "?"}]}
+
+
+class ValidatorExecutor:
+    """RESULT_VALIDATE: re-runs the ResultValidator on a result produced earlier in the same workflow.
+    `tasks` maps task_id -> the original Task (the validator needs its input for citations and schema); the result
+    itself arrives through the step's dependencies. An unknown target is refused, not reported as valid."""
+    def __init__(self, tasks):
+        self.tasks = tasks
+
+    def execute(self, task: Task, attempt: int = 1, deps: dict | None = None) -> TaskResult:
+        from agents.validator import validate_result
+        if task.type != TaskType.RESULT_VALIDATE:
+            raise NotImplementedError(task.type.value)
+        inp = parse_input(task)
+        target = self.tasks.get(inp.target_task_id) if hasattr(self.tasks, "get") else self.tasks(inp.target_task_id)
+        res = next((TaskResult.model_validate(v) for v in (deps or {}).values() if isinstance(v, dict) and v.get("task_id") == inp.target_task_id), None)
+        if target is None or res is None:
+            raise ValueError(f"no task/result for {inp.target_task_id!r} (declare the step as a dependency)")
+        rep = validate_result(target, res)
+        return TaskResult(task_id=task.task_id, type=task.type, output={"ok": rep.ok, "errors": rep.errors}, worker_id="validator")

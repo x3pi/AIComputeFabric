@@ -3,7 +3,7 @@
 Two real llama-server processes on one GPU. Per trial: a fresh long conversation prefix, turn 1 on
 server A, then turn 2 (prefix + answer + new question) once to A (warm prefix cache) and, on a
 separate conversation, once to B (cold). TTFT is the time to the first streamed token."""
-import argparse, json, os, shutil, statistics, subprocess, time, urllib.request, random
+import argparse, json, statistics, subprocess, time, urllib.request, random
 from pathlib import Path
 
 def health(port):

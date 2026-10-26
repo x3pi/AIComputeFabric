@@ -3,7 +3,6 @@ Needs PostgreSQL (AICF_PG_DSN); skipped, not passed, without it."""
 import json
 import os
 import threading
-import time
 import urllib.error
 import urllib.request
 import uuid

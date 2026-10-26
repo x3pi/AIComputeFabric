@@ -6,7 +6,7 @@ checkpoint on any machine: finished nodes are not run again, only the ones that 
 When a worker is reclaimed by its user mid-task (WorkerLost), the task is retried on another worker."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Annotated, Callable, Optional, Protocol
 
 import psycopg

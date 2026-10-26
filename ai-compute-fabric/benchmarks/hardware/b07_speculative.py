@@ -73,7 +73,7 @@ def main():
         for mx in (4, 8):
             configs.append((f"draft_{n}_max{mx}", ["-md", path, "--spec-type", "draft-simple", "--spec-draft-n-max", str(mx)]))
     configs.append(("ngram_simple", ["--spec-type", "ngram-simple"]))
-    results, base_texts = {}, None
+    results = {}
     for rep in range(a.repeats):
         for name, extra in configs:
             rows = run_config(a, name, extra, 18990 + rep, a.logdir)

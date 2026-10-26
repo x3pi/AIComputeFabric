@@ -1,4 +1,3 @@
-import pytest
 
 from core.adaptive_scheduler.scheduler import Request, Worker, select
 

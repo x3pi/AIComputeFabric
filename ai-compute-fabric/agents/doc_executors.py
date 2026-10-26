@@ -6,7 +6,6 @@ symlink out) is refused, as are files over the size limits. Not covered: scanned
 returns an empty page, it is not OCR'd), PDF table extraction, handwriting, layout analysis, Windows."""
 from __future__ import annotations
 
-import io
 import subprocess
 import zipfile
 from html.parser import HTMLParser

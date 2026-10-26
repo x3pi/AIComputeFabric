@@ -815,3 +815,8 @@ th.num, td.num {
     flex: 1 1 100%;
   }
 }
+
+.nav-role { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line, #8884); white-space: nowrap; }
+.nav-role[data-role="admin"] { color: var(--acc); }
+.nav-role[data-role="viewer"], .nav-role[data-role="none"] { opacity: 0.8; }
+.readonly-banner { margin: 12px 0; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line, #8884); background: var(--acc-soft); font-size: 13px; }
