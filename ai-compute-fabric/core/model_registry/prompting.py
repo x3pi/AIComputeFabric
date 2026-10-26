@@ -45,3 +45,11 @@ def render_chat_template(tok, messages: list, tools: list | None = None, add_gen
 def encode(tok, text: str) -> list:
     """Token ids of an already-rendered prompt: special tokens in the text are parsed, none are added."""
     return tok.encode(text, add_special_tokens=False)
+
+
+def speculative_compatible(target_dir: str, draft_dir: str) -> tuple[bool, str]:
+    """A draft model may only propose tokens for a target that tokenises identically (plan P4.3)."""
+    t, d = tokenizer_sha256(target_dir), tokenizer_sha256(draft_dir)
+    if t == d:
+        return True, "same tokenizer_sha256"
+    return False, f"tokenizer_sha256 differs (target {t[:12]}, draft {d[:12]}): speculative decoding refused"
