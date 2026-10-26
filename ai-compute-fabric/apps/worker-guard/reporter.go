@@ -51,7 +51,7 @@ func (r *Reporter) Step(ctx context.Context) error {
 	s := r.G.Snapshot()
 	b := s.Buckets
 	hb := &pb.HeartbeatRequest{
-		State: string(s.State), Model: r.Model, GpuTempC: uint32(s.Sample.TempC),
+		State: string(s.State), Model: servedModel(s, r.Model), GpuTempC: uint32(s.Sample.TempC),
 		Capacity: &pb.WorkerCapacity{
 			WorkerId: r.WorkerID, SiteId: r.SiteID, VramFreeBytes: s.Sample.FreeMiB() << 20,
 			SupportedEngines: []string{"llama.cpp"},
@@ -106,4 +106,13 @@ func (r *Reporter) Run(ctx context.Context) {
 		case <-t.C:
 		}
 	}
+}
+
+// servedModel is what the engine is configured with now (it changes when the operator switches model in the web UI);
+// the startup value is only the fallback before the engine has ever been configured.
+func servedModel(s Snapshot, startup string) string {
+	if s.Model != "" {
+		return s.Model
+	}
+	return startup
 }

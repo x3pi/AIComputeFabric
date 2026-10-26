@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -103,5 +104,19 @@ func TestEngineAPIDisabledWithoutModelsDir(t *testing.T) {
 	h := Handler(g)
 	if w := post(h, `{"model":"a.gguf"}`); w.Code != http.StatusForbidden {
 		t.Fatalf("got %d, want 403", w.Code)
+	}
+}
+
+func TestHeartbeatReportsTheModelAfterASwitchNotTheStartupOne(t *testing.T) {
+	r, fg, g, _, _ := reporterRig(t)
+	ctx := context.Background()
+	r.Step(ctx)
+	if m := fg.got[len(fg.got)-1].Model; m != "m" {
+		t.Fatalf("before any switch the startup model is reported, got %q", m)
+	}
+	g.Switch("/models/b.gguf", "")
+	r.Step(ctx)
+	if m := fg.got[len(fg.got)-1].Model; m != "b.gguf" {
+		t.Fatalf("heartbeat still reports %q after the switch", m)
 	}
 }
