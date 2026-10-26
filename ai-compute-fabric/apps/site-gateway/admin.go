@@ -57,17 +57,6 @@ func NewAPI(f *Fleet, ts *TenantStore, adminToken string, routers ...*Router) ht
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"api_key": key, "note": "the previous key no longer works"})
-		case len(parts) == 2 && parts[1] == "key" && r.Method == http.MethodGet:
-			key, err := ts.Reveal(id)
-			switch {
-			case errors.Is(err, ErrNoTenant):
-				http.Error(w, err.Error(), http.StatusNotFound)
-			case err != nil:
-				http.Error(w, err.Error(), http.StatusConflict)
-			default:
-				w.Header().Set("Cache-Control", "no-store")
-				writeJSON(w, http.StatusOK, map[string]any{"api_key": key})
-			}
 		case len(parts) == 1 && r.Method == http.MethodPatch:
 			var in struct {
 				Weight      *float64 `json:"weight"`

@@ -68,11 +68,11 @@
   </section>
 
   <div id="newkey" class="banner" hidden>
-    <strong>🔐 Khóa API (có thể sao chép lại bất cứ lúc nào bằng nút "Sao chép khóa" ở danh sách):</strong>
+    <strong>🔐 Khóa API mới — chỉ hiển thị một lần duy nhất, hãy lưu lại ngay (đã tự sao chép vào clipboard):</strong>
     <div class="key" id="keytext"></div>
     <div class="row" style="margin-top:10px">
       <button id="copy" type="button" class="primary sm">Sao chép khóa</button>
-      <button id="dismiss" type="button" class="sm">Đóng</button>
+      <button id="dismiss" type="button" class="sm">Đã lưu, đóng thông báo</button>
     </div>
   </div>
 
@@ -235,22 +235,6 @@ async function load() {
       }
     }, "Đổi khóa");
 
-    const cpy = el("button", {
-      class: "sm",
-      title: t.key_copyable ? "Sao chép lại khóa API hiện tại" : "Tenant này chưa lưu khóa: bấm để đổi khóa và có khóa sao chép được",
-      onclick: async () => {
-        if (!t.key_copyable) {
-          if (!confirm("Tenant " + t.name + " được tạo trước khi hệ thống lưu khóa nên không thể lấy lại khóa cũ.\nĐổi sang khóa mới ngay? Khóa cũ sẽ ngừng hoạt động.")) return;
-          const rr = await api("/api/tenants/" + encodeURIComponent(t.id) + "/rotate-key", { method: "POST" });
-          if (rr.ok) { showKey((await rr.json()).api_key); load(); } else msg("Lỗi: " + (await rr.text()));
-          return;
-        }
-        const res = await api("/api/tenants/" + encodeURIComponent(t.id) + "/key");
-        if (res.ok) showKey((await res.json()).api_key);
-        else msg("Lỗi: " + (await res.text()));
-      }
-    }, "Sao chép khóa");
-
     const servedCount = servedMap[t.id] || servedMap[t.name] || 0;
     tb.append(
       el("tr", {},
@@ -261,7 +245,7 @@ async function load() {
         el("td", { class: "num" }, m),
         el("td", { class: "num" }, String(servedCount)),
         el("td", {}, el("span", { class: "pill " + (t.disabled ? "err" : "ok") }, t.disabled ? "đã vô hiệu" : "hoạt động")),
-        el("td", { class: "row" }, save, cpy, tog, rot)
+        el("td", { class: "row" }, save, tog, rot)
       )
     );
   }

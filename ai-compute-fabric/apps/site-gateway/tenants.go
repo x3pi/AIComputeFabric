@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -21,9 +19,8 @@ type Tenant struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
 	KeyHash     string  `json:"key_hash"`
-	KeyEnc      string  `json:"key_enc,omitempty"` // key sealed with AES-GCM (secret file beside tenants.json); lets an admin copy it again
-	Weight      float64 `json:"weight"`            // share of the GPUs when contended (default 1)
-	MaxInflight int     `json:"max_inflight"`      // concurrent requests, 0 = gateway default
+	Weight      float64 `json:"weight"`       // share of the GPUs when contended (default 1)
+	MaxInflight int     `json:"max_inflight"` // concurrent requests, 0 = gateway default
 	Disabled    bool    `json:"disabled"`
 }
 
@@ -34,14 +31,12 @@ type TenantView struct {
 	Weight      float64 `json:"weight"`
 	MaxInflight int     `json:"max_inflight"`
 	Disabled    bool    `json:"disabled"`
-	KeyCopyable bool    `json:"key_copyable"` // an admin can still copy this tenant's key
 }
 
 var (
-	ErrNoTenant    = errors.New("unknown tenant")
-	ErrBadTenant   = errors.New("invalid tenant")
-	ErrDuplicated  = errors.New("tenant name already exists")
-	ErrNoStoredKey = errors.New("key was not stored for this tenant: rotate it to get a copyable key")
+	ErrNoTenant   = errors.New("unknown tenant")
+	ErrBadTenant  = errors.New("invalid tenant")
+	ErrDuplicated = errors.New("tenant name already exists")
 )
 
 // TenantStore keeps tenants in memory and, when Path is set, in a JSON file written atomically.
@@ -51,71 +46,10 @@ type TenantStore struct {
 	mu     sync.RWMutex
 	byID   map[string]*Tenant
 	byHash map[string]*Tenant
-	box    cipher.AEAD
-}
-
-// openBox returns the AEAD that seals API keys at rest. Its 256-bit secret lives in
-// <tenants file>.secret (mode 0600), so tenants.json alone does not reveal any key.
-func openBox(path string) (cipher.AEAD, error) {
-	var secret []byte
-	if path != "" {
-		b, err := os.ReadFile(path + ".secret")
-		switch {
-		case err == nil && len(b) == 32:
-			secret = b
-		case err == nil || errors.Is(err, os.ErrNotExist):
-			secret = make([]byte, 32)
-			rand.Read(secret)
-			if err := os.WriteFile(path+".secret", secret, 0o600); err != nil {
-				return nil, err
-			}
-		default:
-			return nil, err
-		}
-	} else {
-		secret = make([]byte, 32)
-		rand.Read(secret)
-	}
-	blk, err := aes.NewCipher(secret)
-	if err != nil {
-		return nil, err
-	}
-	return cipher.NewGCM(blk)
-}
-
-func (s *TenantStore) seal(key string) string {
-	nonce := make([]byte, s.box.NonceSize())
-	rand.Read(nonce)
-	return base64.RawStdEncoding.EncodeToString(s.box.Seal(nonce, nonce, []byte(key), nil))
-}
-
-// Reveal returns the tenant's current API key for an admin to copy again. Tenants created
-// before this feature have no sealed key: rotate to get one.
-func (s *TenantStore) Reveal(id string) (string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	t := s.byID[id]
-	if t == nil {
-		return "", ErrNoTenant
-	}
-	raw, err := base64.RawStdEncoding.DecodeString(t.KeyEnc)
-	if t.KeyEnc == "" || err != nil || len(raw) < s.box.NonceSize() {
-		return "", ErrNoStoredKey
-	}
-	pt, err := s.box.Open(nil, raw[:s.box.NonceSize()], raw[s.box.NonceSize():], nil)
-	if err != nil {
-		return "", ErrNoStoredKey
-	}
-	return string(pt), nil
 }
 
 func NewTenantStore(path string) (*TenantStore, error) {
 	s := &TenantStore{Path: path, byID: map[string]*Tenant{}, byHash: map[string]*Tenant{}}
-	box, err := openBox(path)
-	if err != nil {
-		return nil, err
-	}
-	s.box = box
 	if path == "" {
 		return s, nil
 	}
@@ -184,7 +118,7 @@ func (s *TenantStore) Create(name string, weight float64, maxInflight int) (Tena
 		}
 	}
 	key := "aicf_" + newSecret(24)
-	t := &Tenant{ID: "t_" + newSecret(6), Name: name, KeyHash: hashKey(key), KeyEnc: s.seal(key), Weight: weight, MaxInflight: maxInflight}
+	t := &Tenant{ID: "t_" + newSecret(6), Name: name, KeyHash: hashKey(key), Weight: weight, MaxInflight: maxInflight}
 	s.byID[t.ID], s.byHash[t.KeyHash] = t, t
 	if err := s.saveLocked(); err != nil {
 		delete(s.byID, t.ID)
@@ -195,7 +129,7 @@ func (s *TenantStore) Create(name string, weight float64, maxInflight int) (Tena
 }
 
 func view(t *Tenant) TenantView {
-	return TenantView{ID: t.ID, Name: t.Name, Weight: t.Weight, MaxInflight: t.MaxInflight, Disabled: t.Disabled, KeyCopyable: t.KeyEnc != ""}
+	return TenantView{ID: t.ID, Name: t.Name, Weight: t.Weight, MaxInflight: t.MaxInflight, Disabled: t.Disabled}
 }
 
 // Authenticate maps an API key to its tenant; disabled tenants and unknown keys fail.
@@ -262,12 +196,12 @@ func (s *TenantStore) RotateKey(id string) (string, error) {
 	}
 	key := "aicf_" + newSecret(24)
 	delete(s.byHash, t.KeyHash)
-	oldHash, oldEnc := t.KeyHash, t.KeyEnc
-	t.KeyHash, t.KeyEnc = hashKey(key), s.seal(key)
+	oldHash := t.KeyHash
+	t.KeyHash = hashKey(key)
 	s.byHash[t.KeyHash] = t
 	if err := s.saveLocked(); err != nil {
 		delete(s.byHash, t.KeyHash)
-		t.KeyHash, t.KeyEnc = oldHash, oldEnc
+		t.KeyHash = oldHash
 		s.byHash[oldHash] = t
 		return "", err
 	}
