@@ -128,6 +128,32 @@ Câu hỏi hay gặp: "suy luận không nên chạy nhiều máy, còn huấn l
 
 ---
 
+## 4.4 Ước lượng: chia Qwen2.5-32B dense qua 3 PC RTX 3060 có khả thi không?
+
+Đây là **ước lượng từ số đo của chúng ta và một số đo bên ngoài, không phải phép đo phân tán**. Ngày 2026-10-26.
+
+**Dữ liệu đầu vào**
+- Số đo B01 (RTX 3060, Qwen3-8B Q4_K_M, 5,02 GB, toàn bộ trên GPU): 64,9 tok/s, tức 15,4 ms/token, tương đương khoảng 326 GB/s băng thông hiệu dụng. [ĐO]
+- Số đo B02 (Qwen2.5-32B Q4_K_M, 19,85 GB, một máy): tốt nhất 3,97 tok/s (252 ms/token) với 32 layer trên GPU, còn lại ở CPU. [ĐO, trên Core Ultra 7 265K]
+- Chi phí mỗi bước nhảy mạng: từ số đo bên ngoài (7B qua RPC 10 GbE, 91,8 xuống 52,7 tok/s) suy ra khoảng 8 ms phụ trội cho cấu hình 2 máy; ta giả định 4–8 ms mỗi bước nhảy. [TÀI LIỆU + SUY LUẬN]
+
+**Tính**
+- Chia 32B ra 3 máy thì mỗi máy giữ khoảng 6,6 GB trọng số, nằm gọn trong VRAM. Với một luồng, 3 giai đoạn chạy tuần tự nên thời gian tính toán gần bằng đọc cả 19,85 GB một lần: 19,85 ÷ 326 GB/s ≈ 61 ms.
+- Cộng 3 bước nhảy (máy 1 → 2 → 3 → về máy 1) × 4–8 ms ≈ 12–24 ms.
+- Tổng ≈ 73–85 ms/token, tức khoảng 12–14 tok/s cho một luồng. So với 3,97 tok/s của một máy là nhanh hơn khoảng 3 lần.
+
+**Vì sao kết quả này không mâu thuẫn với "phân tán thường làm chậm"**
+Các số đo cho thấy phân tán chậm đi là khi model **đã vừa một máy** (7B, hoặc 72B vừa đủ chạy local). Ở đây phương án thay thế của một máy là chạy lai CPU, vốn rất chậm, nên phân tán thắng. Điều kiện của phép tính: model không vừa một GPU, và các máy đều đưa trọn phần của mình vào VRAM.
+
+**Kết luận về tính khả thi** [SUY LUẬN, chưa đo]
+- Về kỹ thuật: khả thi và có lợi thế rõ cho model dense từ khoảng 30B trở lên mà không vừa 12 GB. Con số 115 ms của tài liệu kiến trúc cho Prima.cpp 4×3060 nằm trong tầm hợp lý, không còn là "lạc quan" như tôi nhận xét ở mục 7 (T2); điều chưa có là số đo.
+- Về thông lượng: 3 máy chạy 3 bản chép riêng, mỗi bản 3,97 tok/s, cho tổng khoảng 12 tok/s cho 3 người dùng, gần bằng một luồng của nhóm phân tán. Lợi thế của nhóm nằm ở độ trễ của từng người dùng và ở khả năng gom nhiều luồng (decode bị giới hạn bởi băng thông bộ nhớ nên thêm luồng tốn ít); chưa đo.
+- Phương án cạnh tranh: Qwen3-30B-A3B (MoE) đạt 49,9 tok/s trên một máy (B06, trên CPU mạnh hơn i5) và nhanh hơn nhiều so với 32B dense phân tán. Nếu chất lượng đáp ứng thì nên dùng MoE; phân tán chỉ có ý nghĩa khi bắt buộc cần một model dense lớn. Chưa so chất lượng giữa hai model.
+- Rào cản vận hành, không phải tốc độ: cần cả 3 GPU rảnh cùng lúc (người dùng văn phòng lấy lại GPU làm hỏng nhóm), engine có chạy được trên hệ điều hành của fleet không (mục 7, T5), bảo mật cổng RPC, và mất thời gian dựng lại nhóm.
+- Khuyến nghị: giữ như một thử nghiệm có điều kiện. Chạy B03–B05 trên 3 PC thật với tiêu chí đạt định trước (ví dụ ≥ 2× so với một máy chạy lai, ổn định khi mất một thành viên), chỉ xây tiếp nếu đạt.
+
+---
+
 ## 5. Đề xuất sửa kế hoạch (chưa áp dụng, chờ bạn đồng ý)
 
 1. Phụ lục B, dòng 3: thay "LAN ≥ 2 Gbps" bằng điều kiện đo được, ví dụ: "nhóm phân tán chỉ được chọn nếu tok/s decode đo được cao hơn phương án offload RAM một máy, trên mạng có dây ≥ 10 GbE cùng switch". Số cụ thể (ví dụ 2 Gbps) hiện chỉ là phỏng đoán, không nguồn nào đỡ.
@@ -157,7 +183,7 @@ Ngày đối chiếu: 2026-10-26. Tôi đọc được nội dung bằng cách t
 | # | Vấn đề | Chi tiết | Mức |
 |---|---|---|---|
 | T1 | **Ngưỡng "80% tổng thông lượng của các Worker độc lập" phụ thuộc độ dài tác vụ** | Đo mô phỏng (không phải máy thật): hiệu suất điều phối 0,855 / 0,741 / 0,568 với 8 / 20 / 40 worker khi tác vụ dài 200 ms, và 0,94 ở 40 worker khi tác vụ dài 2 s (`p5_orchestrator_scale_simulated*.json`). Trần điều phối khoảng 115 tác vụ/s trên máy này. Suy ra: 200 worker cần tác vụ dài khoảng 1,7 s trở lên để không vượt trần (200 ÷ 115). Ngưỡng 80% chỉ đạt với tác vụ đủ dài hoặc gom lô; tài liệu không nêu điều kiện này. | [ĐO] mô phỏng + [SUY LUẬN] |
-| T2 | **Mô phỏng chọn tuyến dễ bị đọc như bằng chứng** | Ví dụ 32B: một PC 210 ms/token, Prima.cpp 4×3060 115 ms, MoLink 160 ms. Tài liệu có ghi là giả định. Nhưng 210 ms gần với số đo thật B02 (252 ms, 3,97 tok/s), còn 115 ms và 160 ms không có số đo nào đỡ; thứ tự "Prima nhanh hơn MoLink" cũng chưa có căn cứ. Đo thật trên 3–4 PC (B04, B05) mới trả lời được. Nguồn ngoài cho thấy phân tán có thể mất 15–50% decode (mục 2.1), nên giả định "nhanh gần gấp đôi" là lạc quan. | [TÀI LIỆU] + [CHƯA ĐO] |
+| T2 | **Mô phỏng chọn tuyến dễ bị đọc như bằng chứng** | Ví dụ 32B: một PC 210 ms/token, Prima.cpp 4×3060 115 ms, MoLink 160 ms. Tài liệu có ghi là giả định. Nhưng 210 ms gần với số đo thật B02 (252 ms, 3,97 tok/s), còn 115 ms và 160 ms không có số đo nào đỡ; thứ tự "Prima nhanh hơn MoLink" cũng chưa có căn cứ. Đo thật trên 3–4 PC (B04, B05) mới trả lời được. Nguồn ngoài cho thấy phân tán có thể mất 15–50% decode khi model đã vừa một máy (mục 2.1); với 32B không vừa một máy thì ước lượng ở mục 4.4 cho 73–85 ms, nên con số 115 ms là hợp lý nhưng chưa được đo. | [TÀI LIỆU] + [CHƯA ĐO] |
 | T3 | **"Hạ tầng mạng 2–5 Gbps" và nhóm 3–4 PC** | Tài liệu nói "cần đo thực tế", đúng. Nhưng toàn bộ phương án phân tán 32B dựa trên mạng này mà chưa có số RTT; nguồn ngoài chỉ có số cho 1 GbE và 10 GbE (mục 2.1), không có cho 2–5 Gbps. Băng thông chung của switch khi 200 PC cùng dùng cũng chưa được xét trong công thức. | [CHƯA XÁC MINH] |
 | T4 | **Cấu hình mục tiêu "Core i5 + 32 GB RAM" khác máy chúng ta đã đo** | Số B06 (49,9 tok/s) đo trên Core Ultra 7 265K, 4 luồng, không phải i5; offload expert bị giới hạn bởi băng thông RAM và CPU (RAM một kênh làm chậm hơn). Không nên dùng 49,9 tok/s làm kỳ vọng cho cả đội máy i5. Cần đo trên một máy i5 thật. Đây cũng là sửa cho chính ghi chú của tôi ở D2 và mục 3. | [ĐO] trên máy khác cấu hình |
 | T5 | **Hệ điều hành của fleet bị bỏ qua** | Cây monorepo có `deployments/windows`, nhưng vLLM, SGLang và MoLink (xây trên vLLM) theo hiểu biết của tôi chỉ chạy native trên Linux; Prima.cpp: không tìm thấy xác nhận Windows. Nếu PC văn phòng chạy Windows, hai nhánh phân tán có thể không dùng được nếu không qua WSL2. Kế hoạch D04 đã nêu rủi ro; tài liệu kiến trúc thì không. | [CHƯA XÁC MINH] |
