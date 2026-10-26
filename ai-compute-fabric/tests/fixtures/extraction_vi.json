@@ -1,0 +1,95 @@
+{
+ "note": "hand-written invoices; gold values; tiny",
+ "docs": [
+  {
+   "text": "Hóa đơn số 0012 ngày 05/03/2026 của Công ty Sao Mai. Tổng tiền thanh toán là 12.500.000 đồng. Loại chi phí: văn phòng phẩm.",
+   "gold": {
+    "nha_cung_cap": "Công ty Sao Mai",
+    "so_tien": 12500000,
+    "ngay": "05/03/2026",
+    "loai": "vanphong"
+   }
+  },
+  {
+   "text": "Công ty TNHH Bình Minh gửi hóa đơn ngày 17/04/2026. Số tiền 3.200.000 đồng cho dịch vụ vận chuyển hàng hóa.",
+   "gold": {
+    "nha_cung_cap": "Công ty TNHH Bình Minh",
+    "so_tien": 3200000,
+    "ngay": "17/04/2026",
+    "loai": "vanchuyen"
+   }
+  },
+  {
+   "text": "Ngày 30/01/2026, Cửa hàng Hoa Hồng xuất hóa đơn 850.000 đồng. Nội dung: tiếp khách, mua hoa và trà.",
+   "gold": {
+    "nha_cung_cap": "Cửa hàng Hoa Hồng",
+    "so_tien": 850000,
+    "ngay": "30/01/2026",
+    "loai": "tiepkhach"
+   }
+  },
+  {
+   "text": "Hóa đơn của Tập đoàn Việt Tiến, lập ngày 02/12/2025. Giá trị 45.000.000 đồng. Hạng mục: thuê máy chủ đám mây.",
+   "gold": {
+    "nha_cung_cap": "Tập đoàn Việt Tiến",
+    "so_tien": 45000000,
+    "ngay": "02/12/2025",
+    "loai": "dammay"
+   }
+  },
+  {
+   "text": "Nhà hàng Phố Cổ - hóa đơn ngày 21/06/2026 - 2.150.000 đồng - phục vụ tiệc tiếp khách đối tác.",
+   "gold": {
+    "nha_cung_cap": "Nhà hàng Phố Cổ",
+    "so_tien": 2150000,
+    "ngay": "21/06/2026",
+    "loai": "tiepkhach"
+   }
+  },
+  {
+   "text": "Công ty Cổ phần An Phát đã xuất hóa đơn ngày 11/09/2026 trị giá 6.780.000 đồng cho việc mua giấy in và mực in.",
+   "gold": {
+    "nha_cung_cap": "Công ty Cổ phần An Phát",
+    "so_tien": 6780000,
+    "ngay": "11/09/2026",
+    "loai": "vanphong"
+   }
+  },
+  {
+   "text": "Hóa đơn ngày 08/08/2026 từ Vận tải Hải Âu: 9.900.000 đồng, cước chuyển hàng Hà Nội - Đà Nẵng.",
+   "gold": {
+    "nha_cung_cap": "Vận tải Hải Âu",
+    "so_tien": 9900000,
+    "ngay": "08/08/2026",
+    "loai": "vanchuyen"
+   }
+  },
+  {
+   "text": "Ngày 14/02/2026 Công ty Mây Xanh phát hành hóa đơn 120.000.000 đồng, phí thuê hạ tầng điện toán đám mây quý 1.",
+   "gold": {
+    "nha_cung_cap": "Công ty Mây Xanh",
+    "so_tien": 120000000,
+    "ngay": "14/02/2026",
+    "loai": "dammay"
+   }
+  },
+  {
+   "text": "Quán Cà phê Góc Phố, hóa đơn 05/05/2026, thanh toán 640.000 đồng, tiếp khách buổi sáng.",
+   "gold": {
+    "nha_cung_cap": "Quán Cà phê Góc Phố",
+    "so_tien": 640000,
+    "ngay": "05/05/2026",
+    "loai": "tiepkhach"
+   }
+  },
+  {
+   "text": "Nhà sách Tri Thức lập hóa đơn ngày 19/10/2026 với số tiền 1.450.000 đồng, mua sổ tay và bút.",
+   "gold": {
+    "nha_cung_cap": "Nhà sách Tri Thức",
+    "so_tien": 1450000,
+    "ngay": "19/10/2026",
+    "loai": "vanphong"
+   }
+  }
+ ]
+}

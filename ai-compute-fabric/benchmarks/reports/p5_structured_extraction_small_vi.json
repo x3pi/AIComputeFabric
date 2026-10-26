@@ -1,0 +1,19 @@
+{
+ "set": "tests/fixtures/extraction_vi.json (10 hand-written invoices)",
+ "model": "Qwen3-4B-Q4_K_M",
+ "constrained": {
+  "schema_valid": 10,
+  "validator_ok": 10,
+  "fields_right": 39,
+  "fields_total": 40,
+  "n": 10
+ },
+ "unconstrained": {
+  "schema_valid": 0,
+  "validator_ok": 0,
+  "fields_right": 0,
+  "fields_total": 40,
+  "n": 10
+ },
+ "caveat": "tiny set; validator_ok also requires verbatim evidence quotes. The unconstrained 0/10 is a FORMAT failure, not an extraction-ability result: Qwen3-4B Q4 returned the bare fields on 10/10 documents and never the requested {data, evidence} wrapper (checked by hand), so the executor found no data. It shows what the grammar guarantees; it does not show the model cannot read invoices."
+}
