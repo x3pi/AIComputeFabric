@@ -101,30 +101,60 @@ def cond_diloco(h, seed, outer_lr=0.7, momentum=0.9):
     return curve
 
 
-results = {}
 t0 = time.time()
 conds = {"ddp": cond_ddp, "single_worker": cond_single, "diloco_H10": lambda s: cond_diloco(10, s), "diloco_H50": lambda s: cond_diloco(50, s)}
 LRS = (2.5e-4, 5e-4, 1e-3)
-for LR in LRS:
-    for seed in (1, 2):
-        for name, fn in conds.items():
-            t1 = time.time()
-            curve = fn(seed)
-            results.setdefault(name, {}).setdefault(str(LR), []).append({"seed": seed, "ppl_at_step": curve, "seconds": round(time.time() - t1, 1)})
-            print(name, LR, seed, {k: {a: round(b, 2) for a, b in v.items()} for k, v in curve.items()}, flush=True)
+STORE = out.with_suffix(".jsonl")               # one line per finished run, so an interrupted experiment resumes instead of restarting
+done = [json.loads(l) for l in STORE.read_text().splitlines()] if STORE.exists() else []
+
+
+def have(cond, lr, seed):
+    return any(r["cond"] == cond and r["lr"] == lr and r["seed"] == seed for r in done)
+
+
+def run(cond, lr, seed):
+    global LR
+    if have(cond, lr, seed):
+        return
+    LR = lr
+    t1 = time.time()
+    curve = conds[cond](seed)
+    rec = {"cond": cond, "lr": lr, "seed": seed, "ppl_at_step": {str(k): v for k, v in curve.items()}, "seconds": round(time.time() - t1, 1)}
+    done.append(rec)
+    with open(STORE, "a") as f:
+        f.write(json.dumps(rec) + "\n")
+    print(cond, lr, seed, {k: {a: round(b, 2) for a, b in v.items()} for k, v in rec["ppl_at_step"].items()}, flush=True)
+
+
+def val_at_end(cond, lr):
+    v = [r["ppl_at_step"][str(T)]["val"] for r in done if r["cond"] == cond and r["lr"] == lr]
+    return float(np.mean(v)) if v else None
+
+
+# stage A: learning-rate sweep with seed 1 (selection on validation sentences); stage B: seed 2 at each method's chosen lr
+for lr in LRS:
+    for cond in conds:
+        run(cond, lr, 1)
+chosen = {c: min(LRS, key=lambda lr: val_at_end(c, lr)) for c in conds}
+for cond in conds:
+    run(cond, chosen[cond], 2)
+results = {}
+for r in done:
+    results.setdefault(r["cond"], {}).setdefault(str(r["lr"]), []).append(r)
 summary = {}
 for name, by_lr in results.items():
-    best_lr = min(by_lr, key=lambda lr: np.mean([r["ppl_at_step"][T]["val"] for r in by_lr[lr]]))   # chosen on VALIDATION sentences
+    best_lr = str(chosen[name])                     # chosen on VALIDATION sentences from the seed-1 sweep
     runs = by_lr[best_lr]
-    final = [r["ppl_at_step"][T]["test"] for r in runs]
+    final = [r["ppl_at_step"][str(T)]["test"] for r in runs]
     summary[name] = {"chosen_lr_by_val": float(best_lr), "final_test_ppl_mean": round(float(np.mean(final)), 3), "final_test_ppl_each_seed": [round(f, 3) for f in final],
-                     "test_ppl_before_training": round(runs[0]["ppl_at_step"][0]["test"], 3),
-                     "final_test_ppl_by_lr": {lr: round(float(np.mean([r["ppl_at_step"][T]["test"] for r in v])), 3) for lr, v in by_lr.items()}}
+                     "test_ppl_before_training": round(runs[0]["ppl_at_step"]["0"]["test"], 3),
+                     "final_test_ppl_by_lr_seed1": {lr: round(float([r for r in v if r["seed"] == 1][0]["ppl_at_step"][str(T)]["test"]), 3) for lr, v in by_lr.items()},
+                     "best_checkpoint_test_ppl_by_lr_seed1": {lr: round(float(min([r for r in v if r["seed"] == 1][0]["ppl_at_step"][str(k)]["test"] for k in (100, 200))), 3) for lr, v in by_lr.items()}}
 summary["comm_bytes_per_worker_fp32"] = {"ddp": comm_bytes_per_worker(n_params, T, W, None), "diloco_H10": comm_bytes_per_worker(n_params, T, W, 10),
                                          "diloco_H50": comm_bytes_per_worker(n_params, T, W, 50), "trainable_params": n_params}
 rep = {"model": "Qwen3-0.6B LoRA-FA r=8 (only B trained, A frozen identically)", "data": "FLEURS vi_vn train sentences (1482) / test sentences (150 of 347), disjoint", "workers": W,
        "per_worker_batch": B, "inner_steps_per_worker": T, "ddp_equivalent": f"batch {W*B} per step with a persistent AdamW", "outer": "Nesterov lr 0.7 momentum 0.9",
-       "device": "one RTX 3060, workers run sequentially", "seeds": 2, "lr_grid": list(LRS), "selection": "per method, the lr with the lowest mean VALIDATION perplexity at the last step; the reported number is on separate TEST sentences", "summary": summary, "runs": results, "wall_s": round(time.time() - t0, 1),
+       "device": "one RTX 3060, workers run sequentially", "seeds": 2, "lr_grid": list(LRS), "selection": "per method, the lr with the lowest VALIDATION perplexity at the last step in the seed-1 sweep; seed 2 is then run at that lr; reported numbers are on separate TEST sentences", "summary": summary, "runs": results, "wall_s": round(time.time() - t0, 1),
        "caveats": ["2 seeds only; differences smaller than the seed spread are not conclusions", "no real network: bytes are analytic (ring all-reduce, fp32, no compression)",
                    "200 steps of a 0.6B model on 1482 sentences: says nothing about convergence of large runs or other tasks", "inner AdamW restarts every round in DiLoCo (as designed) and persists in DDP"]}
 out.write_text(json.dumps(rep, indent=1))

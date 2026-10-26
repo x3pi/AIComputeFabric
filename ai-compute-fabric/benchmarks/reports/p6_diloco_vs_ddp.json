@@ -1,0 +1,462 @@
+{
+ "model": "Qwen3-0.6B LoRA-FA r=8 (only B trained, A frozen identically)",
+ "data": "FLEURS vi_vn train sentences (1482) / test sentences (150 of 347), disjoint",
+ "workers": 4,
+ "per_worker_batch": 4,
+ "inner_steps_per_worker": 200,
+ "ddp_equivalent": "batch 16 per step with a persistent AdamW",
+ "outer": "Nesterov lr 0.7 momentum 0.9",
+ "device": "one RTX 3060, workers run sequentially",
+ "seeds": 2,
+ "lr_grid": [
+  0.00025,
+  0.0005,
+  0.001
+ ],
+ "selection": "per method, the lr with the lowest VALIDATION perplexity at the last step in the seed-1 sweep; seed 2 is then run at that lr; reported numbers are on separate TEST sentences",
+ "summary": {
+  "ddp": {
+   "chosen_lr_by_val": 0.00025,
+   "final_test_ppl_mean": 29.065,
+   "final_test_ppl_each_seed": [
+    29.36,
+    28.77
+   ],
+   "test_ppl_before_training": 47.34,
+   "final_test_ppl_by_lr_seed1": {
+    "0.00025": 29.36,
+    "0.0005": 33.151,
+    "0.001": 37.071
+   },
+   "best_checkpoint_test_ppl_by_lr_seed1": {
+    "0.00025": 28.17,
+    "0.0005": 28.618,
+    "0.001": 30.952
+   }
+  },
+  "single_worker": {
+   "chosen_lr_by_val": 0.00025,
+   "final_test_ppl_mean": 34.48,
+   "final_test_ppl_each_seed": [
+    34.2,
+    34.76
+   ],
+   "test_ppl_before_training": 47.34,
+   "final_test_ppl_by_lr_seed1": {
+    "0.00025": 34.2,
+    "0.0005": 41.019,
+    "0.001": 49.678
+   },
+   "best_checkpoint_test_ppl_by_lr_seed1": {
+    "0.00025": 31.46,
+    "0.0005": 33.92,
+    "0.001": 39.389
+   }
+  },
+  "diloco_H10": {
+   "chosen_lr_by_val": 0.00025,
+   "final_test_ppl_mean": 32.25,
+   "final_test_ppl_each_seed": [
+    32.12,
+    32.38
+   ],
+   "test_ppl_before_training": 47.34,
+   "final_test_ppl_by_lr_seed1": {
+    "0.00025": 32.12,
+    "0.0005": 36.861,
+    "0.001": 45.519
+   },
+   "best_checkpoint_test_ppl_by_lr_seed1": {
+    "0.00025": 30.01,
+    "0.0005": 32.564,
+    "0.001": 37.468
+   }
+  },
+  "diloco_H50": {
+   "chosen_lr_by_val": 0.00025,
+   "final_test_ppl_mean": 30.569,
+   "final_test_ppl_each_seed": [
+    30.68,
+    30.458
+   ],
+   "test_ppl_before_training": 47.34,
+   "final_test_ppl_by_lr_seed1": {
+    "0.00025": 30.68,
+    "0.0005": 33.736,
+    "0.001": 37.319
+   },
+   "best_checkpoint_test_ppl_by_lr_seed1": {
+    "0.00025": 29.76,
+    "0.0005": 29.891,
+    "0.001": 31.315
+   }
+  },
+  "comm_bytes_per_worker_fp32": {
+   "ddp": 3303014400,
+   "diloco_H10": 440401920,
+   "diloco_H50": 88080384,
+   "trainable_params": 2752512
+  }
+ },
+ "runs": {
+  "ddp": {
+   "0.00025": [
+    {
+     "cond": "ddp",
+     "lr": 0.00025,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.58,
+       "test": 47.34
+      },
+      "100": {
+       "val": 28.34,
+       "test": 28.17
+      },
+      "200": {
+       "val": 29.86,
+       "test": 29.36
+      }
+     },
+     "note": "recovered from the log of the first, interrupted run"
+    },
+    {
+     "cond": "ddp",
+     "lr": 0.00025,
+     "seed": 2,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.58,
+       "test": 47.34
+      },
+      "100": {
+       "val": 28.48,
+       "test": 28.1
+      },
+      "200": {
+       "val": 29.26,
+       "test": 28.77
+      }
+     },
+     "note": "recovered from the log of the first, interrupted run"
+    }
+   ],
+   "0.0005": [
+    {
+     "cond": "ddp",
+     "lr": 0.0005,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.5826872683379,
+       "test": 47.340261562512666
+      },
+      "100": {
+       "val": 28.738281503308745,
+       "test": 28.61790172800471
+      },
+      "200": {
+       "val": 33.99272867409883,
+       "test": 33.15102513538515
+      }
+     },
+     "seconds": 76.3
+    }
+   ],
+   "0.001": [
+    {
+     "cond": "ddp",
+     "lr": 0.001,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.5826872683379,
+       "test": 47.340261562512666
+      },
+      "100": {
+       "val": 30.9249547905912,
+       "test": 30.951893256971985
+      },
+      "200": {
+       "val": 37.315027683882256,
+       "test": 37.07137960860561
+      }
+     },
+     "seconds": 75.8
+    }
+   ]
+  },
+  "single_worker": {
+   "0.00025": [
+    {
+     "cond": "single_worker",
+     "lr": 0.00025,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.58,
+       "test": 47.34
+      },
+      "100": {
+       "val": 31.23,
+       "test": 31.46
+      },
+      "200": {
+       "val": 34.05,
+       "test": 34.2
+      }
+     },
+     "note": "recovered from the log of the first, interrupted run"
+    },
+    {
+     "cond": "single_worker",
+     "lr": 0.00025,
+     "seed": 2,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.58,
+       "test": 47.34
+      },
+      "100": {
+       "val": 31.86,
+       "test": 31.6
+      },
+      "200": {
+       "val": 34.2,
+       "test": 34.76
+      }
+     },
+     "note": "recovered from the log of the first, interrupted run"
+    }
+   ],
+   "0.0005": [
+    {
+     "cond": "single_worker",
+     "lr": 0.0005,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.5826872683379,
+       "test": 47.340261562512666
+      },
+      "100": {
+       "val": 33.48076018380563,
+       "test": 33.92044601934652
+      },
+      "200": {
+       "val": 39.9942403040978,
+       "test": 41.01908349203069
+      }
+     },
+     "seconds": 31.4
+    }
+   ],
+   "0.001": [
+    {
+     "cond": "single_worker",
+     "lr": 0.001,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.5826872683379,
+       "test": 47.340261562512666
+      },
+      "100": {
+       "val": 38.685747481294534,
+       "test": 39.38872576110846
+      },
+      "200": {
+       "val": 47.57285748816508,
+       "test": 49.67790488892675
+      }
+     },
+     "seconds": 31.3
+    }
+   ]
+  },
+  "diloco_H10": {
+   "0.00025": [
+    {
+     "cond": "diloco_H10",
+     "lr": 0.00025,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.58,
+       "test": 47.34
+      },
+      "100": {
+       "val": 30.18,
+       "test": 30.01
+      },
+      "200": {
+       "val": 32.25,
+       "test": 32.12
+      }
+     },
+     "note": "recovered from the log of the first, interrupted run"
+    },
+    {
+     "cond": "diloco_H10",
+     "lr": 0.00025,
+     "seed": 2,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.58,
+       "test": 47.34
+      },
+      "100": {
+       "val": 29.75,
+       "test": 29.75
+      },
+      "200": {
+       "val": 31.87,
+       "test": 32.38
+      }
+     },
+     "note": "recovered from the log of the first, interrupted run"
+    }
+   ],
+   "0.0005": [
+    {
+     "cond": "diloco_H10",
+     "lr": 0.0005,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.5826872683379,
+       "test": 47.340261562512666
+      },
+      "100": {
+       "val": 32.9542754167567,
+       "test": 32.564324325308284
+      },
+      "200": {
+       "val": 37.039297743991135,
+       "test": 36.860920845373926
+      }
+     },
+     "seconds": 78.1
+    }
+   ],
+   "0.001": [
+    {
+     "cond": "diloco_H10",
+     "lr": 0.001,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.5826872683379,
+       "test": 47.340261562512666
+      },
+      "100": {
+       "val": 36.9884346409886,
+       "test": 37.46781567994962
+      },
+      "200": {
+       "val": 45.204637028929184,
+       "test": 45.51901358232127
+      }
+     },
+     "seconds": 78.0
+    }
+   ]
+  },
+  "diloco_H50": {
+   "0.00025": [
+    {
+     "cond": "diloco_H50",
+     "lr": 0.00025,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.58,
+       "test": 47.34
+      },
+      "100": {
+       "val": 30.18,
+       "test": 29.76
+      },
+      "200": {
+       "val": 30.79,
+       "test": 30.68
+      }
+     },
+     "note": "recovered from the log of the first, interrupted run"
+    },
+    {
+     "cond": "diloco_H50",
+     "lr": 0.00025,
+     "seed": 2,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.5826872683379,
+       "test": 47.340261562512666
+      },
+      "100": {
+       "val": 30.012680016861943,
+       "test": 29.761631926826578
+      },
+      "200": {
+       "val": 30.85846009506145,
+       "test": 30.45825305950239
+      }
+     },
+     "seconds": 76.3
+    }
+   ],
+   "0.0005": [
+    {
+     "cond": "diloco_H50",
+     "lr": 0.0005,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.5826872683379,
+       "test": 47.340261562512666
+      },
+      "100": {
+       "val": 30.35711826245064,
+       "test": 29.89109848416227
+      },
+      "200": {
+       "val": 33.67731330110321,
+       "test": 33.73550587819759
+      }
+     },
+     "seconds": 77.0
+    }
+   ],
+   "0.001": [
+    {
+     "cond": "diloco_H50",
+     "lr": 0.001,
+     "seed": 1,
+     "ppl_at_step": {
+      "0": {
+       "val": 48.5826872683379,
+       "test": 47.340261562512666
+      },
+      "100": {
+       "val": 31.553984101869297,
+       "test": 31.315359136737772
+      },
+      "200": {
+       "val": 37.245821915980784,
+       "test": 37.31878959113897
+      }
+     },
+     "seconds": 76.5
+    }
+   ]
+  }
+ },
+ "wall_s": 600.6,
+ "caveats": [
+  "2 seeds only; differences smaller than the seed spread are not conclusions",
+  "no real network: bytes are analytic (ring all-reduce, fp32, no compression)",
+  "200 steps of a 0.6B model on 1482 sentences: says nothing about convergence of large runs or other tasks",
+  "inner AdamW restarts every round in DiLoCo (as designed) and persists in DDP"
+ ]
+}
