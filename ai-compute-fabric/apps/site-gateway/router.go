@@ -170,11 +170,6 @@ func (r *Router) weight(t string) float64 {
 	return 1
 }
 
-// pickLocked returns the least-loaded routable worker with a free slot.
-func (r *Router) pickLocked(model, skip string) (Route, bool) {
-	return r.pickPreferLocked(model, skip, "")
-}
-
 // preferredLocked returns the worker that served this conversation last, if it is still routable.
 func (r *Router) preferredLocked(session, model, skip string) string {
 	if r.cfg.AffinityPatience <= 0 || session == "" {

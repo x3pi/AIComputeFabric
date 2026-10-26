@@ -235,7 +235,7 @@ func TestPlainHTTPAndOldTLSAreRefused(t *testing.T) {
 func TestPartitionThenReconcileGivesZeroDifference(t *testing.T) {
 	e := startPlane(t, pol)
 	siteA, siteB := NewSite("SITE_A"), NewSite("SITE_B")
-	ca, cb := e.siteClient(t, "SITE_A"), e.siteClient(t, "SITE_B")
+	ca := e.siteClient(t, "SITE_A")
 
 	serve := func(s *Site, n int, tenant string) (ok int) { // purely local: never touches a Client
 		for i := 0; i < n; i++ {
@@ -265,7 +265,7 @@ func TestPartitionThenReconcileGivesZeroDifference(t *testing.T) {
 	}
 	// WAN back: a new plane server over the same ledger and CA
 	e.restart(t)
-	ca, cb = e.siteClient(t, "SITE_A"), e.siteClient(t, "SITE_B")
+	ca, cb := e.siteClient(t, "SITE_A"), e.siteClient(t, "SITE_B")
 	if _, err := siteA.Sync(ca, 7); err != nil {
 		t.Fatal(err)
 	}

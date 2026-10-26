@@ -115,6 +115,9 @@ func main() {
 	b, _ := json.MarshalIndent(res, "", "  ")
 	fmt.Println(string(b))
 	if *out != "" {
-		os.WriteFile(*out, b, 0o644)
+		if err := os.WriteFile(*out, b, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, "cannot write report:", err)
+			os.Exit(1)
+		}
 	}
 }

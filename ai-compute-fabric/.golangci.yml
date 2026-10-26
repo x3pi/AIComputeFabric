@@ -1,0 +1,26 @@
+version: "2"
+linters:
+  default: standard        # errcheck, govet, ineffassign, staticcheck, unused
+  settings:
+    errcheck:
+      # best-effort calls whose failure there is nothing useful to do about
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*encoding/json.Encoder).Encode
+        - (net/http.ResponseWriter).Write
+        - (io.Closer).Close
+        - (*net/http.Response).Body.Close
+        - (io.ReadCloser).Close
+        - (*os.File).Close
+        - (*os/exec.Cmd).Wait      # reaping a child we just killed
+        - syscall.Kill             # the process may already be gone
+        - io.Copy                  # draining a body we are about to drop
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [errcheck]
+      - path: apps/site-gateway/cmd/loadgen/
+        linters: [errcheck]      # simulator: individual failed registrations are the thing being counted elsewhere
+      - path: apps/worker-guard/(guard|engine|main)\.go
+        linters: [errcheck]      # Stop/Close on shutdown paths

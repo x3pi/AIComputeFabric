@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -282,8 +283,16 @@ func min64(a, b uint64) uint64 {
 // Run ticks until stop is closed, adapting the cadence to how close the user is
 // to the headroom (see NextInterval).
 func (g *Guard) Run(stop <-chan struct{}) {
+	failing := false
 	for {
-		g.Tick()
+		// A failed GPU sample is logged when it starts and when it ends, not once per tick.
+		if err := g.Tick(); err != nil && !failing {
+			log.Printf("guard: GPU sampling failed: %v", err)
+			failing = true
+		} else if err == nil && failing {
+			log.Printf("guard: GPU sampling recovered")
+			failing = false
+		}
 		select {
 		case <-stop:
 			return

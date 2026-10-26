@@ -20,7 +20,6 @@ type lease struct {
 	tok     *pb.LeaseToken
 	key     string
 	expires time.Time
-	revoked bool // worker left (offline, paused, reclaimed): the job must be re-run elsewhere
 }
 
 type LeaseManager struct {

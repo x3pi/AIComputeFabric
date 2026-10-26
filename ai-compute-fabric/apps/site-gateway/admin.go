@@ -40,14 +40,12 @@ func AgentsProxy(target string) (http.Handler, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("--agents-url must be an http(s) URL, got %q", target)
 	}
-	rp := httputil.NewSingleHostReverseProxy(u)
-	rp.Director = func(r *http.Request) {
-		r.URL.Scheme, r.URL.Host = u.Scheme, u.Host
-		r.URL.Path = "/" + strings.TrimPrefix(r.URL.Path, "/api/agents/")
-		r.URL.RawPath = ""
-		r.Host = u.Host
-		r.Header.Del("Authorization") // the view service has no use for, and must not see, the admin credential
-	}
+	rp := &httputil.ReverseProxy{Rewrite: func(pr *httputil.ProxyRequest) {
+		pr.SetURL(u)
+		pr.Out.URL.Path = "/" + strings.TrimPrefix(pr.In.URL.Path, "/api/agents/")
+		pr.Out.URL.RawPath = ""
+		pr.Out.Header.Del("Authorization") // the view service has no use for, and must not see, the admin credential
+	}}
 	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		http.Error(w, "agent view service unavailable", http.StatusBadGateway)
 	}
