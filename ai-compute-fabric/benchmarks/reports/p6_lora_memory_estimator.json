@@ -1,0 +1,787 @@
+{
+ "fit": {
+  "ctx_mib": 283.8,
+  "c_logits": 14.1323,
+  "c_act": 17.3266
+ },
+ "n_calib_fit": 34,
+ "calib": [
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    256,
+    16,
+    0,
+    "adamw"
+   ],
+   "measured_mib": 2509,
+   "estimated_mib": 2584,
+   "oom": false,
+   "err_pct": 3.0
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    256,
+    16,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": 2453,
+   "estimated_mib": 2526,
+   "oom": false,
+   "err_pct": 3.0
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    256,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 2185,
+   "estimated_mib": 2113,
+   "oom": false,
+   "err_pct": -3.3
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    256,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 2101,
+   "estimated_mib": 2055,
+   "oom": false,
+   "err_pct": -2.2
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    512,
+    16,
+    0,
+    "adamw"
+   ],
+   "measured_mib": 3837,
+   "estimated_mib": 3593,
+   "oom": false,
+   "err_pct": -6.3
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    512,
+    16,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": 3787,
+   "estimated_mib": 3536,
+   "oom": false,
+   "err_pct": -6.6
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    512,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 2573,
+   "estimated_mib": 2651,
+   "oom": false,
+   "err_pct": 3.0
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    512,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 2503,
+   "estimated_mib": 2593,
+   "oom": false,
+   "err_pct": 3.6
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    1024,
+    16,
+    0,
+    "adamw"
+   ],
+   "measured_mib": 5579,
+   "estimated_mib": 5612,
+   "oom": false,
+   "err_pct": 0.6
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    1024,
+    16,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": 5485,
+   "estimated_mib": 5554,
+   "oom": false,
+   "err_pct": 1.3
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    1024,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 3687,
+   "estimated_mib": 3728,
+   "oom": false,
+   "err_pct": 1.1
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    1024,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 3593,
+   "estimated_mib": 3670,
+   "oom": false,
+   "err_pct": 2.1
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    256,
+    16,
+    0,
+    "adamw"
+   ],
+   "measured_mib": 3837,
+   "estimated_mib": 3593,
+   "oom": false,
+   "err_pct": -6.3
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    256,
+    16,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": 3787,
+   "estimated_mib": 3536,
+   "oom": false,
+   "err_pct": -6.6
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    256,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 2573,
+   "estimated_mib": 2651,
+   "oom": false,
+   "err_pct": 3.0
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    256,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 2501,
+   "estimated_mib": 2593,
+   "oom": false,
+   "err_pct": 3.7
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    512,
+    16,
+    0,
+    "adamw"
+   ],
+   "measured_mib": 5579,
+   "estimated_mib": 5612,
+   "oom": false,
+   "err_pct": 0.6
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    512,
+    16,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": 5485,
+   "estimated_mib": 5554,
+   "oom": false,
+   "err_pct": 1.3
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    512,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 3687,
+   "estimated_mib": 3728,
+   "oom": false,
+   "err_pct": 1.1
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    512,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 3591,
+   "estimated_mib": 3670,
+   "oom": false,
+   "err_pct": 2.2
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    1024,
+    16,
+    0,
+    "adamw"
+   ],
+   "measured_mib": 9649,
+   "estimated_mib": 9650,
+   "oom": false,
+   "err_pct": 0.0
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    1024,
+    16,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": 9555,
+   "estimated_mib": 9592,
+   "oom": false,
+   "err_pct": 0.4
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    1024,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 5897,
+   "estimated_mib": 5880,
+   "oom": false,
+   "err_pct": -0.3
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    1024,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 5801,
+   "estimated_mib": 5823,
+   "oom": false,
+   "err_pct": 0.4
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    256,
+    16,
+    0,
+    "adamw"
+   ],
+   "measured_mib": 5579,
+   "estimated_mib": 5612,
+   "oom": false,
+   "err_pct": 0.6
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    256,
+    16,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": 5485,
+   "estimated_mib": 5554,
+   "oom": false,
+   "err_pct": 1.3
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    256,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 3687,
+   "estimated_mib": 3728,
+   "oom": false,
+   "err_pct": 1.1
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    256,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 3591,
+   "estimated_mib": 3670,
+   "oom": false,
+   "err_pct": 2.2
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    512,
+    16,
+    0,
+    "adamw"
+   ],
+   "measured_mib": 9649,
+   "estimated_mib": 9650,
+   "oom": false,
+   "err_pct": 0.0
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    512,
+    16,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": 9555,
+   "estimated_mib": 9592,
+   "oom": false,
+   "err_pct": 0.4
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    512,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 5897,
+   "estimated_mib": 5880,
+   "oom": false,
+   "err_pct": -0.3
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    512,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 5801,
+   "estimated_mib": 5823,
+   "oom": false,
+   "err_pct": 0.4
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    1024,
+    16,
+    0,
+    "adamw"
+   ],
+   "measured_mib": null,
+   "estimated_mib": 17725,
+   "oom": true,
+   "err_pct": null
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    1024,
+    16,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": null,
+   "estimated_mib": 17667,
+   "oom": true,
+   "err_pct": null
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    1024,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 10269,
+   "estimated_mib": 10186,
+   "oom": false,
+   "err_pct": -0.8
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    4,
+    1024,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 10175,
+   "estimated_mib": 10128,
+   "oom": false,
+   "err_pct": -0.5
+  }
+ ],
+ "heldout": [
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    3,
+    384,
+    8,
+    0,
+    "adamw"
+   ],
+   "measured_mib": 6225,
+   "estimated_mib": 6040,
+   "oom": false,
+   "err_pct": -3.0
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    6,
+    768,
+    32,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 11565,
+   "estimated_mib": 11417,
+   "oom": false,
+   "err_pct": -1.3
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    8,
+    512,
+    64,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 10471,
+   "estimated_mib": 10417,
+   "oom": false,
+   "err_pct": -0.5
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    2,
+    1536,
+    16,
+    0,
+    "adamw"
+   ],
+   "measured_mib": null,
+   "estimated_mib": 13687,
+   "oom": true,
+   "err_pct": null
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    1,
+    2048,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 5897,
+   "estimated_mib": 5880,
+   "oom": false,
+   "err_pct": -0.3
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    5,
+    640,
+    128,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": null,
+   "estimated_mib": 14808,
+   "oom": true,
+   "err_pct": null
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    12,
+    256,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 8091,
+   "estimated_mib": 8033,
+   "oom": false,
+   "err_pct": -0.7
+  },
+  {
+   "cfg": [
+    "Qwen3-0.6B",
+    16,
+    1024,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": null,
+   "estimated_mib": 35963,
+   "oom": true,
+   "err_pct": null
+  }
+ ],
+ "scale": [
+  {
+   "cfg": [
+    "Qwen3-1.7B",
+    1,
+    512,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 4921,
+   "estimated_mib": 4936,
+   "oom": false,
+   "err_pct": 0.3
+  },
+  {
+   "cfg": [
+    "Qwen3-1.7B",
+    2,
+    512,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 6085,
+   "estimated_mib": 6040,
+   "oom": false,
+   "err_pct": -0.7
+  },
+  {
+   "cfg": [
+    "Qwen3-1.7B",
+    4,
+    512,
+    16,
+    1,
+    "adamw8bit"
+   ],
+   "measured_mib": 8163,
+   "estimated_mib": 8150,
+   "oom": false,
+   "err_pct": -0.2
+  },
+  {
+   "cfg": [
+    "Qwen3-1.7B",
+    1,
+    1024,
+    32,
+    0,
+    "adamw"
+   ],
+   "measured_mib": 9411,
+   "estimated_mib": 10076,
+   "oom": false,
+   "err_pct": 7.1
+  },
+  {
+   "cfg": [
+    "Qwen3-1.7B",
+    2,
+    1024,
+    16,
+    0,
+    "adamw8bit"
+   ],
+   "measured_mib": null,
+   "estimated_mib": 15688,
+   "oom": true,
+   "err_pct": null
+  },
+  {
+   "cfg": [
+    "Qwen3-1.7B",
+    4,
+    1024,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": null,
+   "estimated_mib": 12667,
+   "oom": true,
+   "err_pct": null
+  },
+  {
+   "cfg": [
+    "Qwen3-1.7B",
+    8,
+    512,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": null,
+   "estimated_mib": 12667,
+   "oom": true,
+   "err_pct": null
+  },
+  {
+   "cfg": [
+    "Qwen3-1.7B",
+    8,
+    1024,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": null,
+   "estimated_mib": 21503,
+   "oom": true,
+   "err_pct": null
+  },
+  {
+   "cfg": [
+    "Qwen3-1.7B",
+    1,
+    2048,
+    16,
+    1,
+    "adamw"
+   ],
+   "measured_mib": 8327,
+   "estimated_mib": 8249,
+   "oom": false,
+   "err_pct": -0.9
+  }
+ ],
+ "gpu_total_mib": 12288,
+ "calib_summary": {
+  "n": 34,
+  "mean_abs_err_pct": 2.0,
+  "max_abs_err_pct": 6.6,
+  "worst_underestimate_pct": -6.6,
+  "oom_rows": 2,
+  "oom_predicted": 2,
+  "fit_rows_predicted_to_fit": 34,
+  "fit_rows": 34
+ },
+ "heldout_summary": {
+  "n": 5,
+  "mean_abs_err_pct": 1.2,
+  "max_abs_err_pct": 3.0,
+  "worst_underestimate_pct": -3.0,
+  "oom_rows": 3,
+  "oom_predicted": 3,
+  "fit_rows_predicted_to_fit": 4,
+  "fit_rows": 5
+ },
+ "scale_summary": {
+  "n": 5,
+  "mean_abs_err_pct": 1.8,
+  "max_abs_err_pct": 7.1,
+  "worst_underestimate_pct": -0.9,
+  "oom_rows": 4,
+  "oom_predicted": 4,
+  "fit_rows_predicted_to_fit": 5,
+  "fit_rows": 5
+ }
+}
