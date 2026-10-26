@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:b211c084-ddc2-4e05-9fbe-df2d07132863",
+  "serialNumber": "urn:uuid:e6a07d34-c6e2-47d8-8522-1aea3c7a3da1",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-26T08:40:28+07:00",
+    "timestamp": "2026-10-26T10:43:15+07:00",
     "tools": [
       {
         "vendor": "CycloneDX",
@@ -46,11 +46,11 @@
       }
     ],
     "component": {
-      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?type=module",
+      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026034057-73559ecd99c7?type=module",
       "type": "application",
       "name": "github.com/aicf/ai-compute-fabric/core/vram-estimator",
-      "version": "v0.0.0-20261026013700-c46446487677",
-      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?goarch=amd64\u0026goos=linux\u0026type=module",
+      "version": "v0.0.0-20261026034057-73559ecd99c7",
+      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026034057-73559ecd99c7?goarch=amd64\u0026goos=linux\u0026type=module",
       "externalReferences": [
         {
           "url": "https://github.com/aicf/ai-compute-fabric/core/vram-estimator",
@@ -61,7 +61,7 @@
   },
   "dependencies": [
     {
-      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?type=module"
+      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026034057-73559ecd99c7?type=module"
     }
   ]
 }

@@ -2,10 +2,10 @@
   "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:06024c12-a1f0-41a1-980c-98ae7bba93c4",
+  "serialNumber": "urn:uuid:059d81d8-971f-4269-82ee-f74c62a443b6",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-10-26T08:40:22+07:00",
+    "timestamp": "2026-10-26T10:43:10+07:00",
     "tools": [
       {
         "vendor": "CycloneDX",
@@ -46,11 +46,11 @@
       }
     ],
     "component": {
-      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/site-gateway@v0.0.0-20261026013700-c46446487677?type=module",
+      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/site-gateway@v0.0.0-20261026034057-73559ecd99c7?type=module",
       "type": "application",
       "name": "github.com/aicf/ai-compute-fabric/apps/site-gateway",
-      "version": "v0.0.0-20261026013700-c46446487677",
-      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/site-gateway@v0.0.0-20261026013700-c46446487677?goarch=amd64\u0026goos=linux\u0026type=module",
+      "version": "v0.0.0-20261026034057-73559ecd99c7",
+      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/site-gateway@v0.0.0-20261026034057-73559ecd99c7?goarch=amd64\u0026goos=linux\u0026type=module",
       "externalReferences": [
         {
           "url": "https://github.com/aicf/ai-compute-fabric/apps/site-gateway",
@@ -61,18 +61,18 @@
   },
   "components": [
     {
-      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026013700-c46446487677?type=module",
+      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026034057-73559ecd99c7?type=module",
       "type": "library",
       "name": "github.com/aicf/ai-compute-fabric/contracts/gen/go",
-      "version": "v0.0.0-20261026013700-c46446487677",
+      "version": "v0.0.0-20261026034057-73559ecd99c7",
       "scope": "required",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "1f5fb9bbecd53d8d04e6db7e7664f1f0d51e09516b2cce8076cd0bd6fb7a00c7"
+          "content": "a6a151440e1afe190f61fdccfe81ea940660211503a785e3da63047849c60cb8"
         }
       ],
-      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026013700-c46446487677?goarch=amd64\u0026goos=linux\u0026type=module",
+      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026034057-73559ecd99c7?goarch=amd64\u0026goos=linux\u0026type=module",
       "externalReferences": [
         {
           "url": "https://github.com/aicf/ai-compute-fabric/contracts/gen/go",
@@ -81,18 +81,18 @@
       ]
     },
     {
-      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?type=module",
+      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026034057-73559ecd99c7?type=module",
       "type": "library",
       "name": "github.com/aicf/ai-compute-fabric/core/vram-estimator",
-      "version": "v0.0.0-20261026013700-c46446487677",
+      "version": "v0.0.0-20261026034057-73559ecd99c7",
       "scope": "required",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "0898c0898b7c3073ac53f166582566f12e7bb2d7b1efd194359cd110289746fe"
+          "content": "e360f1c72a11065f36371142ac292aa0e8e6a0f0065fda73cda72eeaac62019f"
         }
       ],
-      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?goarch=amd64\u0026goos=linux\u0026type=module",
+      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026034057-73559ecd99c7?goarch=amd64\u0026goos=linux\u0026type=module",
       "externalReferences": [
         {
           "url": "https://github.com/aicf/ai-compute-fabric/core/vram-estimator",
@@ -241,15 +241,15 @@
   ],
   "dependencies": [
     {
-      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/site-gateway@v0.0.0-20261026013700-c46446487677?type=module",
+      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/site-gateway@v0.0.0-20261026034057-73559ecd99c7?type=module",
       "dependsOn": [
-        "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026013700-c46446487677?type=module",
-        "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?type=module",
+        "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026034057-73559ecd99c7?type=module",
+        "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026034057-73559ecd99c7?type=module",
         "pkg:golang/google.golang.org/grpc@v1.83.2?type=module"
       ]
     },
     {
-      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026013700-c46446487677?type=module",
+      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/contracts/gen/go@v0.0.0-20261026034057-73559ecd99c7?type=module",
       "dependsOn": [
         "pkg:golang/google.golang.org/grpc@v1.83.2?type=module",
         "pkg:golang/google.golang.org/protobuf@v1.36.11?type=module",
@@ -260,7 +260,7 @@
       ]
     },
     {
-      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026013700-c46446487677?type=module"
+      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/core/vram-estimator@v0.0.0-20261026034057-73559ecd99c7?type=module"
     },
     {
       "ref": "pkg:golang/golang.org/x/net@v0.60.0?type=module",

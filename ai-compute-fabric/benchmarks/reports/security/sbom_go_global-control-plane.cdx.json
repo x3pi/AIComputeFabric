@@ -1,0 +1,67 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:b9e299fc-c421-4fae-8f73-80e7ca1f1abb",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-10-26T10:43:16+07:00",
+    "tools": [
+      {
+        "vendor": "CycloneDX",
+        "name": "cyclonedx-gomod",
+        "version": "v1.12.0",
+        "hashes": [
+          {
+            "alg": "MD5",
+            "content": "24fb332b5fbb173a817c240d6b02b759"
+          },
+          {
+            "alg": "SHA-1",
+            "content": "ce582838d91e9302302cf47f05d20648225adc83"
+          },
+          {
+            "alg": "SHA-256",
+            "content": "a962ac7e2ea6f462204b28c83c49b249a4fdf57cc9b9271854b731176806bc82"
+          },
+          {
+            "alg": "SHA-384",
+            "content": "3c23fb0e88da51795ffde9fb3e0d1b35400df3739dc9eeea213368507922373df6597f709d083c7d07c31e4226cc253d"
+          },
+          {
+            "alg": "SHA-512",
+            "content": "a75b67c62b1c3ed10146ce307437e1dd635bbc2a0a7c4cc86bd87af6a83d8510f565401d77f4b5abfbe08b65b3805c44d6fc6f59e27771f54fea86443656f3fe"
+          }
+        ],
+        "externalReferences": [
+          {
+            "url": "https://github.com/CycloneDX/cyclonedx-gomod",
+            "type": "vcs"
+          },
+          {
+            "url": "https://cyclonedx.org",
+            "type": "website"
+          }
+        ]
+      }
+    ],
+    "component": {
+      "bom-ref": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/global-control-plane@v0.0.0-20261026034057-73559ecd99c7?type=module",
+      "type": "application",
+      "name": "github.com/aicf/ai-compute-fabric/apps/global-control-plane",
+      "version": "v0.0.0-20261026034057-73559ecd99c7",
+      "purl": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/global-control-plane@v0.0.0-20261026034057-73559ecd99c7?goarch=amd64\u0026goos=linux\u0026type=module",
+      "externalReferences": [
+        {
+          "url": "https://github.com/aicf/ai-compute-fabric/apps/global-control-plane",
+          "type": "vcs"
+        }
+      ]
+    }
+  },
+  "dependencies": [
+    {
+      "ref": "pkg:golang/github.com/aicf/ai-compute-fabric/apps/global-control-plane@v0.0.0-20261026034057-73559ecd99c7?type=module"
+    }
+  ]
+}

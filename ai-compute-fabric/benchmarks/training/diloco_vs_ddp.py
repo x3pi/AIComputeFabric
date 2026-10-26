@@ -19,7 +19,8 @@ from training.lora_trainer import LoraWorker
 
 base, train_f, test_f, out = sys.argv[1], sys.argv[2], sys.argv[3], Path(sys.argv[4])
 train = [l for l in open(train_f, encoding="utf-8").read().split("\n") if l.strip()]
-test = [l for l in open(test_f, encoding="utf-8").read().split("\n") if l.strip()][:150]
+alltest = [l for l in open(test_f, encoding="utf-8").read().split("\n") if l.strip()]
+val, test = alltest[:100], alltest[100:250]      # val picks the learning rate, test is reported
 W, B, T, EVAL_AT = 4, 4, 200, (100, 200)
 shards = [train[i::W] for i in range(W)]
 w = LoraWorker(base, train, rank=8, seq=96, batch=B, lr=2e-3, seed=0)
@@ -34,7 +35,7 @@ n_params = sum(v.size for v in init.values())
 
 
 def ppl():
-    return w.evaluate(test, base)["perplexity"]
+    return {"val": w.evaluate(val, base)["perplexity"], "test": w.evaluate(test, base)["perplexity"]}
 
 
 def reset():
@@ -43,6 +44,7 @@ def reset():
 
 def cond_ddp(seed):
     reset(); w.data, w.batch = all_data, W * B
+    w.lr = LR
     import torch
     opt = torch.optim.AdamW(list(w.trainable.values()), lr=w.lr, weight_decay=0.0)
     rng = np.random.default_rng(seed)
@@ -62,6 +64,7 @@ def cond_ddp(seed):
 
 def cond_single(seed):
     reset(); w.data, w.batch = shard_data[0], B
+    w.lr = LR
     import torch
     opt = torch.optim.AdamW(list(w.trainable.values()), lr=w.lr, weight_decay=0.0)
     rng = np.random.default_rng(seed)
@@ -81,7 +84,8 @@ def cond_single(seed):
 
 def cond_diloco(h, seed, outer_lr=0.7, momentum=0.9):
     co = Coordinator({k: v.copy() for k, v in init.items()}, outer_lr=outer_lr, momentum=momentum, min_workers=W)
-    w.batch = B
+    reset(); w.batch = B
+    w.lr = LR
     curve = {0: ppl()}
     for rnd in range(T // h):
         ver, params = co.pull()
@@ -100,21 +104,27 @@ def cond_diloco(h, seed, outer_lr=0.7, momentum=0.9):
 results = {}
 t0 = time.time()
 conds = {"ddp": cond_ddp, "single_worker": cond_single, "diloco_H10": lambda s: cond_diloco(10, s), "diloco_H50": lambda s: cond_diloco(50, s)}
-for seed in (1, 2):
-    for name, fn in conds.items():
-        t1 = time.time()
-        curve = fn(seed)
-        results.setdefault(name, []).append({"seed": seed, "ppl_at_step": curve, "seconds": round(time.time() - t1, 1)})
-        print(name, seed, {k: round(v, 2) for k, v in curve.items()}, flush=True)
+LRS = (2.5e-4, 5e-4, 1e-3)
+for LR in LRS:
+    for seed in (1, 2):
+        for name, fn in conds.items():
+            t1 = time.time()
+            curve = fn(seed)
+            results.setdefault(name, {}).setdefault(str(LR), []).append({"seed": seed, "ppl_at_step": curve, "seconds": round(time.time() - t1, 1)})
+            print(name, LR, seed, {k: {a: round(b, 2) for a, b in v.items()} for k, v in curve.items()}, flush=True)
 summary = {}
-for name, runs in results.items():
-    final = [r["ppl_at_step"][T] for r in runs]
-    summary[name] = {"final_ppl_mean": round(float(np.mean(final)), 3), "final_ppl_each_seed": [round(f, 3) for f in final], "ppl_start": round(runs[0]["ppl_at_step"][0], 3)}
+for name, by_lr in results.items():
+    best_lr = min(by_lr, key=lambda lr: np.mean([r["ppl_at_step"][T]["val"] for r in by_lr[lr]]))   # chosen on VALIDATION sentences
+    runs = by_lr[best_lr]
+    final = [r["ppl_at_step"][T]["test"] for r in runs]
+    summary[name] = {"chosen_lr_by_val": float(best_lr), "final_test_ppl_mean": round(float(np.mean(final)), 3), "final_test_ppl_each_seed": [round(f, 3) for f in final],
+                     "test_ppl_before_training": round(runs[0]["ppl_at_step"][0]["test"], 3),
+                     "final_test_ppl_by_lr": {lr: round(float(np.mean([r["ppl_at_step"][T]["test"] for r in v])), 3) for lr, v in by_lr.items()}}
 summary["comm_bytes_per_worker_fp32"] = {"ddp": comm_bytes_per_worker(n_params, T, W, None), "diloco_H10": comm_bytes_per_worker(n_params, T, W, 10),
                                          "diloco_H50": comm_bytes_per_worker(n_params, T, W, 50), "trainable_params": n_params}
 rep = {"model": "Qwen3-0.6B LoRA-FA r=8 (only B trained, A frozen identically)", "data": "FLEURS vi_vn train sentences (1482) / test sentences (150 of 347), disjoint", "workers": W,
        "per_worker_batch": B, "inner_steps_per_worker": T, "ddp_equivalent": f"batch {W*B} per step with a persistent AdamW", "outer": "Nesterov lr 0.7 momentum 0.9",
-       "device": "one RTX 3060, workers run sequentially", "seeds": 2, "summary": summary, "runs": results, "wall_s": round(time.time() - t0, 1),
+       "device": "one RTX 3060, workers run sequentially", "seeds": 2, "lr_grid": list(LRS), "selection": "per method, the lr with the lowest mean VALIDATION perplexity at the last step; the reported number is on separate TEST sentences", "summary": summary, "runs": results, "wall_s": round(time.time() - t0, 1),
        "caveats": ["2 seeds only; differences smaller than the seed spread are not conclusions", "no real network: bytes are analytic (ring all-reduce, fp32, no compression)",
                    "200 steps of a 0.6B model on 1482 sentences: says nothing about convergence of large runs or other tasks", "inner AdamW restarts every round in DiLoCo (as designed) and persists in DDP"]}
 out.write_text(json.dumps(rep, indent=1))
