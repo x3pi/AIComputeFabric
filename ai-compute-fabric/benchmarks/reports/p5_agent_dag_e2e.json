@@ -1,0 +1,67 @@
+{
+ "date": "2026-10-26T02:07:34.122Z",
+ "pass": true,
+ "checks": [
+  {
+   "name": "gateway proxies the workflow, with one step running",
+   "ok": true,
+   "detail": "{\"ok\":12,\"running\":1,\"pending\":1}"
+  },
+  {
+   "name": "no credentials, no data",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "response carries no task text",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "one box per step (14)",
+   "ok": true,
+   "detail": "found 14"
+  },
+  {
+   "name": "edges drawn (dependencies)",
+   "ok": true,
+   "detail": "found 13"
+  },
+  {
+   "name": "the held step is drawn as running",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "finished steps are drawn as ok",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the step after the held one is pending",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "clicking a box shows its details",
+   "ok": true,
+   "detail": "merge.hold · TEXT_GENERATE · tenant acme · đang chạy · 1 lần thử · phụ thuộc: doc0.summarise, doc1.summarise, doc2.summarise, doc3.summarise"
+  },
+  {
+   "name": "page text carries no task content",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "after release every box turns ok and the workflow reads done",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "no script errors",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "screenshots": "/tmp/aicf-dag-Z9Sta9"
+}

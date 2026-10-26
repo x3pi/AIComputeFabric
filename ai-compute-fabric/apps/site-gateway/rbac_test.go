@@ -261,3 +261,55 @@ func TestViewerAndOperatorHaveNoWriteBeyondTheirRole(t *testing.T) {
 		t.Error("an unknown role must get nothing")
 	}
 }
+
+func TestAgentsProxyIsReadOnlyRoleCheckedAndHidesTheCredential(t *testing.T) {
+	var gotPath, gotAuth string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotAuth = r.URL.Path, r.Header.Get("Authorization")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer backend.Close()
+	px, err := AgentsProxy(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := NewAuth("")
+	auth.byHash[HashToken("v")] = Principal{Name: "vera", Role: RoleViewer}
+	auth.byHash[HashToken("a")] = Principal{Name: "ada", Role: RoleAdmin}
+	ts, _ := NewTenantStore("")
+	h := NewAPIFull(NewFleet(NewRegistry(time.Hour)), ts, auth, nil, px)
+	do := func(method, tok string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "/api/agents/workflows/wf-1", nil)
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := do("GET", ""); rec.Code != 401 || gotPath != "" {
+		t.Fatalf("no token: %d, backend saw %q", rec.Code, gotPath)
+	}
+	if rec := do("GET", "v"); rec.Code != 200 || gotPath != "/workflows/wf-1" {
+		t.Fatalf("viewer read: %d path %q", rec.Code, gotPath)
+	}
+	if gotAuth != "" {
+		t.Fatalf("the admin credential reached the backend: %q", gotAuth)
+	}
+	gotPath = ""
+	if rec := do("POST", "v"); rec.Code != 403 || gotPath != "" {
+		t.Fatalf("viewer write: %d", rec.Code)
+	}
+	if rec := do("POST", "a"); rec.Code != 405 || gotPath != "" {
+		t.Fatalf("even an admin may only read through the proxy: %d path %q", rec.Code, gotPath)
+	}
+	backend.Close()
+	if rec := do("GET", "v"); rec.Code != 502 {
+		t.Fatalf("dead backend: %d", rec.Code)
+	}
+	for _, bad := range []string{"", "ftp://x", "localhost:1", "http://"} {
+		if _, err := AgentsProxy(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}

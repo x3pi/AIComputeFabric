@@ -58,6 +58,10 @@ CREATE TABLE IF NOT EXISTS aicf_exec (
   id BIGSERIAL PRIMARY KEY, workflow TEXT NOT NULL, step TEXT NOT NULL, attempt INT NOT NULL,
   started_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ, outcome TEXT)"""
 
+DAG_DDL = """
+CREATE TABLE IF NOT EXISTS aicf_dag (
+  workflow TEXT PRIMARY KEY, steps JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())"""
+
 
 class Orchestrator:
     def __init__(self, dsn: str, executor: Executor, max_concurrency: int = 3, max_attempts: int = 5, durability: str = "sync"):
@@ -69,6 +73,7 @@ class Orchestrator:
         with self.pool.connection() as c:
             c.execute(EXEC_DDL)
             c.execute(RESULTS_DDL)
+            c.execute(DAG_DDL)
 
     # ---- durable execution log (one row per attempt; survives a crash of this process) ----
     def _log_start(self, wf: str, step: str, attempt: int) -> int:
@@ -93,6 +98,66 @@ class Orchestrator:
     def executions(self, wf: str) -> list:
         with self.pool.connection() as c:
             return c.execute("SELECT step, attempt, outcome, finished_at IS NOT NULL AS finished FROM aicf_exec WHERE workflow=%s ORDER BY id", (wf,)).fetchall()
+
+    # ---- read side for the dashboard (never returns task inputs or outputs) ----
+    def _record_dag(self, wf: str, steps: list):
+        shape = [{"id": s.id, "type": s.task.type.value, "tenant": s.task.tenant_id, "deps": list(s.deps)} for s in steps]
+        with self.pool.connection() as c:
+            c.execute("INSERT INTO aicf_dag(workflow, steps) VALUES (%s,%s) ON CONFLICT DO NOTHING", (wf, psycopg.types.json.Jsonb(shape)))
+
+    def workflows(self, limit: int = 50) -> list:
+        with self.pool.connection() as c:
+            rows = c.execute("SELECT workflow, created_at, jsonb_array_length(steps) AS steps FROM aicf_dag ORDER BY created_at DESC LIMIT %s", (limit,)).fetchall()
+        out = []
+        for r in rows:
+            snap = self.snapshot(r["workflow"])
+            out.append({"workflow": r["workflow"], "created_at": r["created_at"].isoformat(), "steps": r["steps"], "counts": snap["counts"], "state": snap["state"]})
+        return out
+
+    def snapshot(self, wf: str) -> Optional[dict]:
+        """Status of every step: pending, running, retrying, ok, rejected (failed validation, final)
+        or failed (worker lost on every attempt). A step left 'running' by a crashed orchestrator looks
+        the same as a live one until the workflow is resumed: the log cannot tell them apart."""
+        with self.pool.connection() as c:
+            dag = c.execute("SELECT steps, created_at FROM aicf_dag WHERE workflow=%s", (wf,)).fetchone()
+            if dag is None:
+                return None
+            ex = c.execute("SELECT step, attempt, outcome, started_at, finished_at FROM aicf_exec WHERE workflow=%s ORDER BY id", (wf,)).fetchall()
+            done = {r["step"] for r in c.execute("SELECT step FROM aicf_results WHERE workflow=%s", (wf,)).fetchall()}
+            now = c.execute("SELECT now() AS t").fetchone()["t"]
+        last, attempts = {}, {}
+        for r in ex:
+            last[r["step"]] = r
+            attempts[r["step"]] = attempts.get(r["step"], 0) + 1
+        nodes = []
+        for st in dag["steps"]:
+            l = last.get(st["id"])
+            if st["id"] in done:
+                status = "ok"
+            elif l is None:
+                status = "pending"
+            elif l["finished_at"] is None:
+                status = "running"
+            elif l["outcome"] == "rejected":
+                status = "rejected"
+            elif l["outcome"] == "worker_lost":
+                status = "failed" if l["attempt"] >= self.max_attempts else "retrying"
+            else:
+                status = "pending"
+            node = {"id": st["id"], "type": st["type"], "tenant": st["tenant"], "deps": st["deps"], "status": status, "attempts": attempts.get(st["id"], 0)}
+            if l is not None:
+                node["last_started"] = l["started_at"].isoformat()
+                if status == "running":
+                    node["running_for_s"] = round((now - l["started_at"]).total_seconds(), 1)
+                elif l["finished_at"] is not None:
+                    node["last_duration_s"] = round((l["finished_at"] - l["started_at"]).total_seconds(), 2)
+            nodes.append(node)
+        counts = {}
+        for n in nodes:
+            counts[n["status"]] = counts.get(n["status"], 0) + 1
+        state = ("failed" if counts.get("failed") or counts.get("rejected") else "done" if counts.get("ok") == len(nodes)
+                 else "running" if counts.get("running") or counts.get("retrying") else "idle")
+        return {"workflow": wf, "created_at": dag["created_at"].isoformat(), "state": state, "counts": counts, "nodes": nodes}
 
     # ---- graph ----
     def _node(self, wf: str, step: Step) -> Callable:
@@ -143,6 +208,7 @@ class Orchestrator:
         return g.compile(checkpointer=saver)
 
     def run(self, wf: str, steps: list, resume: bool = False) -> dict:
+        self._record_dag(wf, steps)
         cfg = {"configurable": {"thread_id": wf}, "max_concurrency": self.max_concurrency, "recursion_limit": 10_000}
         saver = PostgresSaver(self.pool)
         saver.setup()

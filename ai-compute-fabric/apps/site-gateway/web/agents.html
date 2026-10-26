@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AICF AI Agent — Đồ thị DAG tác vụ</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="common.css">
+<style>
+.dag-wrap { overflow: auto; border: 1px solid var(--border, rgba(127,127,127,.25)); border-radius: 10px; background: var(--bg-elevated); max-height: 70vh; }
+.dag-wrap svg { display: block; }
+.node rect { stroke-width: 1.5; rx: 6; }
+.node text { font-size: 11px; fill: var(--fg); pointer-events: none; }
+.node text.sub { fill: var(--mut); font-size: 10px; }
+.node.s-pending rect { fill: var(--bg); stroke: var(--mut); stroke-dasharray: 4 3; }
+.node.s-running rect { fill: var(--acc-soft); stroke: var(--acc); }
+.node.s-retrying rect { fill: var(--warn-soft); stroke: var(--warn); }
+.node.s-ok rect { fill: var(--ok-soft); stroke: var(--ok); }
+.node.s-rejected rect, .node.s-failed rect { fill: var(--bad-soft); stroke: var(--bad); }
+.node.sel rect { stroke-width: 3; }
+.edge { fill: none; stroke: var(--mut); stroke-width: 1; opacity: .6; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--mut); margin: 8px 0; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -2px; border: 1.5px solid; }
+#wf-list button { text-align: left; }
+#detail { font-size: 13px; margin-top: 10px; min-height: 2.5em; }
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>AI Agent — Đồ thị tác vụ (DAG)</h1>
+      <div class="sub">Trạng thái từng bước của một workflow do orchestrator chạy. Chỉ hiển thị loại tác vụ, phụ thuộc, số lần thử và thời gian; không hiển thị nội dung đầu vào hay kết quả.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>Workflow</h2><span class="mut" id="stamp" style="font-size:12px"></span></div>
+    <div id="wf-list" class="row" style="flex-wrap:wrap;gap:8px"></div>
+    <div id="msg" class="mut" role="status" style="margin-top:8px;font-size:13px"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 id="wf-title">Chọn một workflow</h2><span id="wf-state"></span></div>
+    <div class="legend" aria-label="Chú giải">
+      <span><i style="border-color:var(--mut);border-style:dashed"></i>chờ</span>
+      <span><i style="border-color:var(--acc);background:var(--acc-soft)"></i>đang chạy</span>
+      <span><i style="border-color:var(--warn);background:var(--warn-soft)"></i>thử lại</span>
+      <span><i style="border-color:var(--ok);background:var(--ok-soft)"></i>xong</span>
+      <span><i style="border-color:var(--bad);background:var(--bad-soft)"></i>bị từ chối / lỗi</span>
+    </div>
+    <div class="dag-wrap"><svg id="dag" role="img" aria-label="Đồ thị DAG của workflow"></svg></div>
+    <div id="detail" class="mut" aria-live="polite"></div>
+  </div>
+</main>
+<script>
+const NS = "http://www.w3.org/2000/svg";
+const STATUS_VI = { pending: "chờ", running: "đang chạy", retrying: "thử lại", ok: "xong", rejected: "kết quả không đạt kiểm tra", failed: "lỗi (mất worker mọi lần thử)" };
+const STATE_VI = { running: "đang chạy", done: "hoàn tất", failed: "có bước lỗi", idle: "chưa chạy" };
+let current = new URLSearchParams(location.search).get("wf") || "";
+let selected = "";
+const msg = t => { document.getElementById("msg").textContent = t; };
+
+function svg(tag, attrs, ...kids) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  e.append(...kids);
+  return e;
+}
+
+// Layer = length of the longest dependency chain above the node; rows inside a layer keep input order.
+function layout(nodes) {
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const depth = new Map();
+  const d = id => {
+    if (depth.has(id)) return depth.get(id);
+    depth.set(id, 0);                      // guards against a malformed cycle
+    const n = byId.get(id);
+    const v = n && n.deps.length ? 1 + Math.max(...n.deps.map(x => byId.has(x) ? d(x) : -1)) : 0;
+    depth.set(id, v);
+    return v;
+  };
+  const rows = {};
+  const pos = new Map();
+  for (const n of nodes) {
+    const l = d(n.id);
+    rows[l] = (rows[l] || 0) + 1;
+    pos.set(n.id, { l, r: rows[l] - 1 });
+  }
+  return { pos, layers: Object.keys(rows).length, maxRows: Math.max(1, ...Object.values(rows)) };
+}
+
+function draw(snap) {
+  const W = 168, H = 44, GX = 56, GY = 14, PAD = 16;
+  const { pos, layers, maxRows } = layout(snap.nodes);
+  const g = document.getElementById("dag");
+  g.replaceChildren();
+  g.setAttribute("width", PAD * 2 + layers * (W + GX) - GX);
+  g.setAttribute("height", PAD * 2 + maxRows * (H + GY) - GY);
+  const xy = id => { const p = pos.get(id); return { x: PAD + p.l * (W + GX), y: PAD + p.r * (H + GY) }; };
+  for (const n of snap.nodes) for (const dep of n.deps) {
+    if (!pos.has(dep)) continue;
+    const a = xy(dep), b = xy(n.id);
+    const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x, y2 = b.y + H / 2, mx = (x1 + x2) / 2;
+    g.append(svg("path", { class: "edge", d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}` }));
+  }
+  for (const n of snap.nodes) {
+    const { x, y } = xy(n.id);
+    const sub = n.type + (n.attempts > 1 ? ` · lần ${n.attempts}` : "") + (n.status === "running" && n.running_for_s != null ? ` · ${n.running_for_s}s` : "");
+    const node = svg("g", { class: `node s-${n.status}${n.id === selected ? " sel" : ""}`, tabindex: 0, role: "button", "aria-label": `${n.id}: ${STATUS_VI[n.status] || n.status}`, style: "cursor:pointer" },
+      svg("rect", { x, y, width: W, height: H }),
+      svg("text", { x: x + 8, y: y + 18 }, n.id.length > 24 ? n.id.slice(0, 23) + "…" : n.id),
+      svg("text", { class: "sub", x: x + 8, y: y + 33 }, sub.length > 28 ? sub.slice(0, 27) + "…" : sub));
+    const pick = () => { selected = n.id; show(n); draw(snap); };
+    node.onclick = pick;
+    node.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
+    g.append(node);
+  }
+  const sel = snap.nodes.find(n => n.id === selected);
+  if (sel) show(sel);
+}
+
+function show(n) {
+  document.getElementById("detail").textContent =
+    `${n.id} · ${n.type} · tenant ${n.tenant} · ${STATUS_VI[n.status] || n.status} · ${n.attempts} lần thử` +
+    (n.last_duration_s != null ? ` · lần gần nhất ${n.last_duration_s}s` : "") + (n.deps.length ? ` · phụ thuộc: ${n.deps.join(", ")}` : " · không phụ thuộc");
+}
+
+async function loadList() {
+  const r = await api("/api/agents/workflows");
+  if (!r || !r.ok) { msg(r && r.status === 502 ? "Chưa kết nối được dịch vụ xem agent (gateway --agents-url)." : "Không tải được danh sách workflow."); return; }
+  msg("");
+  const list = await r.json();
+  const box = document.getElementById("wf-list");
+  box.replaceChildren();
+  if (!list.length) box.append(el("span", { class: "mut" }, "Chưa có workflow nào."));
+  for (const w of list) {
+    const c = w.counts, total = w.steps;
+    box.append(el("button", { type: "button", class: "sm" + (w.workflow === current ? " primary" : ""), onclick: () => { current = w.workflow; selected = ""; loadList(); loadOne(); } },
+      `${w.workflow} · ${c.ok || 0}/${total} · ${STATE_VI[w.state] || w.state}`));
+  }
+  document.getElementById("stamp").textContent = "cập nhật " + new Date().toLocaleTimeString("vi-VN");
+  if (!current && list.length) { current = list[0].workflow; loadOne(); }
+}
+
+async function loadOne() {
+  if (!current) return;
+  const r = await api("/api/agents/workflows/" + encodeURIComponent(current));
+  if (!r || !r.ok) return;
+  const snap = await r.json();
+  document.getElementById("wf-title").textContent = snap.workflow;
+  const st = document.getElementById("wf-state");
+  st.textContent = `${STATE_VI[snap.state] || snap.state} · ` + Object.entries(snap.counts).map(([k, v]) => `${v} ${STATUS_VI[k] || k}`).join(", ");
+  st.className = "pill " + (snap.state === "failed" ? "err" : snap.state === "done" ? "ok" : "");
+  draw(snap);
+}
+
+loadList();
+setInterval(() => { if (!document.hidden) { loadList(); loadOne(); } }, 2500);
+</script>
+</body>
+</html>

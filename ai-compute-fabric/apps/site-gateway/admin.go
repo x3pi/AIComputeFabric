@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 )
 
@@ -26,6 +29,39 @@ func (s *statusWriter) WriteHeader(c int) { s.code = c; s.ResponseWriter.WriteHe
 // NewAPIWith is NewAPI with role-based access and an optional audit log. With no credential
 // configured the API is open (loopback development only; main refuses that beyond loopback).
 func NewAPIWith(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, routers ...*Router) http.Handler {
+	return NewAPIFull(f, ts, auth, audit, nil, routers...)
+}
+
+// AgentsProxy forwards GET /api/agents/* to the agent-workflow view service (agents/dag_api.py).
+// Only reads are forwarded; roles and audit are applied by the caller because it is mounted
+// under /api/ like every other route.
+func AgentsProxy(target string) (http.Handler, error) {
+	u, err := url.Parse(target)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, fmt.Errorf("--agents-url must be an http(s) URL, got %q", target)
+	}
+	rp := httputil.NewSingleHostReverseProxy(u)
+	rp.Director = func(r *http.Request) {
+		r.URL.Scheme, r.URL.Host = u.Scheme, u.Host
+		r.URL.Path = "/" + strings.TrimPrefix(r.URL.Path, "/api/agents/")
+		r.URL.RawPath = ""
+		r.Host = u.Host
+		r.Header.Del("Authorization") // the view service has no use for, and must not see, the admin credential
+	}
+	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		http.Error(w, "agent view service unavailable", http.StatusBadGateway)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		rp.ServeHTTP(w, r)
+	}), nil
+}
+
+// NewAPIFull is NewAPIWith plus an optional handler mounted at /api/agents/.
+func NewAPIFull(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents http.Handler, routers ...*Router) http.Handler {
 	inner := HTTPHandler(f)
 	mux := http.NewServeMux()
 	var rt *Router
@@ -33,6 +69,9 @@ func NewAPIWith(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, routers 
 		rt = routers[0]
 	}
 	registerEstimatorAndStatsRoutes(mux, f, ts, rt)
+	if agents != nil {
+		mux.Handle("/api/agents/", agents)
+	}
 	mux.HandleFunc("/api/tenants", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

@@ -33,6 +33,7 @@ func main() {
 	tenantsFile := flag.String("tenants-file", "", "JSON file with tenants and hashed API keys (enables API-key auth)")
 	adminToken := flag.String("admin-token", os.Getenv("AICF_ADMIN_TOKEN"), "bearer token for /api/* (admin); required when listening beyond loopback")
 	rolesFile := flag.String("roles-file", "", "JSON roles file (viewer/operator/admin, SHA-256 token hashes) for the admin API")
+	agentsURL := flag.String("agents-url", "", "agent workflow view service (agents/dag_api.py), served read-only at /api/agents/")
 	auditPath := flag.String("audit-log", "", "append-only hash-chained audit log of admin actions")
 	affinity := flag.Duration("affinity-patience", 300*time.Millisecond, "wait this long for the worker holding a conversation's cache (0 = off)")
 	maxLease := flag.Duration("max-lease-ttl", 10*time.Minute, "longest TTL a lease may have; clients extend while the job runs")
@@ -104,6 +105,12 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", inf)
 	mux.HandleFunc("/metrics", inf.Metrics)
-	mux.Handle("/", NewAPIWith(fleet, store, auth, audit, router))
+	var agents http.Handler
+	if *agentsURL != "" {
+		if agents, err = AgentsProxy(*agentsURL); err != nil {
+			log.Fatal(err)
+		}
+	}
+	mux.Handle("/", NewAPIFull(fleet, store, auth, audit, agents, router))
 	log.Fatal(http.ListenAndServe(*httpAddr, mux))
 }
