@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "platform": "windows-single-gpu",
+  "headroom_mib": 1536,
+  "summary": {
+    "n_ok": 10,
+    "n": 10,
+    "min_ms": 62.5,
+    "median_ms": 174.05,
+    "p95_ms": 638.2,
+    "max_ms": 638.2,
+    "gate_under_2000ms": true
+  },
+  "trials": [
+    {
+      "trial": 0,
+      "engine_mib": 5139,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 336.8,
+      "guard_detect_to_freed_ms": 243.662,
+      "guard_stop_ms": 180.395,
+      "signal": "TerminateProcess"
+    },
+    {
+      "trial": 1,
+      "engine_mib": 5139,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 268.7,
+      "guard_detect_to_freed_ms": 233.871,
+      "guard_stop_ms": 169.825,
+      "signal": "TerminateProcess"
+    },
+    {
+      "trial": 2,
+      "engine_mib": 5139,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 638.2,
+      "guard_detect_to_freed_ms": 232.678,
+      "guard_stop_ms": 168.775,
+      "signal": "TerminateProcess"
+    },
+    {
+      "trial": 3,
+      "engine_mib": 5139,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 139.2,
+      "guard_detect_to_freed_ms": 233.267,
+      "guard_stop_ms": 169.852,
+      "signal": "TerminateProcess"
+    },
+    {
+      "trial": 4,
+      "engine_mib": 5139,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 141.8,
+      "guard_detect_to_freed_ms": 236.296,
+      "guard_stop_ms": 173.032,
+      "signal": "TerminateProcess"
+    },
+    {
+      "trial": 5,
+      "engine_mib": 5139,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 221.8,
+      "guard_detect_to_freed_ms": 234.097,
+      "guard_stop_ms": 170.175,
+      "signal": "TerminateProcess"
+    },
+    {
+      "trial": 6,
+      "engine_mib": 5139,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 62.5,
+      "guard_detect_to_freed_ms": 233.122,
+      "guard_stop_ms": 170.283,
+      "signal": "TerminateProcess"
+    },
+    {
+      "trial": 7,
+      "engine_mib": 5139,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 206.3,
+      "guard_detect_to_freed_ms": 233.344,
+      "guard_stop_ms": 168.588,
+      "signal": "TerminateProcess"
+    },
+    {
+      "trial": 8,
+      "engine_mib": 5139,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 137.7,
+      "guard_detect_to_freed_ms": 238.7,
+      "guard_stop_ms": 168.993,
+      "signal": "TerminateProcess"
+    },
+    {
+      "trial": 9,
+      "engine_mib": 5139,
+      "user_job_alive": true,
+      "e2e_cross_to_gone_ms": 134.4,
+      "guard_detect_to_freed_ms": 236.121,
+      "guard_stop_ms": 172.654,
+      "signal": "TerminateProcess"
+    }
+  ]
+}

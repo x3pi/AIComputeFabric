@@ -58,6 +58,7 @@ type Engine interface {
 type LlamaEngine struct {
 	Bin, Model, LogPath string
 	Lora                string // optional LoRA adapter in GGUF form (llama-server --lora); must come from the same base model as Model
+	Host                string // address llama-server binds to (default: 127.0.0.1)
 	Port, Ctx, Parallel int
 	NGL                 int
 	FlashAttn           string        // "on" | "off" | "auto"
@@ -138,8 +139,12 @@ func (e *LlamaEngine) Args() ([]string, error) {
 			return nil, fmt.Errorf("LoRA adapter %q is not a readable file", e.Lora)
 		}
 	}
+	host := e.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
 	args := []string{"-m", e.Model, "-c", strconv.Itoa(e.Ctx * e.Parallel), "-np", strconv.Itoa(e.Parallel),
-		"-ngl", strconv.Itoa(e.NGL), "--port", strconv.Itoa(e.Port), "--host", "127.0.0.1",
+		"-ngl", strconv.Itoa(e.NGL), "--port", strconv.Itoa(e.Port), "--host", host,
 		"-fa", fa, "-ctk", kv, "-ctv", kv, "--no-warmup", "--fit", "off", "-lv", "4"}
 	if e.Lora != "" {
 		args = append(args, "--lora", e.Lora)
@@ -197,6 +202,10 @@ func (e *LlamaEngine) Start() error {
 	}()
 	go func() { cmd.Wait(); pw.Close(); close(done) }()
 
+	checkHost := e.Host
+	if checkHost == "" || checkHost == "0.0.0.0" {
+		checkHost = "127.0.0.1"
+	}
 	deadline := time.Now().Add(180 * time.Second)
 	for time.Now().Before(deadline) {
 		select {
@@ -204,7 +213,7 @@ func (e *LlamaEngine) Start() error {
 			return fmt.Errorf("llama-server exited during start-up")
 		default:
 		}
-		if r, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", e.Port)); err == nil {
+		if r, err := http.Get(fmt.Sprintf("http://%s:%d/health", checkHost, e.Port)); err == nil {
 			r.Body.Close()
 			if r.StatusCode == 200 {
 				return nil

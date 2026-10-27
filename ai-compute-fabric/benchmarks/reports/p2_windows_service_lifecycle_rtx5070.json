@@ -1,0 +1,35 @@
+﻿{
+    "schema_version":  1,
+    "service_name":  "AICFWorkerGuard",
+    "platform":  "windows-10-pro",
+    "gpu":  "NVIDIA GeForce RTX 5070",
+    "install_and_start":  {
+                              "buckets":  {
+                                              "Total":  12820938752,
+                                              "OSUser":  0,
+                                              "Weights":  2490368000,
+                                              "KVState":  603979776,
+                                              "Compute":  84934656,
+                                              "Headroom":  1610612736,
+                                              "Allocatable":  8031043584
+                                          },
+                              "status":  "Running",
+                              "engine_pid":  4856,
+                              "state":  "running",
+                              "engine_running":  true
+                          },
+    "stop_verification":  {
+                              "vram_returned_to_baseline":  true,
+                              "llama_server_processes":  0,
+                              "worker_guard_processes":  0,
+                              "vram_used_mib_after_stop":  203,
+                              "stop_service_ms":  262
+                          },
+    "restart_verification":  {
+                                 "start_service_ms":  264,
+                                 "engine_pid":  12072,
+                                 "state":  "running",
+                                 "engine_running":  true
+                             },
+    "all_passed":  true
+}

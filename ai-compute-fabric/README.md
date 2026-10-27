@@ -18,7 +18,22 @@ Monorepo thực thi theo `KE_HOACH_THUC_HIEN_AI_COMPUTE_FABRIC_HF.md` (Phụ l�
 | `studio/` & `training/` & `audio/` | Dịch vụ AI Studio đa tenant (`studio/`), huấn luyện QLoRA + xuất `.gguf` + toán gộp LoRA (`naive`, `exact`, `lora_fa`, `svd`), và đường ống âm thanh tiếng Việt (`Qwen3-ASR-0.6B` + `mms-tts-vie` + WER/CER chuẩn hóa NFC). |
 | `contracts/` & `docs/SRE_RUNBOOK.md` | Hợp đồng Protobuf v1 (`fabric.proto`, `gateway.proto`), đặc tả OpenAPI 3.0.3 (`contracts/openapi/aicf_v1.yaml` kiểm chứng tự động đối chiếu từng route Go), SBOM ký số `cosign` (`deploy/security/verify_sboms.sh`), `NOTICE`, `release-manifest-v1.0.yaml` và tài liệu vận hành `docs/SRE_RUNBOOK.md`. |
 
-## 2. Đã đo kiểm thực nghiệm trên phần cứng thật (1 máy Linux, 1 × RTX 3060 12 GB)
+## 2. Đã đo kiểm thực nghiệm trên phần cứng thật
+
+### 2.1. Cụm đa máy thật dị thể (Linux RTX 3060 + Windows 10 Pro RTX 5070 qua mTLS LAN 2.5 GbE)
+- **Đo kiểm suy luận đa máy E2E (`p2_multinode_linux3060_win5070_e2e.json`):**
+  - Node Linux (`pc-001` - RTX 3060 12GB): **180.4 tok/s**, TTFT p50 729 ms (46/46 request OK).
+  - Node Windows (`pc-win-01` - RTX 5070 12GB): **166.9 tok/s**, TTFT p50 1,134 ms (44/44 request OK).
+  - **Chạy song song cả 2 node:** **334.9 tok/s** (hiệu suất scale 96.4%, 90/90 request 100% thành công, 0 lỗi).
+- **Điều khiển từ xa qua Gateway:** Lệnh `Pause`/`Resume` từ xa phản hồi dưới 2 giây; `Live Model Switch` chuyển đổi model `Qwen3-4B` <-> `Qwen3-8B` thành công qua API.
+
+### 2.2. Đo kiểm chuyên sâu trên máy Windows 10 Pro (`fios02@192.168.1.49`, RTX 5070 12 GB, Ryzen 7 9700X)
+- **Baseline B01 (`llama-bench`):** Qwen3-4B đạt `179.7 tok/s` (decode), Qwen3-8B đạt `115.65 tok/s` (decode, gấp 1.78x RTX 3060), RSD < 0.2%. Báo cáo: `p0_B01_llamabench_Qwen3-4B_win_rtx5070.json`, `p0_B01_llamabench_Qwen3-8B_win_rtx5070.json`.
+- **Nghiệm thu cổng thu hồi GPU (`G-RECLAIM` trên Windows WDDM):** 10/10 lần đạt, min `62.5 ms`, trung vị `174.1 ms`, p95 `638.2 ms` (< 2.0 s). Báo cáo: `p2_gpu_reclaim_poc_win_rtx5070.json`.
+- **Dịch vụ Windows `AICFWorkerGuard`:** Quản lý bởi Windows SCM; `Stop-Service` tắt sạch `llama-server.exe` trong `262 ms` và trả VRAM về `203 MiB` nền; `Start-Service` khởi động lại trong `264 ms`. Báo cáo: `p2_windows_service_lifecycle_rtx5070.json`.
+- **Khảo sát WDDM & Đóng quyết định D06:** `nvidia-smi` theo tiến trình in `[N/A]`, nhưng bộ đếm PDH `\GPU Process Memory(*)\Dedicated Usage` đọc được VRAM từng PID chính xác (đo được 6.174.539.776 bytes khi nạp 8B, khớp với buffer size và tổng VRAM adapter). Báo cáo: `p0_probe_windows_rtx5070.json`, `p0_probe_windows_loaded_rtx5070.json`.
+
+### 2.3. Đo kiểm trên máy Linux (Core Ultra 7 265K, 1 × RTX 3060 12 GB)
 - **Hiệu chuẩn VRAM (`G-VRAM`):** Đạt **28/28** cấu hình `Q4_K_M`, **16/16** cấu hình `Q8_0`/`F16` (`Qwen3-4B` & `Qwen3-8B`), và **5/5** cấu hình `LOCAL_HYBRID` với `Qwen2.5-32B-Instruct Q4_K_M` (`ngl=24..36`). Báo cáo: `benchmarks/reports/p1_vram_calibration_rtx3060.json`, `p1_vram_calibration_q8_f16_rtx3060.json`, `p1_vram_hybrid_32b_rtx3060.json`.
 - **Thu hồi GPU (`G-RECLAIM`):** Trung vị `273 ms`, p95 `283 ms`, p99 `284 ms` dưới áp lực cấp phát đột ngột 4 GiB CUDA (`benchmarks/reports/p2_gpu_reclaim_poc_rtx3060_v2.json`).
 - **Định tuyến KV Session Affinity & WFQ:** Giảm TTFT lượt hội thoại thứ 2 từ `1.390 ms` xuống `38 ms` (`36,6×`, `benchmarks/reports/p2_session_affinity_rtx3060.json`).

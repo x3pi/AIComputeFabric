@@ -1,8 +1,15 @@
-# Chạy các mục Windows (chưa từng chạy trên Windows thật)
+# Chạy & Nghiệm thu trên Windows (Đã nghiệm thu trên Windows 10 Pro + RTX 5070)
 
-**Trạng thái trung thực:** `worker-guard.exe` và `site-gateway.exe` mới chỉ được *biên dịch chéo* từ Linux
-(`GOOS=windows`). Các script `.ps1` và nhánh `sys.platform == "win32"` trong Python chưa bao giờ chạy trên Windows.
-Lần chạy đầu rất có thể lộ lỗi; hãy gửi lại nguyên văn thông báo lỗi, đừng tự sửa lặng lẽ.
+> **Kế hoạch triển khai & nghiệm thu chi tiết qua SSH (`fios02@192.168.1.49`):** Xem chi tiết đầy đủ tại [`../../KE_HOACH_TRIEN_KHAI_WINDOWS_192_168_1_49.md`](file:///mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/KE_HOACH_TRIEN_KHAI_WINDOWS_192_168_1_49.md).
+
+**Trạng thái nghiệm thu thực tế (2026-10-27):**
+Toàn bộ chuỗi thành phần Windows (`worker-guard.exe`, `site-gateway.exe`, `pki.exe`, `install-service.ps1`, `probe_windows.ps1`, `probe_node.py`, `reclaim_poc.py`) đã được triển khai, kiểm thử thực nghiệm và đạt **PASS 100%** trên máy thật `DESKTOP-2MJNHTH` (Windows 10 Pro, AMD Ryzen 7 9700X, NVIDIA GeForce RTX 5070 12GB, Driver 617.42 WDDM).
+- **Khảo sát phần cứng & WDDM:** `p0_probe_windows_rtx5070.json`, `p0_probe_node_windows_rtx5070.json`. Xác nhận `nvidia-smi` per-process trả `[N/A]`, nhưng PDH `\GPU Process Memory(*)\Dedicated Usage` đọc VRAM theo tiến trình chính xác (chốt **D06**).
+- **Cổng CPU ISA & Hạng GPU:** Ryzen 7 9700X phát hiện đủ `avx2`, `avx512f/bw/vl`, chọn `llama_cpp_avx512`. RTX 5070 xếp hạng `"group"`.
+- **Baseline B01:** Qwen3-4B đạt `179.7 tok/s` (decode), Qwen3-8B đạt `115.65 tok/s` (decode).
+- **Thu hồi GPU (G-RECLAIM):** 10/10 lần đạt, trung vị `174.1 ms`, max `638.2 ms` (< 2.0 s).
+- **Dịch vụ Windows AICFWorkerGuard:** Cài đặt SCM thành công, `Stop-Service` tắt sạch tiến trình con trong `262 ms` và trả VRAM về nền `203 MiB`.
+- **Cụm 2 máy thật mTLS:** `site-gateway` điều phối song song Linux RTX 3060 (`180.4 tok/s`) và Windows RTX 5070 (`166.9 tok/s`), đạt thông lượng tổng hợp **334.9 tok/s** (hiệu suất scale 96.4%).
 
 ## 0. Chuẩn bị (máy Windows có GPU NVIDIA)
 - Driver NVIDIA mới, `nvidia-smi` chạy được trong PowerShell.

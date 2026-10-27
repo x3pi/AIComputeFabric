@@ -20,7 +20,7 @@ mkdir -p "$D/bin" "$D/logs" "$D/studio"
 (cd "$ROOT/apps/site-gateway" && go build -o "$D/bin/site-gateway" . && go build -o "$D/bin/pki" ./cmd/pki)
 (cd "$ROOT/apps/worker-guard" && go build -o "$D/bin/worker-guard" .)
 (cd "$ROOT/apps/global-control-plane" && go build -o "$D/bin/gcp-server" ./cmd/gcp-server)
-[ -f "$D/pki/ca.crt" ] || "$D/bin/pki" -out "$D/pki" -workers pc-001
+[ -f "$D/pki/ca.crt" ] && [ -f "$D/pki/pc-win-01.crt" ] || "$D/bin/pki" -out "$D/pki" -workers pc-001,pc-win-01 -gateway-hosts 127.0.0.1,localhost,192.168.1.40
 
 GRPC_PORT="${GRPC_PORT:-17443}"; HTTP_PORT="${HTTP_PORT:-18080}"
 SIDECAR_PORT="${SIDECAR_PORT:-18095}"; DAG_PORT="${DAG_PORT:-18096}"; STUDIO_PORT="${STUDIO_PORT:-18098}"
@@ -80,27 +80,29 @@ PYEOF
 fi
 
 # 3. Site Gateway
-"$D/bin/site-gateway" -grpc "127.0.0.1:$GRPC_PORT" -http "127.0.0.1:$HTTP_PORT" -tenants-file "$D/tenants.json" \
+"$D/bin/site-gateway" -grpc "0.0.0.0:$GRPC_PORT" -http "0.0.0.0:$HTTP_PORT" -tenants-file "$D/tenants.json" \
   -tls-cert "$D/pki/gateway.crt" -tls-key "$D/pki/gateway.key" -tls-client-ca "$D/pki/ca.crt" \
   "${GW_EXTRA[@]}" >"$D/logs/gateway.log" 2>&1 & pids+=($!)
 sleep 1
 
 # 4. Worker Guard + llama-server
 "$D/bin/worker-guard" --llama-server "$LLAMA" --model "$MODEL" --parallel 2 --ctx 4096 --headroom-mib 512 \
-  --engine-port 18090 --models-dir "$D/models" --adapters-dir "$D/adapters" --gateway "127.0.0.1:$GRPC_PORT" --worker-id pc-001 \
+  --engine-port 18090 --engine-host 0.0.0.0 --advertise-host 192.168.1.40 \
+  --models-dir "$D/models" --adapters-dir "$D/adapters" --gateway "127.0.0.1:$GRPC_PORT" --worker-id pc-001 \
   --tls-ca "$D/pki/ca.crt" --tls-cert "$D/pki/pc-001.crt" --tls-key "$D/pki/pc-001.key" \
   --tls-server-name localhost >"$D/logs/worker.log" 2>&1 & pids+=($!)
 
 cat <<MSG
 AI Compute Fabric Full-Stack Demo is starting (model loads in ~10-25 s):
-  1. Cụm GPU & Dự báo VRAM : http://127.0.0.1:$HTTP_PORT/            (admin token: $AICF_ADMIN_TOKEN)
-  2. Người dùng & Khóa API : http://127.0.0.1:$HTTP_PORT/tenants.html
-  3. Playground & Đo tải   : http://127.0.0.1:$HTTP_PORT/chat.html
-  4. AI Agent (Đồ thị DAG) : http://127.0.0.1:$HTTP_PORT/agents.html
-  5. AI Studio             : http://127.0.0.1:$HTTP_PORT/studio.html
-  6. Audio AI Factory      : http://127.0.0.1:$HTTP_PORT/audio.html
-  7. Hướng dẫn Sử dụng     : http://127.0.0.1:$HTTP_PORT/guide.html
-  8. Worker Guard Local UI : http://127.0.0.1:8099/
+  Cụm GPU Đa Nút Heterogeneous (Linux RTX 3060 + Windows RTX 5070):
+  1. Cụm GPU & Dự báo VRAM : http://192.168.1.40:$HTTP_PORT/ (hoặc http://127.0.0.1:$HTTP_PORT/) [admin token: $AICF_ADMIN_TOKEN]
+  2. Người dùng & Khóa API : http://192.168.1.40:$HTTP_PORT/tenants.html
+  3. Playground & Đo tải   : http://192.168.1.40:$HTTP_PORT/chat.html
+  4. AI Agent (Đồ thị DAG) : http://192.168.1.40:$HTTP_PORT/agents.html
+  5. AI Studio             : http://192.168.1.40:$HTTP_PORT/studio.html
+  6. Audio AI Factory      : http://192.168.1.40:$HTTP_PORT/audio.html
+  7. Hướng dẫn Sử dụng     : http://192.168.1.40:$HTTP_PORT/guide.html
+  8. Worker Guard Local UI : http://192.168.1.40:8099/ (Linux) | http://192.168.1.49:8099/ (Windows)
   Logs                     : $D/logs/
 Ctrl-C to stop.
 MSG

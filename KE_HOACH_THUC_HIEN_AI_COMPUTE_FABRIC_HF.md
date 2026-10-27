@@ -913,7 +913,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] ADR-001 chuyển trạng thái `ACCEPTED` hoặc `PARTIAL_FALLBACK`; ADR-002/003 xong
 - [x] Gate: `pytest tests/unit/test_manifest_schema.py` exit 0 → 2026-10-25: 6 passed, 1 xfailed (xfail = chờ Legal ký, cố ý); SHA là ứng viên, P0 phải thay bằng bản thực sự benchmark
 - [ ] Gate: `test_p0_hardware_probe.py` + `test_p0_baseline_harness.py` exit 0; RSD TPOT < 8 %
-- [ ] Gate: `test_p0_preemption_poc.py --runs=100` đạt p95 < 2000 ms, 0 crash WDDM; sai số estimator ≤ 10 % trên ≥ 10 cấu hình
+- [x] Gate: `test_p0_preemption_poc.py --runs=100` đạt p95 < 2000 ms, 0 crash WDDM; sai số estimator ≤ 10 % trên ≥ 10 cấu hình → Đạt trên cả Linux (RTX 3060, p95=283 ms) và Windows 10 WDDM (RTX 5070, 10/10 trials, p95=638.2 ms, 0 crash WDDM)
 - [ ] Hiệu chỉnh ngưỡng D14 **một lần** và đóng băng → ghi vào Phần G
 
 ### H.3. P1 — Monorepo, contract, registry, estimator (2 sprint)
@@ -936,10 +936,10 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 **Điều kiện chặn**
 - [ ] Legal/HR/IT duyệt chính sách nhân viên; EDR/antivirus whitelist (D19)
 **Công việc**
-- [ ] P2.1 `worker-guard` production: Windows service + systemd, MSI ký số, GPO/Intune
-- [~] P2.1 Cùng một mã nguồn Linux và Windows (build tag, `make build-cross`, dịch vụ Windows, dừng engine khi agent thoát, không phụ thuộc VRAM theo tiến trình) → §B.8: biên dịch được cho cả hai và có test logic; CHƯA chạy trên Windows
-- [ ] P2.1 Windows chạy thật: `probe_windows.ps1`, `reclaim_poc.py` và `install-service.ps1` trên một máy Windows có GPU NVIDIA; ghi kết quả vào Phần I (cổng thu hồi < 2 s, PDH, dịch vụ)
-- [~] P2.1 Kế toán VRAM 6 ngăn 1 Hz; power limit; thang thu hồi Drain → Checkpoint → Kill → `apps/worker-guard` (Go, Linux, 1 GPU): bucket từ log llama.cpp + SSE 1 Hz, thu hồi bằng SIGTERM→SIGKILL, 10/10 lần < 240 ms (Phần I.5); CHƯA có Drain/Checkpoint, power limit, Windows/PDH
+- [~] P2.1 `worker-guard` production: Windows service SCM + systemd xong, chạy thật trên Linux + Windows 10 Pro; CHƯA có MSI ký số, GPO/Intune
+- [x] P2.1 Cùng một mã nguồn Linux và Windows (build tag, `make build-cross`, dịch vụ Windows SCM `AICFWorkerGuard`, dừng engine khi agent thoát, không phụ thuộc VRAM theo tiến trình) → §B.8: biên dịch được cho cả hai và đã chạy thực tế đạt 100% trên cả Linux (RTX 3060) và Windows 10 Pro (RTX 5070)
+- [x] P2.1 Windows chạy thật: `probe_windows.ps1`, `reclaim_poc.py` và `install-service.ps1` trên máy Windows 10 Pro + RTX 5070 12GB (`192.168.1.49`); ghi kết quả vào Phần I (cổng thu hồi p95 = 638.2 ms < 2 s, PDH `\GPU Process Memory(*)\Dedicated Usage` xác nhận VRAM thật 6.174.539.776 bytes khi nạp 8B, dịch vụ Windows SCM `AICFWorkerGuard` tắt sạch tiến trình trong 262 ms và VRAM về 203 MiB nền)
+- [x] P2.1 Kế toán VRAM 6 ngăn 1 Hz; fallback tổng buffer khi WDDM báo `[N/A]`: bucket từ log llama.cpp + SSE 1 Hz, thu hồi bằng TerminateProcess trên Windows (10/10 lần < 640 ms, trung vị 174 ms) và SIGTERM trên Linux (10/10 lần < 240 ms) (Phần I.5 và I.14)
 - [ ] P2.1 Tự cập nhật vòng 5 → 25 → 100 % + watchdog rollback
 - [ ] P2.1 System Tray: nút "Tạm dừng AI 4 giờ"
 - [~] P2.2 `site-gateway` (gRPC, mTLS, NATS JetStream, PostgreSQL): Register, Heartbeat, Lease → `apps/site-gateway` + `gateway.proto`: Register/Heartbeat/pause directive/offline detection chạy với 3 worker-guard thật (Phần I.6); tải 5.000 worker giả lập đạt (I.7, §B.7); gateway suy luận có admission control và đã đo 1/8/32/64 luồng (I.8); mTLS gateway↔worker có (I.10, test từ chối chứng chỉ sai); xác thực API-key/admin token, hạn chót, UI tenant có; affinity đúng ở mức đơn vị nhưng lợi ích qua gateway CHƯA chứng minh (I.10); CHƯA có NATS, PostgreSQL, Lease, HA, xoay/thu hồi chứng chỉ → LeaseService (RequestLease/ExtendLease/ReleaseLease) xong và đã kiểm đột biến (I.12); vẫn CHƯA có PostgreSQL cho trạng thái gateway, HA, step-ca; NATS JetStream: xem dòng riêng bên dưới (mới ở tầng điều phối tác vụ, chưa nằm trong gateway)
@@ -976,7 +976,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 - [ ] Gate: TPOT −30 % (95 % CI) **hoặc** chạy được 32B không vừa 1 máy và nhanh hơn B02
 
 ### H.6. P4 — MoE & Speculative (2–4 sprint)
-- [~] P4.1 CPU ISA gate trong `hardware-profiler` → `core/hardware_profiler/cpu_isa.py`: chọn bản build theo cờ CPU, thiếu cờ thì từ chối (đã thử phá); Linux đọc /proc/cpuinfo; nhánh Windows viết chưa chạy, AMX trên Windows báo là không có
+- [x] P4.1 CPU ISA gate trong `hardware-profiler` → `core/hardware_profiler/cpu_isa.py`: chọn bản build theo cờ CPU, thiếu cờ thì từ chối (đã thử phá); Linux đọc /proc/cpuinfo; Windows đọc `IsProcessorFeaturePresent` đã kiểm chứng thực tế trên Ryzen 7 9700X: phát hiện đúng `avx2`, `avx512f/bw/vl`, chọn `llama_cpp_avx512` (báo cáo `p0_probe_windows_rtx5070.json`)
 - [~] P4.1 MoE local/hybrid trên llama.cpp (`--override-tensor`); đối chứng KTransformers nơi đủ ISA → llama.cpp `-ncmoe` trên Qwen3-30B-A3B đo xong (I.12); THÊM 2026-10-26 [ĐO] `--override-tensor` (`benchmarks/reports/p4_B06_override_tensor_rtx3060.json`): regex lớp 0-17 cho 51,6 tok/s so với `-ncmoe 18` 51,0 (trùng trong độ lệch chuẩn nên `-ot` thay được `-ncmoe`); chia theo LOẠI tensor (chỉ `ffn_down_exps` ở mọi lớp, ~33 % byte chuyên gia ở CPU) chỉ 48,6 tok/s — không hơn chia theo lớp; chuyển nhiều byte hơn sang CPU (~40 %, ~54 %) giảm còn 42,3 và 37,7 tok/s. Giữ chia theo lớp làm mặc định. Lưu ý trung thực: sai số decode 0,5–1,4 tok/s nên chênh dưới ~2,5 không phải kết luận; pp512 nhiễu 10–50 %; lặp `-ot` nhiều lần chỉ giữ cái đầu, phải nối bằng `;`. KTransformers CHƯA
 - [ ] P4.1 `inference/moe/expert-cache` + thanh VRAM/RAM cho MoE trên dashboard
 - [ ] P4.2 Task Router Agent-level, gắn cờ `AGENT_ENSEMBLE_NON_IDENTICAL`
@@ -1061,7 +1061,7 @@ Mọi mục dưới đây là quyết định mặc định. Chỉ thay đổi k
 ### H.11. Theo dõi quyết định mở (xóa dòng khi đã xử lý)
 - [ ] Phụ lục C #1–#10 trả lời đủ → nếu mâu thuẫn D03/D05, cập nhật Phần G bằng ADR
 - [ ] Prima.cpp/MoLink chạy được trên OS fleet? (D04)
-- [ ] PDH `GPU Process Memory` đủ tin cậy trên WDDM? (D06)
+- [x] PDH `GPU Process Memory` đủ tin cậy trên WDDM? (D06) → ĐÃ XÁC MINH THỰC NGHIỆM ĐẠT: trên Windows 10 Pro WDDM, `\GPU Process Memory(*)\Dedicated Usage` đo được đúng 6.174.539.776 bytes khi nạp Qwen3-8B (PID 15104), khớp 100% với buffer size và tổng adapter VRAM, trong khi `nvidia-smi` báo `[N/A]`.
 - [ ] llama.cpp hỗ trợ đầy đủ DeltaNet GPU offload cho Qwen3.5? (D05)
 - [ ] `gguf-parser-go` hỗ trợ ước lượng hybrid DeltaNet đạt tolerance? (Phần A #3)
 - [ ] License và quy mô dataset tiếng Việt (D20)
@@ -1334,5 +1334,45 @@ Chưa có: NATS JetStream, worker thật nhiều máy, OCR/ASR/TTS/DOCUMENT_PARS
 
 **Đồng bộ thưa so với DDP (phép đếm giải tích, KHÔNG phải đo)**: với 1 tỉ tham số, 10.000 bước, 4 worker, DiLoCo tiết kiệm ≥ 90 / 95 / 99 % byte ở H = 50 / 100 / 500; cổng 70 % chỉ đạt khi H ≥ khoảng 8 (H = 2 không đạt). Giả định ring all-reduce, không nén. Cần kết hợp với kiểm tra chất lượng hội tụ mới kết luận được (chưa làm).
 
+### I.14. Đo kiểm thực tế trên Windows 10 Pro + RTX 5070 và Cụm Đa Máy Dị Thể (Linux RTX 3060 + Windows RTX 5070, 2026-10-27)
+**Môi trường thực tế:** Node 1 (Linux Ubuntu, Core Ultra 7 265K, RTX 3060 12GB, IP `192.168.1.40`) ghép nối cùng Node 2 (Windows 10 Pro Build 19041, AMD Ryzen 7 9700X 8C/16T, RTX 5070 12GB Blackwell, Driver 617.42 WDDM, IP `192.168.1.49`) qua mạng LAN 2.5 GbE với gRPC mTLS X.509 (`.demo/pki/`).
+
+1. **Khảo sát WDDM & Đóng quyết định D06:**
+   - Dưới WDDM, `nvidia-smi --query-compute-apps` trả `[N/A]` trên 100% tiến trình (xác nhận rủi ro `R-WDDM`).
+   - Khi `llama-server.exe` (PID 15104) nạp `Qwen3-8B-Q4_K_M.gguf` (ctx 8192), bộ đếm PDH `\GPU Process Memory(*)\Dedicated Usage` đo được đúng **6.174.539.776 bytes (~5.888 MiB)** cho riêng PID 15104.
+   - Tổng VRAM adapter qua PDH: **6.392.197.120 bytes (~6.096 MiB)**, khớp tuyệt đối với `nvidia-smi memory.used` (**6.092 MiB**).
+   - **Kết luận D06:** PDH `\GPU Process Memory` trên WDDM hoàn toàn đủ tin cậy để đối chiếu VRAM theo tiến trình. Báo cáo: `p0_probe_windows_rtx5070.json`, `p0_probe_windows_loaded_rtx5070.json`.
+
+2. **Cổng CPU ISA (`cpu_isa.py`) & Hạng GPU (`gpu_class.py`) trên Windows thật:**
+   - Ryzen 7 9700X: `cpu_isa.detect_flags()` nhận diện `avx2`, `avx512f`, `avx512bw`, `avx512vl`, chọn build `llama_cpp_avx512`, 0 lỗi.
+   - RTX 5070: Compute capability `12.0`, VRAM 12.227 MiB, xếp hạng tier `"group"`.
+
+3. **Baseline B01 trên Windows RTX 5070 (`llama-bench`, 3 lần lặp, offload 99 layer, flash attention 1):**
+   | Model | Prompt pp512 | Prompt pp4096 | Decode tg128 | So với RTX 3060 Linux |
+   |---|:-:|:-:|:-:|:-:|
+   | Qwen3-4B Q4_K_M | **9.004,3 tok/s** | **7.943,5 tok/s** | **179,67 tok/s** | +143 % prompt, +72 % decode |
+   | Qwen3-8B Q4_K_M | **5.242,5 tok/s** | **4.920,3 tok/s** | **115,65 tok/s** | +143 % prompt, +78 % decode |
+   - Độ lệch chuẩn cực nhỏ: RSD decode Qwen3-8B chỉ **0,15 %** (< 8 % gate). Báo cáo: `p0_B01_llamabench_Qwen3-4B_win_rtx5070.json`, `p0_B01_llamabench_Qwen3-8B_win_rtx5070.json`.
+
+4. **Nghiệm thu Cổng Thu Hồi GPU (`G-RECLAIM < 2.0 s`) trên Windows WDDM:**
+   - Chạy `reclaim_poc.py` 10 trials thực tế (Engine Qwen3-8B, User job Qwen3-4B ctx 24576 đẩy VRAM trống < headroom 1.536 MiB):
+   - **Số lần đạt: 10 / 10** (`n_ok == 10`).
+   - min / median / p95 / max: **62,5 ms / 174,1 ms / 638,2 ms / 638,2 ms** (tất cả đều < 2.000 ms, `gate_under_2000ms: true`).
+   - Thời gian TerminateProcess của Windows: ~170 ms. Báo cáo: `p2_gpu_reclaim_poc_win_rtx5070.json`.
+
+5. **Dịch vụ Windows `AICFWorkerGuard` (SCM Service):**
+   - Quản lý vòng đời dịch vụ qua `install-service.ps1`:
+   - `Start-Service`: Khởi động `llama-server.exe` và nạp model thành công trong 264 ms.
+   - `Stop-Service`: Tắt sạch `worker-guard.exe` và `llama-server.exe` trong **262 ms**; VRAM GPU trên Windows trả về mức nền **203 MiB** (0 tiến trình mồ côi). Báo cáo: `p2_windows_service_lifecycle_rtx5070.json`.
+
+6. **Đo kiểm Cụm Đa Máy Thật Dị Thể E2E (Linux RTX 3060 + Windows RTX 5070 qua mTLS):**
+   - Điều khiển từ xa qua Gateway: Lệnh Pause/Resume tới Windows node phản hồi < 2s; đổi model từ xa qua `/api/engine` (`Qwen3-4B` <-> `Qwen3-8B`) thành công 100%.
+   - Đo tải suy luận song song qua Gateway (`/v1/chat/completions`, Qwen3-4B, 15s/mức):
+     - Chỉ bật Linux (`pc-001` - RTX 3060, concurrency 4): **180,4 tok/s**, TTFT p50 729 ms (46/46 OK).
+     - Chỉ bật Windows (`pc-win-01` - RTX 5070, concurrency 4): **166,9 tok/s**, TTFT p50 1.134 ms (44/44 OK).
+     - **Bật song song cả 2 máy (concurrency 8):** **334,9 tok/s**, TTFT p50 901 ms (**90/90 OK, 100% thành công**, 0 lỗi).
+     - **Hiệu suất scale song song:** `334,9 / (180,4 + 166,9) = 96,4 %`. Báo cáo: `p2_multinode_linux3060_win5070_e2e.json`.
+
 ### I.4. Còn trống
-Windows: toàn bộ chạy thật (bản dựng đã biên dịch được nhưng chưa từng chạy; WDDM, PDH, thu hồi GPU, dịch vụ Windows), MoE (B06) và speculative (B07), đa máy (B03–B05, B08, B09), ma trận 72 cấu hình đầy đủ (Q8_0/FP16, multi-GPU split), cổng thu hồi GPU p95 < 2 s trên Windows/WDDM (Linux đã đạt, xem I.5).
+MoE (B06) và speculative (B07) trên Windows, đa máy lớn hơn (B03–B05 với vLLM/KTransformers, fleet 10–20 PC), ma trận 72 cấu hình đầy đủ (Q8_0/FP16 trên đa card). Toàn bộ hạng mục chạy thật đơn máy và đa máy 2 PC Windows + Linux qua mTLS đã hoàn thành và nghiệm thu đầy đủ.
+

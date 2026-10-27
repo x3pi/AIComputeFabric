@@ -59,6 +59,7 @@ func serve(stop <-chan struct{}) {
 		gpu         = flag.Int("gpu", 0, "GPU index")
 		gateway     = flag.String("gateway", "", "site-gateway gRPC address (empty = standalone)")
 		advert      = flag.String("advertise-host", "127.0.0.1", "address the gateway uses to reach this engine")
+		engineHost  = flag.String("engine-host", "127.0.0.1", "host llama-server binds to (e.g. 0.0.0.0 or 127.0.0.1)")
 		tlsCA       = flag.String("tls-ca", "", "CA that signed the gateway certificate (enables mTLS)")
 		tlsCert     = flag.String("tls-cert", "", "this worker's client certificate")
 		tlsKey      = flag.String("tls-key", "", "this worker's private key")
@@ -69,7 +70,7 @@ func serve(stop <-chan struct{}) {
 	if *bin == "" || *model == "" {
 		log.Fatal("--llama-server and --model are required")
 	}
-	eng := &LlamaEngine{Bin: *bin, Model: *model, Lora: *lora, Port: *port, Ctx: *ctx, Parallel: *par, NGL: *ngl, FlashAttn: *fa, KVType: *kvType,
+	eng := &LlamaEngine{Bin: *bin, Model: *model, Lora: *lora, Host: *engineHost, Port: *port, Ctx: *ctx, Parallel: *par, NGL: *ngl, FlashAttn: *fa, KVType: *kvType,
 		LogPath: *logPath, Grace: 500 * time.Millisecond}
 	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near}, SMISampler{Index: *gpu}, eng)
 	go g.Run(stop)
@@ -90,8 +91,9 @@ func serve(stop <-chan struct{}) {
 		if err != nil {
 			log.Fatal(err)
 		}
+		gpuName := GPUName(*gpu)
 		r := &Reporter{Client: pb.NewFleetGatewayClient(conn), G: g, WorkerID: *workerID, SiteID: "dev", Hostname: host,
-			GPUName: "NVIDIA GPU", Model: filepath.Base(*model),
+			GPUName: gpuName, Model: filepath.Base(*model),
 			EngineURL: fmt.Sprintf("http://%s:%d", *advert, *port), Slots: uint32(*par)}
 		rctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

@@ -179,7 +179,12 @@ func (g *Guard) Tick() error {
 		}
 	case StStopped, StYielded:
 		g.mu.Lock()
-		need := g.lastOwn + g.cfg.HeadroomMiB
+		lastOwn := g.lastOwn
+		if lastOwn == 0 {
+			b := g.eng.Buffers()
+			lastOwn = uint64(b.ModelMiB + b.KVMiB + b.ComputeMiB)
+		}
+		need := lastOwn + g.cfg.HeadroomMiB
 		g.mu.Unlock()
 		if need == g.cfg.HeadroomMiB { // never ran: use buffers if known, else start optimistically
 			need = g.cfg.HeadroomMiB + 1
@@ -296,6 +301,9 @@ func (g *Guard) Snapshot() Snapshot {
 	b := g.eng.Buffers()
 	w, kv, c := uint64(b.ModelMiB)*mib, uint64(b.KVMiB)*mib, uint64(b.ComputeMiB)*mib
 	own := g.own
+	if own == 0 && g.st == StRunning {
+		own = (w + kv + c) / mib
+	}
 	if g.st != StRunning {
 		w, kv, c, own = 0, 0, 0, 0
 	}

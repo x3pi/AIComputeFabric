@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "title": "First Multi-node Heterogeneous Cluster Benchmark (Linux RTX 3060 + Windows RTX 5070)",
+  "network": "2.5 GbE LAN via gRPC mTLS",
+  "nodes": [
+    {
+      "id": "pc-001",
+      "os": "Linux x86_64",
+      "gpu": "NVIDIA GeForce RTX 3060 12GB",
+      "ip": "192.168.1.40"
+    },
+    {
+      "id": "pc-win-01",
+      "os": "Windows 10 Pro",
+      "gpu": "NVIDIA GeForce RTX 5070 12GB",
+      "ip": "192.168.1.49"
+    }
+  ],
+  "model": "Qwen3-4B-Q4_K_M.gguf",
+  "concurrency": 4,
+  "duration_per_run": "15s",
+  "runs": {
+    "linux_only_rtx3060": {
+      "aggregate_tok_s": 180.3601095407462,
+      "client_errors": {},
+      "concurrency": 4,
+      "duration_s": 15.812809203,
+      "ok": 46,
+      "per_request_tok_s_p5": 94.18900239449442,
+      "per_request_tok_s_p50": 95.23820660954995,
+      "requests": 46,
+      "status_counts": {
+        "200": 46
+      },
+      "ttft_ms_p50": 729,
+      "ttft_ms_p95": 739,
+      "url": "http://127.0.0.1:18080/v1/chat/completions"
+    },
+    "windows_only_rtx5070": {
+      "aggregate_tok_s": 166.9103446955922,
+      "client_errors": {},
+      "concurrency": 4,
+      "duration_s": 16.344103806,
+      "ok": 44,
+      "per_request_tok_s_p5": 174.21051905275903,
+      "per_request_tok_s_p50": 175.41106951510778,
+      "requests": 44,
+      "status_counts": {
+        "200": 44
+      },
+      "ttft_ms_p50": 1134,
+      "ttft_ms_p95": 1139,
+      "url": "http://127.0.0.1:18080/v1/chat/completions"
+    },
+    "multinode_parallel_linux_plus_windows": {
+      "aggregate_tok_s": 334.85540163868205,
+      "client_errors": {},
+      "concurrency": 8,
+      "duration_s": 16.663909176,
+      "ok": 90,
+      "per_request_tok_s_p5": 94.6166266441438,
+      "per_request_tok_s_p50": 96.57575401986998,
+      "requests": 90,
+      "status_counts": {
+        "200": 90
+      },
+      "ttft_ms_p50": 901,
+      "ttft_ms_p95": 1136,
+      "url": "http://127.0.0.1:18080/v1/chat/completions"
+    }
+  },
+  "gateway_stats_final": {
+    "at": 1793065364242,
+    "workers_total": 2,
+    "workers_online": 2,
+    "workers_running": 2,
+    "workers_reclaiming": 0,
+    "workers_yielded": 0,
+    "workers_paused": 0,
+    "workers_offline": 0,
+    "counts": {
+      "running": 2
+    },
+    "vram_pool": {
+      "total_bytes": 25705840640,
+      "used_bytes": 7513047040,
+      "free_bytes": 18192793600,
+      "os_user_bytes": 550502400,
+      "weights_bytes": 4980736000,
+      "kv_state_bytes": 1811939328,
+      "compute_bytes": 169869312,
+      "headroom_bytes": 3221225472,
+      "allocatable_bytes": 14971568128
+    },
+    "temp_avg_c": 61,
+    "temp_max_c": 61,
+    "reclaim_p95_ms": 0,
+    "reclaim_max_ms": 0,
+    "tenants_active": 0,
+    "router": {
+      "inflight": 0,
+      "queued": 0,
+      "requests_total": 281,
+      "served_total": 273,
+      "failovers_total": 19,
+      "avg_queue_wait_ms": 1322.2,
+      "rejected": {
+        "deadline": 0,
+        "no_worker": 0,
+        "queue_full": 0,
+        "rate_limit": 0,
+        "tenant_queue_full": 0,
+        "wait_timeout": 4
+      },
+      "served_by_tenant": {
+        "anonymous": 273
+      }
+    }
+  },
+  "workers_final": [
+    {
+      "worker_id": "pc-001",
+      "site_id": "dev",
+      "hostname": "pi-System-Product-Name",
+      "gpu_name": "NVIDIA GeForce RTX 3060",
+      "model": "Qwen3-4B-Q4_K_M.gguf",
+      "lora": "",
+      "switching": false,
+      "state": "running",
+      "online": true,
+      "vram_total_bytes": 12884901888,
+      "vram_free_bytes": 8943304704,
+      "buckets": {
+        "Total": 12884901888,
+        "OSUser": 158334976,
+        "Weights": 2490368000,
+        "KVState": 1207959552,
+        "Compute": 84934656,
+        "Headroom": 1610612736,
+        "Allocatable": 7332691968
+      },
+      "gpu_temp_c": 61,
+      "user_is_active": false,
+      "pause_requested": false,
+      "last_seen": "2026-10-27T08:42:43.984167869+07:00",
+      "agent_version": "0.1-poc",
+      "engine_url": "http://192.168.1.40:18090",
+      "parallel_slots": 2
+    },
+    {
+      "worker_id": "pc-win-01",
+      "site_id": "dev",
+      "hostname": "DESKTOP-2MJNHTH",
+      "gpu_name": "NVIDIA GeForce RTX 5070",
+      "model": "Qwen3-4B-Q4_K_M.gguf",
+      "lora": "",
+      "switching": false,
+      "state": "running",
+      "online": true,
+      "vram_total_bytes": 12820938752,
+      "vram_free_bytes": 9249488896,
+      "buckets": {
+        "Total": 12820938752,
+        "OSUser": 392167424,
+        "Weights": 2490368000,
+        "KVState": 603979776,
+        "Compute": 84934656,
+        "Headroom": 1610612736,
+        "Allocatable": 7638876160
+      },
+      "gpu_temp_c": 61,
+      "user_is_active": false,
+      "pause_requested": false,
+      "last_seen": "2026-10-27T08:42:43.09981363+07:00",
+      "agent_version": "0.1-poc",
+      "engine_url": "http://192.168.1.49:18090",
+      "parallel_slots": 1
+    }
+  ]
+}

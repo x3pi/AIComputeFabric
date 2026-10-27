@@ -1,0 +1,75 @@
+﻿{
+    "schema_version":  1,
+    "os":  "Microsoft Windows 10 Pro",
+    "time":  "2026-10-27T08:18:28.7168399+07:00",
+    "gpu":  "NVIDIA GeForce RTX 5070, 617.42, 12227 MiB, 266 MiB, 37, WDDM",
+    "smi_compute_apps":  [
+                             "1500, [N/A]",
+                             "7024, [N/A]",
+                             "12536, [N/A]",
+                             "3500, [N/A]",
+                             "15116, [N/A]"
+                         ],
+    "\\GPU Process Memory(*)\\Dedicated Usage":  [
+                                                     {
+                                                         "InstanceName":  "pid_1500_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  109514752
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_7024_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  84357120
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_15116_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  71086080
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_1500_luid_0x00000000_0x00010b5c_phys_0",
+                                                         "CookedValue":  61689856
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_556_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  35848192
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_3500_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  27598848
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_12536_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  11198464
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_9180_luid_0x00000000_0x00010b5c_phys_0",
+                                                         "CookedValue":  9637888
+                                                     }
+                                                 ],
+    "\\GPU Adapter Memory(*)\\Dedicated Usage":  [
+                                                     {
+                                                         "InstanceName":  "luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  283209728
+                                                     },
+                                                     {
+                                                         "InstanceName":  "luid_0x00000000_0x00010b5c_phys_0",
+                                                         "CookedValue":  82436096
+                                                     }
+                                                 ],
+    "cpu":  {
+                "Name":  "AMD Ryzen 7 9700X 8-Core Processor             ",
+                "NumberOfCores":  8,
+                "NumberOfLogicalProcessors":  16
+            },
+    "ram_gb":  61.6,
+    "ram_modules":  [
+                        {
+                            "Capacity":  34359738368,
+                            "Speed":  4800,
+                            "ConfiguredClockSpeed":  4800
+                        },
+                        {
+                            "Capacity":  34359738368,
+                            "Speed":  4800,
+                            "ConfiguredClockSpeed":  4800
+                        }
+                    ]
+}

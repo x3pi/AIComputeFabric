@@ -1,0 +1,79 @@
+﻿{
+    "schema_version":  1,
+    "os":  "Microsoft Windows 10 Pro",
+    "time":  "2026-10-27T08:32:14.9789088+07:00",
+    "gpu":  "NVIDIA GeForce RTX 5070, 617.42, 12227 MiB, 6092 MiB, 42, WDDM",
+    "smi_compute_apps":  [
+                             "1500, [N/A]",
+                             "7024, [N/A]",
+                             "12536, [N/A]",
+                             "3500, [N/A]",
+                             "15116, [N/A]",
+                             "3284, [N/A]",
+                             "1968, [N/A]",
+                             "3204, [N/A]",
+                             "15104, [N/A]"
+                         ],
+    "\\GPU Process Memory(*)\\Dedicated Usage":  [
+                                                     {
+                                                         "InstanceName":  "pid_15104_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  6174539776
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_1500_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  141393920
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_556_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  51253248
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_7024_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  45219840
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_3204_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  31064064
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_1968_luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  12451840
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_1500_luid_0x00000000_0x00010b5c_phys_0",
+                                                         "CookedValue":  11968512
+                                                     },
+                                                     {
+                                                         "InstanceName":  "pid_9180_luid_0x00000000_0x00010b5c_phys_0",
+                                                         "CookedValue":  8851456
+                                                     }
+                                                 ],
+    "\\GPU Adapter Memory(*)\\Dedicated Usage":  [
+                                                     {
+                                                         "InstanceName":  "luid_0x00000000_0x0000f658_phys_0",
+                                                         "CookedValue":  6392197120
+                                                     },
+                                                     {
+                                                         "InstanceName":  "luid_0x00000000_0x00010b5c_phys_0",
+                                                         "CookedValue":  22847488
+                                                     }
+                                                 ],
+    "cpu":  {
+                "Name":  "AMD Ryzen 7 9700X 8-Core Processor             ",
+                "NumberOfCores":  8,
+                "NumberOfLogicalProcessors":  16
+            },
+    "ram_gb":  61.6,
+    "ram_modules":  [
+                        {
+                            "Capacity":  34359738368,
+                            "Speed":  4800,
+                            "ConfiguredClockSpeed":  4800
+                        },
+                        {
+                            "Capacity":  34359738368,
+                            "Speed":  4800,
+                            "ConfiguredClockSpeed":  4800
+                        }
+                    ]
+}

@@ -16,8 +16,16 @@ import socket
 import subprocess
 import sys
 
+import os
+from pathlib import Path
+
 SCHEMA_VERSION = 1
 ISA_FLAGS = ["avx2", "avx512f", "avx512_vnni", "amx_tile", "amx_int8"]
+
+# Ensure repository root is on sys.path so core.* can be imported
+_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 
 def cpu_info(warnings):
@@ -28,10 +36,17 @@ def cpu_info(warnings):
         model = m.group(1).strip() if m else None
         f = re.search(r"flags\s*:\s*(.+)", txt)
         flags = set(f.group(1).split()) if f else set()
+    elif sys.platform == "win32":
+        model = platform.processor() or None
+        try:
+            from core.hardware_profiler import cpu_isa
+            flags = cpu_isa.windows_flags()
+        except Exception as e:
+            warnings.append(f"windows cpu flags error: {e}")
     else:
         model = platform.processor() or None
-        warnings.append("cpu flags only implemented for Linux; run the Windows probe in P0")
-    return {"model": model, "logical_cores": __import__("os").cpu_count(),
+        warnings.append("cpu flags only implemented for Linux and Windows")
+    return {"model": model, "logical_cores": os.cpu_count(),
             "isa": {k: (k in flags) for k in ISA_FLAGS}}
 
 
@@ -41,13 +56,47 @@ def ram_info(warnings):
         for line in open("/proc/meminfo"):
             if line.startswith("MemTotal:"):
                 total = int(line.split()[1]) * 1024
+    elif sys.platform == "win32":
+        try:
+            import ctypes
+
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            stat = MEMORYSTATUSEX()
+            stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                total = int(stat.ullTotalPhys)
+            else:
+                warnings.append("GlobalMemoryStatusEx failed")
+        except Exception as e:
+            warnings.append(f"ram total error on windows: {e}")
     else:
-        warnings.append("ram total only implemented for Linux")
+        warnings.append("ram total only implemented for Linux and Windows")
     return {"total_bytes": total, "channels": None, "bandwidth_gbps": None}
 
 
 def gpu_info(warnings):
     exe = shutil.which("nvidia-smi")
+    if not exe and sys.platform == "win32":
+        candidates = [
+            os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvidia-smi.exe"),
+            os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "NVIDIA Corporation", "NVSMI", "nvidia-smi.exe"),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                exe = c
+                break
     if not exe:
         warnings.append("nvidia-smi not found")
         return []

@@ -111,3 +111,18 @@ func smiPath() string {
 	}
 	return "nvidia-smi"
 }
+
+// GPUName queries the model name of the given GPU index (e.g. "NVIDIA GeForce RTX 5070").
+// If nvidia-smi fails or returns empty, it falls back to "NVIDIA GPU".
+func GPUName(index int) string {
+	out, err := exec.Command(smiPath(), "-i", strconv.Itoa(index),
+		"--query-gpu=name", "--format=csv,noheader").Output()
+	if err != nil {
+		return "NVIDIA GPU"
+	}
+	name := strings.TrimSpace(string(out))
+	if name == "" {
+		return "NVIDIA GPU"
+	}
+	return name
+}

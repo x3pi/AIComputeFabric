@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "hostname": "DESKTOP-2MJNHTH",
+  "os": {
+    "system": "Windows",
+    "release": "10",
+    "machine": "AMD64"
+  },
+  "cpu": {
+    "model": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+    "logical_cores": 16,
+    "isa": {
+      "avx2": true,
+      "avx512f": true,
+      "avx512_vnni": false,
+      "amx_tile": false,
+      "amx_int8": false
+    }
+  },
+  "ram": {
+    "total_bytes": 66126708736,
+    "channels": null,
+    "bandwidth_gbps": null
+  },
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 5070",
+      "vram_total_mib": 12227,
+      "vram_used_mib": 266,
+      "driver": "617.42"
+    }
+  ],
+  "warnings": []
+}
