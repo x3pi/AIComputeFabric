@@ -1,0 +1,86 @@
+[
+ {
+  "request": {
+   "mode": "merged",
+   "primary_worker_id": "pc-001",
+   "rpc_worker_ids": [
+    "pc-win-01"
+   ],
+   "model": "Qwen3-0.6B-Q8_0.gguf",
+   "tensor_split": "4,6"
+  },
+  "http": 500,
+  "switch_s": 312.1,
+  "response": "{\"error\":\"master pc-001 did not start Qwen3-0.6B-Q8_0.gguf: timed out after 5m0s; previous configuration restored\",\"topology\":{\"mode\":\"split\",\"primary_worker_id\":\"pc-001\",\"rpc_worker_ids\":[],\"model\":\"Qwen3-4B-Q4_K_M.gguf\",\"rpc_port\":50052,\"status\":\"error\",\"last_error\":\"master pc-001 did not start Qwen3-0.6B-Q8_0.gguf: timed out after 5m0s; previous configuration restored\",\"updated_at\":\"2026-10-27T16:50:52.464555712+07:00\",\"workers\":{\"pc-001\":{\"worker_id\":\"pc-001\",\"role\":\"standalone\",\"mode\":\"spli",
+  "status": {
+   "mode": "split",
+   "status": "error",
+   "last_error": "master pc-001 did not start Qwen3-0.6B-Q8_0.gguf: timed out after 5m0s; previous configuration restored"
+  },
+  "workers": {
+   "pc-001": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-0.6B-Q8_0.gguf",
+    "state": "stopped",
+    "badge": "SPLIT WORKER"
+   },
+   "pc-win-01": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "rpc://50052",
+    "state": "running",
+    "badge": "SPLIT WORKER"
+   }
+  },
+  "chat": {},
+  "ts": "2026-10-27T16:50:52+0700"
+ },
+ {
+  "request": {
+   "mode": "split",
+   "primary_worker_id": "pc-001",
+   "rpc_worker_ids": [],
+   "model": "Qwen3-4B-Q4_K_M.gguf"
+  },
+  "http": 200,
+  "switch_s": 12.5,
+  "response": "ok",
+  "status": {
+   "mode": "split",
+   "status": "ready",
+   "last_error": null
+  },
+  "workers": {
+   "pc-001": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SPLIT WORKER"
+   },
+   "pc-win-01": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "stopped",
+    "badge": "SPLIT WORKER"
+   }
+  },
+  "chat": {
+   "pc-001": {
+    "ok": true,
+    "tok_s": 101.9,
+    "wall_s": 0.7,
+    "text": ""
+   },
+   "pc-win-01": {
+    "ok": true,
+    "tok_s": 172.4,
+    "wall_s": 0.5,
+    "text": ""
+   }
+  },
+  "ts": "2026-10-27T16:51:06+0700"
+ }
+]

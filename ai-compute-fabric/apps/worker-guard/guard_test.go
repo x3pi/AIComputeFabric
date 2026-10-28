@@ -377,3 +377,25 @@ func TestEngineArgsLoraAdapter(t *testing.T) {
 		}
 	}
 }
+
+// Found on the real RTX 5070: a 30B engine (11154 MiB) was reclaimed because free < headroom; the rollback to a 4B model
+// then never restarted, because the guard still required lastOwn(11154)+headroom(1536) > total VRAM.
+func TestSwitchForgetsPreviousFootprintSoSmallerModelCanStart(t *testing.T) {
+	g, gpu, eng, clock := newRig(t)
+	eng.size = 11000 // free = 12288-11000 = 1288 < headroom 1536 -> the guard reclaims its own engine
+	g.Tick()
+	*clock = clock.Add(11 * time.Second)
+	g.Tick() // start
+	g.Tick() // record own, reclaim
+	if g.st == StRunning || gpu.engine != 0 {
+		t.Fatalf("expected the oversized engine to be reclaimed, state=%s engine=%d", g.st, gpu.engine)
+	}
+	eng.size = 3000
+	g.SwitchWithOptions(EngineOptions{Model: "small.gguf"})
+	g.Tick()
+	*clock = clock.Add(11 * time.Second)
+	g.Tick()
+	if g.st != StRunning || eng.starts != 2 {
+		t.Fatalf("smaller model never restarted: state=%s starts=%d", g.st, eng.starts)
+	}
+}

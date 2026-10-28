@@ -1,0 +1,2 @@
+3060_DeepSeek-R1-Distill-Qwen-14B-Q4_K_M: 18/20 correct, truncated 0, tokens 6789, wall 104.5s, median stream 33.8 tok/s, peak VRAM 9965 MiB
+3060_Qwen3-8B-Q4_K_M: 20/20 correct, truncated 0, tokens 15714, wall 138.7s, median stream 58.7 tok/s, peak VRAM 5867 MiB

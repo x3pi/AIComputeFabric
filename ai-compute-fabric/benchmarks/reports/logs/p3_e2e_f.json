@@ -1,0 +1,145 @@
+[
+ {
+  "request": {
+   "mode": "smart_1gpu",
+   "primary_worker_id": "pc-win-01",
+   "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+   "n_cpu_moe": 26
+  },
+  "http": 200,
+  "switch_s": 14.7,
+  "response": "ok",
+  "status": {
+   "mode": "smart_1gpu",
+   "status": "ready",
+   "last_error": null
+  },
+  "workers": {
+   "pc-001": {
+    "role": "standalone",
+    "mode": "smart_1gpu",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SMART 1-GPU HYBRID"
+   },
+   "pc-win-01": {
+    "role": "standalone",
+    "mode": "smart_1gpu",
+    "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SMART 1-GPU HYBRID"
+   }
+  },
+  "chat": {
+   "pc-001": {
+    "ok": true,
+    "tok_s": 101.2,
+    "wall_s": 0.7,
+    "text": ""
+   },
+   "pc-win-01": {
+    "ok": true,
+    "tok_s": 49.1,
+    "wall_s": 1.7,
+    "text": ""
+   }
+  },
+  "ts": "2026-10-28T01:49:12+0700"
+ },
+ {
+  "request": {
+   "mode": "smart_1gpu",
+   "primary_worker_id": "pc-win-01",
+   "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+   "n_cpu_moe": 28
+  },
+  "http": 200,
+  "switch_s": 15.0,
+  "response": "ok",
+  "status": {
+   "mode": "smart_1gpu",
+   "status": "ready",
+   "last_error": null
+  },
+  "workers": {
+   "pc-001": {
+    "role": "standalone",
+    "mode": "smart_1gpu",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SMART 1-GPU HYBRID"
+   },
+   "pc-win-01": {
+    "role": "standalone",
+    "mode": "smart_1gpu",
+    "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SMART 1-GPU HYBRID"
+   }
+  },
+  "chat": {
+   "pc-001": {
+    "ok": true,
+    "tok_s": 100.4,
+    "wall_s": 0.6,
+    "text": ""
+   },
+   "pc-win-01": {
+    "ok": true,
+    "tok_s": 46.6,
+    "wall_s": 1.9,
+    "text": ""
+   }
+  },
+  "ts": "2026-10-28T01:49:30+0700"
+ },
+ {
+  "request": {
+   "mode": "split",
+   "primary_worker_id": "pc-001",
+   "rpc_worker_ids": [
+    "pc-win-01"
+   ],
+   "model": "Qwen3-4B-Q4_K_M.gguf"
+  },
+  "http": 200,
+  "switch_s": 13.1,
+  "response": "ok",
+  "status": {
+   "mode": "split",
+   "status": "ready",
+   "last_error": null
+  },
+  "workers": {
+   "pc-001": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SPLIT WORKER"
+   },
+   "pc-win-01": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SPLIT WORKER"
+   }
+  },
+  "chat": {
+   "pc-001": {
+    "ok": true,
+    "tok_s": 102.1,
+    "wall_s": 0.7,
+    "text": ""
+   },
+   "pc-win-01": {
+    "ok": true,
+    "tok_s": 173.6,
+    "wall_s": 0.4,
+    "text": ""
+   }
+  },
+  "ts": "2026-10-28T01:49:44+0700"
+ }
+]

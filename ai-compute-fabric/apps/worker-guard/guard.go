@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,18 +44,22 @@ type Event struct {
 
 // Snapshot is what the API and dashboard read.
 type Snapshot struct {
-	State     State       `json:"state"`
-	Sample    GPUSample   `json:"gpu"`
-	EngineMiB uint64      `json:"engine_mib"`
-	EnginePID int         `json:"engine_pid"`
-	External  uint64      `json:"external_mib"`
-	Buckets   est.Buckets `json:"buckets_bytes"`
-	Events    []Event     `json:"events"`
-	Headroom  uint64      `json:"headroom_mib"`
-	Model     string      `json:"model"`
-	Lora      string      `json:"lora"`
-	Switching bool        `json:"switching"`
-	Updated   time.Time   `json:"updated"`
+	State       State       `json:"state"`
+	Sample      GPUSample   `json:"gpu"`
+	EngineMiB   uint64      `json:"engine_mib"`
+	EnginePID   int         `json:"engine_pid"`
+	External    uint64      `json:"external_mib"`
+	Buckets     est.Buckets `json:"buckets_bytes"`
+	Events      []Event     `json:"events"`
+	Headroom    uint64      `json:"headroom_mib"`
+	Model       string      `json:"model"`
+	Lora        string      `json:"lora"`
+	Mode        string      `json:"mode,omitempty"`
+	RPCServers  string      `json:"rpc_servers,omitempty"`
+	TensorSplit string      `json:"tensor_split,omitempty"`
+	RPCPort     int         `json:"rpc_port,omitempty"`
+	Switching   bool        `json:"switching"`
+	Updated     time.Time   `json:"updated"`
 }
 
 type Guard struct {
@@ -96,24 +101,37 @@ func (g *Guard) emit(ev Event) {
 
 func (g *Guard) setState(s State) { g.mu.Lock(); g.st = s; g.mu.Unlock() }
 
+// SwitchWithOptions changes the model, adapter, and mode/RPC settings.
+func (g *Guard) SwitchWithOptions(opts EngineOptions) {
+	if g.eng.Running() {
+		info, _ := g.eng.Stop()
+		g.emit(Event{Kind: "switch", Detail: "stopped for a reconfiguration", StopMS: ms(info.Elapsed), Signal: info.Signal})
+	}
+	if ce, ok := g.eng.(ConfigurableEngine); ok {
+		ce.ConfigureOptions(opts)
+	} else {
+		g.eng.Configure(opts.Model, opts.Lora)
+	}
+	g.mu.Lock()
+	g.switching = true
+	g.lastOwn, g.own = 0, 0 // the footprint of the previous model says nothing about the new one: keeping it can make a smaller model wait forever for VRAM it will never need
+	g.mu.Unlock()
+	g.setState(StStopped)
+	d := opts.Model
+	if opts.Mode != "" {
+		d = fmt.Sprintf("[%s] %s", opts.Mode, opts.Model)
+	}
+	if opts.Lora != "" {
+		d += " + " + opts.Lora
+	}
+	g.emit(Event{Kind: "switch", Detail: "will serve " + d})
+}
+
 // Switch changes the model and adapter the engine serves. The running engine is stopped, then the normal control loop starts
 // it again with the new settings once the GPU has stayed free for ResumeStable, so a switch obeys the same rule as every other
 // start: it never takes VRAM the user is using. A paused worker is resumed (the operator asked for a model to be served).
 func (g *Guard) Switch(model, lora string) {
-	if g.eng.Running() {
-		info, _ := g.eng.Stop()
-		g.emit(Event{Kind: "switch", Detail: "stopped for a model change", StopMS: ms(info.Elapsed), Signal: info.Signal})
-	}
-	g.eng.Configure(model, lora)
-	g.mu.Lock()
-	g.switching = true
-	g.mu.Unlock()
-	g.setState(StStopped)
-	d := model
-	if lora != "" {
-		d += " + " + lora
-	}
-	g.emit(Event{Kind: "switch", Detail: "will serve " + d})
+	g.SwitchWithOptions(EngineOptions{Model: model, Lora: lora})
 }
 
 // Pause stops the engine on operator request; Resume allows it to start again.
@@ -138,6 +156,9 @@ func (g *Guard) Resume() {
 func baseName(p string) string {
 	if p == "" {
 		return ""
+	}
+	if strings.HasPrefix(p, rpcModelPrefix) { // "rpc://50052" is a role marker, not a path; the gateway router keys on the prefix
+		return p
 	}
 	return filepath.Base(p)
 }
@@ -308,13 +329,28 @@ func (g *Guard) Snapshot() Snapshot {
 		w, kv, c, own = 0, 0, 0, 0
 	}
 	model, lora := g.eng.Describe()
+	mode := "standalone"
+	rpcServers := ""
+	tensorSplit := ""
+	rpcPort := 0
+	if ce, ok := g.eng.(ConfigurableEngine); ok {
+		opts := ce.Options()
+		if opts.Mode != "" {
+			mode = opts.Mode
+		}
+		rpcServers = opts.RPCServers
+		tensorSplit = opts.TensorSplit
+		rpcPort = opts.RPCPort
+	}
 	osUser := est.OSUserFromEngine(g.last.UsedMiB*mib, w, kv, c)
 	ev := make([]Event, len(g.events))
 	copy(ev, g.events)
 	return Snapshot{
 		State: g.st, Sample: g.last, EngineMiB: own, EnginePID: g.eng.PID(), External: g.last.UsedMiB - min64(g.last.UsedMiB, own),
 		Buckets: est.NewBuckets(g.last.TotalMiB*mib, osUser, w, kv, c, g.cfg.HeadroomMiB*mib),
-		Events:  ev, Headroom: g.cfg.HeadroomMiB, Updated: g.now(), Model: baseName(model), Lora: baseName(lora), Switching: g.switching,
+		Events:  ev, Headroom: g.cfg.HeadroomMiB, Updated: g.now(), Model: baseName(model), Lora: baseName(lora),
+		Mode: mode, RPCServers: rpcServers, TensorSplit: tensorSplit, RPCPort: rpcPort,
+		Switching: g.switching,
 	}
 }
 

@@ -24,6 +24,20 @@ paths:
       summary: Fleet-wide counters, pooled VRAM and router state
       responses:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Stats"}}}}
+  /api/cluster/topology:
+    get:
+      summary: Current cluster topology mode (split, smart_1gpu, merged) and node status
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/ClusterTopology"}}}}
+    post:
+      summary: Coordinate 1-click transition between cluster topology modes (admin)
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/TopologySwitchRequest"}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/ClusterTopology"}}}}
+        "400": {description: bad JSON or invalid mode}
+        "403": {description: role not allowed}
   /api/workers:
     get:
       summary: Page of workers
@@ -520,3 +534,47 @@ components:
         created_at: {type: string, format: date-time}
         result: {description: object once the job succeeded, otherwise null}
         error: {description: reason when failed or cancelled, otherwise null}
+    ClusterTopology:
+      type: object
+      required: [mode, rpc_worker_ids, model, status, updated_at, workers]
+      properties:
+        mode: {type: string, enum: [split, smart_1gpu, merged]}
+        primary_worker_id: {type: string}
+        rpc_worker_ids: {type: array, items: {type: string}}
+        model: {type: string}
+        n_cpu_moe: {type: integer}
+        kv_type: {type: string, enum: [f16, q8_0]}
+        tensor_split: {type: string}
+        rpc_port: {type: integer}
+        status: {type: string, enum: [ready, switching, error]}
+        last_error: {type: string}
+        updated_at: {type: string, format: date-time}
+        workers: {type: object, additionalProperties: {$ref: "#/components/schemas/TopologyWorker"}}
+    TopologyWorker:
+      type: object
+      required: [worker_id, role, mode, online, state]
+      properties:
+        worker_id: {type: string}
+        role: {type: string}
+        mode: {type: string}
+        model: {type: string}
+        online: {type: boolean}
+        state: {type: string}
+        gpu_name: {type: string}
+        vram_total_bytes: {type: integer}
+        vram_free_bytes: {type: integer}
+        engine_url: {type: string}
+        badge: {type: string}
+    TopologySwitchRequest:
+      type: object
+      required: [mode, model, primary_worker_id]
+      description: "smart_1gpu needs n_cpu_moe > 0 (no default is guessed); merged needs at least one rpc_worker_ids entry and tensor_split with 1 + len(rpc_worker_ids) numbers (default: equal weights). 400 = invalid request, 409 = another switch is running, 500 = a step failed or timed out (the previous configuration was restored best-effort)."
+      properties:
+        mode: {type: string, enum: [split, smart_1gpu, merged]}
+        primary_worker_id: {type: string}
+        rpc_worker_ids: {type: array, items: {type: string}}
+        model: {type: string}
+        n_cpu_moe: {type: integer}
+        kv_type: {type: string, enum: [f16, q8_0]}
+        tensor_split: {type: string}
+        rpc_port: {type: integer}

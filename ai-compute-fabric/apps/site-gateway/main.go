@@ -35,6 +35,7 @@ func main() {
 	rolesFile := flag.String("roles-file", "", "JSON roles file (viewer/operator/admin, SHA-256 token hashes) for the admin API")
 	studioURL := flag.String("studio-url", "", "AI Studio service (python -m studio), served at /api/studio/")
 	agentsURL := flag.String("agents-url", "", "agent workflow view service (agents/dag_api.py), served read-only at /api/agents/")
+	flag.IntVar(&WorkerControlPort, "worker-control-port", 8099, "port of the worker-guard control API (worker-guard --listen) used by POST /api/cluster/topology; 0 = same as the worker engine_url")
 	auditPath := flag.String("audit-log", "", "append-only hash-chained audit log of admin actions")
 	affinity := flag.Duration("affinity-patience", 300*time.Millisecond, "wait this long for the worker holding a conversation's cache (0 = off)")
 	maxLease := flag.Duration("max-lease-ttl", 10*time.Minute, "longest TTL a lease may have; clients extend while the job runs")

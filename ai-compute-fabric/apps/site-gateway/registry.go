@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -141,6 +142,9 @@ func (r *Registry) Routable() []Route {
 	var out []Route
 	for _, w := range r.workers {
 		if w.State == "running" && w.EngineURL != "" && now.Sub(w.LastSeen) <= r.OfflineAfter {
+			if strings.HasPrefix(w.Model, "rpc://") || w.Model == "rpc-server" {
+				continue
+			}
 			slots := int(w.Slots)
 			if slots < 1 {
 				slots = 1

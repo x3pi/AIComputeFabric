@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "timestamp": "2026-10-27T09:22:00+07:00",
+  "title": "Phase 1 - GGML RPC Environment and Inter-Node Network Verification",
+  "nodes": {
+    "linux": {
+      "ip": "192.168.1.40",
+      "os": "Linux x86_64",
+      "gpu": "NVIDIA GeForce RTX 3060 12GB",
+      "llama_cpp": {
+        "version": "0.7.0-dev",
+        "build": 11913,
+        "commit": "7aca0d2ea",
+        "compiler": "GNU 13.3.0",
+        "backend": "CUDA (sm_86) + RPC"
+      },
+      "backup_old_bin": ".aicf-work/bin.bak-commit-74bca39"
+    },
+    "windows": {
+      "ip": "192.168.1.49",
+      "os": "Microsoft Windows 10 Pro (Build 19041)",
+      "gpu": "NVIDIA GeForce RTX 5070 12GB (Blackwell SM 12.0)",
+      "llama_cpp": {
+        "version": "0.7.0-dev",
+        "build": 11913,
+        "commit": "7aca0d2ea",
+        "compiler": "Clang 20.1.8",
+        "backend": "CUDA (sm_120) + RPC"
+      }
+    }
+  },
+  "commit_match": true,
+  "network": {
+    "ping_100_packets": {
+      "tag": "[ĐO]",
+      "transmitted": 100,
+      "received": 100,
+      "packet_loss_pct": 0.0,
+      "rtt_ms_min": 1.841,
+      "rtt_ms_avg": 2.515,
+      "rtt_ms_max": 4.464,
+      "rtt_ms_mdev": 0.421
+    },
+    "firewall": {
+      "rule": "AICF-LAN-GGML-RPC",
+      "port": 50052,
+      "remote_address": "192.168.1.40",
+      "status": "ALLOWED"
+    },
+    "tcp_bandwidth_2026-10-27": {
+      "tag": "[ĐO]",
+      "tool": "benchmarks/hardware/tcp_bench.py, 1 luồng TCP, 8 s mỗi chiều, python 3.12",
+      "linux_to_windows": {
+        "MB_s": 3.0,
+        "Gbps": 0.025
+      },
+      "windows_to_linux": {
+        "MB_s": 2.42,
+        "Gbps": 0.02
+      },
+      "linux_interface": "wlp132s0 (Wi-Fi); enp133s0 (Ethernet) NO-CARRIER",
+      "windows_link": "2.5 Gbps theo kế hoạch Windows (chưa đo ở máy này sau sự cố)",
+      "limits": "1 luồng, 1 lần/chiều, Wi-Fi có thể dao động; chưa đo lại khi cắm cáp Ethernet. Quy tắc tạm: firewall tạm 50055 chỉ cho 192.168.1.40 đã gỡ sau bài đo."
+    }
+  },
+  "check_pass_phase_1": {
+    "command": "llama-server --rpc 192.168.1.49:50052 --list-devices",
+    "status": "PASS",
+    "devices": [
+      {
+        "name": "CUDA0: NVIDIA GeForce RTX 3060",
+        "total_mib": 11909,
+        "free_mib": 11783
+      },
+      {
+        "name": "RPC0: 192.168.1.49:50052 (NVIDIA GeForce RTX 5070)",
+        "total_mib": 12199,
+        "free_mib": 11034
+      }
+    ],
+    "total_free_vram_mib": 22817
+  },
+  "note": "Windows thức lại 2026-10-27 và đã tắt Sleep (powercfg). Sau đó RPC list-devices vẫn thấy CUDA0 + RPC0. Phát hiện: máy Linux đang chạy trên Wi-Fi, băng thông ~20-25 Mbps."
+}

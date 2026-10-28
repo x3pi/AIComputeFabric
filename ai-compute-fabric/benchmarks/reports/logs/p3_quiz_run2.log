@@ -1,0 +1,2 @@
+3060_Qwen3-30B-A3B_ncmoe20: 20/20 correct, truncated 0, tokens 16959, wall 338.7s, median stream 25.5 tok/s, peak VRAM 11705 MiB
+3060_Qwen3-4B-Q4_K_M: 18/20 correct, truncated 0, tokens 16260, wall 91.2s, median stream 91.0 tok/s, peak VRAM 3759 MiB

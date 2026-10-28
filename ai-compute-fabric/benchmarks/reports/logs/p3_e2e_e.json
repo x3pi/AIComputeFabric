@@ -1,0 +1,96 @@
+[
+ {
+  "request": {
+   "mode": "smart_1gpu",
+   "primary_worker_id": "pc-win-01",
+   "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+   "n_cpu_moe": 20
+  },
+  "http": 200,
+  "switch_s": 0.6,
+  "response": "ok",
+  "status": {
+   "mode": "smart_1gpu",
+   "status": "ready",
+   "last_error": null
+  },
+  "workers": {
+   "pc-001": {
+    "role": "standalone",
+    "mode": "smart_1gpu",
+    "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SMART 1-GPU HYBRID"
+   },
+   "pc-win-01": {
+    "role": "standalone",
+    "mode": "smart_1gpu",
+    "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SMART 1-GPU HYBRID"
+   }
+  },
+  "chat": {
+   "pc-001": {
+    "ok": true,
+    "tok_s": 35.4,
+    "wall_s": 2.0,
+    "text": ""
+   },
+   "pc-win-01": {
+    "ok": false,
+    "error": "HTTP Error 503: Service Unavailable"
+   }
+  },
+  "ts": "2026-10-28T01:46:53+0700"
+ },
+ {
+  "request": {
+   "mode": "split",
+   "primary_worker_id": "pc-001",
+   "rpc_worker_ids": [
+    "pc-win-01"
+   ],
+   "model": "Qwen3-4B-Q4_K_M.gguf"
+  },
+  "http": 200,
+  "switch_s": 14.3,
+  "response": "ok",
+  "status": {
+   "mode": "split",
+   "status": "ready",
+   "last_error": null
+  },
+  "workers": {
+   "pc-001": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SPLIT WORKER"
+   },
+   "pc-win-01": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SPLIT WORKER"
+   }
+  },
+  "chat": {
+   "pc-001": {
+    "ok": true,
+    "tok_s": 101.2,
+    "wall_s": 0.7,
+    "text": ""
+   },
+   "pc-win-01": {
+    "ok": true,
+    "tok_s": 173.5,
+    "wall_s": 0.4,
+    "text": ""
+   }
+  },
+  "ts": "2026-10-28T01:47:09+0700"
+ }
+]

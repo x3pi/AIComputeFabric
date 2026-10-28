@@ -1,0 +1,52 @@
+[
+ {
+  "request": {
+   "mode": "smart_1gpu",
+   "primary_worker_id": "pc-001",
+   "rpc_worker_ids": [
+    "pc-win-01"
+   ],
+   "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+   "n_cpu_moe": 26
+  },
+  "http": 200,
+  "switch_s": 27.4,
+  "response": "ok",
+  "status": {
+   "mode": "smart_1gpu",
+   "status": "ready",
+   "last_error": null
+  },
+  "workers": {
+   "pc-001": {
+    "role": "standalone",
+    "mode": "smart_1gpu",
+    "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SMART 1-GPU HYBRID"
+   },
+   "pc-win-01": {
+    "role": "standalone",
+    "mode": "smart_1gpu",
+    "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SMART 1-GPU HYBRID"
+   }
+  },
+  "chat": {
+   "pc-001": {
+    "ok": true,
+    "tok_s": 23.4,
+    "wall_s": 4.7,
+    "text": ""
+   },
+   "pc-win-01": {
+    "ok": true,
+    "tok_s": 48.8,
+    "wall_s": 1.7,
+    "text": ""
+   }
+  },
+  "ts": "2026-10-28T01:46:09+0700"
+ }
+]

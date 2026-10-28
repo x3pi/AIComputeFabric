@@ -1,0 +1,39 @@
+[
+ {
+  "request": {
+   "mode": "smart_1gpu",
+   "primary_worker_id": "pc-001",
+   "rpc_worker_ids": [
+    "pc-win-01"
+   ],
+   "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+   "n_cpu_moe": 20
+  },
+  "http": 500,
+  "switch_s": 328.4,
+  "response": "{\"error\":\"worker pc-win-01 did not start Qwen3-30B-A3B-Q4_K_M.gguf: timed out after 5m0s; previous configuration restored\",\"topology\":{\"mode\":\"split\",\"primary_worker_id\":\"pc-001\",\"rpc_worker_ids\":[],\"model\":\"Qwen3-4B-Q4_K_M.gguf\",\"rpc_port\":50052,\"status\":\"error\",\"last_error\":\"worker pc-win-01 did not start Qwen3-30B-A3B-Q4_K_M.gguf: timed out after 5m0s; previous configuration restored\",\"updated_at\":\"2026-10-28T01:38:53.803760552+07:00\",\"workers\":{\"pc-001\":{\"worker_id\":\"pc-001\",\"role\":\"standalo",
+  "status": {
+   "mode": "split",
+   "status": "error",
+   "last_error": "worker pc-win-01 did not start Qwen3-30B-A3B-Q4_K_M.gguf: timed out after 5m0s; previous configuration restored"
+  },
+  "workers": {
+   "pc-001": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SPLIT WORKER"
+   },
+   "pc-win-01": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+    "state": "yielded",
+    "badge": "SPLIT WORKER"
+   }
+  },
+  "chat": {},
+  "ts": "2026-10-28T01:38:53+0700"
+ }
+]

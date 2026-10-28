@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -101,6 +102,47 @@ func NewAPIStudio(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents
 		rt = routers[0]
 	}
 	registerEstimatorAndStatsRoutes(mux, f, ts, rt)
+	var topo *TopologyCoordinator
+	if f != nil {
+		topo = NewTopologyCoordinator(f.reg, audit)
+	}
+	mux.HandleFunc("/api/cluster/topology", func(w http.ResponseWriter, r *http.Request) {
+		if topo == nil {
+			http.Error(w, "topology coordinator not initialized", http.StatusServiceUnavailable)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, http.StatusOK, topo.GetStatus())
+		case http.MethodPost:
+			var req TopologySwitchRequest
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
+				http.Error(w, "bad JSON", http.StatusBadRequest)
+				return
+			}
+			caller := Principal{
+				Name: r.Header.Get("X-Aicf-User"),
+				Role: r.Header.Get("X-Aicf-Role"),
+			}
+			// a switch must finish (or roll back) even if the browser disconnects half-way
+			res, err := topo.SwitchTopology(context.WithoutCancel(r.Context()), req, caller, r.RemoteAddr)
+			if err != nil {
+				code := http.StatusInternalServerError
+				var reqErr *topologyRequestError
+				switch {
+				case errors.As(err, &reqErr):
+					code = http.StatusBadRequest
+				case errors.Is(err, ErrTopologyBusy):
+					code = http.StatusConflict
+				}
+				writeJSON(w, code, map[string]any{"error": err.Error(), "topology": topo.GetStatus()})
+				return
+			}
+			writeJSON(w, http.StatusOK, res)
+		default:
+			http.Error(w, "GET or POST", http.StatusMethodNotAllowed)
+		}
+	})
 	if agents != nil {
 		mux.Handle("/api/agents/", agents)
 	}

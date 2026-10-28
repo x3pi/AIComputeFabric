@@ -103,6 +103,78 @@
 .worker-id-link:hover {
   text-decoration: underline;
 }
+.topo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.topo-mode-card {
+  border: 1px solid var(--bd);
+  background: var(--card);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.topo-mode-card:hover {
+  border-color: var(--acc);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
+}
+.topo-mode-card.active {
+  border: 2px solid var(--acc);
+  background: var(--acc-soft);
+  box-shadow: var(--shadow-glow);
+}
+.topo-nodes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+  margin-bottom: 12px;
+}
+.topo-node-card {
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.topo-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  display: inline-block;
+}
+.badge-master {
+  background: var(--purple-soft);
+  color: var(--purple);
+  border: 1px solid var(--purple);
+}
+.badge-member {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border: 1px solid var(--warn);
+}
+.badge-split {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border: 1px solid var(--ok);
+}
+.badge-smart {
+  background: var(--acc-soft);
+  color: var(--acc);
+  border: 1px solid var(--acc);
+}
 </style>
 </head>
 <body>
@@ -252,6 +324,105 @@
 
       <div class="split-grid" id="est-splits"></div>
     </div>
+  </div>
+
+  <!-- 1-Click Cluster Topology & Large Model Orchestration Panel -->
+  <div class="card" id="topology-card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <h2>🎛️ Điều Phối Chế Độ Cụm GPU & Model Lớn (1-Click Topology)</h2>
+        <span id="topo-current-badge" class="pill ok">CHẾ ĐỘ: SPLIT (SONG SONG)</span>
+      </div>
+      <span class="mut" id="topo-summary" style="font-size:12.5px">Chuyển đổi linh hoạt giữa 2 Worker độc lập và Cụm Gộp Multi-Node GGML RPC</span>
+    </div>
+
+    <!-- 3 Interactive Mode Tiles -->
+    <div class="topo-grid">
+      <div class="topo-mode-card active" id="mode-card-split" onclick="selectTopoMode('split')">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong style="font-size:14px;color:var(--fg)">Chế độ 1: Tách Biệt (Split)</strong>
+          <span class="pill ok" style="font-size:10px">100% VRAM</span>
+        </div>
+        <p style="font-size:12.5px;color:var(--fg-secondary);margin:0 0 10px 0;line-height:1.4">
+          2 máy chạy <code>llama-server</code> độc lập. Phục vụ song song model &le; 10 GB (Qwen3-4B, 8B) với thông lượng cao nhất.
+        </p>
+        <div class="mut" style="font-size:11.5px">⚡ Không trễ mạng · Tải cân bằng qua Router</div>
+      </div>
+
+      <div class="topo-mode-card" id="mode-card-smart" onclick="selectTopoMode('smart_1gpu')">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong style="font-size:14px;color:var(--fg)">Chế độ 2: Smart 1-GPU Hybrid</strong>
+          <span class="pill warn" style="font-size:10px">MoE Offload</span>
+        </div>
+        <p style="font-size:12.5px;color:var(--fg-secondary);margin:0 0 10px 0;line-height:1.4">
+          Chạy model MoE lớn (vd 30B, 18,56 GB) trên từng card 12GB độc lập bằng cách đẩy expert của N tầng đầu sang RAM (<code>-ncmoe N</code>). N phụ thuộc card, ctx và loại KV: phải nhập theo bài đo, không có giá trị mặc định.
+        </p>
+        <div class="mut" style="font-size:11.5px">🧠 2 worker phục vụ 30B độc lập · Không phụ thuộc LAN</div>
+      </div>
+
+      <div class="topo-mode-card" id="mode-card-merged" onclick="selectTopoMode('merged')">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong style="font-size:14px;color:var(--fg)">Chế độ 3: Gộp Cụm GGML RPC</strong>
+          <span class="pill" style="font-size:10px;background:var(--purple);color:#fff">Σ VRAM</span>
+        </div>
+        <p style="font-size:12.5px;color:var(--fg-secondary);margin:0 0 10px 0;line-height:1.4">
+          Gộp VRAM các card đã chọn (Primary + RPC members) thành một worker. Các member chạy RPC Server (cổng 50052, không xác thực: chỉ dùng trong LAN tin cậy), Primary chia layer qua LAN.
+        </p>
+        <div class="mut" style="font-size:11.5px">🔗 Toàn bộ trọng số nằm trên VRAM GPU · Router chỉ route Master</div>
+      </div>
+    </div>
+
+    <!-- Live Nodes Physical Status & Badges -->
+    <div style="margin-top:16px;border-top:1px dashed var(--bd);padding-top:14px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--fg)">Trạng thái Huy hiệu Thực tế của Từng Máy trong Cụm:</div>
+      <div class="topo-nodes-grid" id="topo-nodes-container">
+        <!-- Dynamically rendered -->
+      </div>
+    </div>
+
+    <!-- Configuration & Action Controls -->
+    <form id="topo-form" class="row" style="margin-top:14px;align-items:flex-end;gap:12px;flex-wrap:wrap" autocomplete="off">
+      <div class="grow" style="min-width:260px">
+        <label for="topo-model-select">Mô hình GGUF thực thi</label>
+        <select id="topo-model-select" style="width:100%">
+          <option value="Qwen3-4B-Q4_K_M.gguf" selected>Qwen3-4B-Q4_K_M.gguf (2,5 GB — Tối ưu cho Chế độ 1 Split)</option>
+          <option value="Qwen3-8B-Q4_K_M.gguf">Qwen3-8B-Q4_K_M.gguf (5,2 GB — Phù hợp Chế độ 1 Split)</option>
+          <option value="Qwen3-30B-A3B-Q4_K_M.gguf">Qwen3-30B-A3B-Q4_K_M.gguf (18,56 GB — Dành cho Smart 1-GPU / Merged RPC)</option>
+        </select>
+      </div>
+
+      <div style="min-width:160px">
+        <label for="topo-primary">Worker chính (Primary)</label>
+        <select id="topo-primary" style="width:100%"></select>
+      </div>
+
+      <div style="min-width:180px">
+        <label>Worker còn lại (RPC member / chạy độc lập)</label>
+        <div id="topo-members" class="mut" style="font-size:12.5px">Chưa có worker online</div>
+      </div>
+
+      <div style="min-width:140px;display:none" id="topo-ncmoe-group">
+        <label for="topo-ncmoe">CPU MoE Layers (-ncmoe N)</label>
+        <input type="number" id="topo-ncmoe" placeholder="N theo bài đo" min="1" max="512" style="width:100%">
+      </div>
+
+      <div style="min-width:120px;display:none" id="topo-kv-group">
+        <label for="topo-kv">KV cache</label>
+        <select id="topo-kv" style="width:100%">
+          <option value="">mặc định của worker</option>
+          <option value="f16">f16</option>
+          <option value="q8_0">q8_0 (đổi chất lượng/VRAM)</option>
+        </select>
+      </div>
+
+      <div style="min-width:140px;display:none" id="topo-split-group">
+        <label for="topo-tensor-split" id="topo-split-label">Tensor Split</label>
+        <input type="text" id="topo-tensor-split" placeholder="mặc định chia đều" style="width:100%">
+      </div>
+
+      <button id="topo-apply-btn" type="submit" class="primary" style="height:36px">⚡ Áp Dụng Chế Độ (1-Click Switch)</button>
+    </form>
+    <div id="topo-feedback" class="mut" role="status" style="margin-top:10px;font-size:13px"></div>
   </div>
 
   <!-- Model & adapter of this PC's worker: live status + switch (admin) -->
@@ -751,13 +922,202 @@ svEl("sv-form").addEventListener("submit", async ev => {
   loadPage();
 });
 
+// ---- 1-Click Cluster Topology Orchestration ----
+let selectedTopoMode = "split";
+let currentTopo = null;
+
+function selectTopoMode(mode) {
+  selectedTopoMode = mode;
+  document.getElementById("mode-card-split").classList.toggle("active", mode === "split");
+  document.getElementById("mode-card-smart").classList.toggle("active", mode === "smart_1gpu");
+  document.getElementById("mode-card-merged").classList.toggle("active", mode === "merged");
+
+  const modelSel = document.getElementById("topo-model-select");
+  const ncmoeGrp = document.getElementById("topo-ncmoe-group");
+  const splitGrp = document.getElementById("topo-split-group");
+  const kvGrp = document.getElementById("topo-kv-group");
+
+  if (mode === "split") {
+    modelSel.value = "Qwen3-4B-Q4_K_M.gguf";
+  } else {
+    modelSel.value = "Qwen3-30B-A3B-Q4_K_M.gguf";
+  }
+  ncmoeGrp.style.display = mode === "smart_1gpu" ? "block" : "none";
+  splitGrp.style.display = mode === "merged" ? "block" : "none";
+  kvGrp.style.display = mode === "split" ? "none" : "block";
+  updateSplitLabel();
+}
+
+// Primary / member pickers are built from the workers the gateway reports (online only), and rebuilt only when that set changes.
+let topoPickerKey = "";
+function renderTopoPickers(workers) {
+  const ids = Object.keys(workers).filter(id => workers[id].online).sort();
+  const key = ids.join("|");
+  if (key === topoPickerKey) return;
+  topoPickerKey = key;
+  const prim = document.getElementById("topo-primary");
+  const prevPrimary = prim.value;
+  prim.replaceChildren(...ids.map(id => el("option", { value: id }, id)));
+  prim.value = ids.includes(prevPrimary) ? prevPrimary : (ids[0] || "");
+  const box = document.getElementById("topo-members");
+  if (!ids.length) { box.textContent = "Chưa có worker online"; return; }
+  box.replaceChildren(...ids.map(id => {
+    const cb = el("input", { type: "checkbox", value: id, checked: "checked" });
+    cb.addEventListener("change", updateSplitLabel);
+    return el("label", { style: "display:inline-flex;gap:4px;margin-right:10px;align-items:center" }, cb, id);
+  }));
+  prim.onchange = () => { syncMembers(); updateSplitLabel(); };
+  syncMembers(); updateSplitLabel();
+}
+function syncMembers() { // the primary is never its own member
+  const p = document.getElementById("topo-primary").value;
+  document.querySelectorAll("#topo-members input").forEach(cb => {
+    cb.disabled = cb.value === p;
+    if (cb.disabled) cb.checked = false;
+  });
+}
+function topoMembers() {
+  return [...document.querySelectorAll("#topo-members input")].filter(cb => cb.checked && !cb.disabled).map(cb => cb.value);
+}
+function updateSplitLabel() {
+  const n = 1 + topoMembers().length;
+  document.getElementById("topo-split-label").textContent = "Tensor Split (" + n + " số: primary rồi từng member)";
+}
+
+async function loadTopology() {
+  try {
+    const r = await api("/api/cluster/topology");
+    if (!r || !r.ok) return;
+    const d = await r.json();
+    currentTopo = d;
+
+    const badge = document.getElementById("topo-current-badge");
+    const summary = document.getElementById("topo-summary");
+    if (d.mode === "split") {
+      badge.textContent = "CHẾ ĐỘ: SPLIT (SONG SONG 100% VRAM)";
+      badge.className = "pill ok";
+      summary.textContent = "2 Worker độc lập chạy song song, model " + (d.model || "");
+    } else if (d.mode === "smart_1gpu") {
+      badge.textContent = "CHẾ ĐỘ: SMART 1-GPU HYBRID (MoE)";
+      badge.className = "pill warn";
+      summary.textContent = "Worker độc lập chạy MoE lớn, expert của " + (d.n_cpu_moe || "?") + " tầng đầu ở RAM (-ncmoe)";
+    } else if (d.mode === "merged") {
+      badge.textContent = "CHẾ ĐỘ: MERGED " + (1 + (d.rpc_worker_ids || []).length) + " GPU (RPC)";
+      badge.className = "pill";
+      badge.style.background = "var(--purple)";
+      badge.style.color = "#fff";
+      summary.textContent = "Cụm gộp (Master: " + d.primary_worker_id + ", RPC: " + (d.rpc_worker_ids || []).join(",") + ")";
+    }
+
+    const container = document.getElementById("topo-nodes-container");
+    container.replaceChildren();
+
+    const workers = d.workers || {};
+    renderTopoPickers(workers);
+    const wids = Object.keys(workers).sort();
+    if (wids.length === 0) {
+      container.innerHTML = '<div class="mut" style="padding:10px">Chưa có worker nào kết nối vào cluster gateway...</div>';
+      return;
+    }
+
+    for (const id of wids) {
+      const w = workers[id];
+      const card = el("div", { class: "topo-node-card" });
+      const hdr = el("div", { style: "display:flex;justify-content:space-between;align-items:center" });
+      hdr.append(
+        el("strong", { class: "mono", style: "font-size:13px" }, id),
+        el("span", { class: "topo-badge " + getBadgeClass(w.badge) }, w.badge || "UNKNOWN")
+      );
+
+      const info = el("div", { style: "font-size:12px;color:var(--fg-secondary)" });
+      info.textContent = `${w.gpu_name || "GPU"} · Model: ${w.model || "none"}`;
+
+      const stat = el("div", { style: "font-size:11.5px;display:flex;justify-content:space-between" });
+      const vramFree = w.vram_free_bytes ? Math.round(w.vram_free_bytes / (1024*1024)) : 0;
+      const vramTotal = w.vram_total_bytes ? Math.round(w.vram_total_bytes / (1024*1024)) : 0;
+      stat.append(
+        el("span", { class: "mut" }, `Trạng thái: ${w.online ? w.state : "offline"}`),
+        el("span", { class: "num" }, `${vramFree} / ${vramTotal} MiB free`)
+      );
+
+      card.append(hdr, info, stat);
+      container.append(card);
+    }
+  } catch (e) {
+    console.error("loadTopology error:", e);
+  }
+}
+
+function getBadgeClass(badge) {
+  if (!badge) return "badge-split";
+  if (badge.includes("MASTER")) return "badge-master";
+  if (badge.includes("MEMBER")) return "badge-member";
+  if (badge.includes("SMART")) return "badge-smart";
+  return "badge-split";
+}
+
+document.getElementById("topo-form").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const applyBtn = document.getElementById("topo-apply-btn");
+  const fb = document.getElementById("topo-feedback");
+  applyBtn.disabled = true;
+  fb.textContent = "Đang chuyển sang " + selectedTopoMode + "… chờ các worker báo trạng thái (nạp model lớn có thể mất vài phút)";
+  fb.className = "pill warn";
+
+  const payload = {
+    mode: selectedTopoMode,
+    model: document.getElementById("topo-model-select").value,
+    primary_worker_id: document.getElementById("topo-primary").value,
+    rpc_worker_ids: topoMembers()
+  };
+  const kv = document.getElementById("topo-kv").value;
+  if (kv && selectedTopoMode !== "split") payload.kv_type = kv;
+
+  if (selectedTopoMode === "smart_1gpu") {
+    const n = parseInt(document.getElementById("topo-ncmoe").value, 10);
+    if (!(n > 0)) {
+      fb.textContent = "Nhập N (-ncmoe) > 0: không có giá trị mặc định, hãy dùng số từ bài đo.";
+      fb.className = "pill err";
+      applyBtn.disabled = false;
+      return;
+    }
+    payload.n_cpu_moe = n;
+  } else if (selectedTopoMode === "merged") {
+    const ts = document.getElementById("topo-tensor-split").value.trim();
+    if (ts) payload.tensor_split = ts;
+    payload.rpc_port = 50052;
+  }
+
+  try {
+    const r = await api("/api/cluster/topology", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || ("Lỗi HTTP " + r.status));
+    }
+    fb.textContent = "Chuyển đổi thành công sang chế độ " + selectedTopoMode + "!";
+    fb.className = "pill ok";
+    loadTopology();
+    loadPage();
+  } catch (e) {
+    fb.textContent = "Lỗi chuyển đổi: " + e.message;
+    fb.className = "pill err";
+  } finally {
+    applyBtn.disabled = false;
+  }
+});
+
 let lastLoad = 0;
-stream("/api/fleet/stream", s => { renderGrid(s); if (Date.now() - lastLoad > 1000) { lastLoad = Date.now(); loadPage(); } });
-window.AICF_READY.then(() => svLoadOptions().then(svRender));
+stream("/api/fleet/stream", s => { renderGrid(s); if (Date.now() - lastLoad > 1000) { lastLoad = Date.now(); loadPage(); loadTopology(); } });
+window.AICF_READY.then(() => { svLoadOptions().then(svRender); loadTopology(); });
 loadPage();
 loadStats();
+loadTopology();
 initEstimator();
-setInterval(() => { loadPage(); loadStats(); }, 2000);
+setInterval(() => { loadPage(); loadStats(); loadTopology(); }, 2000);
 </script>
 </body>
 </html>

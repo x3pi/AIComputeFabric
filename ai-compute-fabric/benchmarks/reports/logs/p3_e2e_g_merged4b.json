@@ -1,0 +1,46 @@
+[
+ {
+  "request": {
+   "mode": "merged",
+   "primary_worker_id": "pc-001",
+   "rpc_worker_ids": [
+    "pc-win-01"
+   ],
+   "model": "Qwen3-4B-Q4_K_M.gguf",
+   "tensor_split": "4,6"
+  },
+  "http": 200,
+  "switch_s": 32.3,
+  "response": "ok",
+  "status": {
+   "mode": "merged",
+   "status": "ready",
+   "last_error": null
+  },
+  "workers": {
+   "pc-001": {
+    "role": "master",
+    "mode": "merged",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "MASTER (MERGED 2 GPU, 24 GB)"
+   },
+   "pc-win-01": {
+    "role": "member",
+    "mode": "rpc-worker",
+    "model": "rpc://50052",
+    "state": "running",
+    "badge": "RPC GPU MEMBER -> pc-001"
+   }
+  },
+  "chat": {
+   "pc-001": {
+    "ok": true,
+    "tok_s": 115.8,
+    "wall_s": 0.6,
+    "text": ""
+   }
+  },
+  "ts": "2026-10-28T07:58:53+0700"
+ }
+]

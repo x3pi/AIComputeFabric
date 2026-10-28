@@ -1,0 +1,311 @@
+{
+ "schema_version": 1,
+ "timestamp": "2026-10-27",
+ "title": "Pha 1.1/1.2 - Che do 2 (smart_1gpu): quet -ncmoe tren 1 card RTX 3060, Qwen3-30B-A3B-Q4_K_M",
+ "hardware": "RTX 3060 12GB (11909 MiB dung duoc theo llama.cpp), Core Ultra 7 265K, 30 GB RAM, llama.cpp commit 7aca0d2ea, flash-attn on, -ngl 99, GPU chi chay job do",
+ "limits": [
+  "1 prompt tieng Viet, temperature 0, seed 1, 128 token, 3 lan lap; khong phai tai da luong",
+  "llama-bench dung ngu canh nho (pp512+tg128): VRAM thap hon server o -c 4096/8192, KHONG dung de chon N",
+  "peak_gpu lay mau moi 0.5 s bang nvidia-smi: co the bo sot dinh ngan hon",
+  "Chua do chat luong dau ra, chua do khi RAM bi tranh voi ung dung khac (may dang chay trinh duyet/IDE)",
+  "Chua do che do 3 (merged): bi chan boi bang thong Wi-Fi ~20-25 Mbps"
+ ],
+ "llama_bench_small_ctx": [
+  {
+   "n_cpu_moe": 18,
+   "kv": "f16",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 11775.0,
+   "pp512_tok_s": 614.1,
+   "tg128_tok_s": 44.7
+  },
+  {
+   "n_cpu_moe": 18,
+   "kv": "q8_0",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 11755.0,
+   "pp512_tok_s": 694.0,
+   "tg128_tok_s": 44.3
+  },
+  {
+   "n_cpu_moe": 22,
+   "kv": "f16",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 10429.0,
+   "pp512_tok_s": 628.7,
+   "tg128_tok_s": 40.5
+  },
+  {
+   "n_cpu_moe": 22,
+   "kv": "q8_0",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 10409.0,
+   "pp512_tok_s": 571.3,
+   "tg128_tok_s": 38.8
+  },
+  {
+   "n_cpu_moe": 26,
+   "kv": "f16",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 9087.0,
+   "pp512_tok_s": 575.9,
+   "tg128_tok_s": 36.6
+  },
+  {
+   "n_cpu_moe": 26,
+   "kv": "q8_0",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 9067.0,
+   "pp512_tok_s": 563.4,
+   "tg128_tok_s": 34.5
+  },
+  {
+   "n_cpu_moe": 30,
+   "kv": "f16",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 7691.0,
+   "pp512_tok_s": 532.0,
+   "tg128_tok_s": 34.4
+  },
+  {
+   "n_cpu_moe": 30,
+   "kv": "q8_0",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 7671.0,
+   "pp512_tok_s": 514.0,
+   "tg128_tok_s": 32.3
+  },
+  {
+   "n_cpu_moe": 34,
+   "kv": "f16",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 6345.0,
+   "pp512_tok_s": 486.0,
+   "tg128_tok_s": 30.8
+  },
+  {
+   "n_cpu_moe": 34,
+   "kv": "q8_0",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 6325.0,
+   "pp512_tok_s": 456.9,
+   "tg128_tok_s": 30.7
+  },
+  {
+   "n_cpu_moe": 48,
+   "kv": "f16",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 1335.0,
+   "pp512_tok_s": 361.7,
+   "tg128_tok_s": 25.8
+  },
+  {
+   "n_cpu_moe": 48,
+   "kv": "q8_0",
+   "rc": 0,
+   "oom": false,
+   "peak_gpu_used_mib": 1315.0,
+   "pp512_tok_s": 383.7,
+   "tg128_tok_s": 25.4
+  }
+ ],
+ "llama_server_realistic_ctx": [
+  {
+   "tag": "noncmoe",
+   "ctx": 4096,
+   "extra": "",
+   "status": "exited rc=1 before healthy",
+   "load_s": null,
+   "peak_gpu_used_mib": 127.0,
+   "oom": true,
+   "tg_tok_s_runs": [],
+   "prompt_ms_runs": [],
+   "log": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p3_server_noncmoe.log"
+  },
+  {
+   "tag": "N18",
+   "ctx": 4096,
+   "extra": "-ncmoe 18",
+   "status": "exited rc=1 before healthy",
+   "load_s": null,
+   "peak_gpu_used_mib": 11325.0,
+   "oom": true,
+   "tg_tok_s_runs": [],
+   "prompt_ms_runs": [],
+   "log": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p3_server_N18.log"
+  },
+  {
+   "tag": "N20",
+   "ctx": 4096,
+   "extra": "-ncmoe 20",
+   "status": "healthy",
+   "load_s": 2.0,
+   "peak_gpu_used_mib": 11319.0,
+   "oom": false,
+   "tg_tok_s_runs": [
+    41.1,
+    40.8,
+    40.0
+   ],
+   "prompt_ms_runs": [
+    483,
+    28,
+    28
+   ],
+   "log": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p3_server_N20.log"
+  },
+  {
+   "tag": "N22",
+   "ctx": 4096,
+   "extra": "-ncmoe 22",
+   "status": "healthy",
+   "load_s": 2.0,
+   "peak_gpu_used_mib": 10623.0,
+   "oom": false,
+   "tg_tok_s_runs": [
+    38.4,
+    39.0,
+    38.7
+   ],
+   "prompt_ms_runs": [
+    510,
+    25,
+    25
+   ],
+   "log": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p3_server_N22.log"
+  },
+  {
+   "tag": "N19",
+   "ctx": 4096,
+   "extra": "-ncmoe 19",
+   "status": "healthy",
+   "load_s": 2.0,
+   "peak_gpu_used_mib": 11645.0,
+   "oom": false,
+   "tg_tok_s_runs": [
+    42.1,
+    42.0,
+    40.9
+   ],
+   "prompt_ms_runs": [
+    465,
+    26,
+    24
+   ],
+   "log": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p3_server_N19.log"
+  },
+  {
+   "tag": "N20kvq8",
+   "ctx": 4096,
+   "extra": "-ncmoe 20 -ctk q8_0 -ctv q8_0",
+   "status": "healthy",
+   "load_s": 2.0,
+   "peak_gpu_used_mib": 11143.0,
+   "oom": false,
+   "tg_tok_s_runs": [
+    40.3,
+    40.1,
+    40.0
+   ],
+   "prompt_ms_runs": [
+    482,
+    27,
+    23
+   ],
+   "log": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p3_server_N20kvq8.log"
+  },
+  {
+   "tag": "c8192_N19",
+   "ctx": 8192,
+   "extra": "-ncmoe 19",
+   "status": "exited rc=1 before healthy",
+   "load_s": null,
+   "peak_gpu_used_mib": 11001.0,
+   "oom": true,
+   "tg_tok_s_runs": [],
+   "prompt_ms_runs": [],
+   "log": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p3_server_c8192_N19.log"
+  },
+  {
+   "tag": "c8192_N20",
+   "ctx": 8192,
+   "extra": "-ncmoe 20",
+   "status": "healthy",
+   "load_s": 2.0,
+   "peak_gpu_used_mib": 11707.0,
+   "oom": false,
+   "tg_tok_s_runs": [
+    41.1,
+    40.4,
+    41.3
+   ],
+   "prompt_ms_runs": [
+    481,
+    27,
+    32
+   ],
+   "log": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p3_server_c8192_N20.log"
+  },
+  {
+   "tag": "c8192_N22",
+   "ctx": 8192,
+   "extra": "-ncmoe 22",
+   "status": "healthy",
+   "load_s": 2.0,
+   "peak_gpu_used_mib": 11011.0,
+   "oom": false,
+   "tg_tok_s_runs": [
+    38.9,
+    40.1,
+    39.8
+   ],
+   "prompt_ms_runs": [
+    513,
+    26,
+    37
+   ],
+   "log": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p3_server_c8192_N22.log"
+  },
+  {
+   "tag": "c8192_N24",
+   "ctx": 8192,
+   "extra": "-ncmoe 24",
+   "status": "healthy",
+   "load_s": 2.0,
+   "peak_gpu_used_mib": 10315.0,
+   "oom": false,
+   "tg_tok_s_runs": [
+    37.3,
+    36.4,
+    36.2
+   ],
+   "prompt_ms_runs": [
+    559,
+    25,
+    26
+   ],
+   "log": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p3_server_c8192_N24.log"
+  }
+ ],
+ "check_1_2_no_ncmoe": "OOM: 'allocating 17524.43 MiB on device 0: cudaMalloc failed: out of memory' (logs/p3_server_noncmoe.log)",
+ "summary": {
+  "min_N_that_loads_ctx4096": 19,
+  "N18_ctx4096": "OOM o buoc cap phat compute buffer (221.51 MiB)",
+  "min_N_that_loads_ctx8192": 20,
+  "tg_tok_s_N19_20_ctx4096": "~40-42",
+  "tg_tok_s_N20_ctx8192": "~40-41",
+  "claim_checked": "'50-70 tok/s' va N=18 cua ban nhap truoc KHONG dung: N=18 het bo nho o -c 4096; toc do do duoc ~40-42 tok/s",
+  "kv_q8_0": "khong nhanh hon f16 o N=20 (40.3 vs 41.1 tok/s), tiet kiem ~175 MiB; dung q8_0 chi khi can them cho VRAM"
+ }
+}

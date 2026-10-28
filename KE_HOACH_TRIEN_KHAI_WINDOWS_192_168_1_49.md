@@ -12,7 +12,7 @@
 | Thông số | Giá trị đã xác minh | Ghi chú kỹ thuật cho Agent thực thi |
 |---|---|---|
 | **Địa chỉ IP LAN** | `192.168.1.49` | Cùng subnet `/24` với máy Linux hiện tại (`192.168.1.40`) |
-| **SSH User / Password** | `fios02` / `123` | Lệnh kết nối tự động: `sshpass -p '123' ssh -o StrictHostKeyChecking=no fios02@192.168.1.49` |
+| **SSH User / Password** | `fios02` / `$AICF_WIN_SSH_PASS` | Lệnh kết nối tự động: `sshpass -p "$AICF_WIN_SSH_PASS" ssh -o StrictHostKeyChecking=no fios02@192.168.1.49` |
 | **SSH Server** | `OpenSSH_for_Windows_7.7` | Thư mục gốc SFTP: `/C:/Users/Fios02` |
 | **Quyền hạn phiên SSH** | **Administrator (`IS_ADMIN: True`)** | Tài khoản `Fios02` nằm trong nhóm `Administrators`; phiên SSH có sẵn quyền Elevated để tạo Windows Service (`sc.exe`), đọc PDH Counters và mở Firewall |
 | **Default Shell qua SSH** | `cmd.exe` | **LƯU Ý QUAN TRỌNG:** Khi chạy lệnh PowerShell từ xa qua SSH, `cmd.exe` sẽ cắt đứt chuỗi nhiều dòng tại ký tự xuống dòng đầu tiên. Agent **bắt buộc** phải dùng lệnh PowerShell 1 dòng (`powershell -NoProfile -ExecutionPolicy Bypass -Command "..."`), hoặc dùng `-EncodedCommand`, hoặc `scp` file `.ps1` sang rồi chạy `powershell -NoProfile -ExecutionPolicy Bypass -File C:\aicf\...` |
@@ -92,7 +92,7 @@ flowchart TD
 #### Công việc 1.1: Tạo cấu trúc thư mục `C:\aicf` và mở Windows Firewall nội bộ LAN
 Chạy từ máy Linux qua SSH:
 ```bash
-sshpass -p '123' ssh -o StrictHostKeyChecking=no fios02@192.168.1.49 \
+sshpass -p "$AICF_WIN_SSH_PASS" ssh -o StrictHostKeyChecking=no fios02@192.168.1.49 \
   'powershell -NoProfile -ExecutionPolicy Bypass -Command "New-Item -ItemType Directory -Force -Path C:\aicf,C:\aicf\bin,C:\aicf\llama,C:\aicf\models,C:\aicf\adapters,C:\aicf\pki,C:\aicf\logs,C:\aicf\work,C:\aicf\repo,C:\aicf\reports | Out-Null; New-NetFirewallRule -DisplayName \"AICF-LAN-Inbound\" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8099,18090 -RemoteAddress 192.168.1.0/24 -ErrorAction SilentlyContinue | Out-Null; New-NetFirewallRule -DisplayName \"AICF-LAN-ICMPv4\" -Direction Inbound -Action Allow -Protocol ICMPv4 -IcmpType 8 -RemoteAddress 192.168.1.0/24 -ErrorAction SilentlyContinue | Out-Null; Write-Host \"DIRS_AND_FIREWALL_OK\""'
 ```
 - **Check Pass 1.1:** `ping -c 3 192.168.1.49` từ máy Linux nhận được phản hồi (`0% packet loss`, ghi nhận RTT `min/avg/max`).
@@ -100,7 +100,7 @@ sshpass -p '123' ssh -o StrictHostKeyChecking=no fios02@192.168.1.49 \
 #### Công việc 1.2: Cài đặt Python 3.12 (64-bit) trên máy Windows
 Do máy Windows mới chỉ có Microsoft Store alias giả (`WindowsApps\python.exe`), cài đặt Python 3.12 chính thức ở chế độ im lặng (`silent install`):
 ```bash
-sshpass -p '123' ssh -o StrictHostKeyChecking=no fios02@192.168.1.49 \
+sshpass -p "$AICF_WIN_SSH_PASS" ssh -o StrictHostKeyChecking=no fios02@192.168.1.49 \
   'powershell -NoProfile -ExecutionPolicy Bypass -Command "if (-not (Test-Path \"C:\Program Files\Python312\python.exe\")) { curl.exe -L -o C:\aicf\python-3.12.8-amd64.exe https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe; Start-Process -FilePath C:\aicf\python-3.12.8-amd64.exe -ArgumentList \"/quiet InstallAllUsers=1 PrependPath=1 Include_test=0\" -Wait }; & \"C:\Program Files\Python312\python.exe\" --version"'
 ```
 > **Lưu ý:** Luôn có thể gọi đường dẫn tuyệt đối `"C:\Program Files\Python312\python.exe"` trong các lệnh SSH để không phụ thuộc vào việc làm mới biến môi trường `PATH` hay bị alias `WindowsApps\python.exe` chặn.
@@ -127,8 +127,8 @@ sshpass -p '123' ssh -o StrictHostKeyChecking=no fios02@192.168.1.49 \
 ```bash
 tar --exclude='.venv' --exclude='.demo' --exclude='.pytest_cache' --exclude='.mypy_cache' --exclude='.ruff_cache' \
   -czf /tmp/aicf-repo.tar.gz -C /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric .
-sshpass -p '123' scp -o StrictHostKeyChecking=no /tmp/aicf-repo.tar.gz fios02@192.168.1.49:/C:/aicf/aicf-repo.tar.gz
-sshpass -p '123' ssh -o StrictHostKeyChecking=no fios02@192.168.1.49 \
+sshpass -p "$AICF_WIN_SSH_PASS" scp -o StrictHostKeyChecking=no /tmp/aicf-repo.tar.gz fios02@192.168.1.49:/C:/aicf/aicf-repo.tar.gz
+sshpass -p "$AICF_WIN_SSH_PASS" ssh -o StrictHostKeyChecking=no fios02@192.168.1.49 \
   'powershell -NoProfile -ExecutionPolicy Bypass -Command "tar.exe -xzf C:\aicf\aicf-repo.tar.gz -C C:\aicf\repo"'
 ```
 
@@ -166,11 +166,11 @@ mkdir -p dist/windows
 #### Công việc 3.2: Truyền Binaries và GGUF Models sang máy Windows qua LAN 2.5GbE
 Copy `worker-guard.exe`, `Qwen3-0.6B-Q8_0.gguf`, `Qwen3-4B-Q4_K_M.gguf`, và `Qwen3-8B-Q4_K_M.gguf` sang máy Windows:
 ```bash
-sshpass -p '123' scp -o StrictHostKeyChecking=no \
+sshpass -p "$AICF_WIN_SSH_PASS" scp -o StrictHostKeyChecking=no \
   ai-compute-fabric/dist/windows/worker-guard.exe \
   fios02@192.168.1.49:/C:/aicf/bin/worker-guard.exe
 
-sshpass -p '123' scp -o StrictHostKeyChecking=no \
+sshpass -p "$AICF_WIN_SSH_PASS" scp -o StrictHostKeyChecking=no \
   .aicf-work/Qwen3-0.6B-Q8_0.gguf \
   .aicf-work/Qwen3-4B-Q4_K_M.gguf \
   .aicf-work/Qwen3-8B-Q4_K_M.gguf \
@@ -230,7 +230,7 @@ cd /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fab
 go run ./apps/site-gateway/cmd/pki -out .demo/pki \
   -gateway-hosts "127.0.0.1,localhost,192.168.1.40" \
   -workers "pc-001,pc-win-01"
-sshpass -p '123' scp -o StrictHostKeyChecking=no \
+sshpass -p "$AICF_WIN_SSH_PASS" scp -o StrictHostKeyChecking=no \
   .demo/pki/ca.crt .demo/pki/pc-win-01.crt .demo/pki/pc-win-01.key \
   fios02@192.168.1.49:/C:/aicf/pki/
 ```
@@ -294,10 +294,26 @@ C:\aicf\repo\deploy\windows\install-service.ps1 `
    - Lưu báo cáo thực nghiệm đa máy đầu tiên của dự án vào:
      `ai-compute-fabric/benchmarks/reports/p2_multinode_linux3060_win5070_e2e.json`.
 
-#### Công việc 7.3: Cập nhật Tài liệu Kế hoạch & Chạy Cổng Kiểm Chứng Phát Hành
-1. Cập nhật kết quả đo thực tế trên Windows (`probe_windows`, `B01`, `reclaim_poc`, `Windows Service`, `Multi-node Linux + Windows`) vào:
-   - [`KE_HOACH_THUC_HIEN_AI_COMPUTE_FABRIC_HF.md`](file:///mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/KE_HOACH_THUC_HIEN_AI_COMPUTE_FABRIC_HF.md) (đánh dấu `[x]` các mục Windows đã hoàn thành bằng số đo thật tại `H.4 P2.1`, `H.6 P4.1`, `H.11 D06`, và thêm mục mới trong `Phần I`).
-   - [`ai-compute-fabric/deploy/windows/HUONG_DAN_CHAY_TREN_WINDOWS.md`](file:///mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/deploy/windows/HUONG_DAN_CHAY_TREN_WINDOWS.md) (cập nhật trạng thái từ "chưa từng chạy trên Windows thật" sang "đã chạy và nghiệm thu trên Windows 10 Pro + RTX 5070").
+---
+
+### PHA 8: Triển khai Bộ Điều Phối 3 Chế Độ Cụm GPU & Model Lớn (8B $\rightarrow$ 30B $\rightarrow$ 100B+) trên Giao diện Web (`index.html`)
+*(Chi tiết kỹ thuật đầy đủ xem tại [`KE_HOACH_GOP_TACH_2_GPU_LIEN_HOP.md`](file:///mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/KE_HOACH_GOP_TACH_2_GPU_LIEN_HOP.md))*
+
+> **Điều phối thứ tự:** Pha 8 chỉ bắt đầu sau Pha 1–7 hoàn tất. Bài đo (quét `-ncmoe`, `tensor_split`) và cổng quyết định G1 nằm trong kế hoạch gộp/tách; Pha 8 phải làm theo kế hoạch đó, không theo các giá trị mặc định ghi tạm ở đây. Lưu ý: ở mục 1.1 và Pha 7.2 plan này mở `worker-guard` nghe `0.0.0.0:8099` và gọi API `/api/engine` từ Linux, **không xác thực**; chấp nhận được khi thử nghiệm trong lab, nhưng phải chốt phương án điều khiển (mục D-TOPO của kế hoạch gộp/tách) trước khi coi là xong.
+
+1. **Chống tự động ngủ (Idle Sleep) trên máy Windows (`192.168.1.49`):**
+   - Chạy `powercfg /change standby-timeout-ac 0; powercfg /change standby-timeout-dc 0; powercfg /change hibernate-timeout-ac 0` và mở cổng Firewall TCP `50052` cho subnet `192.168.1.0/24`.
+2. **Nâng cấp `apps/worker-guard` & `apps/site-gateway` (`/api/cluster/topology`) và Giao diện `web/index.html` hỗ trợ 3 Chế độ 1-Click:**
+   - **🟢 Chế độ 1 (`split` — Tách 2 Worker Chuẩn 100% VRAM):** 2 máy chạy độc lập song song (`-ngl 99 -ncmoe 0 -fa on`), dành cho model $\le 10\text{ GB}$ (`Qwen3-4B`, `Qwen3-8B`). Thông lượng `~335 tok/s` là `[CHƯA XÁC MINH]` (chưa có báo cáo nguồn), phải đo lại.
+   - **⚡ Chế độ 2 (`smart_1gpu` — Tách 2 Worker + Tối Ưu Model Lớn 30B trên Từng Card 12GB):** Giữ nguyên 2 Worker chạy song song độc lập, tự động bật `-ngl 99 -ncmoe 18 -fa on -ctk q8_0 -ctv q8_0` (giữ toàn bộ Attention + 30 tầng Expert trên 12 GB VRAM, đẩy 18 tầng Expert sang RAM AVX2/AVX-512) để mỗi card 12 GB chạy `Qwen3-30B-A3B-Q4_K_M.gguf` (18,56 GB). **`[ĐO]` trên RTX 3060 (kế hoạch gộp/tách, mục 1.2):** `-ncmoe 18` hết bộ nhớ ở `-c 4096`; cần N ≥ 19 (`-c 4096`) / 20 (`-c 8192`), tốc độ ~40–42 tok/s (không phải `50–70`). Giá trị cho RTX 5070 chưa đo.
+   - **🔗 Chế độ 3 (`merged` — Gộp Cụm Liên Hợp Multi-Node RPC `24GB VRAM + 94GB RAM`):** Chuyển `pc-win-01` sang chạy `ggml-rpc-server.exe (:50052 -c)` và nối `pc-001` qua `--rpc 192.168.1.49:50052 --split-mode layer --tensor-split 1,1` thành **1 worker hợp nhất ~22–24 GB VRAM** để chạy model vượt 1 card (Dense 32B `Q4_K_M` 19,8 GB — chưa tải về — hoặc `Qwen3-30B-A3B`). RAM của máy Windows **không** được gộp vào pool (RPC chỉ chia thiết bị GPU); 70B–235B ngoài phạm vi. Bấm 1 nút để Tách lại về 2 Worker độc lập.
+3. **Nghiệm thu thực nghiệm 3 chế độ:**
+   - Lưu báo cáo thực nghiệm chuyển đổi qua lại cả 3 chế độ vào `ai-compute-fabric/benchmarks/reports/p3_adaptive_topology_and_large_model_e2e.json`.
+
+#### Công việc 8.1: Cập nhật Tài liệu Kế hoạch & Chạy Cổng Kiểm Chứng Phát Hành
+1. Cập nhật kết quả đo thực tế trên Windows (`probe_windows`, `B01`, `reclaim_poc`, `Windows Service`, `Multi-node Linux + Windows`, `3-Mode Topology & Large-Model`) vào:
+   - [`KE_HOACH_THUC_HIEN_AI_COMPUTE_FABRIC_HF.md`](file:///mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/KE_HOACH_THUC_HIEN_AI_COMPUTE_FABRIC_HF.md) (đánh dấu `[x]` các mục Windows đã hoàn thành bằng số đo thật tại `H.4 P2.1`, `H.5 P3.4b`, `H.6 P4.1`, `H.11 D06`, và thêm mục mới trong `Phần I`).
+   - [`ai-compute-fabric/deploy/windows/HUONG_DAN_CHAY_TREN_WINDOWS.md`](file:///mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/deploy/windows/HUONG_DAN_CHAY_TREN_WINDOWS.md).
    - [`ai-compute-fabric/README.md`](file:///mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/README.md).
 2. Chạy lại cổng kiểm tra toàn diện trên máy Linux:
    ```bash
@@ -309,7 +325,7 @@ C:\aicf\repo\deploy\windows\install-service.ps1 `
 
 ## 5. DANH SÁCH DELIVERABLES & TIÊU CHUẨN NGHIỆM THU CUỐI CÙNG (DEFINITION OF DONE)
 
-Agent thực thi chỉ được phép báo cáo hoàn thành khi **tất cả 8 mục kiểm tra dưới đây đạt `PASS`**:
+Agent thực thi chỉ được phép báo cáo hoàn thành khi **tất cả 9 mục kiểm tra dưới đây đạt `PASS`**:
 
 | # | Hạng mục nghiệm thu | Bằng chứng bắt buộc (File trong repo) | Ngưỡng đạt (Gate) |
 |:-:|---|---|---|
@@ -320,4 +336,5 @@ Agent thực thi chỉ được phép báo cáo hoàn thành khi **tất cả 8 
 | **5** | **Kế toán 6 ngăn VRAM trên Windows (`P2.1` / `R-WDDM`)** | Code `apps/worker-guard/guard.go` + `guard_test.go` | Khi `nvidia-smi` per-process trả `0` trên WDDM, `worker-guard` dùng tổng buffer (`Model+KV+Compute`) làm `EngineMiB` và giữ đúng ngưỡng `lastOwn + HeadroomMiB` trước khi tự khởi động lại |
 | **6** | **Dịch vụ Windows `AICFWorkerGuard` (`P2.1`)** | `benchmarks/reports/p2_windows_service_lifecycle_rtx5070.json` | `Start-Service` khởi chạy `llama-server.exe`; `Stop-Service` tắt sạch `llama-server.exe` và trả VRAM về nền |
 | **7** | **Cụm 2 máy thật Linux + Windows qua mTLS (`P2.2`)** | `benchmarks/reports/p2_multinode_linux3060_win5070_e2e.json` | `site-gateway` (`192.168.1.40`) quản lý đồng thời `pc-001` (Linux RTX 3060) và `pc-win-01` (Windows RTX 5070) qua mTLS; Pause/Resume từ xa và chia tải `/v1/chat/completions` thành công |
-| **8** | **Cổng chất lượng mã nguồn (`Release Gate`)** | Chạy `make verify-release-v1` (và cập nhật chữ ký SBOM nếu `go.mod` thay đổi) | `exit code = 0` |
+| **8** | **Bộ Điều Phối 3 Chế độ Cụm GPU & Model Lớn (`P3.4b`)** | `benchmarks/reports/p3_gpu_modes_sweep.json` + `p3_adaptive_topology_and_large_model_e2e.json` + Giao diện `web/index.html` | Chuyển đổi 1-Click giữa 3 chế độ `split`, `smart_1gpu` (`Qwen3-30B-A3B` trên 1 card với `N` **đo được** từ bài quét), `merged` (`GGML RPC`, ~22–24 GB VRAM); có kịch bản lỗi (rút LAN, thu hồi GPU) và rollback. Chi tiết DoD ở kế hoạch gộp/tách. |
+| **9** | **Cổng chất lượng mã nguồn (`Release Gate`)** | Chạy `make verify-release-v1` (và cập nhật chữ ký SBOM nếu `go.mod` thay đổi) | `exit code = 0` |
