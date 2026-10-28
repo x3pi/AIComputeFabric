@@ -103,6 +103,23 @@
 .worker-id-link:hover {
   text-decoration: underline;
 }
+
+.topo-step { margin: 18px 0 6px; font-size: 14px; font-weight: 700; color: var(--fg); }
+.topo-step span { display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; border-radius:50%; background:var(--acc); color:#fff; font-size:12px; margin-right:6px; }
+.topo-tile-sub { font-size:12px; color:var(--fg-secondary); line-height:1.45; margin:0 0 8px 0; }
+.topo-tile-meta { font-size:11.5px; color:var(--fg-secondary); line-height:1.5; border-top:1px dashed var(--bd); padding-top:7px; margin-top:auto; }
+.topo-opt-box { border:1px solid var(--bd); border-radius:var(--radius-md); padding:14px; margin-top:8px; background:var(--card); }
+.topo-slider-row { display:flex; align-items:center; gap:10px; margin:10px 0 4px; }
+.topo-slider-row input[type=range] { flex:1; min-width:120px; }
+.topo-slider-end { font-size:12.5px; min-width:130px; }
+.topo-slider-end b { font-size:18px; }
+.topo-bars { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px; margin-top:10px; }
+.topo-bar-track { height:12px; border-radius:6px; background:var(--bd); overflow:hidden; margin:4px 0; }
+.topo-bar-fill { height:100%; border-radius:6px; transition:width .15s; }
+.topo-bar-fill.ok { background:#22a06b; } .topo-bar-fill.warn { background:#e9a30c; } .topo-bar-fill.bad { background:#d9363e; }
+.topo-lvl-ok { color:#22a06b; } .topo-lvl-warn { color:#b07800; } .topo-lvl-bad { color:#d9363e; }
+.topo-sum { margin-top:14px; padding:10px 12px; border-left:3px solid var(--acc); background:var(--acc-soft); font-size:13px; border-radius:4px; }
+.topo-chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
 .topo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -326,103 +343,108 @@
     </div>
   </div>
 
-  <!-- 1-Click Cluster Topology & Large Model Orchestration Panel -->
+  <!-- Cluster topology: 3 modes, step by step -->
   <div class="card" id="topology-card">
     <div class="card-header">
       <div class="card-title-group">
-        <h2>🎛️ Điều Phối Chế Độ Cụm GPU & Model Lớn (1-Click Topology)</h2>
-        <span id="topo-current-badge" class="pill ok">CHẾ ĐỘ: SPLIT (SONG SONG)</span>
+        <h2>🎛️ Chọn cách chạy cụm GPU</h2>
+        <span id="topo-current-badge" class="pill ok">ĐANG TẢI…</span>
       </div>
-      <span class="mut" id="topo-summary" style="font-size:12.5px">Chuyển đổi linh hoạt giữa 2 Worker độc lập và Cụm Gộp Multi-Node GGML RPC</span>
+      <span class="mut" id="topo-summary" style="font-size:12.5px"></span>
     </div>
+    <div class="mut" style="font-size:12.5px;margin-top:4px">Làm theo 3 bước: <b>① chọn cách chạy</b> → <b>② chọn model</b> → <b>③ chọn máy &amp; tinh chỉnh</b>, rồi bấm Áp dụng. Số "đã đo" là kết quả đo ngày 28/10 trên cụm RTX 3060 + RTX 5070 nối dây 2,5 GbE.</div>
 
-    <!-- 3 Interactive Mode Tiles -->
+    <div id="topo-groups" style="display:none;margin-top:10px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Các nhóm đang gộp (mỗi nhóm chạy một model chung; máy ngoài nhóm chạy riêng):</div>
+      <div id="topo-groups-list" class="topo-chips"></div>
+    </div>
+    <div class="topo-step"><span>1</span>Chọn cách chạy</div>
     <div class="topo-grid">
       <div class="topo-mode-card active" id="mode-card-split" onclick="selectTopoMode('split')">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <strong style="font-size:14px;color:var(--fg)">Chế độ 1: Tách Biệt (Split)</strong>
-          <span class="pill ok" style="font-size:10px">100% VRAM</span>
-        </div>
-        <p style="font-size:12.5px;color:var(--fg-secondary);margin:0 0 10px 0;line-height:1.4">
-          2 máy chạy <code>llama-server</code> độc lập. Phục vụ song song model &le; 10 GB (Qwen3-4B, 8B) với thông lượng cao nhất.
-        </p>
-        <div class="mut" style="font-size:11.5px">⚡ Không trễ mạng · Tải cân bằng qua Router</div>
+        <strong style="font-size:14px;color:var(--fg);margin-bottom:6px">A. Mỗi card chạy riêng</strong>
+        <p class="topo-tile-sub"><b>Hiểu đơn giản:</b> mỗi máy tự chạy một bản model, phục vụ khách song song.<br><b>Hợp khi:</b> model nhỏ, vừa một card 12 GB (Qwen3-4B, 8B).</p>
+        <div class="topo-tile-meta">Đã đo (4B): RTX 3060 100 · RTX 5070 167 tok/s, hai máy cùng lúc tổng 202. Không phụ thuộc mạng.</div>
       </div>
-
       <div class="topo-mode-card" id="mode-card-smart" onclick="selectTopoMode('smart_1gpu')">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <strong style="font-size:14px;color:var(--fg)">Chế độ 2: Smart 1-GPU Hybrid</strong>
-          <span class="pill warn" style="font-size:10px">MoE Offload</span>
-        </div>
-        <p style="font-size:12.5px;color:var(--fg-secondary);margin:0 0 10px 0;line-height:1.4">
-          Chạy model MoE lớn (vd 30B, 18,56 GB) trên từng card 12GB độc lập bằng cách đẩy expert của N tầng đầu sang RAM (<code>-ncmoe N</code>). N phụ thuộc card, ctx và loại KV: phải nhập theo bài đo, không có giá trị mặc định.
-        </p>
-        <div class="mut" style="font-size:11.5px">🧠 2 worker phục vụ 30B độc lập · Không phụ thuộc LAN</div>
+        <strong style="font-size:14px;color:var(--fg);margin-bottom:6px">B. Mỗi card chạy riêng + dùng RAM</strong>
+        <p class="topo-tile-sub"><b>Hiểu đơn giản:</b> model chuyên gia (MoE) lớn hơn 12 GB vẫn chạy trên từng card riêng, bằng cách để một phần "chuyên gia" nằm ở RAM (<code>-ncmoe N</code>).<br><b>Hợp khi:</b> không có dây mạng nhanh giữa hai máy.</div>
+        <div class="topo-tile-meta">Đã đo (30B, ngữ cảnh 8k): RTX 3060 44 · RTX 5070 66 tok/s. Chậm hơn chế độ C.</div>
       </div>
-
       <div class="topo-mode-card" id="mode-card-merged" onclick="selectTopoMode('merged')">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <strong style="font-size:14px;color:var(--fg)">Chế độ 3: Gộp Cụm GGML RPC</strong>
-          <span class="pill" style="font-size:10px;background:var(--purple);color:#fff">Σ VRAM</span>
+        <strong style="font-size:14px;color:var(--fg);margin-bottom:6px">C. Gộp 2 card thành 1</strong>
+        <p class="topo-tile-sub"><b>Hiểu đơn giản:</b> hai card cùng chạy <i>một</i> model, mỗi card giữ một phần các lớp. Bạn chọn tỷ lệ chia bằng thanh trượt.<br><b>Hợp khi:</b> model lớn (30B) và hai máy nối dây nhanh (LAN 2,5 GbE).</p>
+        <div class="topo-tile-meta">Đã đo (30B): ~135 tok/s (8k), ~132 (32k), nhanh gấp 2–3,7× một card. Qua Wi-Fi thì rất chậm, không nên dùng.</div>
+      </div>
+    </div>
+
+    <div class="topo-step"><span>2</span>Chọn model</div>
+    <select id="topo-model-select" style="width:100%;max-width:640px"></select>
+    <div id="topo-model-hint" class="mut" style="font-size:12.5px;margin-top:6px"></div>
+
+    <div class="topo-step"><span>3</span>Chọn máy tham gia &amp; tinh chỉnh</div>
+    <div class="topo-opt-box">
+      <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">Máy tham gia (tích chọn):</div>
+      <div id="topo-machines" class="mut" style="font-size:13px">Chưa có worker online</div>
+      <div id="topo-primary-wrap" style="display:none;margin-top:10px">
+        <label for="topo-primary" style="font-size:12.5px">Máy chủ chính (chạy chương trình điều phối, giữ phần đầu của model):</label>
+        <select id="topo-primary" style="min-width:200px"></select>
+      </div>
+    </div>
+
+    <div class="topo-opt-box" id="topo-opt-smart" style="display:none">
+      <div style="font-size:13px;font-weight:600">Số tầng chuyên gia để ở RAM (<code>-ncmoe N</code>)</div>
+      <div class="mut" style="font-size:12px;margin:4px 0 8px">N càng nhỏ càng nhanh nhưng càng dễ hết VRAM. Không có giá trị mặc định chung: phải theo bài đo của từng card.</div>
+      <input type="number" id="topo-ncmoe" placeholder="nhập N" min="1" max="512" style="width:110px">
+      <div class="topo-chips">
+        <button type="button" class="sm" onclick="setNcmoe(20)">20 · RTX 3060, ctx 8k (đo 44 tok/s)</button>
+        <button type="button" class="sm" onclick="setNcmoe(26)">26 · RTX 5070, ctx 8k, chừa VRAM (đo 54)</button>
+        <button type="button" class="sm" onclick="setNcmoe(30)">30 · ctx 32k (đo 36 / 49)</button>
+      </div>
+    </div>
+
+    <div class="topo-opt-box" id="topo-opt-merged" style="display:none">
+      <div style="font-size:13px;font-weight:600">Chia model giữa hai card (kéo thanh trượt)</div>
+      <div class="mut" style="font-size:12px;margin:4px 0">Phần trăm các lớp của model mà mỗi card giữ. Chia nghiêng về card mạnh hơn thì nhanh hơn, nhưng vượt dung lượng VRAM của card đó là tốc độ <b>sụp</b> hoặc hết VRAM.</div>
+      <div id="topo-ratio-two">
+        <div class="topo-slider-row">
+          <div class="topo-slider-end"><div id="topo-nameA" class="mono"></div><b id="topo-pctA">50%</b></div>
+          <input type="range" id="topo-slider" min="10" max="90" step="1" value="50" aria-label="Tỷ lệ chia giữa hai card">
+          <div class="topo-slider-end" style="text-align:right"><div id="topo-nameB" class="mono"></div><b id="topo-pctB">50%</b></div>
         </div>
-        <p style="font-size:12.5px;color:var(--fg-secondary);margin:0 0 10px 0;line-height:1.4">
-          Gộp VRAM các card đã chọn (Primary + RPC members) thành một worker. Các member chạy RPC Server (cổng 50052, không xác thực: chỉ dùng trong LAN tin cậy), Primary chia layer qua LAN.
-        </p>
-        <div class="mut" style="font-size:11.5px">🔗 Toàn bộ trọng số nằm trên VRAM GPU · Router chỉ route Master</div>
+        <div class="topo-chips">
+          <button type="button" class="sm" onclick="setRatioEven()">Chia đều 50/50</button>
+          <button type="button" class="sm" id="topo-rec8" onclick="setRatioRec(58)">Gợi ý đo ngữ cảnh 8k: RTX 5070 giữ 58%</button>
+          <button type="button" class="sm" id="topo-rec32" onclick="setRatioRec(50)">Gợi ý đo ngữ cảnh 32k: chia đều</button>
+        </div>
       </div>
+      <div id="topo-ratio-many" style="display:none">
+        <label for="topo-ts-many" style="font-size:12.5px">Có từ 3 card trở lên: nhập tỷ lệ bằng số, máy chính trước rồi từng máy còn lại (vd 1,1,1):</label>
+        <input type="text" id="topo-ts-many" placeholder="mặc định chia đều" style="width:200px">
+      </div>
+      <div style="margin-top:12px;font-size:12.5px"><label for="topo-ctx">Ngữ cảnh dự kiến (token, chỉ để ước tính VRAM):</label>
+        <input type="number" id="topo-ctx" value="8192" min="1024" max="131072" step="1024" style="width:110px"></div>
+      <div class="topo-bars" id="topo-bars"></div>
+      <div class="mut" style="font-size:11.5px;margin-top:8px">Ước tính theo bài đo Qwen3-30B-A3B (trọng số + KV + vùng đệm + ~1 GB Windows/driver chiếm sẵn). Chỉ để tham khảo: màu <b>đỏ</b> = đã đo thấy tốc độ sụp/hết VRAM ở mức tương đương, <b>vàng</b> = sát giới hạn.</div>
+      <details style="margin-top:10px"><summary style="cursor:pointer;font-size:12.5px">Nâng cao</summary>
+        <div style="margin-top:8px;font-size:12.5px">
+          <label for="topo-ts-adv">Ghi đè tỷ lệ bằng chuỗi <code>--tensor-split</code> (máy chính trước):</label>
+          <input type="text" id="topo-ts-adv" placeholder="để trống để dùng thanh trượt" style="width:200px">
+          <div style="margin-top:8px"><label for="topo-kv">KV cache:</label>
+          <select id="topo-kv"><option value="">mặc định của worker</option><option value="f16">f16</option><option value="q8_0">q8_0 (đo: chậm hơn ~9%)</option></select></div>
+        </div>
+      </details>
     </div>
 
-    <!-- Live Nodes Physical Status & Badges -->
-    <div style="margin-top:16px;border-top:1px dashed var(--bd);padding-top:14px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--fg)">Trạng thái Huy hiệu Thực tế của Từng Máy trong Cụm:</div>
-      <div class="topo-nodes-grid" id="topo-nodes-container">
-        <!-- Dynamically rendered -->
-      </div>
+    <div class="topo-sum" id="topo-sumline">—</div>
+    <div style="margin-top:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <button id="topo-apply-btn" type="button" class="primary" style="height:38px">⚡ Áp dụng</button>
+      <span id="topo-feedback" class="mut" role="status" style="font-size:13px"></span>
     </div>
 
-    <!-- Configuration & Action Controls -->
-    <form id="topo-form" class="row" style="margin-top:14px;align-items:flex-end;gap:12px;flex-wrap:wrap" autocomplete="off">
-      <div class="grow" style="min-width:260px">
-        <label for="topo-model-select">Mô hình GGUF thực thi</label>
-        <select id="topo-model-select" style="width:100%">
-          <option value="Qwen3-4B-Q4_K_M.gguf" selected>Qwen3-4B-Q4_K_M.gguf (2,5 GB — Tối ưu cho Chế độ 1 Split)</option>
-          <option value="Qwen3-8B-Q4_K_M.gguf">Qwen3-8B-Q4_K_M.gguf (5,2 GB — Phù hợp Chế độ 1 Split)</option>
-          <option value="Qwen3-30B-A3B-Q4_K_M.gguf">Qwen3-30B-A3B-Q4_K_M.gguf (18,56 GB — Dành cho Smart 1-GPU / Merged RPC)</option>
-        </select>
-      </div>
-
-      <div style="min-width:160px">
-        <label for="topo-primary">Worker chính (Primary)</label>
-        <select id="topo-primary" style="width:100%"></select>
-      </div>
-
-      <div style="min-width:180px">
-        <label>Worker còn lại (RPC member / chạy độc lập)</label>
-        <div id="topo-members" class="mut" style="font-size:12.5px">Chưa có worker online</div>
-      </div>
-
-      <div style="min-width:140px;display:none" id="topo-ncmoe-group">
-        <label for="topo-ncmoe">CPU MoE Layers (-ncmoe N)</label>
-        <input type="number" id="topo-ncmoe" placeholder="N theo bài đo" min="1" max="512" style="width:100%">
-      </div>
-
-      <div style="min-width:120px;display:none" id="topo-kv-group">
-        <label for="topo-kv">KV cache</label>
-        <select id="topo-kv" style="width:100%">
-          <option value="">mặc định của worker</option>
-          <option value="f16">f16</option>
-          <option value="q8_0">q8_0 (đổi chất lượng/VRAM)</option>
-        </select>
-      </div>
-
-      <div style="min-width:140px;display:none" id="topo-split-group">
-        <label for="topo-tensor-split" id="topo-split-label">Tensor Split</label>
-        <input type="text" id="topo-tensor-split" placeholder="mặc định chia đều" style="width:100%">
-      </div>
-
-      <button id="topo-apply-btn" type="submit" class="primary" style="height:36px">⚡ Áp Dụng Chế Độ (1-Click Switch)</button>
-    </form>
-    <div id="topo-feedback" class="mut" role="status" style="margin-top:10px;font-size:13px"></div>
+    <div style="margin-top:18px;border-top:1px dashed var(--bd);padding-top:14px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--fg)">Tình trạng thực tế từng máy:</div>
+      <div class="topo-nodes-grid" id="topo-nodes-container"></div>
+    </div>
   </div>
 
   <!-- Model & adapter of this PC's worker: live status + switch (admin) -->
@@ -922,67 +944,151 @@ svEl("sv-form").addEventListener("submit", async ev => {
   loadPage();
 });
 
-// ---- 1-Click Cluster Topology Orchestration ----
+// ---- Cluster topology: 3 modes, step by step ----
+// Sizes are the GGUF file sizes on the demo host; kvKiB = f16 KV cache per token. The VRAM estimate constants below were
+// calibrated on the measured collapse points of the RTX 5070 (8k: fast at 60%, collapsed at 62%; 32k: fast at 52%, collapsed at 54%).
+const TOPO_MODELS = {
+  "Qwen3-4B-Q4_K_M.gguf":      { label: "Qwen3-4B (2,5 GB): nhỏ, vừa 1 card",                          mib: 2381,  kvKiB: 144, fits1: true },
+  "Qwen3-8B-Q4_K_M.gguf":      { label: "Qwen3-8B (5,0 GB): nhỏ, vừa 1 card",                          mib: 4794,  kvKiB: 144, fits1: true },
+  "Qwen3-30B-A3B-Q4_K_M.gguf": { label: "Qwen3-30B-A3B (18,56 GB): MoE lớn, KHÔNG vừa 1 card 12 GB",   mib: 17697, kvKiB: 96,  fits1: false }
+};
+const TOPO_DEFAULT_MODEL = { split: "Qwen3-4B-Q4_K_M.gguf", smart_1gpu: "Qwen3-30B-A3B-Q4_K_M.gguf", merged: "Qwen3-30B-A3B-Q4_K_M.gguf" };
+const TOPO_OS_BASE_MIB = 1000;      // Windows/driver already hold ~1 GB of the card (measured: RTX 5070 idle 11,0 of 12,2 GB free)
 let selectedTopoMode = "split";
 let currentTopo = null;
+let topoWorkers = {};
+let topoSelected = null;             // Set of worker ids ticked by the user (null until first render)
+let topoMachineKey = "";
+let topoModeSynced = false;
 
-function selectTopoMode(mode) {
+(function initTopoModelSelect() {
+  const sel = document.getElementById("topo-model-select");
+  sel.replaceChildren(...Object.entries(TOPO_MODELS).map(([k, m]) => el("option", { value: k }, m.label)));
+  sel.value = TOPO_DEFAULT_MODEL.split;
+  sel.addEventListener("change", topoRefresh);
+})();
+
+function selectTopoMode(mode, keepModel) {
   selectedTopoMode = mode;
-  document.getElementById("mode-card-split").classList.toggle("active", mode === "split");
-  document.getElementById("mode-card-smart").classList.toggle("active", mode === "smart_1gpu");
-  document.getElementById("mode-card-merged").classList.toggle("active", mode === "merged");
-
-  const modelSel = document.getElementById("topo-model-select");
-  const ncmoeGrp = document.getElementById("topo-ncmoe-group");
-  const splitGrp = document.getElementById("topo-split-group");
-  const kvGrp = document.getElementById("topo-kv-group");
-
-  if (mode === "split") {
-    modelSel.value = "Qwen3-4B-Q4_K_M.gguf";
-  } else {
-    modelSel.value = "Qwen3-30B-A3B-Q4_K_M.gguf";
-  }
-  ncmoeGrp.style.display = mode === "smart_1gpu" ? "block" : "none";
-  splitGrp.style.display = mode === "merged" ? "block" : "none";
-  kvGrp.style.display = mode === "split" ? "none" : "block";
-  updateSplitLabel();
+  ["split", "smart", "merged"].forEach(k => document.getElementById("mode-card-" + k)
+    .classList.toggle("active", (k === "smart" ? "smart_1gpu" : k) === mode));
+  if (!keepModel) document.getElementById("topo-model-select").value = TOPO_DEFAULT_MODEL[mode];
+  document.getElementById("topo-opt-smart").style.display = mode === "smart_1gpu" ? "block" : "none";
+  document.getElementById("topo-opt-merged").style.display = mode === "merged" ? "block" : "none";
+  document.getElementById("topo-primary-wrap").style.display = mode === "merged" ? "block" : "none";
+  topoRefresh();
 }
 
-// Primary / member pickers are built from the workers the gateway reports (online only), and rebuilt only when that set changes.
-let topoPickerKey = "";
-function renderTopoPickers(workers) {
+function topoChosen() {   // {primary, members[]}: for split/smart the first ticked machine is only the "first of the list"
+  const ids = [...(topoSelected || [])].filter(id => topoWorkers[id] && topoWorkers[id].online).sort();
+  let primary = ids[0] || "";
+  if (selectedTopoMode === "merged") {
+    const p = document.getElementById("topo-primary").value;
+    if (ids.includes(p)) primary = p;
+  }
+  return { primary, members: ids.filter(id => id !== primary) };
+}
+const gpuLabel = id => id + (topoWorkers[id] && topoWorkers[id].gpu_name ? " (" + topoWorkers[id].gpu_name.replace("NVIDIA GeForce ", "") + ")" : "");
+
+function renderTopoMachines(workers) {
   const ids = Object.keys(workers).filter(id => workers[id].online).sort();
-  const key = ids.join("|");
-  if (key === topoPickerKey) return;
-  topoPickerKey = key;
-  const prim = document.getElementById("topo-primary");
-  const prevPrimary = prim.value;
-  prim.replaceChildren(...ids.map(id => el("option", { value: id }, id)));
-  prim.value = ids.includes(prevPrimary) ? prevPrimary : (ids[0] || "");
-  const box = document.getElementById("topo-members");
+  const key = ids.map(id => id + ":" + (workers[id].group_id || "")).join("|");
+  if (key === topoMachineKey) return;
+  topoMachineKey = key;
+  if (topoSelected === null) topoSelected = new Set(ids);
+  topoSelected = new Set([...topoSelected].filter(id => ids.includes(id)));
+  const box = document.getElementById("topo-machines");
   if (!ids.length) { box.textContent = "Chưa có worker online"; return; }
   box.replaceChildren(...ids.map(id => {
-    const cb = el("input", { type: "checkbox", value: id, checked: "checked" });
-    cb.addEventListener("change", updateSplitLabel);
-    return el("label", { style: "display:inline-flex;gap:4px;margin-right:10px;align-items:center" }, cb, id);
+    const cb = el("input", { type: "checkbox", value: id });
+    cb.checked = topoSelected.has(id);
+    cb.addEventListener("change", () => { cb.checked ? topoSelected.add(id) : topoSelected.delete(id); topoRefresh(); });
+    const g = workers[id].group_id;
+    return el("label", { style: "display:inline-flex;gap:6px;margin-right:16px;align-items:center" }, cb, gpuLabel(id), g ? el("span", { class: "mut", style: "font-size:11.5px" }, "(đang trong nhóm " + g + ")") : "");
   }));
-  prim.onchange = () => { syncMembers(); updateSplitLabel(); };
-  syncMembers(); updateSplitLabel();
+  const prim = document.getElementById("topo-primary");
+  const prev = prim.value;
+  prim.replaceChildren(...ids.map(id => el("option", { value: id }, gpuLabel(id))));
+  prim.value = ids.includes(prev) ? prev : ids[0];
+  prim.onchange = topoRefresh;
 }
-function syncMembers() { // the primary is never its own member
-  const p = document.getElementById("topo-primary").value;
-  document.querySelectorAll("#topo-members input").forEach(cb => {
-    cb.disabled = cb.value === p;
-    if (cb.disabled) cb.checked = false;
-  });
+
+function setNcmoe(n) { document.getElementById("topo-ncmoe").value = n; topoRefresh(); }
+function setRatioEven() { document.getElementById("topo-slider").value = 50; topoRefresh(); }
+function setRatioRec(pct5070) {  // the measured recommendation names the RTX 5070's share
+  const { primary, members } = topoChosen();
+  const w = [primary, ...members];
+  if (w.length !== 2) return;
+  const i = w.findIndex(id => (topoWorkers[id].gpu_name || "").includes("5070"));
+  const slider = document.getElementById("topo-slider");
+  slider.value = i === 0 ? pct5070 : i === 1 ? 100 - pct5070 : 50;
+  topoRefresh();
 }
-function topoMembers() {
-  return [...document.querySelectorAll("#topo-members input")].filter(cb => cb.checked && !cb.disabled).map(cb => cb.value);
+
+function topoEstimate(id, share) {
+  const m = TOPO_MODELS[document.getElementById("topo-model-select").value];
+  const ctx = parseInt(document.getElementById("topo-ctx").value, 10) || 8192;
+  const kvMiB = ctx * m.kvKiB / 1024;
+  const computeMiB = ctx > 8192 ? 264 : 168;
+  const used = share * (m.mib + kvMiB) + computeMiB + TOPO_OS_BASE_MIB;
+  const total = topoWorkers[id].vram_total_bytes ? topoWorkers[id].vram_total_bytes / 1048576 : 0;
+  let level = "ok";
+  if (total && used >= total + 250) level = "bad";
+  else if (total && used >= total - 500) level = "warn";
+  return { used, total, level };
 }
-function updateSplitLabel() {
-  const n = 1 + topoMembers().length;
-  document.getElementById("topo-split-label").textContent = "Tensor Split (" + n + " số: primary rồi từng member)";
+const LEVEL_TXT = { ok: "an toàn", warn: "sát giới hạn (nhanh nhưng rủi ro)", bad: "vượt: tốc độ sẽ sụp hoặc hết VRAM" };
+
+function topoRefresh() {
+  const modelKey = document.getElementById("topo-model-select").value;
+  const m = TOPO_MODELS[modelKey];
+  const hint = document.getElementById("topo-model-hint");
+  hint.textContent = (m.fits1 ? "Vừa trong một card 12 GB." : "Lớn hơn một card 12 GB: chạy riêng cần đẩy chuyên gia sang RAM (chế độ B), hoặc gộp hai card (chế độ C).")
+    + (selectedTopoMode === "split" && !m.fits1 ? " ⚠ Chế độ A với model này sẽ không nạp được." : "")
+    + (selectedTopoMode !== "split" && m.fits1 ? " (Chế độ B/C thường dành cho model lớn hơn.)" : "");
+  const { primary, members } = topoChosen();
+  const all = primary ? [primary, ...members] : [];
+  const sumEl = document.getElementById("topo-sumline");
+
+  // merged: ratio widgets
+  const two = selectedTopoMode === "merged" && all.length === 2;
+  document.getElementById("topo-ratio-two").style.display = two ? "block" : "none";
+  document.getElementById("topo-ratio-many").style.display = selectedTopoMode === "merged" && all.length > 2 ? "block" : "none";
+  const bars = document.getElementById("topo-bars");
+  bars.replaceChildren();
+  let ratioText = "";
+  if (two) {
+    const p = parseInt(document.getElementById("topo-slider").value, 10);
+    document.getElementById("topo-nameA").textContent = gpuLabel(all[0]) + " (chủ)";
+    document.getElementById("topo-nameB").textContent = gpuLabel(all[1]);
+    document.getElementById("topo-pctA").textContent = p + "%";
+    document.getElementById("topo-pctB").textContent = (100 - p) + "%";
+    [[all[0], p / 100], [all[1], (100 - p) / 100]].forEach(([id, share]) => {
+      const e = topoEstimate(id, share);
+      const pct = e.total ? Math.min(100, e.used / e.total * 100) : 0;
+      bars.append(el("div", {},
+        el("div", { style: "font-size:12.5px" }, el("b", {}, gpuLabel(id)), " giữ " + Math.round(share * 100) + "%"),
+        el("div", { class: "topo-bar-track" }, el("div", { class: "topo-bar-fill " + e.level, style: "width:" + pct + "%" })),
+        el("div", { class: "topo-lvl-" + e.level, style: "font-size:12px" },
+          "ước tính ~" + (e.used / 1024).toFixed(1) + " / " + (e.total / 1024).toFixed(1) + " GB: " + LEVEL_TXT[e.level])));
+    });
+    ratioText = " " + gpuLabel(all[0]) + " giữ " + p + "%, " + gpuLabel(all[1]) + " giữ " + (100 - p) + "%.";
+    const has5070 = all.some(id => (topoWorkers[id].gpu_name || "").includes("5070"));
+    document.getElementById("topo-rec8").style.display = has5070 ? "" : "none";
+    document.getElementById("topo-rec32").style.display = has5070 ? "" : "none";
+  }
+
+  let line;
+  if (!all.length) line = "Chọn ít nhất một máy ở bước 3.";
+  else if (selectedTopoMode === "split") line = "Sẽ làm: " + all.map(gpuLabel).join(" và ") + " mỗi máy chạy riêng " + modelKey + ", phục vụ song song.";
+  else if (selectedTopoMode === "smart_1gpu") line = "Sẽ làm: " + all.map(gpuLabel).join(" và ") + " mỗi máy chạy riêng " + modelKey + ", đẩy chuyên gia của N tầng đầu sang RAM (N = " + (document.getElementById("topo-ncmoe").value || "chưa nhập") + ").";
+  else if (all.length < 2) line = "Chế độ gộp cần chọn ít nhất 2 máy ở bước 3.";
+  else line = "Sẽ làm: gộp " + all.map(gpuLabel).join(" + ") + " thành một máy chạy " + modelKey + "." + ratioText;
+  sumEl.textContent = line;
 }
+document.getElementById("topo-slider").addEventListener("input", topoRefresh);
+document.getElementById("topo-ctx").addEventListener("input", topoRefresh);
+document.getElementById("topo-ncmoe").addEventListener("input", topoRefresh);
 
 async function loadTopology() {
   try {
@@ -993,59 +1099,85 @@ async function loadTopology() {
 
     const badge = document.getElementById("topo-current-badge");
     const summary = document.getElementById("topo-summary");
+    badge.style.background = ""; badge.style.color = "";
     if (d.mode === "split") {
-      badge.textContent = "CHẾ ĐỘ: SPLIT (SONG SONG 100% VRAM)";
-      badge.className = "pill ok";
-      summary.textContent = "2 Worker độc lập chạy song song, model " + (d.model || "");
+      badge.textContent = "ĐANG CHẠY: A. MỖI CARD CHẠY RIÊNG"; badge.className = "pill ok";
+      summary.textContent = "Model " + (d.model || "—");
     } else if (d.mode === "smart_1gpu") {
-      badge.textContent = "CHẾ ĐỘ: SMART 1-GPU HYBRID (MoE)";
-      badge.className = "pill warn";
-      summary.textContent = "Worker độc lập chạy MoE lớn, expert của " + (d.n_cpu_moe || "?") + " tầng đầu ở RAM (-ncmoe)";
+      badge.textContent = "ĐANG CHẠY: B. MỖI CARD + RAM"; badge.className = "pill warn";
+      summary.textContent = "Model " + (d.model || "—") + ", -ncmoe " + (d.n_cpu_moe || "?");
     } else if (d.mode === "merged") {
-      badge.textContent = "CHẾ ĐỘ: MERGED " + (1 + (d.rpc_worker_ids || []).length) + " GPU (RPC)";
-      badge.className = "pill";
-      badge.style.background = "var(--purple)";
-      badge.style.color = "#fff";
-      summary.textContent = "Cụm gộp (Master: " + d.primary_worker_id + ", RPC: " + (d.rpc_worker_ids || []).join(",") + ")";
+      badge.textContent = "ĐANG CHẠY: C. GỘP " + (1 + (d.rpc_worker_ids || []).length) + " CARD"; badge.className = "pill";
+      badge.style.background = "var(--purple)"; badge.style.color = "#fff";
+      summary.textContent = "Máy chính " + d.primary_worker_id + " + " + (d.rpc_worker_ids || []).join(", ") + (d.tensor_split ? ", tỷ lệ " + d.tensor_split : "");
     }
+    const groups = d.groups || [];
+    if (groups.length > 1) {
+      badge.textContent = "ĐANG CHẠY: " + groups.length + " NHÓM GỘP"; badge.className = "pill";
+      badge.style.background = "var(--purple)"; badge.style.color = "#fff";
+      summary.textContent = groups.map(g => g.id + "+" + g.rpc_worker_ids.join("+")).join(" · ");
+    }
+    renderTopoGroups(groups, d.busy_worker_ids || []);
+    if (d.status === "switching") { badge.textContent += " (đang chuyển…)"; }
+    if (d.status === "error" && d.last_error) { summary.textContent = "Lỗi lần chuyển gần nhất: " + d.last_error; }
 
     const container = document.getElementById("topo-nodes-container");
     container.replaceChildren();
-
-    const workers = d.workers || {};
-    renderTopoPickers(workers);
-    const wids = Object.keys(workers).sort();
+    topoWorkers = d.workers || {};
+    if (!topoModeSynced && d.mode) { topoModeSynced = true; selectTopoMode(d.mode, false); }
+    renderTopoMachines(topoWorkers);
+    topoRefresh();
+    const wids = Object.keys(topoWorkers).sort();
     if (wids.length === 0) {
-      container.innerHTML = '<div class="mut" style="padding:10px">Chưa có worker nào kết nối vào cluster gateway...</div>';
+      container.innerHTML = '<div class="mut" style="padding:10px">Chưa có worker nào kết nối vào gateway...</div>';
       return;
     }
-
     for (const id of wids) {
-      const w = workers[id];
+      const w = topoWorkers[id];
       const card = el("div", { class: "topo-node-card" });
       const hdr = el("div", { style: "display:flex;justify-content:space-between;align-items:center" });
-      hdr.append(
-        el("strong", { class: "mono", style: "font-size:13px" }, id),
-        el("span", { class: "topo-badge " + getBadgeClass(w.badge) }, w.badge || "UNKNOWN")
-      );
-
+      hdr.append(el("strong", { class: "mono", style: "font-size:13px" }, id),
+                 el("span", { class: "topo-badge " + getBadgeClass(w.badge) }, w.badge || "UNKNOWN"));
       const info = el("div", { style: "font-size:12px;color:var(--fg-secondary)" });
       info.textContent = `${w.gpu_name || "GPU"} · Model: ${w.model || "none"}`;
-
       const stat = el("div", { style: "font-size:11.5px;display:flex;justify-content:space-between" });
       const vramFree = w.vram_free_bytes ? Math.round(w.vram_free_bytes / (1024*1024)) : 0;
       const vramTotal = w.vram_total_bytes ? Math.round(w.vram_total_bytes / (1024*1024)) : 0;
-      stat.append(
-        el("span", { class: "mut" }, `Trạng thái: ${w.online ? w.state : "offline"}`),
-        el("span", { class: "num" }, `${vramFree} / ${vramTotal} MiB free`)
-      );
-
+      stat.append(el("span", { class: "mut" }, `Trạng thái: ${w.online ? w.state : "offline"}`),
+                  el("span", { class: "num" }, `${vramFree} / ${vramTotal} MiB trống`));
       card.append(hdr, info, stat);
       container.append(card);
     }
   } catch (e) {
     console.error("loadTopology error:", e);
   }
+}
+
+function renderTopoGroups(groups, busy) {
+  document.getElementById("topo-groups").style.display = groups.length ? "block" : "none";
+  document.getElementById("topo-groups-list").replaceChildren(...groups.map(g => {
+    const members = [g.primary_worker_id, ...g.rpc_worker_ids];
+    const isBusy = members.some(id => busy.includes(id));
+    const btn = el("button", { type: "button", class: "sm", disabled: isBusy ? "disabled" : null }, "Tách nhóm");
+    btn.addEventListener("click", () => splitTopoGroup(g, members));
+    return el("div", { class: "topo-opt-box", style: "margin:0;padding:8px 12px;display:flex;gap:10px;align-items:center" },
+      el("span", {}, el("b", { class: "mono" }, members.map(gpuLabel).join(" + ")), " · " + g.model +
+        (g.tensor_split ? " · tỷ lệ " + g.tensor_split : "") + " · " + (g.vram_total_bytes / 1073741824).toFixed(0) + " GB"), btn);
+  }));
+}
+
+async function splitTopoGroup(g, members) {
+  const fb = document.getElementById("topo-feedback");
+  const model = TOPO_DEFAULT_MODEL.split;
+  if (!confirm("Tách nhóm " + members.join(" + ") + ": mỗi máy sẽ chạy riêng " + model + " (khởi động lại engine, các yêu cầu đang chạy bị ngắt). Tiếp tục?")) return;
+  fb.textContent = "Đang tách nhóm…"; fb.className = "pill warn";
+  try {
+    const r = await api("/api/cluster/topology", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "split", model, primary_worker_id: members[0], rpc_worker_ids: members.slice(1) }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || ("Lỗi HTTP " + r.status));
+    fb.textContent = "Đã tách nhóm."; fb.className = "pill ok";
+    loadTopology();
+  } catch (e) { fb.textContent = "Lỗi tách nhóm: " + e.message; fb.className = "pill err"; }
 }
 
 function getBadgeClass(badge) {
@@ -1056,55 +1188,53 @@ function getBadgeClass(badge) {
   return "badge-split";
 }
 
-document.getElementById("topo-form").addEventListener("submit", async ev => {
-  ev.preventDefault();
+document.getElementById("topo-apply-btn").addEventListener("click", async () => {
   const applyBtn = document.getElementById("topo-apply-btn");
   const fb = document.getElementById("topo-feedback");
-  applyBtn.disabled = true;
-  fb.textContent = "Đang chuyển sang " + selectedTopoMode + "… chờ các worker báo trạng thái (nạp model lớn có thể mất vài phút)";
-  fb.className = "pill warn";
-
-  const payload = {
-    mode: selectedTopoMode,
-    model: document.getElementById("topo-model-select").value,
-    primary_worker_id: document.getElementById("topo-primary").value,
-    rpc_worker_ids: topoMembers()
-  };
-  const kv = document.getElementById("topo-kv").value;
-  if (kv && selectedTopoMode !== "split") payload.kv_type = kv;
+  const fail = msg => { fb.textContent = msg; fb.className = "pill err"; };
+  const { primary, members } = topoChosen();
+  const all = primary ? [primary, ...members] : [];
+  const modelKey = document.getElementById("topo-model-select").value;
+  if (!all.length) return fail("Chọn ít nhất một máy ở bước 3.");
+  const payload = { mode: selectedTopoMode, model: modelKey, primary_worker_id: primary, rpc_worker_ids: members };
 
   if (selectedTopoMode === "smart_1gpu") {
     const n = parseInt(document.getElementById("topo-ncmoe").value, 10);
-    if (!(n > 0)) {
-      fb.textContent = "Nhập N (-ncmoe) > 0: không có giá trị mặc định, hãy dùng số từ bài đo.";
-      fb.className = "pill err";
-      applyBtn.disabled = false;
-      return;
-    }
+    if (!(n > 0)) return fail("Nhập N (-ncmoe) > 0: không có giá trị mặc định, hãy dùng số từ bài đo (các nút gợi ý ở bước 3).");
     payload.n_cpu_moe = n;
   } else if (selectedTopoMode === "merged") {
-    const ts = document.getElementById("topo-tensor-split").value.trim();
-    if (ts) payload.tensor_split = ts;
+    if (all.length < 2) return fail("Chế độ gộp cần chọn ít nhất 2 máy.");
+    const adv = document.getElementById("topo-ts-adv").value.trim();
+    if (all.length === 2) {
+      const p = parseInt(document.getElementById("topo-slider").value, 10);
+      payload.tensor_split = adv || (p + "," + (100 - p));
+      const worst = all.map((id, i) => topoEstimate(id, (i === 0 ? p : 100 - p) / 100)).some(e => e.level === "bad");
+      if (!adv && worst && !confirm("Ước tính cho thấy tỷ lệ này VƯỢT VRAM của một card (tốc độ có thể sụp hoặc không nạp được). Vẫn áp dụng?")) return;
+    } else {
+      const ts = adv || document.getElementById("topo-ts-many").value.trim();
+      if (ts) payload.tensor_split = ts;
+    }
+    const kv = document.getElementById("topo-kv").value;
+    if (kv) payload.kv_type = kv;
     payload.rpc_port = 50052;
   }
+  if (!confirm("Đổi chế độ sẽ khởi động lại engine trên các máy (khoảng 15–90 giây), các yêu cầu đang chạy sẽ bị ngắt. Tiếp tục?")) return;
 
+  applyBtn.disabled = true;
+  fb.textContent = "Đang chuyển… chờ các máy báo trạng thái (nạp model lớn có thể mất vài phút)";
+  fb.className = "pill warn";
   try {
-    const r = await api("/api/cluster/topology", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    const r = await api("/api/cluster/topology", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
       throw new Error(err.error || ("Lỗi HTTP " + r.status));
     }
-    fb.textContent = "Chuyển đổi thành công sang chế độ " + selectedTopoMode + "!";
+    fb.textContent = "Đã chuyển xong.";
     fb.className = "pill ok";
     loadTopology();
     loadPage();
   } catch (e) {
-    fb.textContent = "Lỗi chuyển đổi: " + e.message;
-    fb.className = "pill err";
+    fail("Lỗi chuyển đổi: " + e.message);
   } finally {
     applyBtn.disabled = false;
   }

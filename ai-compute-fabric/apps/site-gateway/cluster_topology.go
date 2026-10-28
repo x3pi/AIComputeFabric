@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,8 +47,9 @@ var tensorSplitPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?(,[0-9]+(\.[0-9]+
 // TopologyWorkerStatus describes the role and state of one worker in the current topology.
 type TopologyWorkerStatus struct {
 	WorkerID  string `json:"worker_id"`
-	Role      string `json:"role"` // master, member, standalone
-	Mode      string `json:"mode"` // split, smart_1gpu, merged, rpc-worker
+	Group     string `json:"group_id,omitempty"` // id of the merged group the worker belongs to
+	Role      string `json:"role"`               // master, member, standalone
+	Mode      string `json:"mode"`               // split, smart_1gpu, merged, rpc-worker
 	Model     string `json:"model"`
 	Online    bool   `json:"online"`
 	State     string `json:"state"` // running, reclaiming, yielded, etc.
@@ -58,7 +60,23 @@ type TopologyWorkerStatus struct {
 	Badge     string `json:"badge"`
 }
 
+// TopologyGroupStatus is one merged group: a master plus its RPC members serving one model together.
+type TopologyGroupStatus struct {
+	ID           string   `json:"id"` // = primary worker id
+	PrimaryID    string   `json:"primary_worker_id"`
+	RPCWorkerIDs []string `json:"rpc_worker_ids"`
+	Model        string   `json:"model"`
+	KVType       string   `json:"kv_type,omitempty"`
+	TensorSplit  string   `json:"tensor_split,omitempty"`
+	RPCPort      int      `json:"rpc_port,omitempty"`
+	VRAMTotal    uint64   `json:"vram_total_bytes"`
+}
+
 // ClusterTopologyStatus is returned by GET /api/cluster/topology.
+//
+// Groups lists every merged group; workers that are in no group run on their own (split or smart_1gpu). The top-level
+// Mode/PrimaryWorkerID/... fields are the legacy single-group view: the first merged group if there is one, else
+// smart_1gpu if any worker is in it, else split.
 type ClusterTopologyStatus struct {
 	Mode            string                          `json:"mode"` // split, smart_1gpu, merged
 	PrimaryWorkerID string                          `json:"primary_worker_id,omitempty"`
@@ -71,10 +89,16 @@ type ClusterTopologyStatus struct {
 	Status          string                          `json:"status"` // ready, switching, error
 	LastError       string                          `json:"last_error,omitempty"`
 	UpdatedAt       time.Time                       `json:"updated_at"`
+	Groups          []TopologyGroupStatus           `json:"groups"`
+	Busy            []string                        `json:"busy_worker_ids"`
 	Workers         map[string]TopologyWorkerStatus `json:"workers"`
 }
 
 // TopologySwitchRequest is received by POST /api/cluster/topology.
+//
+// It (re)configures exactly the listed workers (primary_worker_id + rpc_worker_ids); other workers and groups are not
+// touched, so several groups can be built independently. A request that touches any member of an existing merged
+// group must list the whole group (a group is dissolved or replaced as a unit).
 type TopologySwitchRequest struct {
 	Mode            string   `json:"mode"` // split, smart_1gpu, merged
 	PrimaryWorkerID string   `json:"primary_worker_id,omitempty"`
@@ -86,11 +110,15 @@ type TopologySwitchRequest struct {
 	RPCPort         int      `json:"rpc_port,omitempty"`
 }
 
-// TopologyCoordinator coordinates 1-click topology switches across cluster workers.
+// TopologyCoordinator coordinates topology switches across cluster workers.
 //
 // Control channel: it POSTs worker-guard's /api/engine at the engine URL the worker registered. That is the interim
 // design of the plan (D-TOPO): the worker API is unauthenticated, so keep it on a trusted LAN. A switch is only
 // reported successful once the workers' own heartbeats show the new model/state, never on the HTTP 202 alone.
+//
+// State is per worker, not global: `groups` holds the merged groups (key = master id), `indep` the standalone workers'
+// last applied configuration, and `locked` the workers a running switch is touching. Switches on disjoint worker sets
+// run concurrently; one that overlaps a locked worker gets ErrTopologyBusy.
 type TopologyCoordinator struct {
 	// Timeouts and poll interval for waiting on heartbeats; exported so tests (and later flags) can change them.
 	RPCReadyTimeout time.Duration
@@ -101,20 +129,13 @@ type TopologyCoordinator struct {
 	audit  *AuditLog
 	client *http.Client
 
-	mu              sync.RWMutex // guards the fields below; never held across network calls
-	busy            bool
-	mode            string
-	primaryWorkerID string
-	rpcWorkerIDs    []string
-	model           string
-	nCpuMoe         int
-	kvType          string
-	tensorSplit     string
-	rpcServers      string
-	rpcPort         int
-	status          string
-	lastError       string
-	updatedAt       time.Time
+	mu        sync.RWMutex // guards the fields below; never held across network calls
+	groups    map[string]topoPlan
+	indep     map[string]topoPlan // key = worker id; plan.primaryID = that worker, no rpcIDs
+	locked    map[string]bool
+	status    string
+	lastError string
+	updatedAt time.Time
 }
 
 func NewTopologyCoordinator(reg *Registry, audit *AuditLog) *TopologyCoordinator {
@@ -125,9 +146,10 @@ func NewTopologyCoordinator(reg *Registry, audit *AuditLog) *TopologyCoordinator
 		reg:             reg,
 		audit:           audit,
 		client:          &http.Client{Timeout: 30 * time.Second},
-		mode:            TopologyModeSplit,
+		groups:          map[string]topoPlan{},
+		indep:           map[string]topoPlan{},
+		locked:          map[string]bool{},
 		status:          "ready",
-		rpcPort:         50052,
 		updatedAt:       time.Now(),
 	}
 }
@@ -141,11 +163,26 @@ func (tc *TopologyCoordinator) GetStatus() ClusterTopologyStatus {
 
 func (tc *TopologyCoordinator) statusLocked() ClusterTopologyStatus {
 	workers := tc.reg.List()
-	var memberBytes uint64
+	vram := map[string]uint64{}
 	for _, w := range workers {
-		if w.WorkerID == tc.primaryWorkerID || containsString(tc.rpcWorkerIDs, w.WorkerID) {
-			memberBytes += w.VRAMTotal
+		vram[w.WorkerID] = w.VRAMTotal
+	}
+	gids := make([]string, 0, len(tc.groups))
+	for id := range tc.groups {
+		gids = append(gids, id)
+	}
+	sort.Strings(gids)
+	groups := make([]TopologyGroupStatus, 0, len(gids))
+	groupOf := map[string]string{}
+	for _, id := range gids {
+		g := tc.groups[id]
+		gs := TopologyGroupStatus{ID: id, PrimaryID: g.primaryID, RPCWorkerIDs: append([]string{}, g.rpcIDs...), Model: g.model,
+			KVType: g.kvType, TensorSplit: g.tensorSplit, RPCPort: g.rpcPort}
+		for _, m := range append([]string{g.primaryID}, g.rpcIDs...) {
+			gs.VRAMTotal += vram[m]
+			groupOf[m] = id
 		}
+		groups = append(groups, gs)
 	}
 	workersMap := make(map[string]TopologyWorkerStatus, len(workers))
 	for _, w := range workers {
@@ -154,28 +191,60 @@ func (tc *TopologyCoordinator) statusLocked() ClusterTopologyStatus {
 			VRAMTotal: w.VRAMTotal, VRAMFree: w.VRAMFree, EngineURL: w.EngineURL,
 			Role: "standalone", Mode: TopologyModeSplit, Badge: "SPLIT WORKER",
 		}
-		switch {
-		case tc.mode == TopologyModeMerged && w.WorkerID == tc.primaryWorkerID:
-			st.Role, st.Mode = "master", TopologyModeMerged
-			st.Badge = fmt.Sprintf("MASTER (MERGED %d GPU, %.0f GB)", 1+len(tc.rpcWorkerIDs), float64(memberBytes)/(1<<30))
-		case tc.mode == TopologyModeMerged && containsString(tc.rpcWorkerIDs, w.WorkerID):
-			st.Role, st.Mode = "member", TopologyModeRPCWrk
-			st.Badge = fmt.Sprintf("RPC GPU MEMBER -> %s", tc.primaryWorkerID)
-		case tc.mode == TopologyModeMerged:
-			st.Badge = "STANDALONE"
-		case tc.mode == TopologyModeSmart1G:
+		if gid, ok := groupOf[w.WorkerID]; ok {
+			g, gs := tc.groups[gid], groups[sort.SearchStrings(gids, gid)]
+			st.Group = gid
+			if w.WorkerID == g.primaryID {
+				st.Role, st.Mode = "master", TopologyModeMerged
+				st.Badge = fmt.Sprintf("MASTER (MERGED %d GPU, %.0f GB)", 1+len(g.rpcIDs), float64(gs.VRAMTotal)/(1<<30))
+			} else {
+				st.Role, st.Mode = "member", TopologyModeRPCWrk
+				st.Badge = fmt.Sprintf("RPC GPU MEMBER -> %s", g.primaryID)
+			}
+		} else if c, ok := tc.indep[w.WorkerID]; ok && c.mode == TopologyModeSmart1G {
 			st.Mode, st.Badge = TopologyModeSmart1G, "SMART 1-GPU HYBRID"
+		} else if len(groups) > 0 {
+			st.Badge = "STANDALONE"
 		}
 		workersMap[w.WorkerID] = st
 	}
-	return ClusterTopologyStatus{
-		Mode: tc.mode, PrimaryWorkerID: tc.primaryWorkerID, RPCWorkerIDs: append([]string{}, tc.rpcWorkerIDs...),
-		Model: tc.model, NCpuMoe: tc.nCpuMoe, KVType: tc.kvType, TensorSplit: tc.tensorSplit, RPCPort: tc.rpcPort,
-		Status: tc.status, LastError: tc.lastError, UpdatedAt: tc.updatedAt, Workers: workersMap,
+	busy := make([]string, 0, len(tc.locked))
+	for id := range tc.locked {
+		busy = append(busy, id)
 	}
+	sort.Strings(busy)
+	out := ClusterTopologyStatus{Mode: TopologyModeSplit, RPCWorkerIDs: []string{}, Status: tc.status, LastError: tc.lastError,
+		UpdatedAt: tc.updatedAt, Groups: groups, Busy: busy, Workers: workersMap}
+	legacy := topoPlan{}
+	switch {
+	case len(gids) > 0:
+		legacy, out.Mode = tc.groups[gids[0]], TopologyModeMerged
+	default:
+		ids := make([]string, 0, len(tc.indep))
+		for id := range tc.indep {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			if tc.indep[id].mode == TopologyModeSmart1G {
+				legacy, out.Mode = tc.indep[id], TopologyModeSmart1G
+				break
+			}
+		}
+		if legacy.model == "" && len(ids) > 0 {
+			legacy = tc.indep[ids[0]]
+		}
+	}
+	out.Model, out.NCpuMoe, out.KVType, out.TensorSplit, out.RPCPort = legacy.model, legacy.nCpuMoe, legacy.kvType, legacy.tensorSplit, legacy.rpcPort
+	if out.Mode == TopologyModeMerged {
+		out.PrimaryWorkerID, out.RPCWorkerIDs = legacy.primaryID, append([]string{}, legacy.rpcIDs...)
+	} else if legacy.primaryID != "" {
+		out.PrimaryWorkerID = legacy.primaryID
+	}
+	return out
 }
 
-// topoPlan is a validated request with every default resolved.
+// topoPlan is a validated request with every default resolved (also the stored record of an applied configuration).
 type topoPlan struct {
 	mode        string
 	primaryID   string
@@ -185,7 +254,10 @@ type topoPlan struct {
 	kvType      string
 	tensorSplit string
 	rpcPort     int
+	rpcServers  string
 }
+
+func (p topoPlan) ids() []string { return append([]string{p.primaryID}, p.rpcIDs...) }
 
 func (tc *TopologyCoordinator) validate(req TopologySwitchRequest, workers map[string]Worker) (topoPlan, error) {
 	p := topoPlan{mode: strings.TrimSpace(req.Mode), primaryID: req.PrimaryWorkerID, rpcIDs: req.RPCWorkerIDs,
@@ -216,8 +288,7 @@ func (tc *TopologyCoordinator) validate(req TopologySwitchRequest, workers map[s
 		return p, badTopology("primary_worker_id is required")
 	}
 	seen := map[string]bool{}
-	ids := append([]string{p.primaryID}, p.rpcIDs...)
-	for _, id := range ids {
+	for _, id := range p.ids() {
 		if seen[id] {
 			return p, badTopology("worker %q listed twice", id)
 		}
@@ -248,7 +319,7 @@ func (tc *TopologyCoordinator) validate(req TopologySwitchRequest, workers map[s
 	return p, nil
 }
 
-// SwitchTopology transitions the cluster between split, smart_1gpu and merged modes. It returns once the workers'
+// SwitchTopology (re)configures the listed workers as split, smart_1gpu or one merged group. It returns once the workers'
 // heartbeats confirm the new state; on failure it restores the previous configuration (best effort) and reports both.
 func (tc *TopologyCoordinator) SwitchTopology(ctx context.Context, req TopologySwitchRequest, caller Principal, remoteAddr string) (*ClusterTopologyStatus, error) {
 	workers := map[string]Worker{}
@@ -260,21 +331,50 @@ func (tc *TopologyCoordinator) SwitchTopology(ctx context.Context, req TopologyS
 		tc.record(caller, remoteAddr, http.StatusBadRequest)
 		return nil, err
 	}
+	ids := plan.ids()
 
 	tc.mu.Lock()
-	if tc.busy {
-		tc.mu.Unlock()
-		tc.record(caller, remoteAddr, http.StatusConflict)
-		return nil, ErrTopologyBusy
+	for _, id := range ids {
+		if tc.locked[id] {
+			tc.mu.Unlock()
+			tc.record(caller, remoteAddr, http.StatusConflict)
+			return nil, fmt.Errorf("worker %s: %w", id, ErrTopologyBusy)
+		}
 	}
-	tc.busy, tc.status, tc.lastError = true, "switching", ""
-	prev := topoPrev{mode: tc.mode, primaryID: tc.primaryWorkerID, rpcIDs: append([]string{}, tc.rpcWorkerIDs...),
-		model: tc.model, nCpuMoe: tc.nCpuMoe, kvType: tc.kvType, tensorSplit: tc.tensorSplit, rpcServers: tc.rpcServers, rpcPort: tc.rpcPort}
+	// a merged group is changed as a unit: touching one member without the others would orphan them
+	var prevGroups []topoPlan
+	for gid, g := range tc.groups {
+		touched := false
+		for _, m := range g.ids() {
+			touched = touched || containsString(ids, m)
+		}
+		if !touched {
+			continue
+		}
+		for _, m := range g.ids() {
+			if !containsString(ids, m) {
+				tc.mu.Unlock()
+				tc.record(caller, remoteAddr, http.StatusBadRequest)
+				return nil, badTopology("worker %q is in merged group %q: list the whole group (%s) to change or dissolve it",
+					m, gid, strings.Join(g.ids(), ", "))
+			}
+		}
+		prevGroups = append(prevGroups, g)
+	}
+	prevIndep := map[string]topoPlan{}
+	for _, id := range ids {
+		if c, ok := tc.indep[id]; ok {
+			prevIndep[id] = c
+		}
+		tc.locked[id] = true
+	}
+	tc.status, tc.lastError = "switching", ""
 	tc.mu.Unlock()
+	prev := topoPrev{groups: prevGroups, indep: prevIndep}
 
 	// What each touched worker reports now, used to restore it if the switch fails.
 	before := map[string]Worker{}
-	for _, id := range append([]string{plan.primaryID}, plan.rpcIDs...) {
+	for _, id := range ids {
 		before[id] = workers[id]
 	}
 
@@ -295,7 +395,7 @@ func (tc *TopologyCoordinator) SwitchTopology(ctx context.Context, req TopologyS
 			msg += "; previous configuration restored"
 		}
 		tc.mu.Lock()
-		tc.busy, tc.status, tc.lastError, tc.updatedAt = false, "error", msg, time.Now()
+		tc.unlockLocked(ids, "error", msg)
 		tc.mu.Unlock()
 		tc.record(caller, remoteAddr, http.StatusInternalServerError)
 		log.Printf("topology switch to %s failed: %s", plan.mode, msg)
@@ -303,25 +403,57 @@ func (tc *TopologyCoordinator) SwitchTopology(ctx context.Context, req TopologyS
 	}
 
 	tc.mu.Lock()
-	tc.mode, tc.primaryWorkerID, tc.rpcWorkerIDs = plan.mode, plan.primaryID, plan.rpcIDs
-	tc.model, tc.nCpuMoe, tc.kvType, tc.tensorSplit = plan.model, plan.nCpuMoe, plan.kvType, plan.tensorSplit
-	tc.rpcServers, tc.rpcPort = rpcServers, plan.rpcPort
-	tc.busy, tc.status, tc.updatedAt = false, "ready", time.Now()
+	for _, g := range prevGroups {
+		delete(tc.groups, g.primaryID)
+	}
+	plan.rpcServers = rpcServers
+	if plan.mode == TopologyModeMerged {
+		tc.groups[plan.primaryID] = plan
+		for _, id := range ids {
+			delete(tc.indep, id)
+		}
+	} else {
+		for _, id := range ids {
+			c := plan
+			c.primaryID, c.rpcIDs = id, nil
+			tc.indep[id] = c
+		}
+	}
+	tc.unlockLocked(ids, "ready", "")
 	cur := tc.statusLocked()
 	tc.mu.Unlock()
 	tc.record(caller, remoteAddr, http.StatusOK)
 	return &cur, nil
 }
 
+// unlockLocked releases a switch's workers. The overall status only leaves "switching" when no other switch is running.
+func (tc *TopologyCoordinator) unlockLocked(ids []string, status, lastErr string) {
+	for _, id := range ids {
+		delete(tc.locked, id)
+	}
+	if len(tc.locked) == 0 {
+		tc.status = status
+	}
+	if lastErr != "" || status == "ready" {
+		tc.lastError = lastErr
+	}
+	tc.updatedAt = time.Now()
+}
+
+// topoPrev is what the touched workers were doing before a switch: the merged groups they were in and, for the others,
+// their last independent configuration.
 type topoPrev struct {
-	mode, primaryID string
-	rpcIDs          []string
-	model           string
-	nCpuMoe         int
-	kvType          string
-	tensorSplit     string
-	rpcServers      string
-	rpcPort         int
+	groups []topoPlan
+	indep  map[string]topoPlan
+}
+
+func (pv topoPrev) groupOf(id string) (topoPlan, bool) {
+	for _, g := range pv.groups {
+		if containsString(g.ids(), id) {
+			return g, true
+		}
+	}
+	return topoPlan{}, false
 }
 
 func (tc *TopologyCoordinator) record(caller Principal, remoteAddr string, code int) {
@@ -366,9 +498,10 @@ func (tc *TopologyCoordinator) applyMerged(ctx context.Context, p topoPlan, work
 }
 
 // applyIndependent covers split and smart_1gpu: every listed worker serves the model on its own.
-// Coming from merged, the master goes first so it releases its RPC connections before the members change.
+// A former merged master goes first so it releases its RPC connections before its members change.
 func (tc *TopologyCoordinator) applyIndependent(ctx context.Context, p topoPlan, prev topoPrev, workers map[string]Worker) error {
-	order := append([]string{p.primaryID}, p.rpcIDs...)
+	order := p.ids()
+	sort.SliceStable(order, func(i, j int) bool { return isMaster(prev, order[i]) && !isMaster(prev, order[j]) })
 	posted := map[string]time.Time{}
 	for _, id := range order {
 		payload := map[string]any{"mode": p.mode, "model": p.model, "n_cpu_moe": p.nCpuMoe}
@@ -379,7 +512,7 @@ func (tc *TopologyCoordinator) applyIndependent(ctx context.Context, p topoPlan,
 			return fmt.Errorf("worker %s: %w", id, err)
 		}
 		posted[id] = time.Now()
-		if prev.mode == TopologyModeMerged && id == prev.primaryID {
+		if isMaster(prev, id) {
 			if err := tc.waitFor(ctx, id, tc.LoadTimeout, modelRunning(p.model, posted[id])); err != nil {
 				return fmt.Errorf("former master %s did not restart: %w", id, err)
 			}
@@ -393,20 +526,25 @@ func (tc *TopologyCoordinator) applyIndependent(ctx context.Context, p topoPlan,
 	return nil
 }
 
+func isMaster(prev topoPrev, id string) bool {
+	g, ok := prev.groupOf(id)
+	return ok && g.primaryID == id
+}
+
 // rollback puts every touched worker back as it was reported before the switch (and, for a former merged master,
 // with its merged configuration). It does not wait for the restore: the guard restarts engines when the GPU is free.
 func (tc *TopologyCoordinator) rollback(ctx context.Context, p topoPlan, prev topoPrev, before map[string]Worker) error {
 	var failed []string
-	ids := append([]string{p.primaryID}, p.rpcIDs...)
-	// restore RPC members first when the previous state was merged, so the master can reconnect
-	if prev.mode == TopologyModeMerged {
-		ids = append(append([]string{}, p.rpcIDs...), p.primaryID)
-	}
+	ids := p.ids()
+	// restore RPC members first when they were in a merged group, so the master can reconnect
+	sort.SliceStable(ids, func(i, j int) bool { return !isMaster(prev, ids[i]) && isMaster(prev, ids[j]) })
 	for _, id := range ids {
 		b := before[id]
 		if b.EngineURL == "" {
 			continue
 		}
+		g, inGroup := prev.groupOf(id)
+		pi := prev.indep[id]
 		var payload map[string]any
 		switch {
 		case strings.HasPrefix(b.Model, rpcModelMarker):
@@ -414,16 +552,20 @@ func (tc *TopologyCoordinator) rollback(ctx context.Context, p topoPlan, prev to
 			payload = map[string]any{"mode": TopologyModeRPCWrk, "rpc_port": port}
 		case b.Model == "":
 			continue // nothing known to restore
-		case prev.mode == TopologyModeMerged && id == prev.primaryID:
-			payload = map[string]any{"mode": TopologyModeMerged, "model": b.Model, "rpc_servers": prev.rpcServers,
-				"split_mode": "layer", "tensor_split": llamaTensorSplit(prev.tensorSplit)}
-		case prev.mode == TopologyModeSmart1G:
-			payload = map[string]any{"mode": TopologyModeSmart1G, "model": b.Model, "n_cpu_moe": prev.nCpuMoe}
+		case inGroup && g.primaryID == id:
+			payload = map[string]any{"mode": TopologyModeMerged, "model": b.Model, "rpc_servers": g.rpcServers,
+				"split_mode": "layer", "tensor_split": llamaTensorSplit(g.tensorSplit)}
+		case pi.mode == TopologyModeSmart1G:
+			payload = map[string]any{"mode": TopologyModeSmart1G, "model": b.Model, "n_cpu_moe": pi.nCpuMoe}
 		default:
 			payload = map[string]any{"mode": TopologyModeSplit, "model": b.Model}
 		}
-		if prev.kvType != "" && payload["mode"] != TopologyModeRPCWrk {
-			payload["kv_type"] = prev.kvType
+		kv := pi.kvType
+		if inGroup {
+			kv = g.kvType
+		}
+		if kv != "" && payload["mode"] != TopologyModeRPCWrk {
+			payload["kv_type"] = kv
 		}
 		if err := tc.postEngine(ctx, b.EngineURL, payload); err != nil {
 			failed = append(failed, fmt.Sprintf("%s: %v", id, err))

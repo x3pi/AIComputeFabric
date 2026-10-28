@@ -120,10 +120,20 @@ function toggleTheme() {
   try { localStorage.setItem("aicf_theme", next); } catch {}
 }
 
-function askAdminToken(msg) {
+// Many requests fire at page load and all get 401 together. `usedTok` is the token the failed request sent: if another
+// request has stored a different token meanwhile, just retry with it instead of asking again; if the user cancelled
+// a moment ago, do not re-prompt for every other pending request.
+let lastTokenCancel = 0;
+function askAdminToken(msg, usedTok) {
+  if (usedTok !== undefined) {
+    const cur = store.get("aicf_admin");
+    if (cur && cur !== usedTok) return true;
+    if (Date.now() - lastTokenCancel < 5000) return false;
+  }
   const t = prompt(msg || "Nhập admin token của gateway (--admin-token):", "");
-  if (t !== null) store.set("aicf_admin", t.trim());
-  return !!t;
+  if (t === null || !t.trim()) { lastTokenCancel = Date.now(); return false; }
+  store.set("aicf_admin", t.trim());
+  return true;
 }
 
 function currentPage() {
@@ -433,7 +443,7 @@ async function api(path, opts = {}) {
     const tok = store.get("aicf_admin");
     if (tok) headers["Authorization"] = "Bearer " + tok;
     const r = await fetch(path, Object.assign({}, opts, { headers }));
-    if (r.status === 401 && attempt === 0 && askAdminToken(tok ? "Token sai. Nhập lại admin token:" : null)) continue;
+    if (r.status === 401 && attempt === 0 && askAdminToken(tok ? "Token sai. Nhập lại admin token:" : null, tok)) continue;
     return r;
   }
 }
@@ -446,7 +456,7 @@ async function stream(path, onMessage) {
       const tok = store.get("aicf_admin");
       if (tok) headers["Authorization"] = "Bearer " + tok;
       const r = await fetch(path, { headers });
-      if (r.status === 401) { if (!askAdminToken()) return; continue; }
+      if (r.status === 401) { if (!askAdminToken(null, tok)) return; continue; }
       const reader = r.body.getReader(), dec = new TextDecoder();
       let buf = "";
       for (;;) {

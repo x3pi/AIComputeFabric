@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -297,7 +298,7 @@ func TestTopologyBusyReturns409AndStatusStaysReadable(t *testing.T) {
 		done <- err
 	}()
 	<-fw.started
-	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeSplit, PrimaryWorkerID: "a", Model: "m.gguf"}); err != ErrTopologyBusy {
+	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeSplit, PrimaryWorkerID: "a", Model: "m.gguf"}); !errors.Is(err, ErrTopologyBusy) {
 		t.Errorf("second switch: got %v, want ErrTopologyBusy", err)
 	}
 	got := make(chan ClusterTopologyStatus, 1)
@@ -402,5 +403,105 @@ func TestSmartSameModelNewNWaitsForAFreshHeartbeat(t *testing.T) {
 	_, err := r.do(TopologySwitchRequest{Mode: "smart_1gpu", PrimaryWorkerID: "pc-001", Model: "m.gguf", NCpuMoe: 20})
 	if err == nil {
 		t.Fatal("success was reported from a stale heartbeat (same model name, new N)")
+	}
+}
+
+func TestTopologyTwoGroupsAndAStandaloneAreIndependent(t *testing.T) {
+	r := newTopoRig(t, "a", "b", "c", "d", "e")
+	for _, g := range [][]string{{"a", "b"}, {"c", "d"}} {
+		if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeMerged, PrimaryWorkerID: g[0], RPCWorkerIDs: g[1:], Model: "big.gguf"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeSmart1G, PrimaryWorkerID: "e", Model: "m.gguf", NCpuMoe: 26}); err != nil {
+		t.Fatal(err)
+	}
+	st := r.tc.GetStatus()
+	if len(st.Groups) != 2 || st.Groups[0].ID != "a" || st.Groups[1].ID != "c" || st.Groups[1].RPCWorkerIDs[0] != "d" {
+		t.Fatalf("groups %+v", st.Groups)
+	}
+	if st.Workers["b"].Group != "a" || st.Workers["d"].Group != "c" || st.Workers["c"].Role != "master" ||
+		st.Workers["e"].Mode != TopologyModeSmart1G || st.Workers["e"].Group != "" {
+		t.Errorf("worker roles %+v", st.Workers)
+	}
+	if got := r.callsTo("c"); len(got) != 1 {
+		t.Errorf("building group a+b or e must not touch c: %v", got)
+	}
+}
+
+func TestTopologyGroupIsChangedAsAUnit(t *testing.T) {
+	r := newTopoRig(t, "a", "b", "c")
+	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeMerged, PrimaryWorkerID: "a", RPCWorkerIDs: []string{"b"}, Model: "big.gguf"}); err != nil {
+		t.Fatal(err)
+	}
+	n := len(r.callIDs())
+	// split only "b" out of the group: refused, nothing is touched
+	_, err := r.do(TopologySwitchRequest{Mode: TopologyModeSplit, PrimaryWorkerID: "b", Model: "m.gguf"})
+	var reqErr *topologyRequestError
+	if !errors.As(err, &reqErr) || !strings.Contains(err.Error(), "whole group") {
+		t.Fatalf("partial dissolve: got %v", err)
+	}
+	// stealing the member into another group is refused as well
+	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeMerged, PrimaryWorkerID: "c", RPCWorkerIDs: []string{"b"}, Model: "big.gguf"}); !errors.As(err, &reqErr) {
+		t.Fatalf("steal member: got %v", err)
+	}
+	if len(r.callIDs()) != n || len(r.tc.GetStatus().Groups) != 1 {
+		t.Fatalf("a refused request changed something: calls %v", r.callIDs())
+	}
+	// dissolving the whole group works, and c is then free to be merged with b
+	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeSplit, PrimaryWorkerID: "a", RPCWorkerIDs: []string{"b"}, Model: "m.gguf"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.tc.GetStatus().Groups) != 0 {
+		t.Fatal("group still listed after dissolve")
+	}
+	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeMerged, PrimaryWorkerID: "c", RPCWorkerIDs: []string{"b"}, Model: "big.gguf"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTopologyDisjointSwitchesRunConcurrentlyOverlapGets409(t *testing.T) {
+	r := newTopoRig(t, "a", "b", "c")
+	fw := r.workers["a"]
+	fw.block, fw.started = make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.do(TopologySwitchRequest{Mode: TopologyModeSplit, PrimaryWorkerID: "a", Model: "m.gguf"})
+		done <- err
+	}()
+	<-fw.started
+	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeSplit, PrimaryWorkerID: "c", Model: "m.gguf"}); err != nil {
+		t.Errorf("disjoint worker must not wait for a: %v", err)
+	}
+	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeMerged, PrimaryWorkerID: "b", RPCWorkerIDs: []string{"a"}, Model: "m.gguf"}); !errors.Is(err, ErrTopologyBusy) {
+		t.Errorf("overlap: got %v, want busy", err)
+	}
+	if st := r.tc.GetStatus(); st.Status != "switching" || len(st.Busy) != 1 || st.Busy[0] != "a" {
+		t.Errorf("status %q busy %v", st.Status, st.Busy)
+	}
+	close(fw.block)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if st := r.tc.GetStatus(); st.Status != "ready" || len(st.Busy) != 0 {
+		t.Errorf("after: %q %v", st.Status, st.Busy)
+	}
+}
+
+func TestTopologyFailedGroupRollbackLeavesOtherGroupAlone(t *testing.T) {
+	r := newTopoRig(t, "a", "b", "c", "d")
+	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeMerged, PrimaryWorkerID: "a", RPCWorkerIDs: []string{"b"}, Model: "big.gguf"}); err != nil {
+		t.Fatal(err)
+	}
+	r.workers["c"].stuck = true // master c never reports running
+	if _, err := r.do(TopologySwitchRequest{Mode: TopologyModeMerged, PrimaryWorkerID: "c", RPCWorkerIDs: []string{"d"}, Model: "big.gguf"}); err == nil {
+		t.Fatal("expected failure")
+	}
+	st := r.tc.GetStatus()
+	if len(st.Groups) != 1 || st.Groups[0].ID != "a" || st.Status != "error" {
+		t.Errorf("after failed second group: %+v", st)
+	}
+	if len(r.callsTo("a")) != 1 || len(r.callsTo("b")) != 1 {
+		t.Errorf("group a+b was touched by group c+d's rollback: a=%v b=%v", r.callsTo("a"), r.callsTo("b"))
 	}
 }

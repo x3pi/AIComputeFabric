@@ -30,14 +30,18 @@ paths:
       responses:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/ClusterTopology"}}}}
     post:
-      summary: Coordinate 1-click transition between cluster topology modes (admin)
+      summary: (Re)configure the listed workers as split, smart_1gpu or one merged group (admin)
+      description: >
+        Only primary_worker_id and rpc_worker_ids are touched, so several merged groups can coexist with standalone
+        workers. A request that touches a member of an existing merged group must list the whole group.
       requestBody:
         required: true
         content: {application/json: {schema: {$ref: "#/components/schemas/TopologySwitchRequest"}}}
       responses:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/ClusterTopology"}}}}
-        "400": {description: bad JSON or invalid mode}
+        "400": {description: bad JSON, invalid request, or a merged group touched only partly}
         "403": {description: role not allowed}
+        "409": {description: a listed worker is already being switched}
   /api/workers:
     get:
       summary: Page of workers
@@ -536,8 +540,11 @@ components:
         error: {description: reason when failed or cancelled, otherwise null}
     ClusterTopology:
       type: object
-      required: [mode, rpc_worker_ids, model, status, updated_at, workers]
+      required: [mode, rpc_worker_ids, model, status, updated_at, groups, busy_worker_ids, workers]
+      description: Top-level mode/primary/rpc fields are the legacy single-group view (first merged group, else smart_1gpu, else split); groups is authoritative.
       properties:
+        groups: {type: array, items: {$ref: "#/components/schemas/TopologyGroup"}}
+        busy_worker_ids: {type: array, items: {type: string}, description: workers a running switch is touching}
         mode: {type: string, enum: [split, smart_1gpu, merged]}
         primary_worker_id: {type: string}
         rpc_worker_ids: {type: array, items: {type: string}}
@@ -550,11 +557,24 @@ components:
         last_error: {type: string}
         updated_at: {type: string, format: date-time}
         workers: {type: object, additionalProperties: {$ref: "#/components/schemas/TopologyWorker"}}
+    TopologyGroup:
+      type: object
+      required: [id, primary_worker_id, rpc_worker_ids, model, vram_total_bytes]
+      properties:
+        id: {type: string, description: same as primary_worker_id}
+        primary_worker_id: {type: string}
+        rpc_worker_ids: {type: array, items: {type: string}}
+        model: {type: string}
+        kv_type: {type: string}
+        tensor_split: {type: string}
+        rpc_port: {type: integer}
+        vram_total_bytes: {type: integer}
     TopologyWorker:
       type: object
       required: [worker_id, role, mode, online, state]
       properties:
         worker_id: {type: string}
+        group_id: {type: string, description: merged group the worker belongs to, if any}
         role: {type: string}
         mode: {type: string}
         model: {type: string}
