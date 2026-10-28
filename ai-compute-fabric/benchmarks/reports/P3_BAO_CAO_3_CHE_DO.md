@@ -206,3 +206,62 @@ Sau khi nối cáp Ethernet trực tiếp giữa cổng `enp133s0` trên Linux (
   - `pc-win-01` (RTX 5070 12 GB — Member `RPC0`): giữ nửa số tầng còn lại trên VRAM. Toàn bộ 48 tầng (Attention + toàn bộ Expert MoE) nằm **100% trên VRAM của 2 GPU**, không phải đẩy tầng nào xuống CPU RAM (`-ncmoe 0`).
   - Vì `Qwen3-30B-A3B` chỉ kích hoạt 3B tham số mỗi token và kích thước vector kích hoạt chuyển qua mạng mỗi bước rất nhỏ, đường truyền cáp 2,5 GbE giúp tốc độ sinh 1 luồng đạt **126,3 tok/s** (nhanh gấp **3,1×** so với Smart 1-GPU trên RTX 3060 là ~41 tok/s và nhanh gấp **~2×** so với Smart 1-GPU trên RTX 5070 là ~65 tok/s), đồng thời 2 luồng song song đạt **176,2 tok/s tổng** (gấp đôi tổng thông lượng của hai máy chạy Smart 1-GPU N=26 song song là 87,0 tok/s).
 - **Tự phục hồi khi tiến trình `llama-server` (merged master) bị ngắt đột ngột:** sự kiện `crash` trong `worker-guard` lúc `08:05:41` và `08:22:34` đều được `worker-guard` tự động khởi động lại thành công ở chế độ `merged` sau **30,5 s** và **42,4 s**.
+
+### 7.7. Chế độ 3 (merged) qua dây trực tiếp Linux–Windows (2,5 GbE) — đo ngày 28/10
+
+Điều kiện: dây thẳng, IP `10.42.0.1` (Linux) và `10.42.0.225` (Windows, DHCP của NetworkManager). Wi-Fi Windows tắt. Windows nối gateway qua `10.42.0.1:17443` với `--tls-server-name 192.168.1.40` (không cấp lại chứng chỉ).
+
+**Mạng** (`tcp_bench.py`, 8 s mỗi chiều): Linux→Win 2,376 Gbps (283 MB/s), Win→Linux 2,372 Gbps (283 MB/s), RTT 0,15 ms. Wi-Fi trước đó: ~20–25 Mbps, RTT 2,5 ms → nhanh hơn trên 100 lần.
+
+**Merged 2 card, model chạy trọn trên VRAM hai card** (master = RTX 3060, thành viên RPC = RTX 5070, `tensor_split 4,6` cho 4B; `1,1` cho 30B):
+
+| Model | Nạp | 1 luồng | Tổng 2 luồng | Tổng 4 luồng | Lỗi |
+|---|---|---|---|---|---|
+| Qwen3-4B Q4_K_M | 32,3 s (Wi-Fi: 879 s) | 117,7 tok/s (Wi-Fi: 22–27) | — | 200,5 | 0 |
+| Qwen3-30B-A3B Q4_K_M | 86,7 s | 126,3 tok/s | 176,2 | 172,8 | 0 |
+
+VRAM đỉnh với 30B: 9 191 MiB (3060) và 9 879 MiB (5070); không dùng `-ncmoe`. Dữ liệu: `logs/p3_merged4b_cable_c*.json`, `logs/p3_merged30b_cable_c*.json`, `logs/p3_e2e_g_merged4b.json`, `logs/p3_e2e_h_merged30b.json`.
+
+**So sánh 30B-A3B** (một luồng, cùng điều kiện gần nhau, nhưng không phải cùng một lần chạy):
+
+| Cách chạy | Tok/s | Ghi chú |
+|---|---|---|
+| 1 card 3060, `-ncmoe 20` | ~41 | chuyên gia sang RAM |
+| 1 card 5070, `-ncmoe 20` | ~65 | vượt headroom 1536 MiB của dịch vụ Windows; `-ncmoe 26`: ~55 |
+| 2 card, mỗi máy một bản (smart `-ncmoe 26`) | tổng 87 | 2 luồng mỗi máy |
+| **Merged 2 card qua dây** | **126** | trọn trên VRAM |
+
+**Ngữ cảnh 32k** (`-c 32768`, 1 slot, `probe_server_cfg.py`, `p3_ctx32k_30b.jsonl`):
+
+| Cấu hình | Kết quả |
+|---|---|
+| 1 card 3060, `-ncmoe 24` | OOM |
+| 1 card 3060, `-ncmoe 30` | 36,0–37,6 tok/s, VRAM đỉnh 10 597 MiB |
+| 1 card 3060, `-ncmoe 36` | 31,8–33,1 tok/s, VRAM đỉnh 8 555 MiB |
+| Merged `1,1` | worker-guard Windows kill `ggml-rpc-server` (còn trống 1 330 MiB < headroom 1 536) |
+| Merged `4,6` | OOM trên 3060 (10,3 GB trọng số) |
+| Merged `47,53` | worker-guard Windows kill rpc-server (còn trống 1 462 MiB) |
+| **Merged `44,56`** | **121–127 tok/s**, VRAM 3060 đỉnh 11 653 MiB |
+
+Kết luận: ở ngữ cảnh 32k, merged nhanh gấp ~3,4 lần một card tốt nhất đo được (3060 `-ncmoe 30`), nhưng **chỉ chạy được trong một khoảng `tensor_split` hẹp** (44:56 chạy; 1:1, 47:53 và 4:6 đều hỏng). Đây là ràng buộc thật: tổng bộ nhớ đủ nhưng mỗi card có giới hạn riêng (3060 ~11,7 GB, 5070 ~10,7 GB sau headroom). Việc chọn `tensor_split` phải dựa trên đo, không chia đều.
+
+**Kịch bản lỗi qua dây:**
+- **Kill `ggml-rpc-server`** (đang merged 30B): yêu cầu kế tiếp lỗi (master chỉ phát hiện khi có yêu cầu), sau đó cụm tự phục hồi: Windows khởi động lại rpc-server sau ~12 s, master Linux tự khởi động lại và nạp 30,5 s. Sau phục hồi 0 lỗi, 123 tok/s.
+- **Mất mạng** (tắt card dây Windows 25 s): gateway thấy `pc-win-01` offline ~20 s rồi online lại sau ~42 s; chat tới master treo/hết thời gian trong lúc đứt (có 1 yêu cầu lỗi), master Linux tự sập vì mất RPC rồi tự khởi động lại, sau đó 0 lỗi, 124,5 tok/s. Thời điểm phục hồi chính xác không đo được.
+- **Phát hiện**: công thức `own` của `rpc-worker` vẫn sai: log ghi "engine held 256 MiB" trong khi rpc-server giữ ~10 GB. Cơ chế headroom vẫn chặn đúng (dựa vào VRAM trống), nhưng số liệu "engine_mib" của worker RPC không đáng tin (mục Pha 1.5 chưa xong).
+
+**Chưa làm**: Qwen3-32B dày (đang tải trên Windows, chậm ~1 MB/s do internet của máy Linux); mô hình ~200B (không vừa 24 GB VRAM + RAM master, xem hội thoại); kiểm thử giao diện web.
+
+### 7.8. Ngữ cảnh 32k trên RTX 5070 (một card, Windows, `llama-server -c 32768`, 1 slot) — bổ sung
+
+Dữ liệu: `p3_ncmoe_32k_rtx5070.jsonl` (dịch vụ worker-guard Windows dừng khi đo).
+
+| `-ncmoe` | Tok/s (3 lần) | VRAM đỉnh (MiB, tổng 12 227) |
+|---|---|---|
+| 22 | 24,8 – 25,1 | 11 663 |
+| 26 | 27,6 – 28,2 | 11 663 |
+| 30 | 47,1 – 49,0 | 10 757 |
+| 36 | 40,8 – 42,8 | 8 715 |
+
+- N=22 và 26 không OOM nhưng tốc độ thấp (~25–28 tok/s) khi VRAM đỉnh gần kín (~11,7 GB): cùng kiểu suy giảm đã thấy ở N=16/18 với ngữ cảnh 8k (`[SUY LUẬN]`: tràn bộ nhớ). Điểm tốt nhất đo được là N=30, ~49 tok/s.
+- So sánh ở 32k, 1 luồng: 5070 một card tối đa ~49 tok/s (N=30); 3060 một card tối đa ~37 tok/s (N=30); **merged hai card 121–127 tok/s** (tỷ lệ 44:56), tức ~2,5 lần card đơn nhanh nhất và ~3,4 lần 3060.

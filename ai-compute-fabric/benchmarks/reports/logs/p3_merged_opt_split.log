@@ -1,0 +1,7 @@
+s35_65 healthy peakGPU 11767.0 oom False tg [117.9, 118.2, 121.6, 121.0, 123.1]
+s40_60 healthy peakGPU 11063.0 oom False tg [117.3, 116.8, 121.7, 120.9, 120.7]
+s45_55 healthy peakGPU 9959.0 oom False tg [124.1, 129.1, 125.0, 126.4, 130.2]
+s50_50 healthy peakGPU 9207.0 oom False tg [126.9, 127.8, 128.5, 129.4, 124.6]
+s55_45 healthy peakGPU 8455.0 oom False tg [125.1, 132.6, 129.7, 129.6, 130.8]
+s60_40 healthy peakGPU 7349.0 oom False tg [125.8, 132.2, 135.1, 135.8, 133.5]
+s65_35 healthy peakGPU 6647.0 oom False tg [34.2, 34.8, 34.7, 34.8, 35.0]

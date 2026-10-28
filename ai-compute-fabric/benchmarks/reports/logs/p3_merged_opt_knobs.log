@@ -1,0 +1,7 @@
+s58_42 healthy peakGPU 7751.0 oom False tg [126.8, 135.7, 138.1, 136.7, 137.0]
+s62_38 healthy peakGPU 6999.0 oom False tg [45.0, 45.8, 45.7, 45.2, 45.5]
+s60_40 healthy peakGPU 7349.0 oom False tg [133.6, 133.1, 134.3, 129.5, 133.5]
+s60_kvq8 healthy peakGPU 7215.0 oom False tg [119.7, 120.9, 122.3, 122.9, 120.3]
+s60_t4 healthy peakGPU 7349.0 oom False tg [130.3, 130.1, 128.9, 132.0, 134.7]
+s60_t12 healthy peakGPU 7349.0 oom False tg [127.6, 128.8, 130.7, 130.0, 133.7]
+s60_ub1024 healthy peakGPU 7477.0 oom False tg [126.6, 130.1, 131.1, 127.1, 132.4]

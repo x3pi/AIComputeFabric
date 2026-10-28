@@ -1,0 +1,51 @@
+[
+ {
+  "request": {
+   "mode": "split",
+   "primary_worker_id": "pc-001",
+   "rpc_worker_ids": [
+    "pc-win-01"
+   ],
+   "model": "Qwen3-4B-Q4_K_M.gguf"
+  },
+  "http": 200,
+  "switch_s": 24.8,
+  "response": "ok",
+  "status": {
+   "mode": "split",
+   "status": "ready",
+   "last_error": null
+  },
+  "workers": {
+   "pc-001": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SPLIT WORKER"
+   },
+   "pc-win-01": {
+    "role": "standalone",
+    "mode": "split",
+    "model": "Qwen3-4B-Q4_K_M.gguf",
+    "state": "running",
+    "badge": "SPLIT WORKER"
+   }
+  },
+  "chat": {
+   "pc-001": {
+    "ok": true,
+    "tok_s": 101.3,
+    "wall_s": 0.7,
+    "text": ""
+   },
+   "pc-win-01": {
+    "ok": true,
+    "tok_s": 172.9,
+    "wall_s": 0.4,
+    "text": ""
+   }
+  },
+  "ts": "2026-10-28T09:24:57+0700"
+ }
+]
