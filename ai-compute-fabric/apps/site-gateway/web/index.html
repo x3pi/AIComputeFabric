@@ -980,7 +980,7 @@ function selectTopoMode(mode, keepModel) {
 }
 
 function topoChosen() {   // {primary, members[]}: for split/smart the first ticked machine is only the "first of the list"
-  const ids = [...(topoSelected || [])].filter(id => topoWorkers[id] && topoWorkers[id].online).sort();
+  const ids = [...(topoSelected || [])].filter(id => topoWorkers[id] && topoWorkers[id].online && !topoWorkers[id].group_id).sort();
   let primary = ids[0] || "";
   if (selectedTopoMode === "merged") {
     const p = document.getElementById("topo-primary").value;
@@ -995,21 +995,23 @@ function renderTopoMachines(workers) {
   const key = ids.map(id => id + ":" + (workers[id].group_id || "")).join("|");
   if (key === topoMachineKey) return;
   topoMachineKey = key;
-  if (topoSelected === null) topoSelected = new Set(ids);
-  topoSelected = new Set([...topoSelected].filter(id => ids.includes(id)));
+  const free = ids.filter(id => !workers[id].group_id);   // grouped machines must be split first
+  if (topoSelected === null) topoSelected = new Set(free);
+  topoSelected = new Set([...topoSelected].filter(id => free.includes(id)));
   const box = document.getElementById("topo-machines");
   if (!ids.length) { box.textContent = "Chưa có worker online"; return; }
   box.replaceChildren(...ids.map(id => {
     const cb = el("input", { type: "checkbox", value: id });
     cb.checked = topoSelected.has(id);
+    if (workers[id].group_id) cb.disabled = true;
     cb.addEventListener("change", () => { cb.checked ? topoSelected.add(id) : topoSelected.delete(id); topoRefresh(); });
     const g = workers[id].group_id;
-    return el("label", { style: "display:inline-flex;gap:6px;margin-right:16px;align-items:center" }, cb, gpuLabel(id), g ? el("span", { class: "mut", style: "font-size:11.5px" }, "(đang trong nhóm " + g + ")") : "");
+    return el("label", { style: "display:inline-flex;gap:6px;margin-right:16px;align-items:center" }, cb, gpuLabel(id), g ? el("span", { class: "mut", style: "font-size:11.5px" }, "(đang trong nhóm " + g + " — bấm \"Tách nhóm\" trước mới chọn được)") : "");
   }));
   const prim = document.getElementById("topo-primary");
   const prev = prim.value;
-  prim.replaceChildren(...ids.map(id => el("option", { value: id }, gpuLabel(id))));
-  prim.value = ids.includes(prev) ? prev : ids[0];
+  prim.replaceChildren(...free.map(id => el("option", { value: id }, gpuLabel(id))));
+  prim.value = free.includes(prev) ? prev : free[0];
   prim.onchange = topoRefresh;
 }
 
@@ -1079,7 +1081,7 @@ function topoRefresh() {
   }
 
   let line;
-  if (!all.length) line = "Chọn ít nhất một máy ở bước 3.";
+  if (!all.length) line = "Chọn ít nhất một máy ở bước 3 (máy đang trong nhóm gộp phải được tách trước).";
   else if (selectedTopoMode === "split") line = "Sẽ làm: " + all.map(gpuLabel).join(" và ") + " mỗi máy chạy riêng " + modelKey + ", phục vụ song song.";
   else if (selectedTopoMode === "smart_1gpu") line = "Sẽ làm: " + all.map(gpuLabel).join(" và ") + " mỗi máy chạy riêng " + modelKey + ", đẩy chuyên gia của N tầng đầu sang RAM (N = " + (document.getElementById("topo-ncmoe").value || "chưa nhập") + ").";
   else if (all.length < 2) line = "Chế độ gộp cần chọn ít nhất 2 máy ở bước 3.";
