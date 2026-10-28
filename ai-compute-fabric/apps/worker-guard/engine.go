@@ -290,9 +290,14 @@ func (e *LlamaEngine) Start() error {
 		e.mu.Unlock()
 		return err
 	}
+	mode, rpcServers := e.Mode, e.RPCServers
+	startTimeout := e.StartTimeout
+	if startTimeout <= 0 {
+		startTimeout = 180 * time.Second
+	}
 
 	binPath := e.Bin
-	if e.Mode == "rpc-worker" {
+	if mode == "rpc-worker" {
 		if e.RPCServerBin != "" {
 			binPath = e.RPCServerBin
 		} else {
@@ -304,7 +309,44 @@ func (e *LlamaEngine) Start() error {
 			binPath = filepath.Join(dir, name)
 		}
 	}
+	e.mu.Unlock()
 
+	// When starting a merged master (RPCServers != ""), wait briefly for each RPC peer to accept TCP
+	// connections before spawning llama-server so simultaneous reboots do not fail immediately.
+	if mode != "rpc-worker" && rpcServers != "" {
+		peerWait := 10 * time.Second
+		if startTimeout < peerWait {
+			peerWait = startTimeout
+		}
+		peerDeadline := time.Now().Add(peerWait)
+		for _, peer := range strings.Split(rpcServers, ",") {
+			peer = strings.TrimSpace(peer)
+			if peer == "" {
+				continue
+			}
+			for {
+				conn, err := net.DialTimeout("tcp", peer, 500*time.Millisecond)
+				if err == nil {
+					conn.Close()
+					break
+				}
+				if !time.Now().Before(peerDeadline) {
+					return fmt.Errorf("rpc peer %s not reachable after %s", peer, peerWait)
+				}
+				time.Sleep(200 * time.Millisecond)
+			}
+		}
+	}
+
+	e.mu.Lock()
+	if e.cmd != nil {
+		select {
+		case <-e.done:
+		default:
+			e.mu.Unlock()
+			return fmt.Errorf("engine already running")
+		}
+	}
 	cmd := exec.Command(binPath, args...)
 	prepareCmd(cmd)
 	pr, pw := io.Pipe()
@@ -338,10 +380,6 @@ func (e *LlamaEngine) Start() error {
 	}()
 	go func() { cmd.Wait(); pw.Close(); close(done) }()
 
-	startTimeout := e.StartTimeout
-	if startTimeout <= 0 {
-		startTimeout = 180 * time.Second
-	}
 	deadline := time.Now().Add(startTimeout)
 	if e.Mode == "rpc-worker" {
 		rpcPort := e.RPCPort

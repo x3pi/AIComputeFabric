@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -30,6 +32,12 @@ type Config struct {
 	NearMarginMiB uint64
 	FreedFraction float64 // fraction of the engine's VRAM that must disappear to call it "freed"
 	FreedTimeout  time.Duration
+	StateFile     string // optional JSON file where runtime mode/model/pause state is saved across restarts
+}
+
+type persistedGuardState struct {
+	Options EngineOptions `json:"options"`
+	Paused  bool          `json:"paused,omitempty"`
 }
 
 // Event is one entry of the reclaim / lifecycle log.
@@ -86,7 +94,72 @@ func NewGuard(cfg Config, s Sampler, e Engine) *Guard {
 	if cfg.FreedTimeout == 0 {
 		cfg.FreedTimeout = 5 * time.Second
 	}
-	return &Guard{cfg: cfg, smp: s, eng: e, now: time.Now, st: StStopped}
+	g := &Guard{cfg: cfg, smp: s, eng: e, now: time.Now, st: StStopped}
+	g.loadState()
+	return g
+}
+
+func (g *Guard) loadState() {
+	if g.cfg.StateFile == "" {
+		return
+	}
+	data, err := os.ReadFile(g.cfg.StateFile)
+	if err != nil {
+		return
+	}
+	var ps persistedGuardState
+	if err := json.Unmarshal(data, &ps); err != nil {
+		log.Printf("state file %s: %v", g.cfg.StateFile, err)
+		return
+	}
+	if ps.Options.Mode != "" || ps.Options.Model != "" {
+		apply := true
+		if ps.Options.Mode != "rpc-worker" && ps.Options.Model != "" && !strings.HasPrefix(ps.Options.Model, rpcModelPrefix) {
+			if filepath.IsAbs(ps.Options.Model) {
+				if st, err := os.Stat(ps.Options.Model); err != nil || st.IsDir() {
+					log.Printf("state file %s: model %q no longer exists, keeping startup model", g.cfg.StateFile, ps.Options.Model)
+					apply = false
+				}
+			}
+		}
+		if apply {
+			if ce, ok := g.eng.(ConfigurableEngine); ok {
+				ce.ConfigureOptions(ps.Options)
+			} else if ps.Options.Model != "" {
+				g.eng.Configure(ps.Options.Model, ps.Options.Lora)
+			}
+		}
+	}
+	if ps.Paused {
+		g.st = StPaused
+	}
+}
+
+func (g *Guard) saveState() {
+	if g.cfg.StateFile == "" {
+		return
+	}
+	var opts EngineOptions
+	if ce, ok := g.eng.(ConfigurableEngine); ok {
+		opts = ce.Options()
+	} else {
+		opts.Model, opts.Lora = g.eng.Describe()
+	}
+	g.mu.Lock()
+	paused := g.st == StPaused
+	g.mu.Unlock()
+	data, err := json.MarshalIndent(persistedGuardState{Options: opts, Paused: paused}, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(g.cfg.StateFile), 0o755); err != nil {
+		return
+	}
+	tmp := g.cfg.StateFile + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, g.cfg.StateFile)
 }
 
 func (g *Guard) emit(ev Event) {
@@ -117,6 +190,7 @@ func (g *Guard) SwitchWithOptions(opts EngineOptions) {
 	g.lastOwn, g.own = 0, 0 // the footprint of the previous model says nothing about the new one: keeping it can make a smaller model wait forever for VRAM it will never need
 	g.mu.Unlock()
 	g.setState(StStopped)
+	g.saveState()
 	d := opts.Model
 	if opts.Mode != "" {
 		d = fmt.Sprintf("[%s] %s", opts.Mode, opts.Model)
@@ -141,6 +215,7 @@ func (g *Guard) Pause() {
 		g.emit(Event{Kind: "pause", Detail: "operator pause", StopMS: ms(info.Elapsed), Signal: info.Signal})
 	}
 	g.setState(StPaused)
+	g.saveState()
 }
 
 func (g *Guard) Resume() {
@@ -149,6 +224,7 @@ func (g *Guard) Resume() {
 		g.st = StStopped
 	}
 	g.mu.Unlock()
+	g.saveState()
 	g.emit(Event{Kind: "resume", Detail: "operator resume"})
 }
 

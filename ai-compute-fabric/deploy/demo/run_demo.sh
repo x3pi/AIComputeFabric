@@ -82,16 +82,16 @@ PYEOF
 fi
 
 # 3. Site Gateway
-"$D/bin/site-gateway" -grpc "0.0.0.0:$GRPC_PORT" -http "0.0.0.0:$HTTP_PORT" -tenants-file "$D/tenants.json" \
+"$D/bin/site-gateway" -grpc "0.0.0.0:$GRPC_PORT" -http "0.0.0.0:$HTTP_PORT" -tenants-file "$D/tenants.json" -topology-file "$D/topology.json" \
   -tls-cert "$D/pki/gateway.crt" -tls-key "$D/pki/gateway.key" -tls-client-ca "$D/pki/ca.crt" \
   "${GW_EXTRA[@]}" >"$D/logs/gateway.log" 2>&1 & pids+=($!)
 sleep 1
 
-# 4. Worker Guard + llama-server
+# 4. Worker Guard + llama-server (restores previous runtime model/mode from --state-file if present)
 "$D/bin/worker-guard" --llama-server "$LLAMA" --model "$MODEL" --parallel "${PARALLEL:-2}" --ctx "${CTX:-4096}" --headroom-mib 512 \
   --engine-log "$D/logs/engine-pc001.log" --engine-start-timeout "${ENGINE_START_TIMEOUT:-600s}" \
   --engine-port 18090 --engine-host 0.0.0.0 --advertise-host 192.168.1.40 \
-  --models-dir "$D/models" --adapters-dir "$D/adapters" --gateway "127.0.0.1:$GRPC_PORT" --worker-id pc-001 \
+  --models-dir "$D/models" --adapters-dir "$D/adapters" --state-file "$D/worker-state-pc-001.json" --gateway "127.0.0.1:$GRPC_PORT" --worker-id pc-001 \
   --tls-ca "$D/pki/ca.crt" --tls-cert "$D/pki/pc-001.crt" --tls-key "$D/pki/pc-001.key" \
   --tls-server-name localhost >"$D/logs/worker.log" 2>&1 & pids+=($!)
 

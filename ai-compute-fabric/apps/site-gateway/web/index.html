@@ -1128,7 +1128,22 @@ async function loadTopology() {
     const container = document.getElementById("topo-nodes-container");
     container.replaceChildren();
     topoWorkers = d.workers || {};
-    if (!topoModeSynced && d.mode) { topoModeSynced = true; selectTopoMode(d.mode, false); }
+    if (!topoModeSynced && d.mode) {
+      topoModeSynced = true;
+      const hasModel = Boolean(d.model && TOPO_MODELS[d.model]);
+      if (hasModel) document.getElementById("topo-model-select").value = d.model;
+      if (d.n_cpu_moe > 0) document.getElementById("topo-ncmoe").value = d.n_cpu_moe;
+      if (d.kv_type) document.getElementById("topo-kv").value = d.kv_type;
+      if (d.tensor_split) {
+        const parts = d.tensor_split.split(",").map(Number);
+        if (parts.length === 2 && parts[0] + parts[1] > 0) {
+          document.getElementById("topo-slider").value = Math.round(parts[0] / (parts[0] + parts[1]) * 100);
+        } else if (parts.length > 2) {
+          document.getElementById("topo-split").value = d.tensor_split;
+        }
+      }
+      selectTopoMode(d.mode, hasModel);
+    }
     renderTopoMachines(topoWorkers);
     topoRefresh();
     const wids = Object.keys(topoWorkers).sort();

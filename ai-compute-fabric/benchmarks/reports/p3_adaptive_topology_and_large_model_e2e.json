@@ -39,6 +39,11 @@
         "detail": ""
       },
       {
+        "name": "UI form restores active model and tensor_split slider from live topology state",
+        "ok": true,
+        "detail": "model=Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf, slider=48%"
+      },
+      {
         "name": "clicking Smart 1-GPU mode card reveals -ncmoe N input panel",
         "ok": true,
         "detail": ""

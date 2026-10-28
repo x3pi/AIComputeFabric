@@ -22,6 +22,7 @@ param(
   [string] $TlsKey = "",
   [string] $TlsServerName = "",
   [string] $EngineLog = "",
+  [string] $StateFile = "",
   [int] $Parallel = 0,
   [int] $Ctx = 0,
   [string] $Name = "AICFWorkerGuard",
@@ -40,6 +41,7 @@ if ($TlsCert) { $svcArgs += " --tls-cert `"$TlsCert`"" }
 if ($TlsKey) { $svcArgs += " --tls-key `"$TlsKey`"" }
 if ($TlsServerName) { $svcArgs += " --tls-server-name `"$TlsServerName`"" }
 if ($EngineLog) { $svcArgs += " --engine-log `"$EngineLog`"" }
+if ($StateFile) { $svcArgs += " --state-file `"$StateFile`"" }
 if ($Parallel -gt 0) { $svcArgs += " --parallel $Parallel" }
 if ($Ctx -gt 0) { $svcArgs += " --ctx $Ctx" }
 if (Get-Service $Name -ErrorAction SilentlyContinue) { sc.exe stop $Name | Out-Null; sc.exe delete $Name | Out-Null; Start-Sleep 2 }

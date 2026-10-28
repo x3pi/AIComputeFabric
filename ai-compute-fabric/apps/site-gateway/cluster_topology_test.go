@@ -505,3 +505,57 @@ func TestTopologyFailedGroupRollbackLeavesOtherGroupAlone(t *testing.T) {
 		t.Errorf("group a+b was touched by group c+d's rollback: a=%v b=%v", r.callsTo("a"), r.callsTo("b"))
 	}
 }
+
+func TestTopologyPersistsStateAcrossGatewayRestartAndReconcilesWorkers(t *testing.T) {
+	r := newTopoRig(t, "pc-001", "pc-win-01", "pc-003")
+	stateFile := t.TempDir() + "/topology.json"
+	if err := r.tc.SetStateFile(stateFile); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.do(TopologySwitchRequest{
+		Mode: TopologyModeMerged, PrimaryWorkerID: "pc-001", RPCWorkerIDs: []string{"pc-win-01"},
+		Model: "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf", TensorSplit: "48,52",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.do(TopologySwitchRequest{
+		Mode: TopologyModeSmart1G, PrimaryWorkerID: "pc-003",
+		Model: "Qwen3-30B-A3B-Q4_K_M.gguf", NCpuMoe: 26, KVType: "q8_0",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a gateway restart: create a brand-new TopologyCoordinator pointing at the same state file.
+	tc2 := NewTopologyCoordinator(r.reg, nil)
+	tc2.Poll, tc2.RPCReadyTimeout, tc2.LoadTimeout, tc2.ReconcileCooldown = 10*time.Millisecond, 300*time.Millisecond, 300*time.Millisecond, time.Millisecond
+	if err := tc2.SetStateFile(stateFile); err != nil {
+		t.Fatal(err)
+	}
+	st := tc2.GetStatus()
+	if st.Mode != TopologyModeMerged || len(st.Groups) != 1 || st.Groups[0].ID != "pc-001" ||
+		st.Groups[0].Model != "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf" || st.Groups[0].TensorSplit != "48,52" {
+		t.Fatalf("restored groups mismatch: %+v", st.Groups)
+	}
+	if st.Workers["pc-003"].Mode != TopologyModeSmart1G {
+		t.Fatalf("restored indep worker mode mismatch: %+v", st.Workers["pc-003"])
+	}
+
+	// Simulate pc-win-01 and pc-003 restarting without local state files (reporting default 4B model).
+	r.mu.Lock()
+	r.calls = nil
+	r.mu.Unlock()
+	r.beat("pc-win-01", "Qwen3-4B-Q4_K_M.gguf", "running")
+	r.beat("pc-003", "Qwen3-4B-Q4_K_M.gguf", "running")
+
+	tc2.ReconcileOnce(context.Background())
+
+	if got := r.callsTo("pc-win-01"); len(got) == 0 || got[len(got)-1]["mode"] != TopologyModeRPCWrk {
+		t.Fatalf("expected pc-win-01 to be reconciled back to rpc-worker, calls=%+v", got)
+	}
+	if got := r.callsTo("pc-001"); len(got) == 0 || got[len(got)-1]["mode"] != TopologyModeMerged || got[len(got)-1]["tensor_split"] != "52,48" {
+		t.Fatalf("expected pc-001 to be reconciled back to merged 52,48, calls=%+v", got)
+	}
+	if got := r.callsTo("pc-003"); len(got) == 0 || got[len(got)-1]["mode"] != TopologyModeSmart1G || got[len(got)-1]["n_cpu_moe"] != float64(26) {
+		t.Fatalf("expected pc-003 to be reconciled back to smart_1gpu N=26, calls=%+v", got)
+	}
+}

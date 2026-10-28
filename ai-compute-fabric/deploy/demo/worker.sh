@@ -75,8 +75,9 @@ start)
 # chat models the web UI may switch to (symlinks; embedding/reranker models are not chat models), and where exported adapters go
 mkdir -p "$D/models" "$D/adapters"
 for g in "$WORK_DIR"/*.gguf; do [ -f "$g" ] && ! basename "$g" | grep -qiE 'embed|rerank|bge' && ln -sf "$g" "$D/models/$(basename "$g")"; done
+  rm -f "$D/worker-state-$wid.json" "$D/models/.worker-guard-state.json"
   export LD_LIBRARY_PATH="$(dirname "$LLAMA"):${LD_LIBRARY_PATH:-}"
-  setsid nohup "$D/bin/worker-guard" --llama-server "$LLAMA" --model "$m" --parallel "$par" --ctx "$ctx" --headroom-mib 512 --engine-port 18090 --models-dir "$D/models" --adapters-dir "$D/adapters" \
+  setsid nohup "$D/bin/worker-guard" --llama-server "$LLAMA" --model "$m" --parallel "$par" --ctx "$ctx" --headroom-mib 512 --engine-port 18090 --models-dir "$D/models" --adapters-dir "$D/adapters" --state-file "$D/worker-state-$wid.json" \
     --gateway "127.0.0.1:$GRPC_PORT" --worker-id "$wid" --tls-ca "$D/pki/ca.crt" --tls-cert "$D/pki/$wid.crt" --tls-key "$D/pki/$wid.key" --tls-server-name localhost "${lora_arg[@]}" \
     >"$D/logs/worker.log" 2>&1 < /dev/null &
   echo "starting $(basename "$m")${lora_arg:+ + LoRA adapter $(basename "$lora")} as $wid (ctx $ctx x $par slots); waiting for the engine..."

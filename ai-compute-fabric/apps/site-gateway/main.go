@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +37,7 @@ func main() {
 	studioURL := flag.String("studio-url", "", "AI Studio service (python -m studio), served at /api/studio/")
 	agentsURL := flag.String("agents-url", "", "agent workflow view service (agents/dag_api.py), served read-only at /api/agents/")
 	flag.IntVar(&WorkerControlPort, "worker-control-port", 8099, "port of the worker-guard control API (worker-guard --listen) used by POST /api/cluster/topology; 0 = same as the worker engine_url")
+	topologyFile := flag.String("topology-file", "", "JSON file to persist cluster topology state across restarts (default: <dir-of-tenants-file>/topology.json when -tenants-file is set)")
 	auditPath := flag.String("audit-log", "", "append-only hash-chained audit log of admin actions")
 	affinity := flag.Duration("affinity-patience", 300*time.Millisecond, "wait this long for the worker holding a conversation's cache (0 = off)")
 	maxLease := flag.Duration("max-lease-ttl", 10*time.Minute, "longest TTL a lease may have; clients extend while the job runs")
@@ -44,6 +46,11 @@ func main() {
 	tlsCA := flag.String("tls-client-ca", "", "CA that must have signed every worker certificate")
 	vramSidecarFlag := flag.String("vram-sidecar-url", "", "GGUF facts service (python -m core.vram_sidecar), enables POST /api/v1/models/estimate-vram")
 	flag.Parse()
+	if *topologyFile != "" {
+		DefaultTopologyFile = *topologyFile
+	} else if *tenantsFile != "" {
+		DefaultTopologyFile = filepath.Join(filepath.Dir(*tenantsFile), "topology.json")
+	}
 	vramSidecar = NewSidecar(*vramSidecarFlag)
 	reg := NewRegistry(*offline)
 	lis, err := net.Listen("tcp", *grpcAddr)

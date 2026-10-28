@@ -105,6 +105,9 @@ func NewAPIStudio(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents
 	var topo *TopologyCoordinator
 	if f != nil {
 		topo = NewTopologyCoordinator(f.reg, audit)
+		if DefaultTopologyFile != "" {
+			go topo.RunReconciler(nil)
+		}
 	}
 	mux.HandleFunc("/api/cluster/topology", func(w http.ResponseWriter, r *http.Request) {
 		if topo == nil {

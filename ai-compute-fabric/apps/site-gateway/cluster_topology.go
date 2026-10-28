@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -119,39 +121,156 @@ type TopologySwitchRequest struct {
 // State is per worker, not global: `groups` holds the merged groups (key = master id), `indep` the standalone workers'
 // last applied configuration, and `locked` the workers a running switch is touching. Switches on disjoint worker sets
 // run concurrently; one that overlaps a locked worker gets ErrTopologyBusy.
+// DefaultTopologyFile is the optional JSON file path where NewTopologyCoordinator persists and reloads
+// cluster topology state across gateway restarts (set by -topology-file in main).
+var DefaultTopologyFile = ""
+
+type persistedTopoPlan struct {
+	Mode        string   `json:"mode"`
+	PrimaryID   string   `json:"primary_worker_id"`
+	RPCIDs      []string `json:"rpc_worker_ids,omitempty"`
+	Model       string   `json:"model"`
+	NCpuMoe     int      `json:"n_cpu_moe,omitempty"`
+	KVType      string   `json:"kv_type,omitempty"`
+	TensorSplit string   `json:"tensor_split,omitempty"`
+	RPCPort     int      `json:"rpc_port,omitempty"`
+	RPCServers  string   `json:"rpc_servers,omitempty"`
+}
+
+type persistedTopologyState struct {
+	Groups    map[string]persistedTopoPlan `json:"groups,omitempty"`
+	Indep     map[string]persistedTopoPlan `json:"indep,omitempty"`
+	UpdatedAt time.Time                    `json:"updated_at"`
+}
+
+func toPersistedPlan(p topoPlan) persistedTopoPlan {
+	return persistedTopoPlan{
+		Mode: p.mode, PrimaryID: p.primaryID, RPCIDs: append([]string{}, p.rpcIDs...),
+		Model: p.model, NCpuMoe: p.nCpuMoe, KVType: p.kvType,
+		TensorSplit: p.tensorSplit, RPCPort: p.rpcPort, RPCServers: p.rpcServers,
+	}
+}
+
+func fromPersistedPlan(p persistedTopoPlan) topoPlan {
+	return topoPlan{
+		mode: p.Mode, primaryID: p.PrimaryID, rpcIDs: append([]string{}, p.RPCIDs...),
+		model: p.Model, nCpuMoe: p.NCpuMoe, kvType: p.KVType,
+		tensorSplit: p.TensorSplit, rpcPort: p.RPCPort, rpcServers: p.RPCServers,
+	}
+}
+
 type TopologyCoordinator struct {
 	// Timeouts and poll interval for waiting on heartbeats; exported so tests (and later flags) can change them.
-	RPCReadyTimeout time.Duration
-	LoadTimeout     time.Duration
-	Poll            time.Duration
+	RPCReadyTimeout   time.Duration
+	LoadTimeout       time.Duration
+	Poll              time.Duration
+	ReconcileCooldown time.Duration
 
 	reg    *Registry
 	audit  *AuditLog
 	client *http.Client
 
-	mu        sync.RWMutex // guards the fields below; never held across network calls
-	groups    map[string]topoPlan
-	indep     map[string]topoPlan // key = worker id; plan.primaryID = that worker, no rpcIDs
-	locked    map[string]bool
-	status    string
-	lastError string
-	updatedAt time.Time
+	mu              sync.RWMutex // guards the fields below; never held across network calls
+	stateFile       string
+	groups          map[string]topoPlan
+	indep           map[string]topoPlan // key = worker id; plan.primaryID = that worker, no rpcIDs
+	locked          map[string]bool
+	reconciledIndep map[string]bool
+	lastReconcile   map[string]time.Time
+	status          string
+	lastError       string
+	updatedAt       time.Time
 }
 
 func NewTopologyCoordinator(reg *Registry, audit *AuditLog) *TopologyCoordinator {
-	return &TopologyCoordinator{
-		RPCReadyTimeout: 30 * time.Second,
-		LoadTimeout:     300 * time.Second, // a 18 GB model through RPC on first load is slow
-		Poll:            500 * time.Millisecond,
-		reg:             reg,
-		audit:           audit,
-		client:          &http.Client{Timeout: 30 * time.Second},
-		groups:          map[string]topoPlan{},
-		indep:           map[string]topoPlan{},
-		locked:          map[string]bool{},
-		status:          "ready",
-		updatedAt:       time.Now(),
+	tc := &TopologyCoordinator{
+		RPCReadyTimeout:   30 * time.Second,
+		LoadTimeout:       300 * time.Second, // a 18 GB model through RPC on first load is slow
+		Poll:              500 * time.Millisecond,
+		ReconcileCooldown: 30 * time.Second,
+		reg:               reg,
+		audit:             audit,
+		client:            &http.Client{Timeout: 30 * time.Second},
+		groups:            map[string]topoPlan{},
+		indep:             map[string]topoPlan{},
+		locked:            map[string]bool{},
+		reconciledIndep:   map[string]bool{},
+		lastReconcile:     map[string]time.Time{},
+		status:            "ready",
+		updatedAt:         time.Now(),
 	}
+	if DefaultTopologyFile != "" {
+		_ = tc.SetStateFile(DefaultTopologyFile)
+	}
+	return tc
+}
+
+// SetStateFile configures the JSON file used to persist topology state and loads any existing state from disk.
+func (tc *TopologyCoordinator) SetStateFile(path string) error {
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+	tc.stateFile = path
+	return tc.loadStateLocked()
+}
+
+func (tc *TopologyCoordinator) loadStateLocked() error {
+	if tc.stateFile == "" {
+		return nil
+	}
+	data, err := os.ReadFile(tc.stateFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var ps persistedTopologyState
+	if err := json.Unmarshal(data, &ps); err != nil {
+		log.Printf("topology state file %s: %v", tc.stateFile, err)
+		return err
+	}
+	tc.groups = map[string]topoPlan{}
+	for k, v := range ps.Groups {
+		tc.groups[k] = fromPersistedPlan(v)
+	}
+	tc.indep = map[string]topoPlan{}
+	for k, v := range ps.Indep {
+		tc.indep[k] = fromPersistedPlan(v)
+	}
+	tc.reconciledIndep = map[string]bool{}
+	if !ps.UpdatedAt.IsZero() {
+		tc.updatedAt = ps.UpdatedAt
+	}
+	return nil
+}
+
+func (tc *TopologyCoordinator) saveStateLocked() {
+	if tc.stateFile == "" {
+		return
+	}
+	ps := persistedTopologyState{
+		Groups:    make(map[string]persistedTopoPlan, len(tc.groups)),
+		Indep:     make(map[string]persistedTopoPlan, len(tc.indep)),
+		UpdatedAt: tc.updatedAt,
+	}
+	for k, v := range tc.groups {
+		ps.Groups[k] = toPersistedPlan(v)
+	}
+	for k, v := range tc.indep {
+		ps.Indep[k] = toPersistedPlan(v)
+	}
+	data, err := json.MarshalIndent(ps, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(tc.stateFile), 0o755); err != nil {
+		return
+	}
+	tmp := tc.stateFile + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return
+	}
+	_ = os.Rename(tmp, tc.stateFile)
 }
 
 // GetStatus returns the current topology state merged with live worker status.
@@ -411,19 +530,127 @@ func (tc *TopologyCoordinator) SwitchTopology(ctx context.Context, req TopologyS
 		tc.groups[plan.primaryID] = plan
 		for _, id := range ids {
 			delete(tc.indep, id)
+			delete(tc.reconciledIndep, id)
 		}
 	} else {
 		for _, id := range ids {
 			c := plan
 			c.primaryID, c.rpcIDs = id, nil
 			tc.indep[id] = c
+			tc.reconciledIndep[id] = true
 		}
 	}
 	tc.unlockLocked(ids, "ready", "")
+	tc.saveStateLocked()
 	cur := tc.statusLocked()
 	tc.mu.Unlock()
 	tc.record(caller, remoteAddr, http.StatusOK)
 	return &cur, nil
+}
+
+// ReconcileOnce checks whether online, idle workers match the persisted topology state (e.g. after a worker or
+// gateway restart when a worker lacked its local state file) and re-applies any out-of-sync group or un-reconciled
+// independent configuration.
+func (tc *TopologyCoordinator) ReconcileOnce(ctx context.Context) {
+	workers := map[string]Worker{}
+	for _, w := range tc.reg.List() {
+		workers[w.WorkerID] = w
+	}
+
+	var toApply []TopologySwitchRequest
+	now := time.Now()
+	cooldown := tc.ReconcileCooldown
+	if cooldown <= 0 {
+		cooldown = 30 * time.Second
+	}
+
+	tc.mu.Lock()
+	for id := range tc.indep {
+		if w, ok := workers[id]; !ok || !w.Online {
+			delete(tc.reconciledIndep, id)
+		}
+	}
+	for _, g := range tc.groups {
+		ready := true
+		for _, id := range g.ids() {
+			w, ok := workers[id]
+			if !ok || !w.Online || w.State != "running" || w.Switching || tc.locked[id] {
+				ready = false
+				break
+			}
+		}
+		if !ready {
+			continue
+		}
+		port := g.rpcPort
+		if port <= 0 {
+			port = 50052
+		}
+		marker := fmt.Sprintf("%s%d", rpcModelMarker, port)
+		outOfSync := workers[g.primaryID].Model != g.model
+		for _, id := range g.rpcIDs {
+			if workers[id].Model != marker {
+				outOfSync = true
+			}
+		}
+		key := "group:" + g.primaryID
+		if outOfSync && now.Sub(tc.lastReconcile[key]) >= cooldown {
+			tc.lastReconcile[key] = now
+			toApply = append(toApply, TopologySwitchRequest{
+				Mode:            TopologyModeMerged,
+				PrimaryWorkerID: g.primaryID,
+				RPCWorkerIDs:    append([]string{}, g.rpcIDs...),
+				Model:           g.model,
+				KVType:          g.kvType,
+				TensorSplit:     g.tensorSplit,
+				RPCPort:         port,
+			})
+		}
+	}
+	for id, c := range tc.indep {
+		w, ok := workers[id]
+		if !ok || !w.Online || w.State != "running" || w.Switching || tc.locked[id] {
+			continue
+		}
+		if tc.reconciledIndep[id] {
+			continue
+		}
+		if w.Model == c.model {
+			tc.reconciledIndep[id] = true
+			continue
+		}
+		key := "indep:" + id
+		if now.Sub(tc.lastReconcile[key]) >= cooldown {
+			tc.lastReconcile[key] = now
+			tc.reconciledIndep[id] = true
+			toApply = append(toApply, TopologySwitchRequest{
+				Mode:            c.mode,
+				PrimaryWorkerID: c.primaryID,
+				Model:           c.model,
+				NCpuMoe:         c.nCpuMoe,
+				KVType:          c.kvType,
+			})
+		}
+	}
+	tc.mu.Unlock()
+
+	for _, req := range toApply {
+		_, _ = tc.SwitchTopology(ctx, req, Principal{Name: "system:reconcile", Role: RoleAdmin}, "127.0.0.1")
+	}
+}
+
+// RunReconciler periodically reconciles persisted topology state with online workers until stop is closed.
+func (tc *TopologyCoordinator) RunReconciler(stop <-chan struct{}) {
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+			tc.ReconcileOnce(context.Background())
+		}
+	}
 }
 
 // unlockLocked releases a switch's workers. The overall status only leaves "switching" when no other switch is running.

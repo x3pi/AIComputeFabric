@@ -73,10 +73,15 @@ func serve(stop <-chan struct{}) {
 		tensorSplit  = flag.String("tensor-split", "", "--tensor-split for llama-server (e.g. 1,1)")
 		nCpuMoe      = flag.Int("n-cpu-moe", 0, "--n-cpu-moe for llama-server (-ncmoe)")
 		mode         = flag.String("mode", "standalone", "initial engine mode: standalone, smart_1gpu, or rpc-worker")
+		stateFile    = flag.String("state-file", "", "path to persist runtime engine/mode/pause state across restarts (default: <models-dir>/.worker-guard-state.json when --models-dir is set)")
 	)
 	flag.Parse()
 	if *bin == "" || *model == "" {
 		log.Fatal("--llama-server and --model are required")
+	}
+	sf := *stateFile
+	if sf == "" && *modelsDir != "" {
+		sf = filepath.Join(*modelsDir, ".worker-guard-state.json")
 	}
 	eng := &LlamaEngine{
 		Bin: *bin, Model: *model, Lora: *lora, Host: *engineHost, Port: *port, Ctx: *ctx, Parallel: *par, NGL: *ngl, FlashAttn: *fa, KVType: *kvType,
@@ -84,7 +89,7 @@ func serve(stop <-chan struct{}) {
 		Mode: *mode, NCpuMoe: *nCpuMoe, RPCServers: *rpcServers, SplitMode: *splitMode, TensorSplit: *tensorSplit, RPCPort: *rpcPort,
 		RPCServerBin: *rpcServerBin,
 	}
-	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near}, SMISampler{Index: *gpu}, eng)
+	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near, StateFile: sf}, SMISampler{Index: *gpu}, eng)
 	go g.Run(stop)
 	if *gateway != "" {
 		host, _ := os.Hostname()

@@ -121,6 +121,13 @@ try {
       "machines in an active merged group have their checkboxes disabled until split",
       allDisabled
     );
+    const syncedModel = await page.$eval("#topo-model-select", el => el.value);
+    const syncedSlider = await page.$eval("#topo-slider", el => el.value);
+    check(
+      "UI form restores active model and tensor_split slider from live topology state",
+      syncedModel.length > 0 && Number(syncedSlider) > 0,
+      `model=${syncedModel}, slider=${syncedSlider}%`
+    );
   }
 
   // Test mode card switching in UI (does not send POST)

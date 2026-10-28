@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -191,5 +193,50 @@ func TestEngineAPIRPCWorkerMode(t *testing.T) {
 	}
 	if resp["mode"] != "rpc-worker" {
 		t.Errorf("expected mode rpc-worker, got %v", resp["mode"])
+	}
+}
+
+func TestGuardPersistsAndRestoresStateAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	stateFile := filepath.Join(dir, "worker-state.json")
+	modelPath := filepath.Join(dir, "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf")
+	if err := os.WriteFile(modelPath, []byte("GGUF"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	gpu := &fakeGPU{total: 12288}
+	eng1 := &LlamaEngine{Bin: "/bin/llama-server", Model: filepath.Join(dir, "Qwen3-4B.gguf"), Ctx: 4096, Parallel: 1, Port: 18090}
+	g1 := NewGuard(Config{HeadroomMiB: 512, StateFile: stateFile}, gpu, eng1)
+
+	g1.SwitchWithOptions(EngineOptions{
+		Model:       modelPath,
+		Mode:        "merged",
+		KVType:      "f16",
+		RPCServers:  "10.42.0.225:50052",
+		SplitMode:   "layer",
+		TensorSplit: "52,48",
+	})
+	g1.Pause()
+
+	// Restart worker-guard with default startup flags ("Qwen3-4B.gguf", "standalone") and the same state file.
+	eng2 := &LlamaEngine{Bin: "/bin/llama-server", Model: filepath.Join(dir, "Qwen3-4B.gguf"), Mode: "standalone", Ctx: 4096, Parallel: 1, Port: 18090}
+	g2 := NewGuard(Config{HeadroomMiB: 512, StateFile: stateFile}, gpu, eng2)
+
+	snap := g2.Snapshot()
+	if snap.State != StPaused {
+		t.Fatalf("expected restored state paused, got %s", snap.State)
+	}
+	if snap.Mode != "merged" || snap.Model != "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf" || snap.RPCServers != "10.42.0.225:50052" || snap.TensorSplit != "52,48" {
+		t.Fatalf("restored snapshot mismatch: %+v", snap)
+	}
+
+	g2.Resume()
+	g2.SwitchWithOptions(EngineOptions{Mode: "rpc-worker", RPCPort: 50052})
+
+	eng3 := &LlamaEngine{Bin: "/bin/llama-server", Model: filepath.Join(dir, "Qwen3-4B.gguf"), Mode: "standalone"}
+	g3 := NewGuard(Config{HeadroomMiB: 512, StateFile: stateFile}, gpu, eng3)
+	snap3 := g3.Snapshot()
+	if snap3.State == StPaused || snap3.Mode != "rpc-worker" || snap3.Model != "rpc://50052" || snap3.RPCPort != 50052 {
+		t.Fatalf("restored rpc-worker snapshot mismatch: %+v", snap3)
 	}
 }
