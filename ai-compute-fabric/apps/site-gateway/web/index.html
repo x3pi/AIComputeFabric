@@ -950,7 +950,9 @@ svEl("sv-form").addEventListener("submit", async ev => {
 const TOPO_MODELS = {
   "Qwen3-4B-Q4_K_M.gguf":      { label: "Qwen3-4B (2,5 GB): nhỏ, vừa 1 card",                          mib: 2381,  kvKiB: 144, fits1: true },
   "Qwen3-8B-Q4_K_M.gguf":      { label: "Qwen3-8B (5,0 GB): nhỏ, vừa 1 card",                          mib: 4794,  kvKiB: 144, fits1: true },
-  "Qwen3-30B-A3B-Q4_K_M.gguf": { label: "Qwen3-30B-A3B (18,56 GB): MoE lớn, KHÔNG vừa 1 card 12 GB",   mib: 17697, kvKiB: 96,  fits1: false }
+  "Qwen3-30B-A3B-Q4_K_M.gguf": { label: "Qwen3-30B-A3B (18,56 GB): MoE lớn, KHÔNG vừa 1 card 12 GB",   mib: 17697, kvKiB: 96,  fits1: false },
+  // same qwen3moe shape as the 30B-A3B (48 layers, 4 KV heads x 128): file 18 556 689 568 B, KV 96 KiB/token. Speed/ratio NOT measured yet.
+  "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf": { label: "Qwen3-Coder-30B-A3B (18,56 GB): chuyên viết code, MoE lớn, KHÔNG vừa 1 card 12 GB", mib: 17697, kvKiB: 96, fits1: false }
 };
 const TOPO_DEFAULT_MODEL = { split: "Qwen3-4B-Q4_K_M.gguf", smart_1gpu: "Qwen3-30B-A3B-Q4_K_M.gguf", merged: "Qwen3-30B-A3B-Q4_K_M.gguf" };
 const TOPO_OS_BASE_MIB = 1000;      // Windows/driver already hold ~1 GB of the card (measured: RTX 5070 idle 11,0 of 12,2 GB free)
