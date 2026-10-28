@@ -182,30 +182,12 @@ Kịch bản lỗi:
 3. **Báo thành công từ heartbeat cũ**: đổi chỉ `-ncmoe` (cùng tên model) làm gateway trả 200 sau 0,6 s trong khi engine còn đang nạp lại (chat nhận 503). Sửa: chỉ chấp nhận heartbeat nhận sau khi worker nhận lệnh (`TestSmartSameModelNewNWaitsForAFreshHeartbeat`; đã mutation-test; chạy lại thật: 15 s và chat thành công).
 4. **Giới hạn khởi động engine cố định 180 s** thấp hơn giới hạn chờ 300 s của gateway. Sửa: cờ `--engine-start-timeout` (mặc định vẫn 180 s).
 
-`make test-go` xanh sau các sửa này. `make verify-release-v1` chưa chạy lại sau lượt sửa này.
+`make test-go` và `make verify-release-v1` đều xanh (`exit 0`) sau các sửa này.
 
 ### 7.6. Còn lại sau mục 7
 
-- Cắm Ethernet (hoặc nối dây trực tiếp Linux–Windows), đo lại băng thông, chạy merged với 4B/8B/30B và các kịch bản lỗi còn lại ở 7.4. Bật `--engine-log` để biết vì sao master không lên.
 - Kênh điều khiển gateway→worker vẫn là HTTP không xác thực (D-TOPO chưa quyết định).
-- Chưa thử giao diện web trong trình duyệt thật.
-
-## 8. Bổ sung 28/10 (08:00): Cắm cáp Ethernet 2,5 GbE trực tiếp (`10.42.0.1` ↔ `10.42.0.225`) — Đo lại Chế độ 3 (`merged` GGML RPC) `[ĐO]`
-
-Sau khi nối cáp Ethernet trực tiếp giữa cổng `enp133s0` trên Linux (`10.42.0.1/24`) và cổng 2.5GbE trên Windows (`10.42.0.225/24`):
-- **Băng thông TCP 1 luồng (`tcp_bench.py`):** **2,372 Gbps (282,77 MB/s)** — tăng **~95 lần** so với Wi-Fi (~25 Mbps).
-- **Chuyển đổi E2E qua Gateway (`POST /api/cluster/topology`, `logs/p3_e2e_g_merged4b.json`, `logs/p3_e2e_h_merged30b.json`) và tải đa luồng (`modes_load.py`, `logs/p3_merged*_cable_c*.json`):**
-
-| Model (Chế độ 3 `merged` qua cáp 2,5 GbE) | `--tensor-split` | Thời gian chuyển mode (`switch_s`) | 1 luồng (`c=1`, trung vị; min–max) | 2 luồng (`c=2`, tổng / mỗi luồng) | 4 luồng (`c=4`, tổng / mỗi luồng) | Lỗi |
-|---|---|---:|---|---|---|---:|
-| `Qwen3-4B-Q4_K_M.gguf` | `4,6` | **32,3 s** | **117,7 tok/s** (116,6–119,6) | — | **200,5 tok/s tổng** (108,2/luồng) | 0 |
-| `Qwen3-30B-A3B-Q4_K_M.gguf` (18,56 GB, **100% VRAM**, `-ncmoe 0`) | `1,1` | **86,7 s** | **126,3 tok/s** (125,7–127,6) | **176,2 tok/s tổng** (92,4/luồng) | **172,8 tok/s tổng** (91,4/luồng) | 0 |
-
-- **Phân bổ VRAM thực tế khi gộp 2 card chạy `Qwen3-30B-A3B-Q4_K_M` (`-c 8192 -np 2 -ngl 99 --tensor-split 1,1`):**
-  - `pc-001` (RTX 3060 12 GB — Master `CUDA0`): chiếm **9 168 MiB** (`UsedMiB: 9191 / 12288 MiB`, còn trống **2 720 MiB**).
-  - `pc-win-01` (RTX 5070 12 GB — Member `RPC0`): giữ nửa số tầng còn lại trên VRAM. Toàn bộ 48 tầng (Attention + toàn bộ Expert MoE) nằm **100% trên VRAM của 2 GPU**, không phải đẩy tầng nào xuống CPU RAM (`-ncmoe 0`).
-  - Vì `Qwen3-30B-A3B` chỉ kích hoạt 3B tham số mỗi token và kích thước vector kích hoạt chuyển qua mạng mỗi bước rất nhỏ, đường truyền cáp 2,5 GbE giúp tốc độ sinh 1 luồng đạt **126,3 tok/s** (nhanh gấp **3,1×** so với Smart 1-GPU trên RTX 3060 là ~41 tok/s và nhanh gấp **~2×** so với Smart 1-GPU trên RTX 5070 là ~65 tok/s), đồng thời 2 luồng song song đạt **176,2 tok/s tổng** (gấp đôi tổng thông lượng của hai máy chạy Smart 1-GPU N=26 song song là 87,0 tok/s).
-- **Tự phục hồi khi tiến trình `llama-server` (merged master) bị ngắt đột ngột:** sự kiện `crash` trong `worker-guard` lúc `08:05:41` và `08:22:34` đều được `worker-guard` tự động khởi động lại thành công ở chế độ `merged` sau **30,5 s** và **42,4 s**.
+- Giao diện web đã kiểm bằng Chrome thật (`tests/e2e/topology_e2e.mjs`, 11/11 PASS → `p3_adaptive_topology_and_large_model_e2e.json`).
 
 ### 7.7. Chế độ 3 (merged) qua dây trực tiếp Linux–Windows (2,5 GbE) — đo ngày 28/10
 

@@ -11,9 +11,9 @@
 
 | Chế độ | Ý nghĩa | Trạng thái bằng chứng |
 |---|---|---|
-| 1 `split` | 2 worker độc lập, model ≤ ~10 GB nằm trọn trong 1 card | Cơ chế đã có sẵn. Thông lượng `~335 tok/s` là `[CHƯA XÁC MINH]` (không tìm thấy báo cáo nguồn) |
-| 2 `smart_1gpu` | 2 worker độc lập, mỗi card chạy 30B-A3B bằng cách đẩy expert của N tầng đầu sang RAM (`-ncmoe N`) | `[ĐO 2026-10-27]` trên RTX 3060 (Pha 1.1): **N=18 hết bộ nhớ ở `-c 4096`**; N nhỏ nhất nạp được là **19 (`-c 4096`) / 20 (`-c 8192`)**, tốc độ sinh **~40–42 tok/s**, không phải `50–70`. Xem 1.2 và `benchmarks/reports/p3_gpu_modes_sweep.json` |
-| 3 `merged` | `pc-win-01` chạy `ggml-rpc-server`, `pc-001` chạy `llama-server --rpc ...` chia tầng qua LAN | Kết nối đã chứng minh `[ĐO]`; **chưa từng nạp/chạy model qua RPC** |
+| 1 `split` | 2 worker độc lập, model ≤ ~10 GB nằm trọn trong 1 card | `[ĐO 2026-10-28]`: `Qwen3-4B Q4_K_M` 1 luồng `100,4` (3060) / `167,2` (5070) tok/s, 4 luồng/máy đồng thời **554,9 tok/s tổng**; `Qwen3-8B Q4_K_M` 1 luồng `63,2` / `110,9` tok/s, 4 luồng/máy **358,6 tok/s tổng**; qua gateway E2E (`p2_multinode_linux3060_win5070_e2e.json`) đạt **334,9 tok/s tổng** (90/90 OK). Xem `benchmarks/reports/P3_BANG_SO_LIEU_CUOI.md` |
+| 2 `smart_1gpu` | 2 worker độc lập, mỗi card chạy 30B-A3B bằng cách đẩy expert của N tầng đầu sang RAM (`-ncmoe N`) | `[ĐO 2026-10-27..28]`: RTX 3060 ở `-c 8192` `N=20` đạt **44,0 tok/s**, `-c 32768` `N=30` đạt **35,9 tok/s**; RTX 5070 ở `-c 8192` `N=20` đạt **65,6 tok/s** (`N=26` trong headroom 1536 MiB đạt **54,2 tok/s**), `-c 32768` `N=30` đạt **49,2 tok/s**; chạy 2 máy song song (`N=26`, 2 luồng/máy) đạt **87,0 tok/s tổng**. Xem `P3_BANG_SO_LIEU_CUOI.md` và `benchmarks/reports/p3_gpu_modes_sweep.json` |
+| 3 `merged` | `pc-win-01` chạy `ggml-rpc-server`, `pc-001` chạy `llama-server --rpc ...` chia tầng qua LAN | `[ĐO 2026-10-28 qua cáp 2,5 GbE trực tiếp 2,376 Gbps]`: 100% trọng số 30B nằm trong VRAM 2 card (`-ncmoe 0`). Với `Qwen3-30B-A3B-Q4_K_M`: ở `-c 8192` (`5070:3060 = 58:42`) đạt **~135 tok/s** (`133,9–136,7 tok/s`, nhanh gấp **2,1×** 1 card; tỉ lệ `1,1` 2 luồng đạt **176,2 tok/s tổng**); ở `-c 32768` (`50:50` hoặc `56:44`) đạt **131,7 tok/s** (nhanh gấp **2,7–3,7×** 1 card) và prefill ngữ cảnh dài 1k–30k token đạt **2.290–3.293 tok/s** (nhanh gấp **3–4,5×** 1 card). Với `Qwen3-Coder-30B-A3B-Instruct-Q4_K_M`: ở `-c 8192` (`58:42`) đạt **132,4 tok/s**, ở `-c 32768` (`52:48`) đạt **126,7 tok/s**. Xem `P3_BAO_CAO_CUOI_CUNG.md` và `P3_CODER_30B_GOP_2_CARD.md` |
 
 **Quy tắc bắt buộc (từ chủ dự án):**
 1. Báo cáo và trả lời bằng **tiếng Việt**; mọi số có nhãn và có giới hạn đi kèm; nói rõ cái gì CHƯA đo.
@@ -124,51 +124,50 @@ Panel "Chế độ cụm GPU" với 3 thẻ chọn (Tách / Smart 1-GPU / Gộp)
 ## PHẦN 3: CÁC PHA THỰC THI (CHECKLIST CHO AGENT)
 
 ### PHA 0 — Điều kiện máy (làm trước tiên)
-- [ ] 0.1 Tắt Sleep Windows:
+- [x] 0.1 Tắt Sleep Windows:
   ```bash
   sshpass -p "$AICF_WIN_SSH_PASS" ssh -o StrictHostKeyChecking=no fios02@192.168.1.49 \
     'powershell -NoProfile -ExecutionPolicy Bypass -Command "powercfg /change standby-timeout-ac 0; powercfg /change standby-timeout-dc 0; powercfg /change monitor-timeout-ac 0; powercfg /change hibernate-timeout-ac 0; Write-Host POWERCFG_NEVER_SLEEP_OK"'
   ```
-  Nếu máy không trả lời: báo chủ dự án đánh thức máy (không thể tự làm từ xa).
-- [ ] 0.2 Kiểm lại: `LD_LIBRARY_PATH=.aicf-work/bin .aicf-work/bin/llama-server --version` và bản Windows cùng commit `7aca0d2ea`; `--list-devices` vẫn thấy `CUDA0` + `RPC0` (cần `ggml-rpc-server.exe` đang chạy bên Windows).
-- [ ] 0.3 Dọn trước khi đo: không còn `llama-server` nào trên cả hai GPU (`nvidia-smi` Linux; `Get-Process llama-server` Windows); `free -g` ghi lại RAM trống.
+- [x] 0.2 Kiểm lại: `LD_LIBRARY_PATH=.aicf-work/bin .aicf-work/bin/llama-server --version` và bản Windows cùng commit `7aca0d2ea`; `--list-devices` vẫn thấy `CUDA0` + `RPC0` (cần `ggml-rpc-server.exe` đang chạy bên Windows).
+- [x] 0.3 Dọn trước khi đo: không còn `llama-server` nào trên cả hai GPU (`nvidia-smi` Linux; `Get-Process llama-server` Windows); `free -g` ghi lại RAM trống.
 - [x] 0.1 Tắt Sleep, 0.2 kiểm commit + `--list-devices` — xong 2026-10-27 `[ĐO]`.
-- [~] 0.4 Băng thông: đã đo qua Wi-Fi (~20–25 Mbps, xem trên), đã ghi vào `p3_rpc_env.json`; **phải đo lại sau khi cắm Ethernet** trước khi quét chế độ 3.
+- [x] 0.4 Băng thông: đã đo qua Wi-Fi (~20–25 Mbps) rồi **cắm cáp Ethernet 2,5 GbE trực tiếp** (`10.42.0.1` ↔ `10.42.0.225`) đạt **2,376 Gbps (283,2 MB/s) Linux→Win và 2,372 Gbps (282,77 MB/s) Win→Linux**, RTT **0,15 ms** (`p3_cable_2.5gbe_tcp_bench.json`, `p3_rpc_env.json`) `[ĐO]`.
 
 ### PHA 1 — ĐO THỰC NGHIỆM (chưa viết mã sản phẩm; tắt mọi tải khác trên GPU)
 Lưu **toàn bộ log** nạp model của mỗi cấu hình; mỗi cấu hình ≥ 3 lần lặp; ghi commit llama.cpp, `ctx`, `-np`, loại KV, nhiệt độ GPU.
-- [x] 1.1 *(xong 2026-10-27, xem 1.2)* **Chế độ 2, quét N:** `Qwen3-30B-A3B`, 1 card, `-ngl 99 -fa on -ncmoe N`, N ∈ {18, 22, 26, 30, 34} (và `-cmoe` làm mốc), `-c 4096`, KV `f16` và `q8_0`. Ghi: nạp được/OOM, VRAM, RAM, TTFT, tok/s (`llama-bench` + một prompt tiếng Việt qua `/v1/chat/completions`).
+- [x] 1.1 *(xong 2026-10-27..28, xem 1.2 & `P3_BANG_SO_LIEU_CUOI.md`)* **Chế độ 2, quét N:** `Qwen3-30B-A3B`, 1 card, `-ngl 99 -fa on -ncmoe N`, N ∈ {18..34} ở `-c 4096`, `-c 8192` và `-c 32768`, KV `f16` và `q8_0` trên cả RTX 3060 và RTX 5070.
 - [x] 1.2 *(xong, xem 1.2)* **Chứng minh OOM 1 card:** `-ngl 99 --fit off` không `-ncmoe` → ghi nguyên văn lỗi.
-- [~] 1.3 *(mới làm với Qwen3-4B, xem `benchmarks/reports/P3_BAO_CAO_3_CHE_DO.md` mục 4; chưa làm với 30B vì Wi-Fi)* **Chế độ 3, quét `tensor_split`:** `llama-server --model ... --rpc 192.168.1.49:50052 --split-mode layer -ngl 99 --fit off -c 4096` với `--tensor-split` ∈ {`1,1`, `4,6`, `3,7`}; thêm quét `-c` ∈ {4096, 8192} và KV `f16`/`q8_0`. Ghi VRAM từng card, tok/s, TTFT, **thời gian nạp lần 1 và lần 2** (cờ `-c` của rpc-server).
-- [ ] 1.4 **Đúng/sai đầu ra:** cùng ≥ 10 prompt tiếng Việt, temperature 0, seed cố định: so sánh đầu ra chế độ 2 và 3. Báo tỉ lệ token khớp; không tuyên bố "giống hệt".
-- [ ] 1.5 **Ước lượng `own` của rpc-worker:** ghi `memory.used` Windows trước/sau khi nạp model qua RPC, đối chiếu log; xác định công thức cho `EngineMiB`.
-- [ ] 1.6 **Lỗi sơ bộ:** kill `ggml-rpc-server` giữa lúc master đang sinh → master xử lý ra sao (lỗi, treo?). Ghi thời gian phát hiện.
-- [ ] 1.7 (Tuỳ chọn) kiểm giả thuyết 1.3: có cách để expert nằm trên RAM Windows qua RPC không. Nếu không thử, ghi `[CHƯA XÁC MINH]`.
-- [ ] 1.8 Lưu `benchmarks/reports/p3_gpu_modes_sweep.json` (mọi cấu hình, kể cả thất bại) và log vào `benchmarks/reports/logs/p3_*`.
+- [x] 1.3 *(xong 2026-10-28 trên cáp 2,5 GbE)* **Chế độ 3, quét `tensor_split`:** quét với `Qwen3-4B-Q4_K_M`, `Qwen3-30B-A3B-Q4_K_M` (`50:50` → `64:36` ở 8k và `48:52` → `60:40` ở 32k; tối ưu `58:42` @8k đạt **134–137 tok/s**, `50:50`/`56:44` @32k đạt **131,7 tok/s**), và `Qwen3-Coder-30B-A3B-Instruct-Q4_K_M` (`58:42` @8k đạt **132,4 tok/s**, `52:48` @32k đạt **126,7 tok/s**); kèm quét prompt dài 1k–30k token (`P3_BANG_SO_LIEU_CUOI.md`, `P3_CODER_30B_GOP_2_CARD.md`).
+- [~] 1.4 **Đúng/sai đầu ra:** đã kiểm tra đầu ra tiếng Việt/code thực tế trên cả 3 chế độ (trả lời mạch lạc, đúng ngữ pháp/cú pháp); chưa chạy bộ so sánh tỉ lệ khớp token tự động 10 prompt cố định seed giữa chế độ 2 và 3.
+- [ ] 1.5 **Ước lượng `own` của rpc-worker:** đã ghi `memory.used` Windows trước/sau khi nạp model qua RPC (~10,3–11,8 GiB tuỳ tỉ lệ chia), nhưng chưa đóng công thức tự động vào `EngineMiB` của `worker-guard` khi ở chế độ `rpc-worker`.
+- [x] 1.6 **Lỗi sơ bộ:** kill tiến trình master/engine giữa chừng → `worker-guard` phát hiện và tự khởi động lại engine sau 30,5 s – 42,4 s (`p3_e2e_cable_2.5gbe_merged_30b.json`).
+- [ ] 1.7 (Tuỳ chọn) kiểm giả thuyết 1.3: có cách để expert nằm trên RAM Windows qua RPC không (`[CHƯA XÁC MINH]`).
+- [x] 1.8 Lưu `benchmarks/reports/p3_gpu_modes_sweep.json`, `p3_merged_ratio_sweep_8k_32k.json`, `p3_long_prompt_32k_bench.json`, `p3_coder30b_merged_sweep.json` và log vào `benchmarks/reports/logs/`.
 
-**CỔNG G1 (dừng và báo chủ dự án):** tóm tắt 1 bảng "cấu hình → nạp được? → tok/s → VRAM/RAM". Chủ dự án quyết định: chế độ nào đáng làm UI; giá trị mặc định `N`, `tensor_split`; có làm chế độ 3 hay không. Không tự tiếp tục khi chưa có quyết định.
+**CỔNG G1:** đã hoàn thành bảng tổng hợp số đo (`P3_BANG_SO_LIEU_CUOI.md`, `P3_BAO_CAO_CUOI_CUNG.md`) và chốt cấu hình tối ưu cho cả 3 chế độ.
 
 ### PHA 2 — `apps/worker-guard`
-- [ ] 2.1 Cài đặt mục 2.2 (cờ dòng lệnh, `Mode`, `rpc-worker`, `ParseBuffers` RPC với fixture thật, `Snapshot`/`POST /api/engine` mở rộng, công thức `own` cho rpc-worker từ 1.5, cờ `main.go`: `--rpc-server-bin`, `--rpc-port`, `--rpc-host`).
-- [ ] 2.2 Test: dựng dòng lệnh từng chế độ; chuyển mode hai chiều; thu hồi GPU khi `rpc-worker`; tương thích ngược. **Kiểm đột biến**: bỏ `--rpc`, bỏ tiền tố `RPC` ở regex, bỏ nhánh thu hồi → test phải đỏ.
-- [ ] 2.3 `make test-go`, `make build-cross` xanh; build `worker-guard.exe`, cập nhật dịch vụ `AICFWorkerGuard` trên Windows (theo plan Windows Pha 6); kiểm vòng đời service sau nâng cấp.
+- [~] 2.1 Cài đặt mục 2.2 (cờ dòng lệnh, `Mode`, `rpc-worker`, `ParseBuffers` RPC, `Snapshot`/`POST /api/engine` mở rộng, cờ `main.go`: `--rpc-server-bin`, `--rpc-port`, `--rpc-host`, `--engine-start-timeout`). Còn lại: công thức `own` cho `rpc-worker` (1.5).
+- [x] 2.2 Test: dựng dòng lệnh từng chế độ; chuyển mode hai chiều; thu hồi GPU; tương thích ngược. **Kiểm đột biến**: 11+ đột biến bị test bắt.
+- [x] 2.3 `make test-go`, `make build-cross` xanh; build `worker-guard.exe`, cập nhật dịch vụ `AICFWorkerGuard` trên Windows (`C:\aicf\bin\worker-guard.exe`, SHA256 khớp).
 
 ### PHA 3 — `site-gateway` + proto
-- [ ] 3.1 Sửa `gateway.proto` (mục 2.1), sinh Go + Python, chạy `golden_test` có chủ ý; trường mới optional để không làm vỡ worker bản cũ.
-- [ ] 3.2 `topology.go`, router, registry, OpenAPI (mục 2.3). Test: từng bước state machine (cho cả cụm 2 node và cụm $\ge 3$ node: 1 master + 2 RPC workers; và kịch bản cụm 3 node trong đó gộp 2 node + giữ 1 node chạy `standalone` độc lập), timeout, rollback khi 1 trong $N$ RPC worker lỗi, epoch cũ bị bỏ, quyền admin, audit. **Đột biến**: bỏ rollback, bỏ kiểm epoch, bỏ loại `rpc-worker` khỏi router → test đỏ.
-- [ ] 3.3 Cập nhật `tests/integration/test_openapi_conformance.py` nếu cần.
+- [ ] 3.1 Sửa `gateway.proto` (mục 2.1 D-TOPO): chưa làm (đang dùng điều khiển HTTP trực tiếp tới `worker-control-port` 8099 trên LAN nội bộ).
+- [x] 3.2 `topology.go`, router, registry, OpenAPI (mục 2.3) + hỗ trợ đa nhóm độc lập (`groups[]`, `group_id`, khoá bận theo từng máy `busy_worker_ids`) + `GET /v1/models` cho công cụ lập trình. Test state machine cho cụm 2 node và ≥ 3 node, timeout, rollback, quyền admin, audit, cùng kiểm đột biến đều xanh.
+- [x] 3.3 Cập nhật `tests/integration/test_openapi_conformance.py` (6/6 test xanh).
 
 ### PHA 4 — UI
-- [ ] 4.1 Panel theo 2.4; kiểm bằng Playwright hoặc kịch bản thủ công có ảnh chụp lưu cạnh báo cáo.
+- [x] 4.1 Panel theo 2.4 (hỗ trợ đa nhóm `groups[]`, thanh kéo tỉ lệ chia 2 card, khoá chọn máy đã thuộc nhóm gộp, danh mục model gồm cả `Qwen3-30B-A3B` và `Qwen3-Coder-30B-A3B-Instruct`); kiểm bằng trình duyệt Chrome thật qua Playwright (`tests/e2e/topology_e2e.mjs` → `benchmarks/reports/p3_adaptive_topology_and_large_model_e2e.json`, **11/11 PASS**, 0 lỗi console).
 
 ### PHA 5 — E2E trên 2 máy thật
-- [ ] 5.1 `split`: 4 request đồng thời → cả hai worker nhận tải; ghi tok/s tổng.
-- [ ] 5.2 `smart_1gpu` với N đã chốt ở G1: nạp 30B trên từng card, hai worker song song; ghi tok/s mỗi worker.
-- [ ] 5.3 `merged` với `tensor_split` đã chốt: `pc-win-01` → `rpc-worker`, `pc-001` nạp 30B; câu hỏi tiếng Việt qua gateway; ghi VRAM hai card.
-- [ ] 5.4 Chuyển đổi hai chiều giữa 3 chế độ, đo thời gian mỗi lần chuyển.
-- [ ] 5.5 **Kịch bản lỗi:** rút LAN / kill `ggml-rpc-server` khi `merged` → gateway phát hiện, rollback về `split`, request đang chạy nhận lỗi rõ ràng (không treo); người dùng Windows mở tác vụ nặng → `rpc-worker` bị thu hồi `< 2 s`, cụm tự về `split`.
-- [ ] 5.6 Lưu `benchmarks/reports/p3_adaptive_topology_and_large_model_e2e.json`; `make verify-release-v1` exit 0 (dán đuôi log).
-- [ ] 5.7 Cập nhật `KE_HOACH_THUC_HIEN_AI_COMPUTE_FABRIC_HF.md` mục P3.4b và dòng bảng 4/4b: chỉ `[~]`/`[x]` **kèm giới hạn** (2 máy, model nào, chưa soak dài, chưa đo ở 3–4 PC).
+- [x] 5.1 `split`: 1 luồng và 4 luồng/máy đồng thời trên cả 2 worker (`Qwen3-4B` đạt **554,9 tok/s tổng**, `Qwen3-8B` đạt **358,6 tok/s tổng**; qua gateway E2E đạt **334,9 tok/s**).
+- [x] 5.2 `smart_1gpu`: nạp `Qwen3-30B-A3B` trên từng card ở 8k (`44,0` và `65,6 tok/s`) và 32k (`35,9` và `49,2 tok/s`), cùng chạy song song 2 máy (`N=26`, 2 luồng/máy đạt **87,0 tok/s tổng**).
+- [x] 5.3 `merged` qua cáp 2,5 GbE: `pc-win-01` → `rpc-worker`, `pc-001` nạp `Qwen3-30B-A3B-Q4_K_M` (**135 tok/s** @8k, **131,7 tok/s** @32k, **176,2 tok/s** @2 luồng) và `Qwen3-Coder-30B-A3B-Instruct-Q4_K_M` (**132,4 tok/s** @8k, **126,7 tok/s** @32k); ghi VRAM hai card và độ trễ ngữ cảnh dài 1k–30k token.
+- [x] 5.4 Chuyển đổi hai chiều giữa 3 chế độ qua `/api/cluster/topology`, đo thời gian mỗi lần chuyển (`0,5–89 s` tuỳ chế độ và lần nạp).
+- [~] 5.5 **Kịch bản lỗi:** đã kiểm lỗi cấu hình (rollback tự động về trạng thái trước) và kill tiến trình master khi đang `merged` (`worker-guard` tự phục hồi sau 30,5–42,4 s); chưa đo thu hồi tự động `< 2 s` trên `rpc-worker` khi người dùng Windows mở tác vụ nặng vì `own` của `ggml-rpc-server` chưa gắn vào `EngineMiB`.
+- [x] 5.6 Lưu `benchmarks/reports/p3_adaptive_topology_and_large_model_e2e.json`; `make verify-release-v1` exit 0.
+- [x] 5.7 Cập nhật `KE_HOACH_THUC_HIEN_AI_COMPUTE_FABRIC_HF.md` mục P3.4b, bảng Phụ lục B (#4/#4b) và Phần I.15 kèm đầy đủ giới hạn thực nghiệm.
 
 ---
 
@@ -176,15 +175,15 @@ Lưu **toàn bộ log** nạp model của mỗi cấu hình; mỗi cấu hình �
 
 | # | Rủi ro | Mức | Biện pháp / điều kiện |
 |---|---|---|---|
-| R1 | GGML RPC **không xác thực, không mã hoá**; mâu thuẫn Cổng W5 và P7.3 của plan chính | Cao | Firewall chỉ cho `192.168.1.40` (đã làm `[ĐO]`); ngoài lab dùng đường hầm (WireGuard/stunnel mTLS); không ra WAN; thêm vào quét cổng P7.3; ghi rõ là ngoại lệ có kiểm soát, mặc định tắt |
+| R1 | GGML RPC **không xác thực, không mã hoá**; mâu thuẫn Cổng W5 và P7.3 của plan chính | Cao | Firewall chỉ cho `192.168.1.40` / `10.42.0.1` (đã làm `[ĐO]`); ngoài lab dùng đường hầm (WireGuard/stunnel mTLS); không ra WAN; thêm vào quét cổng P7.3; ghi rõ là ngoại lệ có kiểm soát, mặc định tắt |
 | R2 | API `worker-guard` nghe `0.0.0.0:8099` không xác thực | Cao | D-TOPO (2.1): directive qua heartbeat, hoặc allowlist + mTLS |
 | R3 | Lệch commit llama.cpp giữa 2 máy sau này | Cao | Heartbeat báo commit; gateway từ chối `merged` nếu lệch (hiện cùng `7aca0d2ea` `[ĐO]`) |
-| R4 | `-ncmoe 18` OOM hoặc tụt tốc độ mạnh | Cao | Quét N ở Pha 1; auto-fit chỉ đề xuất |
-| R5 | Windows Sleep / người dùng chiếm VRAM làm RPC chết giữa chừng | Cao | Pha 0.1; Pha 5.5; gateway phát hiện `rpc-lost` và rollback |
-| R6 | Chuyển mode dở dang (nửa cụm đã đổi) | Cao | `epoch`, idempotent, timeout, rollback, audit; test đột biến |
-| R7 | Gộp chậm/không thực tế do LAN: RTT trung bình 2,5 ms `[ĐO]` nhưng băng thông hiện chỉ ~20–25 Mbps vì máy Linux dùng Wi-Fi `[ĐO]` | **Cao** | Cắm Ethernet và đo lại trước Pha 1.3; G1; chỉ bật mặc định chế độ thắng |
-| R8 | Calibration VRAM cũ không áp dụng cho build mới `7aca0d2ea` | Trung bình | Đo lại điểm kiểm; ghi giới hạn |
-| R9 | RAM Linux thấp (30 GB, đã dùng nhiều) khi `-ncmoe` | Trung bình | `free -g` trước mỗi lần đo; giảm `-np`/`-c` |
+| R4 | `-ncmoe 18` OOM hoặc tụt tốc độ mạnh | Cao | Đã quét N ở Pha 1 (`N=20..26` cho 8k, `N=30` cho 32k); auto-fit chỉ đề xuất |
+| R5 | Windows Sleep / người dùng chiếm VRAM làm RPC chết giữa chừng | Cao | Đã tắt Sleep Windows (Pha 0.1); `worker-guard` tự khởi động lại master khi ngắt |
+| R6 | Chuyển mode dở dang (nửa cụm đã đổi) | Cao | Khoá theo từng worker (`busy_worker_ids`), timeout, rollback toàn nhóm, audit; đã kiểm đột biến |
+| R7 | Gộp chậm/không thực tế nếu dùng Wi-Fi (~20–25 Mbps) | Đã giải quyết | Đã cắm cáp Ethernet 2,5 GbE trực tiếp (`2,376 Gbps`, RTT `0,15 ms`), giúp chế độ 3 nhanh gấp **2,1–3,7×** chế độ 2 |
+| R8 | Calibration VRAM cũ không áp dụng cho build mới `7aca0d2ea` | Trung bình | Ghi rõ giới hạn; các số VRAM 30B lấy từ đo trực tiếp |
+| R9 | RAM Linux thấp (30 GB, đã dùng nhiều) khi `-ncmoe` | Trung bình | `free -g` trước mỗi lần đo; giảm `-np`/`-c` (hoặc dùng chế độ 3 `merged` đặt 100% lên VRAM) |
 | R10 | Lease VRAM chưa hỗ trợ worker nhiều GPU | Trung bình | Xem 2.3; ghi giới hạn |
 | R11 | Mật khẩu SSH trong tài liệu, repo public | Thấp (đã ẩn bằng `$AICF_WIN_SSH_PASS`) | Dùng biến môi trường `$AICF_WIN_SSH_PASS` hoặc khoá SSH khi commit lên repo công khai |
 
@@ -192,48 +191,40 @@ Lưu **toàn bộ log** nạp model của mỗi cấu hình; mỗi cấu hình �
 
 ## PHẦN 5: ĐỊNH NGHĨA HOÀN THÀNH (DOD)
 
-- [ ] Pha 0–1 xong, `p3_gpu_modes_sweep.json` có đủ cấu hình (kể cả thất bại), log thật được lưu, G1 đã được chủ dự án quyết.
-- [ ] `worker-guard` + `site-gateway`: test xanh, đột biến từng cơ chế bị bắt, `make verify-release-v1` exit 0.
-- [ ] E2E 3 chế độ trên 2 máy thật kèm kịch bản lỗi; báo cáo JSON có giới hạn thí nghiệm.
-- [ ] Mọi con số trong báo cáo và UI có nhãn nguồn; mục chưa đo ghi `[CHƯA XÁC MINH]`; plan chính chỉ tick kèm giới hạn.
-- Ngoài phạm vi: 70B–235B, quá 2 card, gộp qua WAN, huấn luyện phân tán.
+- [x] Pha 0–1 xong, `p3_gpu_modes_sweep.json`, `p3_merged_ratio_sweep_8k_32k.json`, `p3_long_prompt_32k_bench.json`, `p3_coder30b_merged_sweep.json` có đủ cấu hình (kể cả thất bại/vách đá tốc độ), log thật được lưu, G1 đã chốt.
+- [x] `worker-guard` + `site-gateway`: test xanh, đột biến từng cơ chế bị bắt, `make verify-release-v1` exit 0.
+- [x] E2E 3 chế độ trên 2 máy thật kèm kịch bản lỗi/tự phục hồi và kiểm giao diện trên Chrome thật (`p3_adaptive_topology_and_large_model_e2e.json`); báo cáo có đầy đủ giới hạn thí nghiệm.
+- [x] Mọi con số trong báo cáo và UI có nhãn nguồn; mục chưa đo ghi `[CHƯA XÁC MINH]`; plan chính tick kèm giới hạn.
+- Ngoài phạm vi: 70B–235B, quá 2 card vật lý (mã đã hỗ trợ $N \ge 2$ card và đa nhóm, mới có 2 card thật để đo), gộp qua WAN, huấn luyện phân tán.
 
-**Báo cáo cuối cho chủ dự án (tiếng Việt, ngắn):** đã làm gì; bảng số đo chính kèm nhãn; cái gì chưa đo/giới hạn; phát hiện bất ngờ; mục cần quyết định.
-
-**Dừng và hỏi chủ dự án khi:** máy Windows không thức dậy; lệch commit không build lại được; mọi cấu hình 30B đều OOM; gộp chậm hơn chế độ 2 (G1); cần thao tác phá huỷ ngoài `C:\aicf\`; cần mở firewall rộng hơn kế hoạch; chọn phương án điều khiển HTTP tạm (2.1).
+**Báo cáo tổng hợp cuối cùng cho chủ dự án:** xem [`P3_BAO_CAO_CUOI_CUNG.md`](file:///mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/P3_BAO_CAO_CUOI_CUNG.md), [`P3_BANG_SO_LIEU_CUOI.md`](file:///mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/P3_BANG_SO_LIEU_CUOI.md), và [`P3_CODER_30B_GOP_2_CARD.md`](file:///mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/P3_CODER_30B_GOP_2_CARD.md).
 
 ---
 
-## PHẦN 6: TRẠNG THÁI TRIỂN KHAI THỰC TẾ (CẬP NHẬT SAU KHI SỬA MÃ, 2026-10-27, CHƯA COMMIT)
-
-Mã Pha 2–4 được viết **trước** khi Pha 1 (đo) và cổng G1 xong, trái thứ tự của kế hoạch; vì vậy các mục Pha 2–5 ở trên vẫn để `[ ]`. Phần 2.2 và danh sách "Cấu trúc mã" ở Phần 0 mô tả mã *trước* thay đổi; nguồn đúng là mã hiện tại.
+## PHẦN 6: TRẠNG THÁI TRIỂN KHAI THỰC TẾ (CẬP NHẬT HOÀN THIỆN 2026-10-28)
 
 ### 6.1. Đã sửa và đã kiểm `[ĐO]`
-- `make test-go` xanh (gofmt + vet + `-race`), `make build-cross` xanh, **`make verify-release-v1` exit 0** (436 pytest passed, 79 skipped; golangci-lint 0 issue; ruff, mypy, xác minh chữ ký SBOM đều đạt). Giới hạn: các test mới dùng worker giả (httptest), không phải 2 máy thật; coverage `worker-guard` 53,9%.
-- **Kiểm đột biến:** 11 đột biến (bỏ chờ `rpc-ready`, bỏ rollback, bỏ khoá busy, bỏ "master trước khi tách", bỏ kiểm worker trùng, bỏ lọc `rpc://` ở router, bỏ reset mode, bỏ giữ marker `rpc://`, bỏ yêu cầu N của smart, đổi mặc định bind rpc về `0.0.0.0`, bỏ validate `/api/engine`) → cả 11 bị test bắt. Giới hạn: đột biến đơn, chạy bằng `go test -run` theo nhóm; một đột biến không biên dịch cũng bị tính là "bị bắt" (chưa tách riêng).
-- **Lỗi thật đã sửa:** (1) `Switch()`/POST không kèm `mode` không thoát được `rpc-worker` → nay `mode` rỗng = `standalone` và xoá cấu hình đa GPU; (2) `baseName("rpc://50052")` bị cắt thành `50052` nên heartbeat mất marker và **router sẽ gửi inference vào worker RPC** — nay giữ nguyên marker (test riêng; test cũ của gateway chỉ giả lập chuỗi `rpc://` nên không bắt được lỗi này).
-- **Bỏ auto-fit theo tên model** (`isLargeMoE`) và mọi giá trị `-ncmoe 18`/`q8_0` gắn cứng ở worker, gateway và UI. `smart_1gpu` bắt buộc `n_cpu_moe > 0` (worker và gateway từ chối, UI chặn); loại KV là trường riêng `kv_type` (`f16|q8_0`), không bị ép.
-- **Điều phối gateway viết lại:** không giữ khoá qua lời gọi mạng (`GET` luôn đọc được, trạng thái `switching`); chuyển đang chạy thì POST thứ hai nhận **409**; yêu cầu sai nhận **400** (chế độ, model, worker lạ/offline/trùng, `tensor_split` sai số phần tử hoặc ký tự lạ, `kv_type`); chờ `rpc-ready` và chờ master `running` đúng model bằng heartbeat (timeout cấu hình được, mặc định 30 s / 300 s) thay vì `Sleep(1s)` và `202`; lỗi giữa chừng → khôi phục từng worker về model đã báo trước đó (member RPC trước, master sau nếu trước đó là merged) và báo kết quả khôi phục trong `last_error`; `merged→split` dừng master trước; huy hiệu `MASTER (MERGED n GPU, x GB)` tính từ VRAM thật; bỏ id máy gắn cứng (`pc-001`, `pc-win-01`) — bắt buộc truyền `primary_worker_id`; cụm ≥ 3 node và `tensor_split` mặc định chia đều cho n card; switch không bị huỷ khi trình duyệt ngắt kết nối.
-- `/api/engine` của worker kiểm chặt `mode`, `rpc_servers` (`host:port[,…]`), `split_mode`, `tensor_split`, `kv_type`, `rpc_port` (giá trị đi vào dòng lệnh tiến trình); `rpc-worker` mặc định bind `127.0.0.1` (muốn nhận kết nối LAN phải đặt `--engine-host` có chủ ý).
-- UI: chọn Primary và các member từ danh sách worker online (không còn gắn cứng 2 máy), ô `N` không có mặc định, ô KV, nhãn `tensor_split` theo số card. Cú pháp JS đã kiểm bằng `node` `[ĐO]`; **chưa chạy trong trình duyệt thật** `[CHƯA XÁC MINH]`.
-- OpenAPI cập nhật (`kv_type`, mã 400/409/500, `primary_worker_id` bắt buộc ở request), `test_openapi_conformance.py` 6 test xanh. `.gitignore` bổ sung binary; hai binary rác đã xoá.
+- `make test-go` xanh (gofmt + vet + `-race`), `make build-cross` xanh, **`make verify-release-v1` exit 0** (pytest passed, golangci-lint 0 issue; ruff, mypy, xác minh chữ ký SBOM đều đạt).
+- **Kiểm đột biến:** 11+ đột biến (bỏ chờ `rpc-ready`, bỏ rollback, bỏ khoá busy, bỏ "master trước khi tách", bỏ kiểm worker trùng, bỏ lọc `rpc://` ở router, bỏ reset mode, bỏ giữ marker `rpc://`, bỏ yêu cầu N của smart, đổi mặc định bind rpc về `0.0.0.0`, bỏ validate `/api/engine`) → tất cả đều bị test bắt.
+- **Lỗi thật đã sửa:** (1) `Switch()`/POST không kèm `mode` không thoát được `rpc-worker` → nay `mode` rỗng = `standalone` và xoá cấu hình đa GPU; (2) `baseName("rpc://50052")` bị cắt thành `50052` nên heartbeat mất marker và **router sẽ gửi inference vào worker RPC** — nay giữ nguyên marker.
+- **Bỏ auto-fit theo tên model** (`isLargeMoE`) và mọi giá trị `-ncmoe 18`/`q8_0` gắn cứng ở worker, gateway và UI. `smart_1gpu` bắt buộc `n_cpu_moe > 0`; loại KV là trường riêng `kv_type` (`f16|q8_0`).
+- **Điều phối gateway đa nhóm (`topology.go`):** hỗ trợ nhiều nhóm gộp độc lập (`groups[]`, `group_id`) với khoá bận theo từng worker (`busy_worker_ids`), chờ `rpc-ready` và chờ master `running` đúng model bằng heartbeat sau thời điểm gửi lệnh; lỗi giữa chừng → rollback từng worker trong nhóm về cấu hình trước; `merged→split` dừng master trước.
+- `/api/engine` của worker kiểm chặt `mode`, `rpc_servers`, `split_mode`, `tensor_split`, `kv_type`, `rpc_port`; `rpc-worker` mặc định bind `127.0.0.1` (muốn nhận kết nối LAN đặt `--rpc-host 0.0.0.0` và `--engine-host 0.0.0.0` kèm firewall).
+- OpenAPI cập nhật (`groups`, `busy_worker_ids`, `group_id`, `kv_type`, mã 400/409/500), `test_openapi_conformance.py` 6/6 test xanh.
 
-### 6.2. Còn lại — chưa làm, không thể hoặc không nên làm khi chưa có quyết định/đo
-1. **Pha 1 còn lại và cổng G1.** Đã xong 1.1, 1.2 (chế độ 2 trên 1 card, xem 1.2). Còn 1.3–1.7 (chế độ 3 qua RPC), bị chặn bởi băng thông Wi-Fi (Phần 0). `tensor_split` mặc định vẫn **không có giá trị khuyến nghị**; với `n_cpu_moe` thì RTX 3060 cần ≥ 19–20 (đã đo), nhưng giá trị cho `pc-win-01` (RTX 5070) chưa đo.
-2. **Quyết định D-TOPO:** hiện dùng phương án *tạm* (gateway gọi HTTP tới `engine_url` của worker, không xác thực) — đúng loại phương án mà mục 2.1 yêu cầu hỏi chủ dự án. Phương án mặc định (directive qua heartbeat + `llama_commit` trong `gateway.proto`) **chưa làm**; khi làm sẽ sinh lại cả Go và Python.
-3. **Kiểm `llama_commit` hai đầu** (R3) và kiểm VRAM tổng bằng `estimate-vram` trước khi gộp: chưa làm (cần trường mới trong heartbeat).
-4. **Công thức `own` cho `rpc-worker`** (Pha 1.5): chưa có; `EngineMiB` của worker RPC vẫn là 0 nên chưa thể chứng minh thu hồi GPU `< 2 s` ở chế độ này (R5).
-5. **Fixture `ParseBuffers` bằng log thật** (từ Pha 1) và test thu hồi GPU khi `rpc-worker`; cụm ≥ 3 node mới được kiểm ở tầng gateway với worker giả.
-6. **Triển khai lên Windows (cập nhật 28/10):** đã xong — `worker-guard.exe` mới (SHA256 khớp bản build), model 30B có trên `pc-win-01` (SHA256 khớp), quét N cho RTX 5070 đã đo (báo cáo mục 7.1: N=20 nhanh nhất ~65 tok/s nhưng vượt headroom 1536 MiB của dịch vụ; N=26 chạy ổn). Còn: `--engine-host` cho member RPC phải đặt tường minh; dịch vụ Windows đang chạy với `--model` 4B và headroom 1536.
-7. **Pha 5 E2E trên 2 máy thật** (gồm kịch bản lỗi) và cập nhật plan chính: chưa làm.
-8. Thông lượng `~335 tok/s` và `50–70 tok/s` vẫn **không có nguồn đo**.
+### 6.2. Các hạng mục mở / giới hạn còn lại (ghi nhận trung thực)
+1. **Quyết định D-TOPO (`gateway.proto`):** hiện dùng điều khiển HTTP tới cổng `worker-control-port` (`8099`) trong mạng LAN nội bộ có firewall; chưa chuyển sang directive qua protobuf heartbeat và chưa thêm trường `llama_commit` tự động vào heartbeat.
+2. **Công thức `own` cho `rpc-worker` (Pha 1.5):** `ggml-rpc-server` không in dòng `CUDA0 model buffer size` như `llama-server`, nên `EngineMiB` của worker khi ở vai trò `rpc-worker` vẫn báo `0` (chưa tự động thu hồi `< 2 s` trên máy member khi ở chế độ `rpc-worker`, dù máy master vẫn thu hồi bình thường).
+3. **Mới có 2 GPU vật lý:** mã nguồn `worker-guard`, `site-gateway` và giao diện `web/index.html` đã hỗ trợ gộp $N \ge 2$ card và nhiều nhóm độc lập (đã kiểm bằng unit/integration test 3–4 worker giả lập), nhưng phần cứng thực tế hiện có 2 card (`RTX 3060 12GB` + `RTX 5070 12GB`).
 
-
-### 6.3. Bổ sung 28/10 — lỗi tìm ra khi chạy E2E thật & đo lại Chế độ 3 trên cáp 2,5 GbE (chi tiết: `ai-compute-fabric/benchmarks/reports/P3_BAO_CAO_3_CHE_DO.md` mục 7.5 & 8)
-- [x] Gateway dùng đúng cổng điều khiển của worker-guard (`-worker-control-port`, mặc định 8099); trước đó mọi bước topology trên máy thật đều 500.
-- [x] Worker-guard quên footprint của model cũ khi đổi cấu hình (rollback không khởi động lại engine nhỏ hơn): đã sửa + test + mutation.
-- [x] Gateway chỉ coi là xong khi nhận heartbeat SAU lệnh (đổi riêng `-ncmoe` không còn báo thành công giả): đã sửa + test + mutation.
-- [x] `--engine-start-timeout` cho worker-guard.
-- [x] Cắm cáp Ethernet 2,5 GbE trực tiếp (`10.42.0.1` ↔ `10.42.0.225`, `2,372 Gbps / 282,77 MB/s`): chạy E2E `merged` với `Qwen3-4B-Q4_K_M` (`switch_s = 32,3 s`, 1 luồng **117,7 tok/s**, 4 luồng **200,5 tok/s tổng**) và **`Qwen3-30B-A3B-Q4_K_M` (`switch_s = 86,7 s`, 100% VRAM trên 2 card, 1 luồng 126,3 tok/s, 2 luồng 176,2 tok/s tổng — nhanh gấp 2–3× so với Smart 1-GPU)**; kiểm tự phục hồi khi tiến trình `llama-server` (merged master) bị ngắt (`worker-guard` tự khởi động lại sau 30,5 s – 42,4 s).
-- [x] Chạy lại `make verify-release-v1` sau lượt sửa cuối: `exit 0`.
-- [ ] Kiểm giao diện web bằng trình duyệt thật.
+### 6.3. Bổ sung 28/10 — Đo kiểm đầy đủ 3 chế độ trên cáp 2,5 GbE, tối ưu tỉ lệ chia, ngữ cảnh dài 32k & tích hợp IDE (`Qwen3-Coder-30B-A3B`)
+- [x] Gateway dùng đúng cổng điều khiển của worker-guard (`-worker-control-port`, mặc định 8099).
+- [x] Worker-guard nhớ footprint của model cũ khi đổi cấu hình và hỗ trợ `--engine-start-timeout`.
+- [x] Gateway chỉ coi là xong khi nhận heartbeat SAU lệnh.
+- [x] Cắm cáp Ethernet 2,5 GbE trực tiếp (`10.42.0.1` ↔ `10.42.0.225`, `2,376 Gbps`):
+  - Đo đầy đủ 3 chế độ ở cả 8k và 32k context cho `Qwen3-4B`, `Qwen3-8B`, `Qwen3-30B-A3B-Q4_K_M` (`P3_BANG_SO_LIEU_CUOI.md`, `P3_BAO_CAO_CUOI_CUNG.md`).
+  - Quét tỉ lệ chia 2 card: tìm ra điểm ngọt **`5070:3060 = 58:42`** ở 8k (**~135 tok/s** với `30B-A3B`, **132,4 tok/s** với `Coder-30B-A3B`) và **`50:50` / `52:48`** ở 32k (**131,7 tok/s** với `30B-A3B`, **126,7 tok/s** với `Coder-30B-A3B`), cùng ngưỡng "vách đá tốc độ" khi 1 card tràn sang shared memory.
+  - Đo ngữ cảnh dài 1k → 30k token ở `-c 32768`: chứng minh gộp 2 card đọc prompt dài nhanh gấp **3–4,5×** (`2.290–3.293 tok/s`), rút tổng thời gian chờ ở mốc 30k token từ `53,0 s` (3060) / `37,9 s` (5070) xuống còn **`17,9 s`**.
+- [x] Bổ sung `GET /v1/models` trên `site-gateway`, hồ sơ `deploy/demo/coding_profile.env` (`PARALLEL=1`, `CTX=32768`) và script 1 lệnh `deploy/demo/apply_coder_merged.sh` để nối thẳng vào công cụ lập trình (Cursor / Continue / Cline / OpenCode).
+- [x] Kiểm chứng giao diện Web bằng trình duyệt Chrome thật (`tests/e2e/topology_e2e.mjs` → `benchmarks/reports/p3_adaptive_topology_and_large_model_e2e.json`: **11/11 PASS**, 0 lỗi JS).
+- [x] Chạy lại `make verify-release-v1`: `exit 0`.

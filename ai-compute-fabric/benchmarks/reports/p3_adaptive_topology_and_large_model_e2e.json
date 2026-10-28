@@ -1,0 +1,594 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-28",
+  "title": "P3.4b Adaptive 3-Mode GPU Cluster Topology (split, smart_1gpu, merged GGML RPC) & Large Model E2E Evidence",
+  "pass": true,
+  "browser_ui_e2e": {
+    "browser": "Google Chrome Headless (Playwright)",
+    "target_url": "http://127.0.0.1:18080/index.html",
+    "pass": true,
+    "checks": [
+      {
+        "name": "topology badge displays live cluster mode",
+        "ok": true,
+        "detail": "ĐANG CHẠY: C. GỘP 2 CARD"
+      },
+      {
+        "name": "topology summary shows active workers or model",
+        "ok": true,
+        "detail": "Máy chính pc-001 + pc-win-01, tỷ lệ 48,52"
+      },
+      {
+        "name": "topology model selector lists 4B, 8B, 30B-A3B and Coder-30B-A3B",
+        "ok": true,
+        "detail": "Qwen3-4B-Q4_K_M.gguf, Qwen3-8B-Q4_K_M.gguf, Qwen3-30B-A3B-Q4_K_M.gguf, Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"
+      },
+      {
+        "name": "topology node status cards render both pc-001 (RTX 3060) and pc-win-01 (RTX 5070)",
+        "ok": true,
+        "detail": "pc-001MASTER (MERGED 2 GPU, 24 GB)NVIDIA GeForce RTX 3060 · Model: Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.ggufTrạng thái: running1905 / 12288 MiB trống || pc-win-01RPC GPU MEMBER -> pc-001NVIDIA GeForce RTX 5070 · Model: rpc://50052Trạng thái: running666 / 12227 MiB trống"
+      },
+      {
+        "name": "merged groups board displays active group and Split button",
+        "ok": true,
+        "detail": "pc-001 (RTX 3060) + pc-win-01 (RTX 5070) · Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf · tỷ lệ 48,52 · 24 GBTách nhóm"
+      },
+      {
+        "name": "machines in an active merged group have their checkboxes disabled until split",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clicking Smart 1-GPU mode card reveals -ncmoe N input panel",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clicking Merged mode card reveals ratio & KV cache panel",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clicking Split mode card activates card A",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "GET /api/cluster/topology returns valid schema with groups and workers",
+        "ok": true,
+        "detail": "mode=merged, groups=1"
+      },
+      {
+        "name": "zero JavaScript console or page errors on index.html",
+        "ok": true,
+        "detail": ""
+      }
+    ]
+  },
+  "hardware_e2e_transitions": {
+    "step_a_split_and_smart_pc001": [
+      {
+        "request": {
+          "mode": "split",
+          "primary_worker_id": "pc-001",
+          "rpc_worker_ids": [],
+          "model": "Qwen3-8B-Q4_K_M.gguf"
+        },
+        "http": 200,
+        "switch_s": 36.5,
+        "response": "ok",
+        "status": {
+          "mode": "split",
+          "status": "ready",
+          "last_error": null
+        },
+        "workers": {
+          "pc-001": {
+            "role": "standalone",
+            "mode": "split",
+            "model": "Qwen3-8B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SPLIT WORKER"
+          },
+          "pc-win-01": {
+            "role": "standalone",
+            "mode": "split",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SPLIT WORKER"
+          }
+        },
+        "chat": {
+          "pc-001": {
+            "ok": true,
+            "tok_s": 63,
+            "wall_s": 1.1,
+            "text": ""
+          },
+          "pc-win-01": {
+            "ok": true,
+            "tok_s": 173.1,
+            "wall_s": 0.7,
+            "text": ""
+          }
+        },
+        "ts": "2026-10-27T16:25:40+0700"
+      },
+      {
+        "request": {
+          "mode": "smart_1gpu",
+          "primary_worker_id": "pc-001",
+          "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+          "n_cpu_moe": 20
+        },
+        "http": 200,
+        "switch_s": 24.5,
+        "response": "ok",
+        "status": {
+          "mode": "smart_1gpu",
+          "status": "ready",
+          "last_error": null
+        },
+        "workers": {
+          "pc-001": {
+            "role": "standalone",
+            "mode": "smart_1gpu",
+            "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SMART 1-GPU HYBRID"
+          },
+          "pc-win-01": {
+            "role": "standalone",
+            "mode": "smart_1gpu",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SMART 1-GPU HYBRID"
+          }
+        },
+        "chat": {
+          "pc-001": {
+            "ok": true,
+            "tok_s": 33.6,
+            "wall_s": 3.1,
+            "text": ""
+          },
+          "pc-win-01": {
+            "ok": true,
+            "tok_s": 175.5,
+            "wall_s": 0.6,
+            "text": ""
+          }
+        },
+        "ts": "2026-10-27T16:26:08+0700"
+      },
+      {
+        "request": {
+          "mode": "split",
+          "primary_worker_id": "pc-001",
+          "model": "Qwen3-4B-Q4_K_M.gguf"
+        },
+        "http": 200,
+        "switch_s": 14,
+        "response": "ok",
+        "status": {
+          "mode": "split",
+          "status": "ready",
+          "last_error": null
+        },
+        "workers": {
+          "pc-001": {
+            "role": "standalone",
+            "mode": "split",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SPLIT WORKER"
+          },
+          "pc-win-01": {
+            "role": "standalone",
+            "mode": "split",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SPLIT WORKER"
+          }
+        },
+        "chat": {
+          "pc-001": {
+            "ok": true,
+            "tok_s": 100.2,
+            "wall_s": 0.7,
+            "text": ""
+          },
+          "pc-win-01": {
+            "ok": true,
+            "tok_s": 174.8,
+            "wall_s": 0.6,
+            "text": ""
+          }
+        },
+        "ts": "2026-10-27T16:26:24+0700"
+      }
+    ],
+    "step_b_merged_wifi_timeout_rollback": [
+      {
+        "request": {
+          "mode": "merged",
+          "primary_worker_id": "pc-001",
+          "rpc_worker_ids": [
+            "pc-win-01"
+          ],
+          "model": "Qwen3-0.6B-Q8_0.gguf",
+          "tensor_split": "4,6"
+        },
+        "http": 500,
+        "switch_s": 312.1,
+        "response": "{\"error\":\"master pc-001 did not start Qwen3-0.6B-Q8_0.gguf: timed out after 5m0s; previous configuration restored\",\"topology\":{\"mode\":\"split\",\"primary_worker_id\":\"pc-001\",\"rpc_worker_ids\":[],\"model\":\"Qwen3-4B-Q4_K_M.gguf\",\"rpc_port\":50052,\"status\":\"error\",\"last_error\":\"master pc-001 did not start Qwen3-0.6B-Q8_0.gguf: timed out after 5m0s; previous configuration restored\",\"updated_at\":\"2026-10-27T16:50:52.464555712+07:00\",\"workers\":{\"pc-001\":{\"worker_id\":\"pc-001\",\"role\":\"standalone\",\"mode\":\"spli",
+        "status": {
+          "mode": "split",
+          "status": "error",
+          "last_error": "master pc-001 did not start Qwen3-0.6B-Q8_0.gguf: timed out after 5m0s; previous configuration restored"
+        },
+        "workers": {
+          "pc-001": {
+            "role": "standalone",
+            "mode": "split",
+            "model": "Qwen3-0.6B-Q8_0.gguf",
+            "state": "stopped",
+            "badge": "SPLIT WORKER"
+          },
+          "pc-win-01": {
+            "role": "standalone",
+            "mode": "split",
+            "model": "rpc://50052",
+            "state": "running",
+            "badge": "SPLIT WORKER"
+          }
+        },
+        "chat": {},
+        "ts": "2026-10-27T16:50:52+0700"
+      },
+      {
+        "request": {
+          "mode": "split",
+          "primary_worker_id": "pc-001",
+          "rpc_worker_ids": [],
+          "model": "Qwen3-4B-Q4_K_M.gguf"
+        },
+        "http": 200,
+        "switch_s": 12.5,
+        "response": "ok",
+        "status": {
+          "mode": "split",
+          "status": "ready",
+          "last_error": null
+        },
+        "workers": {
+          "pc-001": {
+            "role": "standalone",
+            "mode": "split",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SPLIT WORKER"
+          },
+          "pc-win-01": {
+            "role": "standalone",
+            "mode": "split",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "stopped",
+            "badge": "SPLIT WORKER"
+          }
+        },
+        "chat": {
+          "pc-001": {
+            "ok": true,
+            "tok_s": 101.9,
+            "wall_s": 0.7,
+            "text": ""
+          },
+          "pc-win-01": {
+            "ok": true,
+            "tok_s": 172.4,
+            "wall_s": 0.5,
+            "text": ""
+          }
+        },
+        "ts": "2026-10-27T16:51:06+0700"
+      }
+    ],
+    "step_d_smart_both_30b_n26": [
+      {
+        "request": {
+          "mode": "smart_1gpu",
+          "primary_worker_id": "pc-001",
+          "rpc_worker_ids": [
+            "pc-win-01"
+          ],
+          "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+          "n_cpu_moe": 26
+        },
+        "http": 200,
+        "switch_s": 27.4,
+        "response": "ok",
+        "status": {
+          "mode": "smart_1gpu",
+          "status": "ready",
+          "last_error": null
+        },
+        "workers": {
+          "pc-001": {
+            "role": "standalone",
+            "mode": "smart_1gpu",
+            "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SMART 1-GPU HYBRID"
+          },
+          "pc-win-01": {
+            "role": "standalone",
+            "mode": "smart_1gpu",
+            "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SMART 1-GPU HYBRID"
+          }
+        },
+        "chat": {
+          "pc-001": {
+            "ok": true,
+            "tok_s": 23.4,
+            "wall_s": 4.7,
+            "text": ""
+          },
+          "pc-win-01": {
+            "ok": true,
+            "tok_s": 48.8,
+            "wall_s": 1.7,
+            "text": ""
+          }
+        },
+        "ts": "2026-10-28T01:46:09+0700"
+      }
+    ],
+    "step_f_smart_same_model_new_n_and_split": [
+      {
+        "request": {
+          "mode": "smart_1gpu",
+          "primary_worker_id": "pc-win-01",
+          "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+          "n_cpu_moe": 26
+        },
+        "http": 200,
+        "switch_s": 14.7,
+        "response": "ok",
+        "status": {
+          "mode": "smart_1gpu",
+          "status": "ready",
+          "last_error": null
+        },
+        "workers": {
+          "pc-001": {
+            "role": "standalone",
+            "mode": "smart_1gpu",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SMART 1-GPU HYBRID"
+          },
+          "pc-win-01": {
+            "role": "standalone",
+            "mode": "smart_1gpu",
+            "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SMART 1-GPU HYBRID"
+          }
+        },
+        "chat": {
+          "pc-001": {
+            "ok": true,
+            "tok_s": 101.2,
+            "wall_s": 0.7,
+            "text": ""
+          },
+          "pc-win-01": {
+            "ok": true,
+            "tok_s": 49.1,
+            "wall_s": 1.7,
+            "text": ""
+          }
+        },
+        "ts": "2026-10-28T01:49:12+0700"
+      },
+      {
+        "request": {
+          "mode": "smart_1gpu",
+          "primary_worker_id": "pc-win-01",
+          "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+          "n_cpu_moe": 28
+        },
+        "http": 200,
+        "switch_s": 15,
+        "response": "ok",
+        "status": {
+          "mode": "smart_1gpu",
+          "status": "ready",
+          "last_error": null
+        },
+        "workers": {
+          "pc-001": {
+            "role": "standalone",
+            "mode": "smart_1gpu",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SMART 1-GPU HYBRID"
+          },
+          "pc-win-01": {
+            "role": "standalone",
+            "mode": "smart_1gpu",
+            "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SMART 1-GPU HYBRID"
+          }
+        },
+        "chat": {
+          "pc-001": {
+            "ok": true,
+            "tok_s": 100.4,
+            "wall_s": 0.6,
+            "text": ""
+          },
+          "pc-win-01": {
+            "ok": true,
+            "tok_s": 46.6,
+            "wall_s": 1.9,
+            "text": ""
+          }
+        },
+        "ts": "2026-10-28T01:49:30+0700"
+      },
+      {
+        "request": {
+          "mode": "split",
+          "primary_worker_id": "pc-001",
+          "rpc_worker_ids": [
+            "pc-win-01"
+          ],
+          "model": "Qwen3-4B-Q4_K_M.gguf"
+        },
+        "http": 200,
+        "switch_s": 13.1,
+        "response": "ok",
+        "status": {
+          "mode": "split",
+          "status": "ready",
+          "last_error": null
+        },
+        "workers": {
+          "pc-001": {
+            "role": "standalone",
+            "mode": "split",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SPLIT WORKER"
+          },
+          "pc-win-01": {
+            "role": "standalone",
+            "mode": "split",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "SPLIT WORKER"
+          }
+        },
+        "chat": {
+          "pc-001": {
+            "ok": true,
+            "tok_s": 102.1,
+            "wall_s": 0.7,
+            "text": ""
+          },
+          "pc-win-01": {
+            "ok": true,
+            "tok_s": 173.6,
+            "wall_s": 0.4,
+            "text": ""
+          }
+        },
+        "ts": "2026-10-28T01:49:44+0700"
+      }
+    ],
+    "step_g_merged_4b_cable_2p5gbe": [
+      {
+        "request": {
+          "mode": "merged",
+          "primary_worker_id": "pc-001",
+          "rpc_worker_ids": [
+            "pc-win-01"
+          ],
+          "model": "Qwen3-4B-Q4_K_M.gguf",
+          "tensor_split": "4,6"
+        },
+        "http": 200,
+        "switch_s": 32.3,
+        "response": "ok",
+        "status": {
+          "mode": "merged",
+          "status": "ready",
+          "last_error": null
+        },
+        "workers": {
+          "pc-001": {
+            "role": "master",
+            "mode": "merged",
+            "model": "Qwen3-4B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "MASTER (MERGED 2 GPU, 24 GB)"
+          },
+          "pc-win-01": {
+            "role": "member",
+            "mode": "rpc-worker",
+            "model": "rpc://50052",
+            "state": "running",
+            "badge": "RPC GPU MEMBER -> pc-001"
+          }
+        },
+        "chat": {
+          "pc-001": {
+            "ok": true,
+            "tok_s": 115.8,
+            "wall_s": 0.6,
+            "text": ""
+          }
+        },
+        "ts": "2026-10-28T07:58:53+0700"
+      }
+    ],
+    "step_h_merged_30b_cable_2p5gbe": [
+      {
+        "request": {
+          "mode": "merged",
+          "primary_worker_id": "pc-001",
+          "rpc_worker_ids": [
+            "pc-win-01"
+          ],
+          "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+          "tensor_split": "1,1"
+        },
+        "http": 200,
+        "switch_s": 86.7,
+        "response": "ok",
+        "status": {
+          "mode": "merged",
+          "status": "ready",
+          "last_error": null
+        },
+        "workers": {
+          "pc-001": {
+            "role": "master",
+            "mode": "merged",
+            "model": "Qwen3-30B-A3B-Q4_K_M.gguf",
+            "state": "running",
+            "badge": "MASTER (MERGED 2 GPU, 24 GB)"
+          },
+          "pc-win-01": {
+            "role": "member",
+            "mode": "rpc-worker",
+            "model": "rpc://50052",
+            "state": "running",
+            "badge": "RPC GPU MEMBER -> pc-001"
+          }
+        },
+        "chat": {
+          "pc-001": {
+            "ok": true,
+            "tok_s": 119.9,
+            "wall_s": 0.9,
+            "text": ""
+          }
+        },
+        "ts": "2026-10-28T08:00:42+0700"
+      }
+    ]
+  },
+  "summary_reports": [
+    "benchmarks/reports/P3_BAO_CAO_CUOI_CUNG.md",
+    "benchmarks/reports/P3_BANG_SO_LIEU_CUOI.md",
+    "benchmarks/reports/P3_CODER_30B_GOP_2_CARD.md",
+    "benchmarks/reports/P3_BAO_CAO_3_CHE_DO.md",
+    "benchmarks/reports/p3_three_modes_report.json"
+  ]
+}

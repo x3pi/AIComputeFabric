@@ -119,5 +119,5 @@ Hệ quả: **`tensor_split` phải được tính từ VRAM trống thật củ
 - Bài merged 8k/32k dùng 1 luồng; merged nhiều luồng chỉ đo ở ngữ cảnh mặc định.
 - Số của 3060 `-ncmoe 20` lúc đầu là ~41 tok/s (3 lần) và lần này 44,0 (5 lần): biến thiên giữa các lần chạy vài tok/s.
 - Số đo Wi-Fi bị ảnh hưởng bởi việc chép/tải model chạy cùng lúc.
-- Kênh điều khiển gateway→worker vẫn là HTTP không xác thực (quyết định D-TOPO chưa chốt); công thức `own`/`engine_mib` của worker RPC sai (báo 256 MiB khi thực tế ~10 GB); giao diện web chưa thử trong trình duyệt; `make verify-release-v1` chưa chạy lại sau các sửa mới nhất. Chưa commit gì.
+- Kênh điều khiển gateway→worker vẫn là HTTP không xác thực (quyết định D-TOPO chưa chốt); công thức `own`/`engine_mib` của worker RPC sai (báo 256 MiB khi thực tế ~10 GB). Giao diện web đã kiểm bằng Chrome thật (`tests/e2e/topology_e2e.mjs`, 11/11 PASS → `p3_adaptive_topology_and_large_model_e2e.json`); `make verify-release-v1` đã chạy lại đạt `exit 0`. Quét tỷ lệ cho `Qwen3-Coder-30B-A3B-Instruct` xem thêm ở `P3_CODER_30B_GOP_2_CARD.md` (8k 58:42 đạt 132,4 tok/s; 32k 52:48 đạt 126,7 tok/s).
 - Mạng: Windows hiện không có Wi-Fi, nối gateway qua dây; IP `10.42.0.225` do DHCP cấp nên có thể đổi.
