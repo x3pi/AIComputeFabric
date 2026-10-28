@@ -6,6 +6,8 @@
 #   - agents.dag_api (:18096 Agent DAG viewer backed by PostgreSQL)
 #   - studio (:18098 AI Studio: RAG, Prompts/Few-shot, QLoRA, Full-FT Estimate)
 # Usage: deploy/demo/run_demo.sh [/path/to/llama-server] [/path/to/model.gguf]
+# Coding profile (1 user, 32k context per request): `set -a; . deploy/demo/coding_profile.env; set +a; deploy/demo/run_demo.sh`,
+# then `deploy/demo/apply_coder_merged.sh` once workers are online (merged group Qwen3-Coder, RTX 5070 52% / RTX 3060 48%).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORK_DIR="$(cd "$ROOT/.." && pwd)/.aicf-work"
@@ -86,7 +88,8 @@ fi
 sleep 1
 
 # 4. Worker Guard + llama-server
-"$D/bin/worker-guard" --llama-server "$LLAMA" --model "$MODEL" --parallel 2 --ctx 4096 --headroom-mib 512 \
+"$D/bin/worker-guard" --llama-server "$LLAMA" --model "$MODEL" --parallel "${PARALLEL:-2}" --ctx "${CTX:-4096}" --headroom-mib 512 \
+  --engine-log "$D/logs/engine-pc001.log" --engine-start-timeout "${ENGINE_START_TIMEOUT:-600s}" \
   --engine-port 18090 --engine-host 0.0.0.0 --advertise-host 192.168.1.40 \
   --models-dir "$D/models" --adapters-dir "$D/adapters" --gateway "127.0.0.1:$GRPC_PORT" --worker-id pc-001 \
   --tls-ca "$D/pki/ca.crt" --tls-cert "$D/pki/pc-001.crt" --tls-key "$D/pki/pc-001.key" \

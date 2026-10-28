@@ -227,3 +227,38 @@ func TestDeadlineHeaderGives429WithRetryAfter(t *testing.T) {
 		rt.Release(h, "x", false)
 	}
 }
+
+func TestModelsListNeedsAKeyAndListsRunningModels(t *testing.T) {
+	srv, store, up, _ := authRig(t)
+	_, key, _ := store.Create("ide", 1, 0)
+	get := func(hdr map[string]string) *http.Response {
+		req, _ := http.NewRequest("GET", srv.URL+"/v1/models", nil)
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+	if r := get(nil); r.StatusCode != 401 {
+		t.Fatalf("no key -> %d", r.StatusCode)
+	}
+	r := get(map[string]string{"Authorization": "Bearer " + key})
+	var body struct {
+		Object string `json:"object"`
+		Data   []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || r.StatusCode != 200 || body.Object != "list" || len(body.Data) != 1 || body.Data[0].ID != "m" {
+		t.Fatalf("models -> %d %+v %v", r.StatusCode, body, err)
+	}
+	if up.hits != 0 {
+		t.Fatal("listing models must not touch a worker")
+	}
+	if r, _ := http.Get(srv.URL + "/v1/chat/completions"); r.StatusCode != 405 {
+		t.Fatalf("GET on other /v1 paths must stay 405, got %d", r.StatusCode)
+	}
+}

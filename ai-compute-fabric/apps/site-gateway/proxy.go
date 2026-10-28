@@ -49,22 +49,52 @@ func reject(w http.ResponseWriter, code int, retry time.Duration, msg string) {
 	json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": msg, "code": code}})
 }
 
+// authenticate resolves the caller's tenant, or answers 401 and returns ok=false.
+func (in *Inference) authenticate(w http.ResponseWriter, r *http.Request) (tenant string, ok bool) {
+	if in.AuthRequired && in.Tenants != nil {
+		t, found := in.Tenants.Authenticate(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		if !found {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="aicf"`)
+			reject(w, http.StatusUnauthorized, 0, "missing, invalid or disabled API key")
+			return "", false
+		}
+		return t.ID, true
+	}
+	if tenant = r.Header.Get("X-Tenant-ID"); tenant == "" {
+		tenant = "anonymous" // dev mode only: this header is not authenticated
+	}
+	return tenant, true
+}
+
+// listModels answers GET /v1/models (IDE plug-ins call it to fill their model picker) from the models the
+// workers report as running; RPC members are not routable and so never listed.
+func (in *Inference) listModels(w http.ResponseWriter) {
+	seen := map[string]bool{}
+	data := []map[string]any{}
+	for _, rt := range in.R.reg.Routable() {
+		if rt.Model != "" && !seen[rt.Model] {
+			seen[rt.Model] = true
+			data = append(data, map[string]any{"id": rt.Model, "object": "model", "owned_by": "aicf"})
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data})
+}
+
 func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet && strings.TrimSuffix(r.URL.Path, "/") == "/v1/models" {
+		if _, ok := in.authenticate(w, r); ok {
+			in.listModels(w)
+		}
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
-	var tenant string
-	if in.AuthRequired && in.Tenants != nil {
-		t, ok := in.Tenants.Authenticate(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
-		if !ok {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="aicf"`)
-			reject(w, http.StatusUnauthorized, 0, "missing, invalid or disabled API key")
-			return
-		}
-		tenant = t.ID
-	} else if tenant = r.Header.Get("X-Tenant-ID"); tenant == "" {
-		tenant = "anonymous" // dev mode only: this header is not authenticated
+	tenant, ok := in.authenticate(w, r)
+	if !ok {
+		return
 	}
 	// A caller can only LOWER its own priority; raising it is not possible.
 	prio := PrioInteractive
