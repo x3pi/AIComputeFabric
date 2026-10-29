@@ -100,6 +100,62 @@ Nguyên tắc: bestofn **là khách của gateway** (không nói chuyện trực
 
 ---
 
+## PHẦN 2C: GIẢI PHÁP TỔNG THỂ — "ĐÀN AGENT ĐÀN HỒI" (thêm/bớt agent tuỳ ý, số lượng thay đổi theo thời gian)
+
+**Yêu cầu của chủ dự án (2026-10-29):** điều phối được **nhiều agent với số lượng thay đổi**, thêm bớt agent **dễ dàng, không sửa cấu hình trung tâm**. Best-of-N chỉ là MỘT quy trình chạy trên nền này; nền phải dùng chung được cho các quy trình khác (RAG, OCR, âm thanh, đánh giá model…).
+
+### 2C.1 Hai mặt phẳng, một khái niệm agent
+| Mặt phẳng | Dùng cho | Cơ chế | Đã có `[ĐỌC MÃ]` |
+|---|---|---|---|
+| **Suy luận tương tác** (độ trễ thấp, đẩy) | Chat, IDE, mỗi mẫu của Best-of-N | Gateway `/v1` → `Router` chọn agent đang rảnh | `apps/site-gateway` (đã có hàng chờ công bằng, ưu tiên, khoá tenant) |
+| **Tác vụ bền** (kéo, chịu lỗi) | Quy trình nhiều bước: sinh mẫu, chạy thử, chấm điểm, RAG, huấn luyện, đánh giá | Hàng đợi tác vụ NATS JetStream; agent **kéo** việc theo khả năng | `agents/task_bus.py` (`BusExecutor`/`BusWorker`, at-least-once, `ack_wait`, `max_deliver`), `agents/orchestrator.py` (DAG LangGraph + PostgreSQL), `agents/tasks.py` (15 loại tác vụ có kiểu) |
+
+**Agent** = bất kỳ tiến trình nào (a) khai báo khả năng của mình, (b) nhận việc, (c) trả kết quả. Ba họ agent dùng chung hợp đồng:
+- **Agent tính toán** (Phần 2B): đơn vị suy luận = 1 GPU hoặc 1 nhóm gộp; ẩn phần cứng.
+- **Agent thực thi** (hồ sandbox chạy thử code, OCR, ASR/TTS, embedding…): kiểu `BusWorker` kéo theo loại tác vụ.
+- **Agent điều phối** (quy trình Best-of-N, RAG…): đồ thị DAG; **không** biết ai thực thi, chỉ phát tác vụ và chờ kết quả.
+
+### 2C.2 Vì sao dùng mô hình KÉO cho tác vụ bền
+Thêm agent = **chạy thêm một tiến trình trỏ vào hàng đợi**; bớt agent = **tắt tiến trình** (việc đang dở tự giao lại). Không có danh sách trung tâm phải sửa, không có cổng/địa chỉ phải đăng ký thủ công, số agent từ 1 đến hàng trăm dùng cùng mã. Đây đúng là điều `BusWorker` đã làm `[ĐỌC MÃ]`: consumer bền `workers-<loại>`, `AckPolicy.EXPLICIT`, `ack_wait` + nhịp tim giữ việc chậm, quá hạn thì NATS giao lại cho agent khác. Hiện **chưa dùng trong luồng thật** (chỉ test `tests/integration/test_task_bus.py`) `[ĐỌC MÃ]`.
+
+### 2C.3 Giao thức vòng đời agent (Pha E phải làm)
+1. **Tham gia (join):** agent khởi động → kết nối bus (xác thực, Phần 2C.6) → ghi hồ sơ khả năng vào **sổ agent** (JetStream KV `AICF_AGENTS`, khoá = `agent_id`, giá trị = `{kind, task_types[], labels[], models[], slots, ctx_per_slot, tok_s_ref, version, started_at}`, có TTL) → bắt đầu kéo. Không cần khởi động lại ai khác.
+2. **Sống (heartbeat):** agent làm mới khoá KV; hết TTL = coi là mất, việc của nó được giao lại nhờ `ack_wait`.
+3. **Rút lui êm (drain):** agent nhận lệnh/tín hiệu → **ngừng kéo việc mới**, hoàn tất việc đang làm, `ack`, xoá khoá KV, thoát. Không mất việc, không báo lỗi giả.
+4. **Mất đột ngột (crash/rút dây):** không `ack` → sau `ack_wait` việc giao lại (có thể chạy hai lần: mọi tác vụ phải **idempotent**, đã là quy ước `[ĐỌC MÃ]`).
+5. **Đổi phần cứng bên dưới (gộp/tách card):** thuộc **bộ điều phối topology**, không phải điều phối quy trình. Kết quả là agent tính toán cũ rút lui (drain) và agent mới tham gia; quy trình đang chạy không cần biết.
+
+### 2C.4 Định tuyến theo khả năng, không theo địa chỉ
+- Tác vụ mang **yêu cầu** (`type`, và tuỳ chọn `labels`, `model`, `min_ctx`, `priority`), không mang địa chỉ agent. Chủ đề NATS phân cấp: `aicf.task.<type>[.<label>]`; agent kéo các chủ đề khớp khả năng của mình. Hiện chỉ có `aicf.task.<type>` `[ĐỌC MÃ]`: **cần thêm** nhãn/model/ngữ cảnh (không vỡ tương thích: nhãn là tuỳ chọn).
+- Với suy luận (mặt phẳng tương tác) dùng `X-AICF-Agent` / `X-AICF-Label` của Phần 2B.
+- **Ưu tiên:** tác vụ nền (Best-of-N, batch) đứng sau tương tác; thực hiện bằng stream/consumer tách riêng hoặc `priority` trong tác vụ; **chứng minh bằng đo** rằng người dùng IDE không bị đói.
+
+### 2C.5 Co giãn số lượng
+- **Quan sát:** độ sâu hàng đợi theo loại (`num_pending` của consumer), số agent đang sống theo loại (KV), thời gian chờ trung vị. Xuất ra `/metrics` (Prometheus, đã có định dạng ở `Inference.Metrics`).
+- **Chính sách đơn giản, tách khỏi cơ chế:** một "người giám sát" đọc số liệu trên và **đề xuất/ra lệnh** thêm hoặc bớt agent (với phần cứng cố định như hiện nay: gộp/tách nhóm, đổi chế độ A/B/C qua `POST /api/cluster/topology`; với máy mới: bật tiến trình worker-guard/BusWorker). Lệnh làm thay đổi cụm phải **hỏi con người** (quy tắc Phần 0) cho tới khi có chính sách được duyệt.
+- **Chống dao động:** thời gian chờ tối thiểu giữa hai lần đổi, ngưỡng trên/dưới khác nhau.
+
+### 2C.6 An toàn (hiện là LỖ HỔNG, không được bỏ qua)
+`task_bus.py` tự khai báo **chưa có** xác thực/TLS cho NATS, chủ đề theo tenant, hạn mức, nhân bản stream, chịu tải ngược khi không có agent `[ĐỌC MÃ]`. Với "đàn agent mở", ai kết nối được vào bus là nhận được việc/dữ liệu. Phải làm trước khi cho máy khác tham gia:
+- NATS: TLS + xác thực (NKey/JWT hoặc mTLS); **mỗi agent có danh tính riêng** (liên hệ với mTLS worker đã làm ở commit `f603ecf` cho gateway); quyền publish/subscribe theo loại tác vụ.
+- Phân lớp dữ liệu: tác vụ có `data_class` (`PUBLIC/INTERNAL/RESTRICTED`) `[ĐỌC MÃ]`: agent chỉ được kéo lớp dữ liệu mình được phép.
+- Hạn mức theo tenant, kích thước tác vụ tối đa, hết hạn tác vụ (TTL), chịu tải ngược (từ chối nhận khi hàng đợi quá sâu, không để tăng vô hạn).
+- Mã do model sinh chỉ chạy trong sandbox; agent thực thi phải tự bảo vệ (không tin dữ liệu từ bus).
+
+### 2C.7 Best-of-N trên nền này
+Quy trình DAG: `plan` → `fan-out N × SAMPLE` (mỗi mẫu là một tác vụ TEXT_GENERATE; số mẫu N quyết định lúc chạy, **không** phụ thuộc số agent) → `fan-in` → `N × M RUN_TEST` (TOOL_EXECUTE vào hồ sandbox) → `SELECT`. Thêm agent tính toán hoặc agent sandbox = thông lượng tăng, mã quy trình **không đổi**. Mất agent giữa chừng = giao lại tự động. Cần **mở rộng `Orchestrator`** để hỗ trợ fan-out động `[CHƯA XÁC MINH]` (hiện `Step` là bước tĩnh; kiểm cách LangGraph `Send` hoặc sinh bước lúc chạy) và phải đo xem PostgreSQL ghi checkpoint có thành nút cổ chai với N lớn không.
+
+### 2C.8 Các quyết định cần chốt và ghi vào `docs/adr/` (đừng tự quyết im lặng)
+| Mã | Câu hỏi | Lựa chọn | Tiêu chí |
+|---|---|---|---|
+| D-FAB-1 | Mặt phẳng tác vụ bền dùng NATS (đã có) hay tự xây trên gateway? | Giữ NATS JetStream | Đã có mã, test; đo độ trễ thêm so với gọi thẳng `/v1` |
+| D-FAB-2 | Mẫu Best-of-N đi qua bus hay gọi thẳng gateway? | Gọi thẳng gateway cho mẫu (độ trễ thấp), bus cho chạy thử/chấm | Đo độ trễ + độ phức tạp; ghi số liệu |
+| D-FAB-3 | Sổ agent: JetStream KV hay bảng PostgreSQL? | KV có TTL | Cần heartbeat/hết hạn tự nhiên; PostgreSQL đã có cho DAG |
+| D-FAB-4 | Co giãn tự động hay chỉ đề xuất? | Chỉ đề xuất cho tới khi được duyệt | Quy tắc Phần 0 (không gián đoạn máy khi chưa hỏi) |
+| D-FAB-5 | Xác thực bus | mTLS/NKey, danh tính theo agent | Thống nhất với mTLS worker của gateway |
+
+---
+
 ## PHẦN 3: RÀNG BUỘC ĐÃ BIẾT TỪ HỆ THỐNG (PHẢI XỬ LÝ)
 
 1. **Chỉ 1 slot hiện nay.** Hồ sơ `coding_profile.env` đặt `PARALLEL=1`, `CTX=32768`. Gửi nhiều yêu cầu liên tiếp `[ĐO 2026-10-29]` bị `503 no capacity within the wait limit` (mặc định `-max-wait 10s`) và `429 estimated wait exceeds your deadline`. Best-of-N sẽ gặp đúng lỗi này nếu không đổi cấu hình. Chọn một trong: (a) `PARALLEL=N` (ngữ cảnh mỗi slot = `CTX`, llama-server chạy `-c CTX*N`; **VRAM cho KV tăng**, có thể chạm vách của RTX 5070 — phải đo lại tỷ lệ), (b) gửi tuần tự/ít song song và tăng `-max-wait`, (c) chế độ A với model nhỏ (xem Pha 1).
@@ -132,6 +188,14 @@ Câu hỏi: để có N bản, dùng **1 model lớn gộp 2 card** hay **model 
 - A.3 Khách Python `bestofn/agents_client.py` chỉ trả `[{agent_id, model, ctx_per_slot, slots, tok_s_ref, labels, state}]`.
 - A.4 Bài đo quy mô bằng worker giả K = 10/25/50 (Phần 2B, "Quy mô hàng chục agent"); báo số liệu và điểm bắt đầu hỏng.
 - **Check Pass:** ba kịch bản của Phần 2B (2 worker độc lập / 1 nhóm gộp / hỗn hợp nếu có) cùng một mã khách, và chạy đúng với K = 10/25/50 agent giả; gộp-tách giữa lúc chạy không treo; kiểm đột biến cho ghim agent và loại thành viên RPC; test tĩnh cấm `bestofn/` chạm tới chi tiết GPU.
+
+### Pha E — Nền "đàn agent đàn hồi" (Phần 2C; làm song song với Pha A, TRƯỚC khi đưa Best-of-N lên bus)
+- E.0 Chốt D-FAB-1..5 bằng số đo/lý do, ghi `docs/adr/ADR-00x-*.md`; **dừng và hỏi chủ dự án** nếu một quyết định đổi hạ tầng (NATS, PostgreSQL) hoặc cần mở cổng ra mạng.
+- E.1 Sổ agent (`AICF_AGENTS` KV có TTL) + giao thức join/heartbeat/drain/crash (Phần 2C.3) cho `BusWorker`; thêm khả năng khai báo (`labels`, `models`, `slots`) và chủ đề `aicf.task.<type>[.<label>]` tương thích ngược.
+- E.2 Bảo mật bus (Phần 2C.6): TLS + xác thực, danh tính theo agent, quyền theo loại tác vụ, `data_class`, hạn mức và chịu tải ngược. Mở rộng test an ninh trong `tests/security/`.
+- E.3 Số liệu: độ sâu hàng đợi, số agent sống theo loại, thời gian chờ → `/metrics`; "người giám sát" ở chế độ chỉ-đề-xuất.
+- E.4 Quy mô: K = 1, 10, 50, 200 `BusWorker` giả; thêm/bớt agent giữa lúc chạy (ví dụ tăng từ 5 lên 50 rồi giảm về 8), 20% agent bị kill; đo thông lượng, thời gian giao lại, số việc chạy trùng, tải của NATS/PostgreSQL.
+- **Check Pass:** (a) thêm agent giữa chừng làm thông lượng tăng mà **không** sửa cấu hình/khởi động lại ai; (b) drain không mất và không trùng việc; kill đột ngột → việc được giao lại, không mất; (c) agent không có chứng chỉ hợp lệ **bị từ chối** (kiểm đột biến: tắt kiểm xác thực → test phải đỏ); (d) agent không đủ quyền không kéo được loại tác vụ/`data_class` cấm; (e) hàng đợi quá sâu → từ chối có kiểm soát; (f) báo cáo nêu rõ điểm bắt đầu hỏng của K lớn, kể cả khi giả lập không thay cho GPU thật.
 
 ### Pha 2 — Bộ điều phối tối thiểu (không test tự sinh)
 - 2.1 Gói `bestofn/` (Python, theo phong cách `agents/`): `planner.py`, `sampler.py` (**chỉ làm việc với agent**: rải mẫu theo `slots`×`tok_s_ref`, sinh lại mẫu khi agent biến mất; gọi gateway bằng HTTP, đồng thời tối đa theo cấu hình, thử lại có kiểm soát khi 429/503), `runner.py` (dùng `pick_sandbox(require_network_isolation=True)`; **từ chối chạy nếu không có sandbox cô lập mạng**), `selector.py`.
