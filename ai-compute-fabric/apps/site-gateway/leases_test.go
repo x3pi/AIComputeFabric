@@ -159,3 +159,15 @@ func TestLeaseNeedsAnEstimateAndARunningOnlineWorker(t *testing.T) {
 		t.Fatal("a stopped engine must not receive leases")
 	}
 }
+
+func TestLeaseIDsAreCryptographicallyRandomCapabilities(t *testing.T) {
+	m, _, _ := leaseRig(t, map[string]uint64{"pc-1": 8 * gib})
+	a := ask(m, "job-a", 2*gib, 30000).Lease
+	b := ask(m, "job-b", 2*gib, 30000).Lease
+	if a.LeaseId == "lease-1" || b.LeaseId == "lease-2" {
+		t.Fatalf("lease IDs must not be sequential integers: %q, %q", a.LeaseId, b.LeaseId)
+	}
+	if len(a.LeaseId) < len("lease-")+22 || len(b.LeaseId) < len("lease-")+22 || a.LeaseId == b.LeaseId {
+		t.Fatalf("lease IDs must be distinct 128-bit capability tokens: %q, %q", a.LeaseId, b.LeaseId)
+	}
+}

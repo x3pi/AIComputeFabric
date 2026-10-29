@@ -96,6 +96,12 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	switch strings.TrimSuffix(r.URL.Path, "/") {
+	case "/v1/chat/completions", "/v1/completions", "/v1/embeddings":
+	default:
+		http.NotFound(w, r)
+		return
+	}
 	// A caller can only LOWER its own priority; raising it is not possible.
 	prio := PrioInteractive
 	if r.Header.Get("X-Priority") == "batch" {

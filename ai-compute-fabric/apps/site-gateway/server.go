@@ -12,24 +12,54 @@ import (
 	"strings"
 
 	pb "github.com/aicf/ai-compute-fabric/contracts/gen/go"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
+	"google.golang.org/grpc/status"
 )
 
 //go:embed web
 var webFS embed.FS
 
-// GRPC implements aicf.v1.FleetGateway. Transport security (mTLS, step-ca) is a
-// separate P2.2 item: today the listener is plain and meant for loopback/dev.
+// GRPC implements aicf.v1.FleetGateway. When mTLS is enabled, each worker's
+// claimed WorkerId is bound to the CommonName of its client certificate.
 type GRPC struct {
 	pb.UnimplementedFleetGatewayServer
 	Reg *Registry
 }
 
-func (g *GRPC) Register(_ context.Context, r *pb.RegisterRequest) (*pb.RegisterReply, error) {
+// verifyWorkerPeer binds a worker's claimed WorkerId to the CommonName of its
+// mTLS client certificate whenever TLS peer credentials are present. Plaintext
+// connections (dev mode / in-process unit tests) have no TLS peer info and pass
+// through unchanged.
+func verifyWorkerPeer(ctx context.Context, workerID string) error {
+	p, ok := peer.FromContext(ctx)
+	if !ok || p == nil || p.AuthInfo == nil {
+		return nil
+	}
+	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok || len(tlsInfo.State.PeerCertificates) == 0 {
+		return nil
+	}
+	cn := tlsInfo.State.PeerCertificates[0].Subject.CommonName
+	if cn != "" && cn != workerID {
+		return status.Errorf(codes.PermissionDenied, "certificate CN %q may not act as worker %q", cn, workerID)
+	}
+	return nil
+}
+
+func (g *GRPC) Register(ctx context.Context, r *pb.RegisterRequest) (*pb.RegisterReply, error) {
+	if err := verifyWorkerPeer(ctx, r.GetWorkerId()); err != nil {
+		return nil, err
+	}
 	g.Reg.Register(r)
 	return &pb.RegisterReply{HeartbeatIntervalMs: 1000}, nil
 }
 
-func (g *GRPC) Heartbeat(_ context.Context, r *pb.HeartbeatRequest) (*pb.HeartbeatReply, error) {
+func (g *GRPC) Heartbeat(ctx context.Context, r *pb.HeartbeatRequest) (*pb.HeartbeatReply, error) {
+	if err := verifyWorkerPeer(ctx, r.GetCapacity().GetWorkerId()); err != nil {
+		return nil, err
+	}
 	reg, pause := g.Reg.Heartbeat(r)
 	return &pb.HeartbeatReply{Registered: reg, PauseRequested: pause}, nil
 }

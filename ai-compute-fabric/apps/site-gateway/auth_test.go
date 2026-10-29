@@ -262,3 +262,32 @@ func TestModelsListNeedsAKeyAndListsRunningModels(t *testing.T) {
 		t.Fatalf("GET on other /v1 paths must stay 405, got %d", r.StatusCode)
 	}
 }
+
+func TestInferenceRejectsUnsupportedV1Subpaths(t *testing.T) {
+	srv, store, up, _ := authRig(t)
+	_, key, _ := store.Create("ide", 1, 0)
+	post := func(path string) int {
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader(`{"model":"m"}`))
+		req.Header.Set("Authorization", "Bearer "+key)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	for _, blocked := range []string{"/v1/tokenize", "/v1/props", "/v1/slots"} {
+		if code := post(blocked); code != http.StatusNotFound {
+			t.Fatalf("POST %s -> %d, want 404", blocked, code)
+		}
+	}
+	if up.hits != 0 {
+		t.Fatalf("unsupported /v1 subpaths must not reach upstream worker, got %d hits", up.hits)
+	}
+	for _, allowed := range []string{"/v1/chat/completions", "/v1/completions", "/v1/embeddings"} {
+		if code := post(allowed); code != http.StatusOK {
+			t.Fatalf("POST %s -> %d, want 200", allowed, code)
+		}
+	}
+}

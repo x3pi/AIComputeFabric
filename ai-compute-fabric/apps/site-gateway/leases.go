@@ -28,10 +28,9 @@ type LeaseManager struct {
 	MaxTTL time.Duration
 	now    func() time.Time
 
-	mu      sync.Mutex
-	byID    map[string]*lease
-	byKey   map[string]*lease
-	counter uint64
+	mu    sync.Mutex
+	byID  map[string]*lease
+	byKey map[string]*lease
 	// tombstones remember why a lease ended so ExtendLease can say expired vs revoked.
 	ended map[string]string
 }
@@ -125,9 +124,8 @@ func (m *LeaseManager) RequestLease(_ context.Context, req *pb.RequestLeaseReque
 	if best == nil {
 		return &pb.RequestLeaseReply{Granted: false, Reason: "no_capacity"}, nil
 	}
-	m.counter++
 	now := m.now()
-	tok := &pb.LeaseToken{LeaseId: "lease-" + itoa(m.counter), WorkerId: best.WorkerID, VramReservedBytes: req.VramRequiredBytes,
+	tok := &pb.LeaseToken{LeaseId: "lease-" + newSecret(16), WorkerId: best.WorkerID, VramReservedBytes: req.VramRequiredBytes,
 		TtlMs: uint64(d / time.Millisecond), IssuedUnixMs: uint64(now.UnixMilli())}
 	l := &lease{tok: tok, key: req.IdempotencyKey, expires: now.Add(d)}
 	m.byID[tok.LeaseId], m.byKey[req.IdempotencyKey] = l, l

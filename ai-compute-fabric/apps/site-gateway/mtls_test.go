@@ -13,8 +13,10 @@ import (
 	"github.com/aicf/ai-compute-fabric/apps/site-gateway/internal/pki"
 	pb "github.com/aicf/ai-compute-fabric/contracts/gen/go"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 func mtlsServer(t *testing.T, dir string) (string, *Registry) {
@@ -84,5 +86,36 @@ func TestMTLSAdmitsEnrolledWorkersOnly(t *testing.T) {
 	}
 	if err := register(addr, insecure.NewCredentials()); err == nil {
 		t.Fatal("plaintext client was admitted")
+	}
+}
+
+func TestMTLSVerifiesWorkerIDMatchesCertificateCN(t *testing.T) {
+	dir := t.TempDir()
+	if err := pki.Generate(dir, []string{"127.0.0.1", "localhost"}, []string{"pc-001", "pc-002"}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	addr, _ := mtlsServer(t, dir)
+	ca := filepath.Join(dir, "ca.crt")
+	creds := clientCreds(t, ca, filepath.Join(dir, "pc-001.crt"), filepath.Join(dir, "pc-001.key"))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	cli := pb.NewFleetGatewayClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if _, err := cli.Register(ctx, &pb.RegisterRequest{WorkerId: "pc-002"}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("impersonated Register must return PermissionDenied, got %v", err)
+	}
+	if _, err := cli.Heartbeat(ctx, &pb.HeartbeatRequest{Capacity: &pb.WorkerCapacity{WorkerId: "pc-002"}}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("impersonated Heartbeat must return PermissionDenied, got %v", err)
+	}
+	if _, err := cli.Register(ctx, &pb.RegisterRequest{WorkerId: "pc-001"}); err != nil {
+		t.Fatalf("matching Register failed: %v", err)
+	}
+	if _, err := cli.Heartbeat(ctx, &pb.HeartbeatRequest{State: "running", Capacity: &pb.WorkerCapacity{WorkerId: "pc-001"}}); err != nil {
+		t.Fatalf("matching Heartbeat failed: %v", err)
 	}
 }
