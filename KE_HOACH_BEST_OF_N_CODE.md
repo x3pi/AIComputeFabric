@@ -87,6 +87,15 @@ Nguyên tắc: bestofn **là khách của gateway** (không nói chuyện trực
 - **Đa dạng mô hình tuỳ chọn**: nếu có nhiều agent khác model/nhãn, cho phép trộn (tăng đa dạng cho Best-of-N). Phải **đo** xem trộn có hơn dùng một model hay không (Pha 2), không giả định.
 - `bon_report` ghi theo `agent_id` (không ghi tên card).
 
+**Quy mô hàng chục agent (yêu cầu bổ sung 2026-10-29).** Số agent KHÔNG có giới hạn cố định trong thiết kế; mọi mã phải đúng với K = 1, 2, 10, 50. Hệ thống mới chỉ chạy thật với **2 worker** `[ĐO]`; mọi con số cho K lớn là `[CHƯA XÁC MINH]` cho tới khi có bài đo. Những chỗ KHÔNG tự co giãn, phải xử lý:
+1. **Sandbox chạy code là nút cổ chai tập trung:** hiện chỉ `pc-001` có Docker và chạy tối đa ~4 container song song (RAM 30 GB). Với 50 agent sinh mẫu nhưng chỉ 4 chỗ chạy thử thì việc chấm điểm sẽ thành hàng chờ. Thiết kế `runner` thành **một hồ chạy thử** (pool) có số chỗ cấu hình được và có thể gắn thêm máy chạy thử; đo thông lượng chạy thử (bài/giây). Windows vẫn không có sandbox.
+2. **Hàng chờ và giới hạn của gateway:** `-max-queue` (64), `-max-wait` (10 s), `tenant-queue`, `max_inflight` của tenant. K agent × slot có thể vượt các giá trị này; không được để lỗi 503/429 do cấu hình mặc định bị hiểu nhầm là agent hỏng.
+3. **Danh sách agent:** `GET /api/compute-agents` phải phân trang hoặc lọc theo nhãn; thông báo thay đổi nên dùng luồng sự kiện (SSE) thay vì tải lại toàn bộ khi K lớn. Cache định tuyến (`Router.Refresh`) phải được đo với K lớn.
+4. **Chia mẫu:** thuật toán rải mẫu theo `slots × tok_s_ref` phải xử lý agent có tốc độ rất khác nhau (3060 so với nhóm gộp) và không dồn cả vào agent nhanh nhất; thêm giới hạn "tối đa x% mẫu cho một agent" để một agent lỗi không làm hỏng cả lượt. Đo độ lệch kết quả khi bỏ bớt agent.
+5. **Điều phối topology:** `TopologyCoordinator` đã khoá theo từng máy nên nhiều nhóm đổi song song được, nhưng chưa đo với nhiều nhóm thật `[CHƯA XÁC MINH]`.
+
+**Cách đo quy mô (không cần có hàng chục GPU thật):** viết **worker giả** (HTTP + heartbeat, trả lời `/v1` với độ trễ mô phỏng, một số chạy như nhóm gộp) dựng K = 10, 25, 50 agent trên cùng một máy, rồi đo: thời gian phân bổ N mẫu, tỉ lệ 429/503, độ trễ định tuyến, thời gian chạy thử với hồ sandbox, hành vi khi 20% agent rớt giữa chừng. Ghi rõ kết quả giả lập **không** thay cho số đo GPU thật (chỉ chứng minh lớp điều phối co giãn, không chứng minh thông lượng sinh).
+
 **Cách kiểm cho Pha A (Check Pass):** (a) dựng 3 trường hợp trên cùng phần cứng — chỉ 2 worker độc lập; 1 nhóm gộp; 1 nhóm gộp + (nếu có thể) 1 worker riêng — và chứng minh **cùng một đoạn mã bestofn không đổi** chạy đúng trong cả ba, chỉ khác danh sách agent; (b) gộp/tách giữa lúc đang chạy một lượt Best-of-N: lượt đó hoàn tất hoặc báo lỗi rõ ràng, không treo, không chạy trên agent đã biến mất; (c) kiểm đột biến cho việc ghim agent (`X-AICF-Agent` trỏ agent bận phải bị từ chối, không rơi sang agent khác) và cho việc loại thành viên RPC khỏi danh sách agent. Test giả (fake worker) dùng khung `cluster_topology_test.go`.
 
 ---
@@ -121,7 +130,8 @@ Câu hỏi: để có N bản, dùng **1 model lớn gộp 2 card** hay **model 
 - A.1 Mô tả năng lực agent + `GET /api/compute-agents` (single = worker độc lập, group = nhóm gộp; thành viên RPC không phải agent), OpenAPI, test Go.
 - A.2 Định tuyến `X-AICF-Agent` / `X-AICF-Label` trên `/v1`; sự kiện hoặc thăm dò thay đổi danh sách agent.
 - A.3 Khách Python `bestofn/agents_client.py` chỉ trả `[{agent_id, model, ctx_per_slot, slots, tok_s_ref, labels, state}]`.
-- **Check Pass:** ba kịch bản của Phần 2B (2 worker độc lập / 1 nhóm gộp / hỗn hợp nếu có) cùng một mã khách; gộp-tách giữa lúc chạy không treo; kiểm đột biến cho ghim agent và loại thành viên RPC; test tĩnh cấm `bestofn/` chạm tới chi tiết GPU.
+- A.4 Bài đo quy mô bằng worker giả K = 10/25/50 (Phần 2B, "Quy mô hàng chục agent"); báo số liệu và điểm bắt đầu hỏng.
+- **Check Pass:** ba kịch bản của Phần 2B (2 worker độc lập / 1 nhóm gộp / hỗn hợp nếu có) cùng một mã khách, và chạy đúng với K = 10/25/50 agent giả; gộp-tách giữa lúc chạy không treo; kiểm đột biến cho ghim agent và loại thành viên RPC; test tĩnh cấm `bestofn/` chạm tới chi tiết GPU.
 
 ### Pha 2 — Bộ điều phối tối thiểu (không test tự sinh)
 - 2.1 Gói `bestofn/` (Python, theo phong cách `agents/`): `planner.py`, `sampler.py` (**chỉ làm việc với agent**: rải mẫu theo `slots`×`tok_s_ref`, sinh lại mẫu khi agent biến mất; gọi gateway bằng HTTP, đồng thời tối đa theo cấu hình, thử lại có kiểm soát khi 429/503), `runner.py` (dùng `pick_sandbox(require_network_isolation=True)`; **từ chối chạy nếu không có sandbox cô lập mạng**), `selector.py`.
