@@ -43,7 +43,7 @@ for g in "$WORK_DIR"/*.gguf; do [ -f "$g" ] && ! basename "$g" | grep -qiE 'embe
 # 2. Agent DAG API & AI Studio (if PostgreSQL is reachable)
 GW_EXTRA=(-vram-sidecar-url "http://127.0.0.1:$SIDECAR_PORT" -audit-log "$D/audit.jsonl")
 if "$PY" -c "import psycopg; psycopg.connect('$PG_ADMIN_DSN', connect_timeout=2).close()" >/dev/null 2>&1; then
-  "$PY" -m agents.dag_api --dsn "$PG_ADMIN_DSN" --listen "127.0.0.1:$DAG_PORT" >"$D/logs/dag_api.log" 2>&1 & pids+=($!)
+  "$PY" -m agents.dag_api --dsn "$PG_ADMIN_DSN" --nats-url "${AICF_NATS_URL:-nats://127.0.0.1:54222}" --listen "127.0.0.1:$DAG_PORT" >"$D/logs/dag_api.log" 2>&1 & pids+=($!)
   TRAIN_PY=""
   [ -x "$WORK_DIR/venv-train/bin/python" ] && TRAIN_PY="$WORK_DIR/venv-train/bin/python"
   # every Hugging Face directory under hf-train/ (config.json + weights) becomes a selectable LoRA base model

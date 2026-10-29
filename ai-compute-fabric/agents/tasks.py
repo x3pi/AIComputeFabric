@@ -224,6 +224,12 @@ class Task(Strict):
     type: TaskType
     input: dict
     data_class: Literal["PUBLIC", "INTERNAL", "RESTRICTED"] = "INTERNAL"
+    label: Optional[str] = None
+    labels: list[str] = []
+    model: Optional[str] = None
+    min_ctx: Optional[int] = Field(default=None, ge=1)
+    priority: Literal["interactive", "batch"] = "batch"
+    ttl_s: Optional[float] = Field(default=None, gt=0)
 
 
 class TaskResult(Strict):
