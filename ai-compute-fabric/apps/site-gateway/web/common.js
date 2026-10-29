@@ -58,15 +58,15 @@ const PAGE_GUIDES = {
     ]
   },
   "agents.html": {
-    title: "Hướng dẫn nhanh — Giám sát Đồ thị Tác vụ AI Agent (DAG)",
+    title: "Hướng dẫn nhanh — Đàn Agent Đàn Hồi (NATS JetStream) & Đồ thị Tác vụ (DAG)",
     steps: [
-      ["Chọn Workflow cần theo dõi", "Danh sách Workflow tự động làm mới mỗi 2,5 giây từ Orchestrator (PostgreSQL + NATS JetStream). Nhấp vào tên workflow để nạp đồ thị DAG."],
-      ["Đọc Trạng thái & Phụ thuộc", "Mỗi hộp biểu diễn một bước tác vụ xếp theo tầng phụ thuộc từ trái sang phải: Chờ (nét đứt), Đang chạy (xanh dương), Thử lại (vàng), Xong (xanh lá), Từ chối/Lỗi (đỏ)."],
-      ["Soi Chi tiết Không lộ Dữ liệu", "Nhấp vào từng ô bước trên đồ thị để xem loại tác vụ (TaskType), số lần thử và thời gian chạy. Nội dung văn bản gốc được bảo vệ tuyệt đối (Zero-Payload Privacy)."]
+      ["Sổ Agent KV (AICF_AGENTS) & Co giãn nóng", "Mọi BusWorker tự đăng ký khả năng (TaskType, nhãn, model, slots, data_class) vào JetStream KV có TTL. Bấm '➕ Thêm Agent', '➖ Rút lui êm (Drain)' hoặc '💥 Kill đột ngột' để thử nghiệm co giãn trực tiếp không cần sửa cấu hình."],
+      ["Hàng đợi Kéo (AICF_TASKS) & Người giám sát", "Bấm '⚡ Bơm 16 tác vụ' để đẩy tải vào NATS JetStream; ElasticSupervisor (khóa cứng ở chế độ propose_only=True) sẽ phát hiện hàng đợi sâu và hiện đề xuất tăng agent để chủ dự án duyệt."],
+      ["Đồ thị Workflow DAG & Zero-Payload Privacy", "Bấm '🚀 Chạy Workflow Best-of-N mẫu' để thực thi đồ thị 10 bước qua NATS Bus + PostgreSQL. Nhấp vào từng ô bước để xem trạng thái mà không lộ nội dung dữ liệu gốc."]
     ],
     tips: [
-      "Sử dụng các nút − / 100% / + ở góc phải đồ thị để thu phóng các workflow phức tạp nhiều tầng.",
-      "Khi một bước không đạt kiểm định (Validator) hoặc mất kết nối worker, Orchestrator tự động thử lại theo cấu hình max_attempts."
+      "Khi một Agent bị Kill đột ngột giữa lúc giữ việc, NATS JetStream tự động giao lại việc đó cho Agent khác sau ack_wait mà không mất việc.",
+      "Điểm cuối Prometheus /api/agents/metrics xuất toàn bộ số liệu độ sâu hàng đợi, số agent sống, thời gian chờ trung vị và số lần giao lại."
     ]
   },
   "studio.html": {

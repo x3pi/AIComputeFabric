@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AICF AI Agent — Đồ thị DAG tác vụ</title>
+<title>AICF AI Agent — Đàn Agent Đàn Hồi &amp; Đồ thị DAG</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="common.css">
 <style>
@@ -46,6 +46,45 @@
   align-items: center;
 }
 .dag-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.bus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  margin-bottom: 14px;
+}
+.bus-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
+.tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+}
+.rec-box {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--warn);
+  background: var(--warn-soft);
+  font-size: 12.5px;
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 </style>
 </head>
 <body>
@@ -53,20 +92,118 @@
 <main>
   <div class="page-header">
     <div>
-      <h1>AI Agent — Đồ thị tác vụ (DAG)</h1>
-      <div class="sub">Trạng thái từng bước của một workflow do orchestrator chạy. Chỉ hiển thị loại tác vụ, phụ thuộc, số lần thử và thời gian; không hiển thị nội dung đầu vào hay kết quả.</div>
+      <h1>Đàn Agent Đàn Hồi (NATS JetStream) &amp; Đồ thị Tác vụ (DAG)</h1>
+      <div class="sub">Thêm/bớt agent bất kỳ lúc nào không cần sửa cấu hình trung tâm: Sổ đăng ký KV <code>AICF_AGENTS</code> có TTL, hàng đợi kéo <code>AICF_TASKS</code>, Người giám sát chỉ-đề-xuất (<code>propose_only=True</code>) và đồ thị phụ thuộc DAG.</div>
     </div>
-    <div class="row" style="gap:8px">
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      <span class="pill ok" id="bus-conn-pill">NATS JetStream: Đang kiểm tra…</span>
       <span class="pill ok">Zero-Payload Privacy</span>
       <span class="mut mono" id="stamp" style="font-size:12px"></span>
     </div>
   </div>
 
-  <div class="kpi-grid" id="dag-kpi">
+  <!-- KPI ĐÀN AGENT ĐÀN HỒI (PHA E) -->
+  <div class="kpi-grid" id="elastic-kpi" style="margin-bottom:14px">
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Agent sống (AICF_AGENTS KV)</span><span class="pill ok" id="bus-kv-pill">KV TTL</span></div>
+      <div class="kpi-val" id="kpi-bus-agents">0</div>
+      <div class="kpi-foot" id="kpi-bus-agents-sub">0 compute · 0 executor · 0 slots</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Hàng đợi &amp; Đang chạy (AICF_TASKS)</span><span class="pill" id="bus-stream-pill">Pull Bus</span></div>
+      <div class="kpi-val" id="kpi-bus-queue">0 chờ · 0 chạy</div>
+      <div class="kpi-foot" id="kpi-bus-completed">0 tác vụ đã hoàn tất qua bus</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Chờ trung vị &amp; Tự giao lại</span><span class="pill warn">At-Least-Once</span></div>
+      <div class="kpi-val" id="kpi-bus-wait">0 ms</div>
+      <div class="kpi-foot" id="kpi-bus-redeliv">0 giao lại (ack_wait) · 0 từ chối</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Người giám sát (Supervisor)</span><span class="pill ok" id="kpi-sup-mode">CHỈ ĐỀ XUẤT</span></div>
+      <div class="kpi-val" id="kpi-sup-recs">Ổn định</div>
+      <div class="kpi-foot" id="kpi-sup-sub">propose_only=True · Cần chủ dự án duyệt</div>
+    </div>
+  </div>
+
+  <!-- BẢNG ĐIỀU KHIỂN ĐÀN AGENT ĐÀN HỒI (PHA E) -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <h2>1. Đàn Agent Đàn Hồi — Sổ Đăng Ký KV (<code>AICF_AGENTS</code>) &amp; Hàng Đợi Tác Vụ</h2>
+        <div class="card-sub">Thử nghiệm co giãn nóng ngay trên trình duyệt: thêm agent mới, rút lui êm (<code>drain</code>), giả lập sập đột ngột (<code>kill</code> → tự giao lại sau <code>ack_wait</code>), hoặc bơm loạt tác vụ để quan sát <code>ElasticSupervisor</code> đề xuất co giãn.</div>
+      </div>
+      <div class="row" style="gap:6px">
+        <a href="/api/agents/metrics" target="_blank" rel="noopener" style="text-decoration:none"><button type="button" class="sm ghost">📈 Prometheus /metrics</button></a>
+      </div>
+    </div>
+
+    <div class="bus-actions">
+      <span class="mono" style="font-size:12px;font-weight:700;color:var(--fg-secondary)">Thao tác đàn hồi:</span>
+      <button type="button" class="sm primary" id="btn-spawn-sandbox">➕ Thêm +2 Agent Sandbox (TOOL_EXECUTE)</button>
+      <button type="button" class="sm" id="btn-spawn-coder">➕ Thêm +1 Agent Code (TEXT_GENERATE)</button>
+      <button type="button" class="sm" id="btn-spawn-rag">➕ Thêm +1 Agent RAG</button>
+      <button type="button" class="sm" id="btn-drain-one">➖ Rút lui êm 1 Agent (Drain)</button>
+      <button type="button" class="sm" id="btn-kill-one" title="Hủy đột ngột không xóa KV để kiểm chứng TTL và giao lại tác vụ">💥 Kill đột ngột 1 Agent (Test Crash)</button>
+      <button type="button" class="sm" id="btn-burst-tasks">⚡ Bơm 16 tác vụ vào hàng đợi (Burst)</button>
+      <button type="button" class="sm primary" id="btn-run-bon-wf">🚀 Chạy Workflow Best-of-N mẫu (DAG + Bus)</button>
+      <button type="button" class="sm ghost" id="btn-reset-fleet">🔄 Khôi phục 4 Agent mặc định</button>
+      <span id="bus-action-status" class="mut mono" style="font-size:12px;margin-left:auto"></span>
+    </div>
+
+    <div id="sup-banner-wrap"></div>
+
+    <div class="bus-grid-2">
+      <div>
+        <h3 style="font-size:14px;margin:4px 0 8px">Sổ Agent đang sống trong JetStream KV (<code>AICF_AGENTS</code>)</h3>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Mã Agent</th>
+                <th>Họ / Trạng thái</th>
+                <th>Khả năng (TaskType &amp; Nhãn)</th>
+                <th>Slots / Ctx</th>
+                <th>Lớp dữ liệu</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="live-agents-tbody">
+              <tr><td colspan="6" class="mut">Đang tải danh sách agent từ KV…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-size:14px;margin:4px 0 8px">Hàng đợi theo loại tác vụ (<code>aicf.task.&lt;type&gt;</code>) &amp; Đề xuất Supervisor</h3>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Loại tác vụ</th>
+                <th>Hàng đợi</th>
+                <th>Đang chạy</th>
+                <th>Agent sống</th>
+                <th>Chờ TV / Giao lại</th>
+                <th>Đề xuất của Supervisor</th>
+              </tr>
+            </thead>
+            <tbody id="bus-queues-tbody">
+              <tr><td colspan="6" class="mut">Đang tải số liệu hàng đợi NATS…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI ĐỒ THỊ WORKFLOW DAG -->
+  <div class="kpi-grid" id="dag-kpi" style="margin-top:16px">
     <div class="kpi-card">
       <div class="kpi-top"><span>Workflow đang theo dõi</span><span class="pill">DAG</span></div>
       <div class="kpi-val" id="kpi-wf-count">0</div>
-      <div class="kpi-foot" id="kpi-wf-sub">Cập nhật tự động mỗi 2.5s</div>
+      <div class="kpi-foot" id="kpi-wf-sub">Cập nhật tự động mỗi 2.0s</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-top"><span>Bước hoàn tất (OK)</span><span class="pill ok">Done</span></div>
@@ -88,8 +225,8 @@
   <div class="card">
     <div class="card-header">
       <div>
-        <h2>Danh sách Workflow</h2>
-        <div class="card-sub">Chọn một workflow bên dưới để xem đồ thị phụ thuộc và trạng thái từng bước</div>
+        <h2>2. Danh sách Workflow (Orchestrator DAG trên PostgreSQL)</h2>
+        <div class="card-sub">Chọn một workflow bên dưới (hoặc bấm nút <b>🚀 Chạy Workflow Best-of-N mẫu</b> ở trên) để xem đồ thị phụ thuộc và trạng thái từng bước</div>
       </div>
     </div>
     <div id="wf-list" class="row" style="flex-wrap:wrap;gap:8px"></div>
@@ -132,6 +269,7 @@ let current = new URLSearchParams(location.search).get("wf") || "";
 let selected = "";
 let zoom = 1;
 const msg = t => { document.getElementById("msg").textContent = t; };
+const busStatus = t => { document.getElementById("bus-action-status").textContent = t; };
 
 function applyZoom() {
   const g = document.getElementById("dag");
@@ -141,6 +279,200 @@ function applyZoom() {
 document.getElementById("zoom-out").onclick = () => { zoom = Math.max(0.6, +(zoom - 0.15).toFixed(2)); applyZoom(); };
 document.getElementById("zoom-in").onclick = () => { zoom = Math.min(1.6, +(zoom + 0.15).toFixed(2)); applyZoom(); };
 document.getElementById("zoom-reset").onclick = () => { zoom = 1; applyZoom(); };
+
+async function runBusDemo(query, label) {
+  busStatus("Đang thực hiện: " + label + "…");
+  const r = await api("/api/agents/bus/demo?" + query);
+  if (!r || !r.ok) {
+    busStatus("Không thực hiện được thao tác (kiểm tra --nats-url).");
+    return null;
+  }
+  const data = await r.json();
+  if (data.workflow) {
+    current = data.workflow;
+    selected = "";
+    busStatus("Đã khởi chạy workflow " + data.workflow + " qua NATS Bus!");
+  } else if (data.agents) {
+    busStatus(`${label}: ${data.agents.join(", ") || "xong"}`);
+  } else if (data.sent) {
+    busStatus(`Đã bơm ${data.sent} tác vụ ${data.task_type} vào stream AICF_TASKS!`);
+  } else {
+    busStatus("Hoàn tất: " + label);
+  }
+  await loadBusOverview();
+  await loadList();
+  await loadOne();
+  return data;
+}
+
+document.getElementById("btn-spawn-sandbox").onclick = () => runBusDemo("action=spawn&preset=sandbox&count=2", "Thêm +2 Agent Sandbox");
+document.getElementById("btn-spawn-coder").onclick = () => runBusDemo("action=spawn&preset=coder&count=1", "Thêm +1 Agent Code");
+document.getElementById("btn-spawn-rag").onclick = () => runBusDemo("action=spawn&preset=rag&count=1", "Thêm +1 Agent RAG");
+document.getElementById("btn-drain-one").onclick = () => runBusDemo("action=drain&count=1", "Rút lui êm 1 Agent");
+document.getElementById("btn-kill-one").onclick = () => runBusDemo("action=kill&count=1", "Kill đột ngột 1 Agent");
+document.getElementById("btn-burst-tasks").onclick = () => runBusDemo("action=burst&task_type=TOOL_EXECUTE&count=16&delay_s=1.8", "Bơm 16 tác vụ TOOL_EXECUTE");
+document.getElementById("btn-run-bon-wf").onclick = () => runBusDemo("action=workflow", "Chạy Workflow Best-of-N mẫu");
+document.getElementById("btn-reset-fleet").onclick = () => runBusDemo("action=reset", "Khôi phục 4 Agent mặc định");
+
+async function loadBusOverview() {
+  const r = await api("/api/agents/bus/overview");
+  if (!r || !r.ok) return;
+  const ov = await r.json();
+  const connPill = document.getElementById("bus-conn-pill");
+  if (!ov.connected) {
+    connPill.textContent = "NATS Bus: Chưa cấu hình (--nats-url)";
+    connPill.className = "pill warn";
+    return;
+  }
+  connPill.textContent = "NATS JetStream: Trực tuyến (AICF_AGENTS · AICF_TASKS)";
+  connPill.className = "pill ok";
+
+  const tot = ov.totals || {};
+  document.getElementById("kpi-bus-agents").textContent = String(tot.live_agents || 0);
+  document.getElementById("kpi-bus-agents-sub").textContent =
+    `${tot.compute_agents || 0} compute · ${tot.executor_agents || 0} executor · tổng ${tot.total_slots || 0} slots`;
+  document.getElementById("kpi-bus-queue").textContent =
+    `${tot.queue_depth || 0} chờ · ${tot.inflight_tasks || 0} chạy`;
+  document.getElementById("kpi-bus-completed").textContent =
+    `${ov.completed_total || 0} tác vụ đã hoàn tất qua bus`;
+
+  const waits = (ov.queues || []).map(q => q.wait_median_s || 0).filter(v => v > 0);
+  const maxWaitMs = waits.length ? Math.round(Math.max(...waits) * 1000) : 0;
+  document.getElementById("kpi-bus-wait").textContent = `${maxWaitMs} ms`;
+  document.getElementById("kpi-bus-redeliv").textContent =
+    `${tot.redelivered_total || 0} giao lại (ack_wait) · ${tot.rejected_total || 0} từ chối`;
+
+  const activeRecs = (ov.recommendations || []).filter(x => x.action !== "noop");
+  const recVal = document.getElementById("kpi-sup-recs");
+  const recSub = document.getElementById("kpi-sup-sub");
+  if (activeRecs.length > 0) {
+    const upCnt = activeRecs.filter(x => x.action === "scale_up").length;
+    const downCnt = activeRecs.filter(x => x.action === "scale_down").length;
+    recVal.textContent = `${activeRecs.length} đề xuất (${upCnt} tăng / ${downCnt} giảm)`;
+    recSub.textContent = "propose_only=True · Chờ chủ dự án duyệt";
+  } else {
+    recVal.textContent = "Ổn định (Hysteresis)";
+    recSub.textContent = "propose_only=True · Không tự động đổi cụm";
+  }
+
+  // Banner đề xuất nổi bật của Supervisor
+  const bannerWrap = document.getElementById("sup-banner-wrap");
+  bannerWrap.replaceChildren();
+  for (const rec of activeRecs) {
+    const isUp = rec.action === "scale_up";
+    const preset = rec.task_type === "TEXT_GENERATE" ? "coder" : (rec.task_type === "RAG_RETRIEVE" ? "rag" : "sandbox");
+    const delta = Math.max(1, Math.abs((rec.recommended_agents || 0) - (rec.current_agents || 0)));
+    const box = el("div", { class: "rec-box" },
+      el("div", {},
+        el("b", {}, isUp ? `⚠️ Supervisor đề xuất TĂNG Agent cho ${rec.task_type}: ` : `ℹ️ Supervisor đề xuất GIẢM Agent cho ${rec.task_type}: `),
+        el("span", {}, `${rec.current_agents} → ${rec.recommended_agents} agent (${rec.reason}) · `),
+        el("code", { class: "mono", style: "font-size:11.5px" }, rec.suggested_command || "")
+      ),
+      isUp
+        ? el("button", {
+            type: "button",
+            class: "sm primary",
+            onclick: () => runBusDemo(`action=spawn&preset=${preset}&count=${delta}`, `Duyệt đề xuất tăng +${delta} Agent (${rec.task_type})`)
+          }, `✅ Duyệt bật +${delta} Agent`)
+        : el("button", {
+            type: "button",
+            class: "sm",
+            onclick: () => runBusDemo("action=drain&count=1", `Duyệt đề xuất rút 1 Agent (${rec.task_type})`)
+          }, "✅ Duyệt rút 1 Agent (Drain)")
+    );
+    bannerWrap.append(box);
+  }
+
+  // Bảng Sổ Agent sống (AICF_AGENTS KV)
+  const agBody = document.getElementById("live-agents-tbody");
+  agBody.replaceChildren();
+  const agents = ov.live_agents || [];
+  if (!agents.length) {
+    agBody.append(el("tr", {}, el("td", { colspan: "6", class: "mut" }, "Không có agent nào đang sống trong KV AICF_AGENTS (bấm ➕ Thêm Agent ở trên).")));
+  } else {
+    const nowSec = Date.now() / 1000;
+    for (const a of agents) {
+      const stClass = a.state === "draining" ? "warn" : (a.state === "busy" ? "ok" : "");
+      const stLabel = a.state === "draining" ? "đang rút lui" : (a.state === "busy" ? "đang bận" : "sẵn sàng");
+      const ageSec = Math.max(0, Math.round(nowSec - (a.last_heartbeat || a.started_at || nowSec)));
+      const caps = el("div", { class: "tag-list" });
+      for (const tp of (a.task_types || [])) caps.append(el("span", { class: "tag-chip" }, tp));
+      for (const lb of (a.labels || [])) caps.append(el("span", { class: "tag-chip", style: "color:var(--acc)" }, "#" + lb));
+
+      const dcs = el("div", { class: "tag-list" });
+      for (const dc of (a.data_classes || [])) dcs.append(el("span", { class: "tag-chip" }, dc));
+
+      const slotTxt = `${a.slots || 1} slot · ${Math.round((a.ctx_per_slot || 8192) / 1024)}k ctx` +
+        (a.tok_s_ref > 0 ? ` · ${a.tok_s_ref} tok/s` : "");
+
+      agBody.append(el("tr", {},
+        el("td", { class: "mono", style: "font-weight:600" },
+          a.agent_id,
+          el("div", { class: "mut", style: "font-size:11px;font-weight:400" }, (a.models || []).join(", ") || "worker")
+        ),
+        el("td", {},
+          el("span", { class: "pill " + (a.kind === "compute" ? "ok" : "") }, a.kind || "executor"),
+          " ",
+          el("span", { class: "pill " + stClass }, stLabel),
+          el("div", { class: "mut mono", style: "font-size:10.5px;margin-top:3px" }, `HB ${ageSec}s trước`)
+        ),
+        el("td", {}, caps),
+        el("td", { class: "mono", style: "font-size:12px" }, slotTxt),
+        el("td", {}, dcs),
+        el("td", {},
+          el("div", { class: "row", style: "gap:4px" },
+            el("button", {
+              type: "button",
+              class: "sm ghost",
+              title: "Rút lui êm (hoàn tất việc đang làm rồi xóa khóa KV)",
+              onclick: () => runBusDemo("action=drain&agent_id=" + encodeURIComponent(a.agent_id), "Drain " + a.agent_id)
+            }, "Drain"),
+            el("button", {
+              type: "button",
+              class: "sm ghost",
+              title: "Giả lập sập đột ngột (không xóa KV, chờ hết hạn TTL & giao lại việc)",
+              onclick: () => runBusDemo("action=kill&agent_id=" + encodeURIComponent(a.agent_id), "Kill " + a.agent_id)
+            }, "Kill")
+          )
+        )
+      ));
+    }
+  }
+
+  // Bảng Hàng đợi & Đề xuất theo loại tác vụ
+  const qBody = document.getElementById("bus-queues-tbody");
+  qBody.replaceChildren();
+  const primaryTypes = new Set(["TEXT_GENERATE", "TOOL_EXECUTE", "RESULT_VALIDATE", "MODEL_EVALUATE", "RAG_RETRIEVE", "EMBEDDING", "RERANK", "DOCUMENT_PARSE"]);
+  const rows = (ov.queues || []).filter(q =>
+    primaryTypes.has(q.task_type) || q.queue_depth > 0 || q.inflight_tasks > 0 || q.live_agents > 0 || q.redelivered_total > 0
+  );
+  for (const q of rows) {
+    const rec = q.recommendation || {};
+    let recPill = el("span", { class: "pill" }, "Giữ nguyên (" + (rec.current_agents ?? q.live_agents) + ")");
+    if (rec.action === "scale_up") {
+      recPill = el("span", { class: "pill warn" }, `Đề xuất TĂNG: ${rec.current_agents} → ${rec.recommended_agents}`);
+    } else if (rec.action === "scale_down") {
+      recPill = el("span", { class: "pill" }, `Đề xuất GIẢM: ${rec.current_agents} → ${rec.recommended_agents}`);
+    }
+    const waitMs = Math.round((q.wait_median_s || 0) * 1000);
+    qBody.append(el("tr", {},
+      el("td", { class: "mono", style: "font-weight:600" }, q.task_type),
+      el("td", { class: "mono" },
+        q.queue_depth > 0
+          ? el("span", { class: "pill warn" }, String(q.queue_depth) + " chờ")
+          : el("span", { class: "mut" }, "0")
+      ),
+      el("td", { class: "mono" },
+        q.inflight_tasks > 0
+          ? el("span", { class: "pill ok" }, String(q.inflight_tasks) + " đang xử lý")
+          : el("span", { class: "mut" }, "0")
+      ),
+      el("td", { class: "mono" }, String(q.live_agents)),
+      el("td", { class: "mono", style: "font-size:12px" }, `${waitMs} ms · ${q.redelivered_total || 0} giao lại`),
+      el("td", {}, recPill)
+    ));
+  }
+}
 
 function svg(tag, attrs, ...kids) {
   const e = document.createElementNS(NS, tag);
@@ -211,7 +543,7 @@ function updateKPI(list, snap) {
   if (Array.isArray(list)) {
     document.getElementById("kpi-wf-count").textContent = String(list.length);
     const activeWf = list.filter(w => w.state === "running").length;
-    document.getElementById("kpi-wf-sub").textContent = activeWf > 0 ? `${activeWf} workflow đang thực thi` : "Cập nhật tự động mỗi 2.5s";
+    document.getElementById("kpi-wf-sub").textContent = activeWf > 0 ? `${activeWf} workflow đang thực thi` : "Cập nhật tự động mỗi 2.0s";
   }
   if (snap && snap.counts) {
     const c = snap.counts;
@@ -236,7 +568,7 @@ async function loadList() {
   updateKPI(list, null);
   const box = document.getElementById("wf-list");
   box.replaceChildren();
-  if (!list.length) box.append(el("span", { class: "mut" }, "Chưa có workflow nào."));
+  if (!list.length) box.append(el("span", { class: "mut" }, "Chưa có workflow nào (bấm 🚀 Chạy Workflow Best-of-N mẫu ở trên để tạo)."));
   for (const w of list) {
     const c = w.counts, total = w.steps;
     box.append(el("button", { type: "button", class: "sm" + (w.workflow === current ? " primary" : ""), onclick: () => { current = w.workflow; selected = ""; loadList(); loadOne(); } },
@@ -259,8 +591,15 @@ async function loadOne() {
   draw(snap);
 }
 
+loadBusOverview();
 loadList();
-setInterval(() => { if (!document.hidden) { loadList(); loadOne(); } }, 2500);
+setInterval(() => {
+  if (!document.hidden) {
+    loadBusOverview();
+    loadList();
+    loadOne();
+  }
+}, 2000);
 </script>
 </body>
 </html>

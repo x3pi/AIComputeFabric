@@ -168,6 +168,26 @@ paths:
       responses:
         "200": {description: ok}
         "404": {description: unknown workflow}
+  /api/agents/metrics:
+    get:
+      summary: Prometheus text metrics for NATS JetStream task bus queue depth, live agents in AICF_AGENTS KV, median wait, and redeliveries
+      responses:
+        "200": {description: Prometheus text exposition}
+  /api/agents/supervisor/recommendations:
+    get:
+      summary: Propose-only scaling recommendations from ElasticSupervisor (D-FAB-4, requires human approval)
+      responses:
+        "200": {description: ok}
+  /api/agents/bus/overview:
+    get:
+      summary: Live snapshot of AICF_AGENTS KV profiles, per-TaskType queues, and supervisor recommendations for the dashboard
+      responses:
+        "200": {description: ok}
+  /api/agents/bus/demo:
+    get:
+      summary: Interactive Elastic Agent Fabric demo actions (spawn, drain, kill, burst, workflow, reset)
+      responses:
+        "200": {description: ok}
   /api/studio/v1/methods:
     get:
       summary: Customisation methods the Studio offers; the UI builds its tabs from this (viewer)

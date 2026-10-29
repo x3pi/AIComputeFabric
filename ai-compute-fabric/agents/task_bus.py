@@ -939,9 +939,26 @@ class BusWorker:
             max_deliver=self.max_deliver,
         )
 
+        async def _pull_sub_with_conflict_cleanup(subj: str, dur: str):
+            try:
+                return await js.pull_subscribe(subj, durable=dur, stream=STREAM, config=cfg)
+            except APIError as e:
+                if getattr(e, "err_code", None) == 10100:
+                    try:
+                        if dur == "workers":
+                            for cinfo in await js.consumers_info(STREAM):
+                                if cinfo.name and cinfo.name != "workers":
+                                    await js.delete_consumer(STREAM, cinfo.name)
+                        else:
+                            await js.delete_consumer(STREAM, "workers")
+                    except Exception:
+                        pass
+                    return await js.pull_subscribe(subj, durable=dur, stream=STREAM, config=cfg)
+                raise
+
         # Legacy wildcard subscription when no specific types, labels, or data_classes were restricted
         if self.types is None and not self.labels and not self._explicit_data_classes and self.security_policy is None:
-            subs.append(await js.pull_subscribe(f"{SUBJECT}.>", durable="workers", stream=STREAM, config=cfg))
+            subs.append(await _pull_sub_with_conflict_cleanup(f"{SUBJECT}.>", "workers"))
             return subs
 
         target_types = [_norm_type(t) for t in self.types] if self.types is not None else [t.value for t in TaskType]
@@ -960,7 +977,7 @@ class BusWorker:
                     subj = task_subject(tp, label=lbl, data_class=dc)
                     dur = consumer_durable_name(tp, label=lbl, data_class=dc)
                     try:
-                        sub = await js.pull_subscribe(subj, durable=dur, stream=STREAM, config=cfg)
+                        sub = await _pull_sub_with_conflict_cleanup(subj, dur)
                         subs.append(sub)
                     except (APIError, nats.errors.TimeoutError) as e:
                         raise BusPermissionError(
@@ -1020,6 +1037,7 @@ class BusWorker:
             self.ready.set()
 
             async def _kv_heartbeat():
+                nonlocal kv
                 interval = max(0.15, self.agent_ttl / 3.0)
                 while not self.stop.is_set() and not self.draining.is_set():
                     await asyncio.sleep(interval)
@@ -1027,7 +1045,12 @@ class BusWorker:
                         try:
                             await kv.put(self.name, self._build_profile().model_dump_json().encode())
                         except Exception:
-                            pass
+                            if self.security_policy is None:
+                                try:
+                                    kv = await ensure_agent_kv(js, ttl=self.agent_ttl, create_if_missing=True)
+                                    await kv.put(self.name, self._build_profile().model_dump_json().encode())
+                                except Exception:
+                                    pass
 
             hb_task = asyncio.create_task(_kv_heartbeat())
             fetch_timeout = 0.25 if len(subs) == 1 else 0.05
@@ -1035,7 +1058,7 @@ class BusWorker:
             async def _slot_worker():
                 while not self.stop.is_set() and not self.draining.is_set():
                     got_any = False
-                    for sub in subs:
+                    for sub in list(subs):
                         if self.stop.is_set() or self.draining.is_set():
                             break
                         try:
@@ -1043,6 +1066,19 @@ class BusWorker:
                         except (asyncio.TimeoutError, nats.errors.TimeoutError):
                             continue
                         except APIError as e:
+                            if self.security_policy is None and getattr(e, "code", None) in (404, 408, 409):
+                                try:
+                                    await ensure_stream(
+                                        js,
+                                        self.ack_wait,
+                                        self.max_deliver,
+                                        max_msg_size=self.max_payload_bytes,
+                                        update_if_exists=False,
+                                    )
+                                    subs[:] = await self._setup_subscriptions(js)
+                                except Exception:
+                                    await asyncio.sleep(0.2)
+                                break
                             raise BusPermissionError(
                                 f"NATS server denied fetch for agent {self.name!r}: {e}"
                             ) from e
@@ -1070,13 +1106,15 @@ class BusWorker:
             try:
                 await asyncio.gather(*slot_tasks)
             finally:
+                for st in slot_tasks:
+                    st.cancel()
                 hb_task.cancel()
                 if ctrl_sub is not None:
                     try:
                         await ctrl_sub.unsubscribe()
                     except Exception:
                         pass
-                if kv is not None:
+                if kv is not None and not getattr(self, "_SimulateSuddenCrash", False):
                     try:
                         await kv.delete(self.name)
                     except Exception:
@@ -1208,6 +1246,7 @@ class BusMetricsSnapshot:
     median_wait_s_by_type: dict[str, float]
     rejected_counts: dict[str, int]
     completed_total: int
+    live_agent_profiles: list[dict[str, Any]] = field(default_factory=list)
 
 
 class BusMetricsCollector:
@@ -1321,6 +1360,7 @@ class BusMetricsCollector:
             median_wait_s_by_type=median_wait,
             rejected_counts=rejected,
             completed_total=completed,
+            live_agent_profiles=[a.model_dump(mode="json") for a in agents],
         )
 
     def collect(self) -> BusMetricsSnapshot:

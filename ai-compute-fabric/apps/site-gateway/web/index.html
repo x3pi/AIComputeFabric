@@ -232,6 +232,22 @@
     </div>
   </section>
 
+  <!-- Live Elastic Agent Fabric Strip (Phase E) -->
+  <div class="card" id="home-elastic-bus-card" style="margin-bottom:16px;padding:12px 16px">
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div class="row" style="gap:10px;flex-wrap:wrap">
+        <span class="pill ok" id="home-bus-pill">🕸️ Đàn Agent Đàn Hồi (NATS JetStream)</span>
+        <span class="mono" id="home-bus-summary" style="font-size:13px;font-weight:600">Đang kết nối Sổ Agent KV (AICF_AGENTS)…</span>
+        <span class="mut mono" id="home-bus-sup" style="font-size:12px">Supervisor: CHỈ ĐỀ XUẤT (propose_only=True)</span>
+      </div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button type="button" class="sm" id="home-btn-spawn">➕ Thêm +2 Agent Sandbox</button>
+        <button type="button" class="sm" id="home-btn-burst">⚡ Bơm 12 tác vụ thử</button>
+        <a href="agents.html" style="text-decoration:none"><button type="button" class="sm primary">🕸️ Mở Bảng Đàn Agent &amp; DAG →</button></a>
+      </div>
+    </div>
+  </div>
+
   <!-- Adaptive Wide Split: Side-by-side on Ultrawide/FullHD (>= 1680px), Stacked on Laptop/Tablet/Mobile -->
   <div class="wide-split">
     <!-- Left / Top: Cluster-wide 6-Bucket VRAM Bar + 200-GPU Live Heatmap -->
@@ -1259,14 +1275,47 @@ document.getElementById("topo-apply-btn").addEventListener("click", async () => 
   }
 });
 
+async function loadHomeBusOverview() {
+  try {
+    const r = await api("/api/agents/bus/overview");
+    if (!r || !r.ok) return;
+    const ov = await r.json();
+    const pill = document.getElementById("home-bus-pill");
+    const sum = document.getElementById("home-bus-summary");
+    const sup = document.getElementById("home-bus-sup");
+    if (!ov.connected) {
+      pill.className = "pill warn";
+      sum.textContent = "Chưa bật --nats-url trên dag_api";
+      return;
+    }
+    const t = ov.totals || {};
+    pill.className = "pill ok";
+    sum.textContent = `${t.live_agents || 0} Agent sống trong KV (${t.compute_agents || 0} compute, ${t.executor_agents || 0} executor · ${t.total_slots || 0} slots) · Hàng đợi: ${t.queue_depth || 0} chờ / ${t.inflight_tasks || 0} đang xử lý · Đã xong: ${ov.completed_total || 0}`;
+    const active = (ov.recommendations || []).filter(x => x.action !== "noop");
+    sup.textContent = active.length
+      ? `⚠️ Supervisor có ${active.length} đề xuất co giãn (chờ duyệt)`
+      : `Supervisor: Ổn định (propose_only=True · ${t.redelivered_total || 0} giao lại)`;
+  } catch {}
+}
+
+document.getElementById("home-btn-spawn").addEventListener("click", async () => {
+  await api("/api/agents/bus/demo?action=spawn&preset=sandbox&count=2");
+  loadHomeBusOverview();
+});
+document.getElementById("home-btn-burst").addEventListener("click", async () => {
+  await api("/api/agents/bus/demo?action=burst&task_type=TOOL_EXECUTE&count=12&delay_s=1.6");
+  loadHomeBusOverview();
+});
+
 let lastLoad = 0;
 stream("/api/fleet/stream", s => { renderGrid(s); if (Date.now() - lastLoad > 1000) { lastLoad = Date.now(); loadPage(); loadTopology(); } });
-window.AICF_READY.then(() => { svLoadOptions().then(svRender); loadTopology(); });
+window.AICF_READY.then(() => { svLoadOptions().then(svRender); loadTopology(); loadHomeBusOverview(); });
 loadPage();
 loadStats();
 loadTopology();
+loadHomeBusOverview();
 initEstimator();
-setInterval(() => { loadPage(); loadStats(); loadTopology(); }, 2000);
+setInterval(() => { loadPage(); loadStats(); loadTopology(); loadHomeBusOverview(); }, 2000);
 </script>
 </body>
 </html>
