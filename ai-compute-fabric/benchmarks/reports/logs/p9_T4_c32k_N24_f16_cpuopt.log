@@ -1,0 +1,15 @@
+$ .aicf-work/bin/llama-server -m .aicf-work/Qwen3-30B-A3B-Q4_K_M.gguf -c 32768 -np 1 -ngl 99 --port 18199 --host 127.0.0.1 -fa on -ctk f16 -ctv f16 --no-warmup --fit off -lv 3 -ncmoe 24 -t 8 -Cr 0-7 --cpu-strict 1
+0.00.081.337 I srv  llama_server: initializing ...
+0.00.081.348 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.081.619 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.083.292 I srv    load_model: loading model '.aicf-work/Qwen3-30B-A3B-Q4_K_M.gguf'
+0.00.241.193 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+0.00.271.117 W llama_model_loader: tensor overrides to CPU are used with mmap enabled - consider using --load-mode none for better performance
+0.01.793.282 E ggml_backend_cuda_buffer_type_alloc_buffer: allocating 3072.00 MiB on device 0: cudaMalloc failed: out of memory
+0.01.793.286 E ggml_backend_buft_alloc_buffer_n_default: failed to allocate CUDA0 buffer of size 3221225472
+0.01.793.973 E llama_init_from_model: failed to initialize the context: failed to allocate buffer for kv cache
+0.01.793.981 E cmn  common_init_: failed to create context with model '.aicf-work/Qwen3-30B-A3B-Q4_K_M.gguf'
+0.01.793.984 E cmn  common_init_: failed to create context with model '.aicf-work/Qwen3-30B-A3B-Q4_K_M.gguf'
+0.01.793.989 E srv    load_model: failed to create_context with model '.aicf-work/Qwen3-30B-A3B-Q4_K_M.gguf'
+0.01.793.990 I srv    operator(): operator(): cleaning up before exit...
+0.01.795.045 E srv  server_run_i: exiting due to model loading error

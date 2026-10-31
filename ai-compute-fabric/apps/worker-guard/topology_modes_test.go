@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -238,5 +241,117 @@ func TestGuardPersistsAndRestoresStateAcrossRestart(t *testing.T) {
 	snap3 := g3.Snapshot()
 	if snap3.State == StPaused || snap3.Mode != "rpc-worker" || snap3.Model != "rpc://50052" || snap3.RPCPort != 50052 {
 		t.Fatalf("restored rpc-worker snapshot mismatch: %+v", snap3)
+	}
+}
+
+func TestLlamaEngineDefaultArgsUnchangedRegression(t *testing.T) {
+	eng := &LlamaEngine{
+		Bin:      "/bin/llama-server",
+		Model:    "/models/Qwen3-30B-A3B-Q4_K_M.gguf",
+		Mode:     "smart_1gpu",
+		NCpuMoe:  24,
+		KVType:   "q8_0",
+		Ctx:      32768,
+		Parallel: 1,
+		NGL:      99,
+		Port:     18090,
+		Host:     "0.0.0.0",
+	}
+	got, err := eng.Args()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{
+		"-m", "/models/Qwen3-30B-A3B-Q4_K_M.gguf",
+		"-c", "32768",
+		"-np", "1",
+		"-ngl", "99",
+		"--port", "18090",
+		"--host", "0.0.0.0",
+		"-fa", "on",
+		"-ctk", "q8_0",
+		"-ctv", "q8_0",
+		"--no-warmup",
+		"--fit", "off",
+		"-lv", "4",
+		"-ncmoe", "24",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("regression: default Args() changed!\ngot:  %v\nwant: %v", got, want)
+	}
+}
+
+func TestLlamaEngineCPUAffinityAndMutationChecks(t *testing.T) {
+	maxCore := runtime.NumCPU() - 1
+	if maxCore < 0 {
+		maxCore = 0
+	}
+	validRange := fmt.Sprintf("0-%d", maxCore)
+
+	eng := &LlamaEngine{
+		Bin:           "/bin/llama-server",
+		Model:         "/models/Qwen3-30B-A3B-Q4_K_M.gguf",
+		Mode:          "smart_1gpu",
+		NCpuMoe:       24,
+		KVType:        "q8_0",
+		Ctx:           32768,
+		Parallel:      1,
+		NGL:           99,
+		Port:          18090,
+		Threads:       8,
+		ThreadsBatch:  20,
+		CPURange:      validRange,
+		CPURangeBatch: validRange,
+		CPUStrict:     true,
+		LoadMode:      "none",
+	}
+	args, err := eng.Args()
+	if err != nil {
+		t.Fatalf("valid CPU affinity flags rejected: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	for _, sub := range []string{
+		"-t 8",
+		"-tb 20",
+		"-Cr " + validRange,
+		"-Crb " + validRange,
+		"--cpu-strict 1",
+		"--load-mode none",
+	} {
+		if !strings.Contains(joined, sub) {
+			t.Errorf("expected %q in args %v", sub, args)
+		}
+	}
+
+	// Switching to rpc-worker must NOT leak any CPU/load-mode flags to ggml-rpc-server.
+	eng.Mode = "rpc-worker"
+	eng.RPCPort = 50052
+	rpcArgs, err := eng.Args()
+	if err != nil {
+		t.Fatalf("rpc-worker Args() failed: %v", err)
+	}
+	if !reflect.DeepEqual(rpcArgs, []string{"-H", "127.0.0.1", "-p", "50052", "-c"}) {
+		t.Fatalf("CPU flags leaked into rpc-worker args: %v", rpcArgs)
+	}
+	eng.Mode = "smart_1gpu"
+
+	// Mutation checks: negative threads, reversed ranges, shell injection, out-of-bounds core index, invalid load-mode.
+	overCore := fmt.Sprintf("0-%d", runtime.NumCPU())
+	mutations := []func(*LlamaEngine){
+		func(e *LlamaEngine) { e.Threads = -1 },
+		func(e *LlamaEngine) { e.ThreadsBatch = -2 },
+		func(e *LlamaEngine) { e.CPURange = "7-0" },
+		func(e *LlamaEngine) { e.CPURange = "0-7; rm -rf /" },
+		func(e *LlamaEngine) { e.CPURange = "abc" },
+		func(e *LlamaEngine) { e.CPURange = overCore },
+		func(e *LlamaEngine) { e.CPURangeBatch = overCore },
+		func(e *LlamaEngine) { e.LoadMode = "bogus" },
+	}
+	for idx, mut := range mutations {
+		cp := *eng
+		mut(&cp)
+		if _, err := cp.Args(); err == nil {
+			t.Errorf("mutation #%d should have been rejected, but Args() succeeded", idx)
+		}
 	}
 }

@@ -69,11 +69,17 @@ func serve(stop <-chan struct{}) {
 		rpcServerBin = flag.String("rpc-server-bin", "", "path to ggml-rpc-server executable (default: search next to --llama-server)")
 		rpcPort      = flag.Int("rpc-port", 50052, "port for ggml-rpc-server when in rpc-worker mode")
 		rpcServers   = flag.String("rpc-servers", "", "default --rpc server address(es) for llama-server")
-		splitMode    = flag.String("split-mode", "layer", "--split-mode for llama-server (layer or row)")
-		tensorSplit  = flag.String("tensor-split", "", "--tensor-split for llama-server (e.g. 1,1)")
-		nCpuMoe      = flag.Int("n-cpu-moe", 0, "--n-cpu-moe for llama-server (-ncmoe)")
-		mode         = flag.String("mode", "standalone", "initial engine mode: standalone, smart_1gpu, or rpc-worker")
-		stateFile    = flag.String("state-file", "", "path to persist runtime engine/mode/pause state across restarts (default: <models-dir>/.worker-guard-state.json when --models-dir is set)")
+		splitMode     = flag.String("split-mode", "layer", "--split-mode for llama-server (layer or row)")
+		tensorSplit   = flag.String("tensor-split", "", "--tensor-split for llama-server (e.g. 1,1)")
+		nCpuMoe       = flag.Int("n-cpu-moe", 0, "--n-cpu-moe for llama-server (-ncmoe)")
+		threads       = flag.Int("threads", 0, "--threads (-t) for llama-server (0 = llama-server default)")
+		threadsBatch  = flag.Int("threads-batch", 0, "--threads-batch (-tb) for llama-server (0 = llama-server default)")
+		cpuRange      = flag.String("cpu-range", "", "--cpu-range (-Cr) for llama-server (e.g. 0-7 for P-cores)")
+		cpuRangeBatch = flag.String("cpu-range-batch", "", "--cpu-range-batch (-Crb) for llama-server")
+		cpuStrict     = flag.Bool("cpu-strict", false, "pass --cpu-strict 1 to llama-server when pinning threads")
+		loadMode      = flag.String("load-mode", "", "--load-mode for llama-server (e.g. none)")
+		mode          = flag.String("mode", "standalone", "initial engine mode: standalone, smart_1gpu, or rpc-worker")
+		stateFile     = flag.String("state-file", "", "path to persist runtime engine/mode/pause state across restarts (default: <models-dir>/.worker-guard-state.json when --models-dir is set)")
 	)
 	flag.Parse()
 	if *bin == "" || *model == "" {
@@ -88,6 +94,7 @@ func serve(stop <-chan struct{}) {
 		LogPath: *logPath, StartTimeout: *startTimeout, Grace: 500 * time.Millisecond,
 		Mode: *mode, NCpuMoe: *nCpuMoe, RPCServers: *rpcServers, SplitMode: *splitMode, TensorSplit: *tensorSplit, RPCPort: *rpcPort,
 		RPCServerBin: *rpcServerBin,
+		Threads: *threads, ThreadsBatch: *threadsBatch, CPURange: *cpuRange, CPURangeBatch: *cpuRangeBatch, CPUStrict: *cpuStrict, LoadMode: *loadMode,
 	}
 	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near, StateFile: sf}, SMISampler{Index: *gpu}, eng)
 	go g.Run(stop)

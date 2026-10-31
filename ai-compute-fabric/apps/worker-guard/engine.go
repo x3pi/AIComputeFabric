@@ -10,11 +10,41 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+var cpuRangeRe = regexp.MustCompile(`^\d+(-\d+)?(,\d+(-\d+)?)*$`)
+
+func validateCPURange(label, spec string, numCPU int) error {
+	if !cpuRangeRe.MatchString(spec) {
+		return fmt.Errorf("%s %q must match N or A-B (comma-separated)", label, spec)
+	}
+	for _, part := range strings.Split(spec, ",") {
+		if idx := strings.IndexByte(part, '-'); idx >= 0 {
+			lo, err1 := strconv.Atoi(part[:idx])
+			hi, err2 := strconv.Atoi(part[idx+1:])
+			if err1 != nil || err2 != nil || lo > hi {
+				return fmt.Errorf("%s %q has invalid range %q", label, spec, part)
+			}
+			if numCPU > 0 && hi >= numCPU {
+				return fmt.Errorf("%s %q core %d exceeds host CPU count (%d)", label, spec, hi, numCPU)
+			}
+		} else {
+			c, err := strconv.Atoi(part)
+			if err != nil {
+				return fmt.Errorf("%s %q has invalid core %q", label, spec, part)
+			}
+			if numCPU > 0 && c >= numCPU {
+				return fmt.Errorf("%s %q core %d exceeds host CPU count (%d)", label, spec, c, numCPU)
+			}
+		}
+	}
+	return nil
+}
 
 // Buffers are the CUDA / RPC buffers llama.cpp logs at start-up (MiB). They feed the
 // Weights / KV / Compute buckets, i.e. engine-reported numbers (plan §B.2).
@@ -104,6 +134,14 @@ type LlamaEngine struct {
 	TensorSplit  string // --tensor-split (e.g. "1,1")
 	RPCPort      int    // port for ggml-rpc-server
 	RPCServerBin string // path to ggml-rpc-server executable
+
+	// Host-specific CPU thread & affinity settings (Pha T6, KE_HOACH_TOI_UU_CPU_KV_NCMOE.md)
+	Threads       int    // -t (--threads)
+	ThreadsBatch  int    // -tb (--threads-batch)
+	CPURange      string // -Cr (--cpu-range)
+	CPURangeBatch string // -Crb (--cpu-range-batch)
+	CPUStrict     bool   // --cpu-strict 1
+	LoadMode      string // --load-mode (e.g. "none")
 
 	mu   sync.Mutex
 	cmd  *exec.Cmd
@@ -246,6 +284,26 @@ func (e *LlamaEngine) Args() ([]string, error) {
 			return nil, fmt.Errorf("LoRA adapter %q is not a readable file", e.Lora)
 		}
 	}
+	if e.Threads < 0 {
+		return nil, fmt.Errorf("threads must be >= 0, got %d", e.Threads)
+	}
+	if e.ThreadsBatch < 0 {
+		return nil, fmt.Errorf("threads_batch must be >= 0, got %d", e.ThreadsBatch)
+	}
+	numCPU := runtime.NumCPU()
+	if e.CPURange != "" {
+		if err := validateCPURange("cpu_range", e.CPURange, numCPU); err != nil {
+			return nil, err
+		}
+	}
+	if e.CPURangeBatch != "" {
+		if err := validateCPURange("cpu_range_batch", e.CPURangeBatch, numCPU); err != nil {
+			return nil, err
+		}
+	}
+	if e.LoadMode != "" && e.LoadMode != "none" && e.LoadMode != "mmap" && e.LoadMode != "mlock" {
+		return nil, fmt.Errorf("load_mode must be none, mmap or mlock, got %q", e.LoadMode)
+	}
 	host := e.Host
 	if host == "" {
 		host = "127.0.0.1"
@@ -255,6 +313,24 @@ func (e *LlamaEngine) Args() ([]string, error) {
 		"-fa", fa, "-ctk", kv, "-ctv", kv, "--no-warmup", "--fit", "off", "-lv", "4"}
 	if ncmoe > 0 {
 		args = append(args, "-ncmoe", strconv.Itoa(ncmoe))
+	}
+	if e.Threads > 0 {
+		args = append(args, "-t", strconv.Itoa(e.Threads))
+	}
+	if e.ThreadsBatch > 0 {
+		args = append(args, "-tb", strconv.Itoa(e.ThreadsBatch))
+	}
+	if e.CPURange != "" {
+		args = append(args, "-Cr", e.CPURange)
+	}
+	if e.CPURangeBatch != "" {
+		args = append(args, "-Crb", e.CPURangeBatch)
+	}
+	if e.CPUStrict {
+		args = append(args, "--cpu-strict", "1")
+	}
+	if e.LoadMode != "" {
+		args = append(args, "--load-mode", e.LoadMode)
 	}
 	if e.RPCServers != "" {
 		args = append(args, "--rpc", e.RPCServers)

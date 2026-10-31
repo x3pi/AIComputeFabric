@@ -88,12 +88,15 @@ fi
 sleep 1
 
 # 4. Worker Guard + llama-server (restores previous runtime model/mode from --state-file if present)
+# Default P-core pinning for pc-001 (Core Ultra 7 265K 8 P-cores 0..7); override via AICF_CPU_FLAGS="" if needed.
+CPU_FLAGS_STR="${AICF_CPU_FLAGS---threads 8 --cpu-range 0-7 --cpu-strict}"
+read -r -a CPU_FLAGS_ARR <<< "$CPU_FLAGS_STR"
 "$D/bin/worker-guard" --llama-server "$LLAMA" --model "$MODEL" --parallel "${PARALLEL:-2}" --ctx "${CTX:-4096}" --headroom-mib 512 \
   --engine-log "$D/logs/engine-pc001.log" --engine-start-timeout "${ENGINE_START_TIMEOUT:-600s}" \
   --engine-port 18090 --engine-host 0.0.0.0 --advertise-host 192.168.1.40 \
   --models-dir "$D/models" --adapters-dir "$D/adapters" --state-file "$D/worker-state-pc-001.json" --gateway "127.0.0.1:$GRPC_PORT" --worker-id pc-001 \
   --tls-ca "$D/pki/ca.crt" --tls-cert "$D/pki/pc-001.crt" --tls-key "$D/pki/pc-001.key" \
-  --tls-server-name localhost >"$D/logs/worker.log" 2>&1 & pids+=($!)
+  --tls-server-name localhost "${CPU_FLAGS_ARR[@]}" >"$D/logs/worker.log" 2>&1 & pids+=($!)
 
 cat <<MSG
 AI Compute Fabric Full-Stack Demo is starting (model loads in ~10-25 s):

@@ -1,0 +1,408 @@
+{
+  "phase": "T4.2_quality",
+  "corpus": {
+    "path": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bench_corpus_p9.txt",
+    "bytes": 172677,
+    "sha256": "332a2bcddb7f6ac988f5d3c54f1c712b37ccbfeab4061baeb4601664b4e91a54"
+  },
+  "perplexity": {
+    "f16": {
+      "kv_type": "f16",
+      "cmd": [
+        ".aicf-work/bin/llama-perplexity",
+        "-m",
+        ".aicf-work/Qwen3-30B-A3B-Q4_K_M.gguf",
+        "-f",
+        "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bench_corpus_p9.txt",
+        "-c",
+        "8192",
+        "--chunks",
+        "4",
+        "-ngl",
+        "99",
+        "-ncmoe",
+        "30",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16",
+        "-t",
+        "8",
+        "-Cr",
+        "0-7",
+        "--cpu-strict",
+        "1"
+      ],
+      "rc": 0,
+      "ppl": 4.0418,
+      "ppl_std": 0.08188,
+      "elapsed_s": 75.04,
+      "log_file": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p9_t4_perplexity_f16.log"
+    },
+    "q8_0": {
+      "kv_type": "q8_0",
+      "cmd": [
+        ".aicf-work/bin/llama-perplexity",
+        "-m",
+        ".aicf-work/Qwen3-30B-A3B-Q4_K_M.gguf",
+        "-f",
+        "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bench_corpus_p9.txt",
+        "-c",
+        "8192",
+        "--chunks",
+        "4",
+        "-ngl",
+        "99",
+        "-ncmoe",
+        "30",
+        "-fa",
+        "on",
+        "-ctk",
+        "q8_0",
+        "-ctv",
+        "q8_0",
+        "-t",
+        "8",
+        "-Cr",
+        "0-7",
+        "--cpu-strict",
+        "1"
+      ],
+      "rc": 0,
+      "ppl": 4.0411,
+      "ppl_std": 0.08186,
+      "elapsed_s": 75.4,
+      "log_file": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/benchmarks/reports/logs/p9_t4_perplexity_q8_0.log"
+    },
+    "delta_q8_minus_f16": -0.0007,
+    "gate_pass_le_0_05": true
+  },
+  "code_and_needle": {
+    "f16_N30": {
+      "kv_type": "f16",
+      "ncmoe": 30,
+      "code_pass_count": 14,
+      "code_total": 15,
+      "code_pass_rate": 0.9333,
+      "code_results": [
+        {
+          "id": "p01_two_sum",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "c955c447f64b6e5c",
+          "code_snippet": "def two_sum(nums: list[int], target: int) -> tuple[int, int]:\n    seen = {}\n    for i, num in enumerate(nums):\n        complement = target - num\n        if complement in seen:\n            return (seen[complement], i)\n        seen[num] = i\n "
+        },
+        {
+          "id": "p02_valid_parens",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "1ad80d47bfbca9d1",
+          "code_snippet": "def is_valid_parens(s: str) -> bool:\n    stack = []\n    mapping = {')': '(', ']': '[', '}': '{'}\n    for char in s:\n        if char in mapping:\n            if not stack or stack[-1] != mapping[char]:\n                return False\n           "
+        },
+        {
+          "id": "p03_merge_intervals",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "5c6b6a73781edb75",
+          "code_snippet": "def merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    if not intervals:\n        return []\n    intervals.sort()\n    merged = [intervals[0]]\n    for current in intervals[1:]:\n        last = merged[-1]\n        if current[0] <"
+        },
+        {
+          "id": "p04_lru_cache",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "f88a07298c0a833d",
+          "code_snippet": "from collections import OrderedDict\n\nclass LRUCache:\n    def __init__(self, capacity: int):\n        self.cache = OrderedDict()\n        self.capacity = capacity\n\n    def get(self, key: int) -> int:\n        if key not in self.cache:\n         "
+        },
+        {
+          "id": "p05_longest_unique_substr",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "71923ce080372de3",
+          "code_snippet": "def length_of_longest_substring(s: str) -> int:\n    char_set = set()\n    left = 0\n    max_len = 0\n    for right in range(len(s)):\n        while s[right] in char_set:\n            char_set.remove(s[left])\n            left += 1\n        char_se"
+        },
+        {
+          "id": "p06_coin_change",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "ad10f9f871e6aba1",
+          "code_snippet": "def coin_change(coins: list[int], amount: int) -> int:\n    if amount == 0:\n        return 0\n    coins = sorted(coins, reverse=True)\n    count = 0\n    for coin in coins:\n        if amount >= coin:\n            count += amount // coin\n        "
+        },
+        {
+          "id": "p07_top_k_frequent",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "13e0b25efedf3032",
+          "code_snippet": "from collections import Counter\nfrom typing import List\n\ndef top_k_frequent(nums: List[int], k: int) -> List[int]:\n    count = Counter(nums)\n    return [num for num, _ in count.most_common(k)]"
+        },
+        {
+          "id": "p08_edit_distance",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "9876fb91f8a24cdc",
+          "code_snippet": "def min_distance(word1: str, word2: str) -> int:\n    m, n = len(word1), len(word2)\n    dp = [[0] * (n + 1) for _ in range(m + 1)]\n    \n    for i in range(m + 1):\n        dp[i][0] = i\n    for j in range(n + 1):\n        dp[0][j] = j\n    \n    "
+        },
+        {
+          "id": "p09_kth_largest",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "1f8fd6a34bc2f0a1",
+          "code_snippet": "def find_kth_largest(nums: list[int], k: int) -> int:\n    nums.sort(reverse=True)\n    return nums[k-1]"
+        },
+        {
+          "id": "p10_topo_sort_can_finish",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "68288f0d772aeb46",
+          "code_snippet": "from collections import defaultdict, deque\n\ndef can_finish(num_courses: int, prerequisites: list[list[int]]) -> bool:\n    graph = defaultdict(list)\n    in_degree = [0] * num_courses\n\n    for a, b in prerequisites:\n        graph[b].append(a)"
+        },
+        {
+          "id": "p11_trie",
+          "passed": false,
+          "detail": "AssertionError",
+          "output_sha256": "2b081dcc1810cc0d",
+          "code_snippet": "class Trie:\n    def __init__(self):\n        self.root = {}\n\n    def insert(self, word: str) -> None:\n        node = self.root\n        for char in word:\n            if char not in node:\n                node[char] = {}\n            node = node"
+        },
+        {
+          "id": "p12_binary_search_rotated",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "bb3a02da5c0804d1",
+          "code_snippet": "def search_rotated(nums: list[int], target: int) -> int:\n    left, right = 0, len(nums) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if nums[mid] == target:\n            return mid\n        if nums[left] <= nums[mid]"
+        },
+        {
+          "id": "p13_subarray_sum_k",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "287612099c098ca9",
+          "code_snippet": "def subarray_sum(nums: list[int], k: int) -> int:\n    count = 0\n    prefix_sum = 0\n    sum_counts = {0: 1}\n    \n    for num in nums:\n        prefix_sum += num\n        if (prefix_sum - k) in sum_counts:\n            count += sum_counts[prefix"
+        },
+        {
+          "id": "p14_max_path_sum_grid",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "7d6819aec717930c",
+          "code_snippet": "def min_path_sum(grid: list[list[int]]) -> int:\n    m, n = len(grid), len(grid[0])\n    for i in range(m):\n        for j in range(n):\n            if i == 0 and j == 0:\n                continue\n            elif i == 0:\n                grid[i]"
+        },
+        {
+          "id": "p15_dijkstra_shortest_path",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "a20feff70dab47a8",
+          "code_snippet": "import heapq\n\ndef shortest_path(n: int, edges: list[tuple[int, int, int]], src: int, dst: int) -> int:\n    graph = [[] for _ in range(n)]\n    for u, v, w in edges:\n        graph[u].append((v, w))\n    \n    dist = [float('inf')] * n\n    dist["
+        }
+      ],
+      "needle_24k_pass_count": 2,
+      "needle_24k_total": 2,
+      "needle_results": [
+        {
+          "needle_test_id": 1,
+          "prompt_n": 24888,
+          "prefill_tok_s": 700.62,
+          "expected": {
+            "AICF_SECRET_KEY_EARLY": "K9X-7419-ALPHA",
+            "AICF_SECRET_KEY_MID": "M4Z-8823-BRAVO",
+            "AICF_SECRET_KEY_LATE": "Q7W-3105-OMEGA"
+          },
+          "hits": {
+            "AICF_SECRET_KEY_EARLY": true,
+            "AICF_SECRET_KEY_MID": true,
+            "AICF_SECRET_KEY_LATE": true
+          },
+          "all_passed": true,
+          "raw_response": "AICF_SECRET_KEY_EARLY=\"K9X-7419-ALPHA\"\nAICF_SECRET_KEY_MID=\"M4Z-8823-BRAVO\"\nAICF_SECRET_KEY_LATE=\"Q7W-3105-OMEGA\""
+        },
+        {
+          "needle_test_id": 2,
+          "prompt_n": 24847,
+          "prefill_tok_s": 697.52,
+          "expected": {
+            "MODULE_CHECKSUM_01": "SHA-994120",
+            "MODULE_CHECKSUM_02": "SHA-553817",
+            "MODULE_CHECKSUM_03": "SHA-208469"
+          },
+          "hits": {
+            "MODULE_CHECKSUM_01": true,
+            "MODULE_CHECKSUM_02": true,
+            "MODULE_CHECKSUM_03": true
+          },
+          "all_passed": true,
+          "raw_response": "MODULE_CHECKSUM_01=SHA-994120\nMODULE_CHECKSUM_02=SHA-553817\nMODULE_CHECKSUM_03=SHA-208469"
+        }
+      ]
+    },
+    "q8_0_N24": {
+      "kv_type": "q8_0",
+      "ncmoe": 24,
+      "code_pass_count": 14,
+      "code_total": 15,
+      "code_pass_rate": 0.9333,
+      "code_results": [
+        {
+          "id": "p01_two_sum",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "c955c447f64b6e5c",
+          "code_snippet": "def two_sum(nums: list[int], target: int) -> tuple[int, int]:\n    seen = {}\n    for i, num in enumerate(nums):\n        complement = target - num\n        if complement in seen:\n            return (seen[complement], i)\n        seen[num] = i\n "
+        },
+        {
+          "id": "p02_valid_parens",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "1ad80d47bfbca9d1",
+          "code_snippet": "def is_valid_parens(s: str) -> bool:\n    stack = []\n    mapping = {')': '(', ']': '[', '}': '{'}\n    for char in s:\n        if char in mapping:\n            if not stack or stack[-1] != mapping[char]:\n                return False\n           "
+        },
+        {
+          "id": "p03_merge_intervals",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "5c6b6a73781edb75",
+          "code_snippet": "def merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    if not intervals:\n        return []\n    intervals.sort()\n    merged = [intervals[0]]\n    for current in intervals[1:]:\n        last = merged[-1]\n        if current[0] <"
+        },
+        {
+          "id": "p04_lru_cache",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "afe392728cb580d6",
+          "code_snippet": "from collections import OrderedDict\n\nclass LRUCache:\n    def __init__(self, capacity: int):\n        self.cache = OrderedDict()\n        self.capacity = capacity\n\n    def get(self, key: int) -> int:\n        if key not in self.cache:\n         "
+        },
+        {
+          "id": "p05_longest_unique_substr",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "71923ce080372de3",
+          "code_snippet": "def length_of_longest_substring(s: str) -> int:\n    char_set = set()\n    left = 0\n    max_len = 0\n    for right in range(len(s)):\n        while s[right] in char_set:\n            char_set.remove(s[left])\n            left += 1\n        char_se"
+        },
+        {
+          "id": "p06_coin_change",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "ad10f9f871e6aba1",
+          "code_snippet": "def coin_change(coins: list[int], amount: int) -> int:\n    if amount == 0:\n        return 0\n    coins = sorted(coins, reverse=True)\n    count = 0\n    for coin in coins:\n        if amount >= coin:\n            count += amount // coin\n        "
+        },
+        {
+          "id": "p07_top_k_frequent",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "13e0b25efedf3032",
+          "code_snippet": "from collections import Counter\nfrom typing import List\n\ndef top_k_frequent(nums: List[int], k: int) -> List[int]:\n    count = Counter(nums)\n    return [num for num, _ in count.most_common(k)]"
+        },
+        {
+          "id": "p08_edit_distance",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "9876fb91f8a24cdc",
+          "code_snippet": "def min_distance(word1: str, word2: str) -> int:\n    m, n = len(word1), len(word2)\n    dp = [[0] * (n + 1) for _ in range(m + 1)]\n    \n    for i in range(m + 1):\n        dp[i][0] = i\n    for j in range(n + 1):\n        dp[0][j] = j\n    \n    "
+        },
+        {
+          "id": "p09_kth_largest",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "1f8fd6a34bc2f0a1",
+          "code_snippet": "def find_kth_largest(nums: list[int], k: int) -> int:\n    nums.sort(reverse=True)\n    return nums[k-1]"
+        },
+        {
+          "id": "p10_topo_sort_can_finish",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "68288f0d772aeb46",
+          "code_snippet": "from collections import defaultdict, deque\n\ndef can_finish(num_courses: int, prerequisites: list[list[int]]) -> bool:\n    graph = defaultdict(list)\n    in_degree = [0] * num_courses\n\n    for a, b in prerequisites:\n        graph[b].append(a)"
+        },
+        {
+          "id": "p11_trie",
+          "passed": false,
+          "detail": "AssertionError",
+          "output_sha256": "2b081dcc1810cc0d",
+          "code_snippet": "class Trie:\n    def __init__(self):\n        self.root = {}\n\n    def insert(self, word: str) -> None:\n        node = self.root\n        for char in word:\n            if char not in node:\n                node[char] = {}\n            node = node"
+        },
+        {
+          "id": "p12_binary_search_rotated",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "bb3a02da5c0804d1",
+          "code_snippet": "def search_rotated(nums: list[int], target: int) -> int:\n    left, right = 0, len(nums) - 1\n    while left <= right:\n        mid = (left + right) // 2\n        if nums[mid] == target:\n            return mid\n        if nums[left] <= nums[mid]"
+        },
+        {
+          "id": "p13_subarray_sum_k",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "cfa18fb61bace53a",
+          "code_snippet": "def subarray_sum(nums: list[int], k: int) -> int:\n    count = 0\n    prefix_sum = 0\n    sum_counts = {0: 1}\n    for num in nums:\n        prefix_sum += num\n        if (prefix_sum - k) in sum_counts:\n            count += sum_counts[prefix_sum "
+        },
+        {
+          "id": "p14_max_path_sum_grid",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "7d6819aec717930c",
+          "code_snippet": "def min_path_sum(grid: list[list[int]]) -> int:\n    m, n = len(grid), len(grid[0])\n    for i in range(m):\n        for j in range(n):\n            if i == 0 and j == 0:\n                continue\n            elif i == 0:\n                grid[i]"
+        },
+        {
+          "id": "p15_dijkstra_shortest_path",
+          "passed": true,
+          "detail": "PASS",
+          "output_sha256": "a20feff70dab47a8",
+          "code_snippet": "import heapq\n\ndef shortest_path(n: int, edges: list[tuple[int, int, int]], src: int, dst: int) -> int:\n    graph = [[] for _ in range(n)]\n    for u, v, w in edges:\n        graph[u].append((v, w))\n    \n    dist = [float('inf')] * n\n    dist["
+        }
+      ],
+      "needle_24k_pass_count": 2,
+      "needle_24k_total": 2,
+      "needle_results": [
+        {
+          "needle_test_id": 1,
+          "prompt_n": 24886,
+          "prefill_tok_s": 743.14,
+          "expected": {
+            "AICF_SECRET_KEY_EARLY": "K9X-7419-ALPHA",
+            "AICF_SECRET_KEY_MID": "M4Z-8823-BRAVO",
+            "AICF_SECRET_KEY_LATE": "Q7W-3105-OMEGA"
+          },
+          "hits": {
+            "AICF_SECRET_KEY_EARLY": true,
+            "AICF_SECRET_KEY_MID": true,
+            "AICF_SECRET_KEY_LATE": true
+          },
+          "all_passed": true,
+          "raw_response": "AICF_SECRET_KEY_EARLY=\"K9X-7419-ALPHA\"\nAICF_SECRET_KEY_MID=\"M4Z-8823-BRAVO\"\nAICF_SECRET_KEY_LATE=\"Q7W-3105-OMEGA\""
+        },
+        {
+          "needle_test_id": 2,
+          "prompt_n": 24848,
+          "prefill_tok_s": 793.81,
+          "expected": {
+            "MODULE_CHECKSUM_01": "SHA-994120",
+            "MODULE_CHECKSUM_02": "SHA-553817",
+            "MODULE_CHECKSUM_03": "SHA-208469"
+          },
+          "hits": {
+            "MODULE_CHECKSUM_01": true,
+            "MODULE_CHECKSUM_02": true,
+            "MODULE_CHECKSUM_03": true
+          },
+          "all_passed": true,
+          "raw_response": "</think>\n\nMODULE_CHECKSUM_01=SHA-994120\nMODULE_CHECKSUM_02=SHA-553817\nMODULE_CHECKSUM_03=SHA-208469"
+        }
+      ]
+    },
+    "code_delta_pass": 0,
+    "code_exact_match_count": 13,
+    "code_exact_match_total": 15,
+    "code_exact_match_ids": [
+      "p01_two_sum",
+      "p02_valid_parens",
+      "p03_merge_intervals",
+      "p05_longest_unique_substr",
+      "p06_coin_change",
+      "p07_top_k_frequent",
+      "p08_edit_distance",
+      "p09_kth_largest",
+      "p10_topo_sort_can_finish",
+      "p11_trie",
+      "p12_binary_search_rotated",
+      "p14_max_path_sum_grid",
+      "p15_dijkstra_shortest_path"
+    ],
+    "needle_delta_pass": 0
+  },
+  "ts": "2026-10-30T16:25:47+0700"
+}

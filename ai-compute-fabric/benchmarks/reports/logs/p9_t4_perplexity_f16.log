@@ -1,0 +1,13 @@
+$ .aicf-work/bin/llama-perplexity -m .aicf-work/Qwen3-30B-A3B-Q4_K_M.gguf -f /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bench_corpus_p9.txt -c 8192 --chunks 4 -ngl 99 -ncmoe 30 -fa on -ctk f16 -ctv f16 -t 8 -Cr 0-7 --cpu-strict 1
+0.00.476.796 W load: control-looking token: 128247 '</s>' was not control-type; this is probably a bug in the model. its type will be overridden
+0.00.509.772 W llama_model_loader: tensor overrides to CPU are used with mmap enabled - consider using --load-mode none for better performance
+0.01.784.107 I cmn          init: llama threadpool init, n_threads = 8
+0.01.897.892 I 
+0.01.897.963 I system_info: n_threads = 8 (n_threads_batch = 8) / 20 | CUDA : ARCHS = 500,610,700,750,800,860,890,900,1200 | USE_GRAPHS = 1 | FA_QUANTS = q4_0-q4_0,q8_0-q8_0,f16-f16,bf16-bf16 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX_VNNI = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.01.897.975 I perplexity: tokenizing the input ..
+0.01.936.897 I perplexity: tokenization took 38.915 ms
+0.01.936.946 I perplexity: calculating perplexity over 4 chunks, n_ctx=8192, batch_size=2048, n_seq=1
+0.19.750.449 I perplexity: 17.81 seconds per pass - ETA 1.18 minutes
+[1]2.2905,[2]2.6141,[3]4.4027,[4]4.0418,
+1.14.449.044 I Final estimate: PPL = 4.0418 +/- 0.08188
+
