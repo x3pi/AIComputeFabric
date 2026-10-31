@@ -280,6 +280,26 @@ func (tc *TopologyCoordinator) GetStatus() ClusterTopologyStatus {
 	return tc.statusLocked()
 }
 
+// IsWorkerBusy reports whether workerID (or any member of its merged group) is currently locked by a topology switch.
+func (tc *TopologyCoordinator) IsWorkerBusy(workerID string) bool {
+	if tc == nil || workerID == "" {
+		return false
+	}
+	tc.mu.RLock()
+	defer tc.mu.RUnlock()
+	if tc.locked[workerID] {
+		return true
+	}
+	if g, ok := tc.groups[workerID]; ok {
+		for _, m := range g.ids() {
+			if tc.locked[m] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (tc *TopologyCoordinator) statusLocked() ClusterTopologyStatus {
 	workers := tc.reg.List()
 	vram := map[string]uint64{}

@@ -25,7 +25,7 @@ mkdir -p "$D/bin" "$D/logs" "$D/studio"
 [ -f "$D/pki/ca.crt" ] && [ -f "$D/pki/pc-win-01.crt" ] || "$D/bin/pki" -out "$D/pki" -workers pc-001,pc-win-01 -gateway-hosts 127.0.0.1,localhost,192.168.1.40
 
 GRPC_PORT="${GRPC_PORT:-17443}"; HTTP_PORT="${HTTP_PORT:-18080}"
-SIDECAR_PORT="${SIDECAR_PORT:-18095}"; DAG_PORT="${DAG_PORT:-18096}"; STUDIO_PORT="${STUDIO_PORT:-18098}"
+SIDECAR_PORT="${SIDECAR_PORT:-18095}"; DAG_PORT="${DAG_PORT:-18096}"; STUDIO_PORT="${STUDIO_PORT:-18098}"; BESTOFN_PORT="${BESTOFN_PORT:-18099}"
 EMBED_PORT="${EMBED_PORT:-18091}"; RERANK_PORT="${RERANK_PORT:-18092}"
 export AICF_ADMIN_TOKEN="${AICF_ADMIN_TOKEN:-demo-admin-token}"
 export PYTHONPATH="$ROOT"
@@ -79,6 +79,14 @@ PYEOF
     --port "$STUDIO_PORT" --worker-url "http://127.0.0.1:8099" --worker-id pc-001 --adapters-dir "$D/adapters" --llm-url "http://127.0.0.1:18090" "${STUDIO_RAG[@]}" \
     ${TRAIN_PY:+--train-python "$TRAIN_PY"} --base-models "$BASE_MODELS" "${AUDIO_ARGS[@]}" >"$D/logs/studio.log" 2>&1 & pids+=($!)
   GW_EXTRA+=(-agents-url "http://127.0.0.1:$DAG_PORT" -studio-url "http://127.0.0.1:$STUDIO_PORT")
+fi
+
+# 2b. Best-of-N Orchestrator Service (if Docker daemon is reachable for sandbox execution)
+if docker info >/dev/null 2>&1; then
+  "$PY" -m bestofn.service --listen "127.0.0.1:$BESTOFN_PORT" --gateway "http://127.0.0.1:$HTTP_PORT" >"$D/logs/bestofn.log" 2>&1 & pids+=($!)
+  GW_EXTRA+=(-bestofn-url "http://127.0.0.1:$BESTOFN_PORT")
+else
+  echo "WARNING: docker info failed: Best-of-N (/api/bestofn/*) disabled" >&2
 fi
 
 # 3. Site Gateway

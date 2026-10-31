@@ -8,11 +8,13 @@ import (
 
 // Admission errors map to HTTP statuses in the proxy.
 var (
-	ErrQueueFull       = errors.New("queue full")                          // 429
-	ErrTenantQueueFull = errors.New("tenant queue share full")             // 429
-	ErrWaitTimeout     = errors.New("queue wait expired")                  // 503 with Retry-After
-	ErrNoWorker        = errors.New("no worker serves this model")         // 503
-	ErrWouldMiss       = errors.New("estimated wait exceeds the deadline") // 429 with the estimate as Retry-After
+	ErrQueueFull       = errors.New("queue full")                               // 429
+	ErrTenantQueueFull = errors.New("tenant queue share full")                  // 429
+	ErrWaitTimeout     = errors.New("queue wait expired")                       // 503 with Retry-After
+	ErrNoWorker        = errors.New("no worker serves this model")              // 503
+	ErrNoAgent         = errors.New("pinned agent is offline or not routable")  // 503
+	ErrPinnedAgentBusy = errors.New("pinned agent is busy")                     // 503 with Retry-After
+	ErrWouldMiss       = errors.New("estimated wait exceeds the deadline")      // 429 with the estimate as Retry-After
 )
 
 // Priorities: interactive requests are always dispatched before batch ones.
@@ -46,6 +48,8 @@ type RouterConfig struct {
 // Req is one admission request.
 type Req struct {
 	Model  string
+	Agent  string // X-AICF-Agent: pin strictly to this compute agent ID (never fall back)
+	Label  string // X-AICF-Label: require an agent carrying this capability label
 	Skip   string // worker this request already failed on (retry goes elsewhere if it can)
 	Tenant string
 	Prio   int
@@ -70,9 +74,10 @@ type waiter struct {
 // clock by 1/weight), then arrival order. Per-tenant caps on queue share and on
 // concurrent requests stop one tenant from filling the queue or the slots.
 type Router struct {
-	cfg RouterConfig
-	reg *Registry
-	now func() time.Time
+	cfg    RouterConfig
+	reg    *Registry
+	now    func() time.Time
+	IsBusy func(workerID string) bool // optional topology switch lock check
 
 	mu        sync.Mutex
 	routes    []Route
@@ -150,6 +155,19 @@ func (r *Router) Run(stop <-chan struct{}) {
 
 func modelMatches(want, have string) bool { return want == "" || want == have }
 
+func routeMatchesReq(rt Route, q Req) bool {
+	if !modelMatches(q.Model, rt.Model) {
+		return false
+	}
+	if q.Agent != "" && rt.ID != q.Agent {
+		return false
+	}
+	if q.Label != "" && !HasLabel(rt.Model, rt.ID, q.Label) {
+		return false
+	}
+	return true
+}
+
 // key collapses all tenants into one when fairness is off.
 func (r *Router) key(t string) string {
 	if !r.cfg.Fair {
@@ -171,11 +189,11 @@ func (r *Router) weight(t string) float64 {
 }
 
 // preferredLocked returns the worker that served this conversation last, if it is still routable.
-func (r *Router) preferredLocked(session, model, skip string) string {
-	if r.cfg.AffinityPatience <= 0 || session == "" {
+func (r *Router) preferredLocked(q Req) string {
+	if q.Agent != "" || r.cfg.AffinityPatience <= 0 || q.Session == "" {
 		return ""
 	}
-	e, ok := r.sessions[session]
+	e, ok := r.sessions[q.Session]
 	if !ok || r.now().Sub(e.at) > r.cfg.AffinityTTL {
 		return ""
 	}
@@ -183,17 +201,20 @@ func (r *Router) preferredLocked(session, model, skip string) string {
 		return ""
 	}
 	for _, rt := range r.routes {
-		if rt.ID == e.worker && modelMatches(model, rt.Model) && rt.ID != skip {
+		if rt.ID == e.worker && routeMatchesReq(rt, q) && rt.ID != q.Skip {
 			return e.worker
 		}
 	}
 	return ""
 }
 
-func (r *Router) pickPreferLocked(model, skip, prefer string) (Route, bool) {
+func (r *Router) pickPreferLocked(q Req, prefer string) (Route, bool) {
 	if prefer != "" {
 		for _, rt := range r.routes {
-			if rt.ID == prefer && r.inflight[rt.ID] < rt.Slots {
+			if rt.ID == prefer && routeMatchesReq(rt, q) && r.inflight[rt.ID] < rt.Slots {
+				if r.IsBusy != nil && r.IsBusy(rt.ID) {
+					continue
+				}
 				return rt, true
 			}
 		}
@@ -202,10 +223,13 @@ func (r *Router) pickPreferLocked(model, skip, prefer string) (Route, bool) {
 	bestLoad, found := 1<<30, false
 	now := r.now()
 	for _, rt := range r.routes {
-		if !modelMatches(model, rt.Model) || (skip != "" && rt.ID == skip) {
+		if !routeMatchesReq(rt, q) || (q.Skip != "" && rt.ID == q.Skip) {
 			continue
 		}
 		if until, ok := r.bad[rt.ID]; ok && now.Before(until) {
+			continue
+		}
+		if r.IsBusy != nil && r.IsBusy(rt.ID) {
 			continue
 		}
 		l := r.inflight[rt.ID]
@@ -219,9 +243,9 @@ func (r *Router) pickPreferLocked(model, skip, prefer string) (Route, bool) {
 	return best, found
 }
 
-func (r *Router) hasModelLocked(model, skip string) bool {
+func (r *Router) hasRouteLocked(q Req, skip string) bool {
 	for _, rt := range r.routes {
-		if modelMatches(model, rt.Model) && rt.ID != skip {
+		if routeMatchesReq(rt, q) && rt.ID != skip {
 			return true
 		}
 	}
@@ -301,7 +325,7 @@ func (r *Router) dispatchLocked() {
 			if w.done || r.tenantAtCapLocked(w.Tenant) {
 				continue
 			}
-			rt, ok := r.pickPreferLocked(w.Model, w.Skip, w.prefer)
+			rt, ok := r.pickPreferLocked(w.Req, w.prefer)
 			if !ok {
 				continue
 			}
@@ -352,17 +376,44 @@ func (r *Router) Acquire(q Req, cancel <-chan struct{}) (Route, error) {
 	if q.Skip == "" {
 		r.stats.Requests++ // a retry is not a new request
 	}
-	if q.Skip != "" && !r.hasModelLocked(q.Model, q.Skip) {
+	// Strict pinned-agent semantics (§2B.3 & Check Pass c): never fall back to another agent.
+	if q.Agent != "" {
+		if r.IsBusy != nil && r.IsBusy(q.Agent) {
+			r.stats.RejectedWait++
+			r.mu.Unlock()
+			return Route{}, ErrPinnedAgentBusy
+		}
+		if !r.hasRouteLocked(q, "") {
+			r.stats.RejectedNoWorker++
+			r.mu.Unlock()
+			return Route{}, ErrNoAgent
+		}
+		r.startVtimeLocked(q.Tenant)
+		if r.tenantAtCapLocked(q.Tenant) {
+			r.stats.RejectedWait++
+			r.mu.Unlock()
+			return Route{}, ErrPinnedAgentBusy
+		}
+		if rt, ok := r.pickPreferLocked(q, ""); ok {
+			r.grantLocked(q.Tenant, rt, q.Session)
+			r.mu.Unlock()
+			return rt, nil
+		}
+		r.stats.RejectedWait++
+		r.mu.Unlock()
+		return Route{}, ErrPinnedAgentBusy
+	}
+	if q.Skip != "" && !r.hasRouteLocked(q, q.Skip) {
 		q.Skip = "" // no other worker exists: retrying the same one beats failing
 	}
-	if !r.hasModelLocked(q.Model, "") {
+	if !r.hasRouteLocked(q, "") {
 		r.stats.RejectedNoWorker++
 		r.mu.Unlock()
 		return Route{}, ErrNoWorker
 	}
 	r.startVtimeLocked(q.Tenant)
-	prefer := r.preferredLocked(q.Session, q.Model, q.Skip)
-	if rt, ok := r.pickPreferLocked(q.Model, q.Skip, prefer); ok && len(r.queue) == 0 && !r.tenantAtCapLocked(q.Tenant) &&
+	prefer := r.preferredLocked(q)
+	if rt, ok := r.pickPreferLocked(q, prefer); ok && len(r.queue) == 0 && !r.tenantAtCapLocked(q.Tenant) &&
 		(prefer == "" || rt.ID == prefer) {
 		r.grantLocked(q.Tenant, rt, q.Session)
 		r.mu.Unlock()

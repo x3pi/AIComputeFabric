@@ -82,6 +82,47 @@ paths:
       summary: Server-sent events, one frame per second with a compact cell per worker
       responses:
         "200": {description: "text/event-stream; each event is `data: <FleetFrame JSON>`", content: {text/event-stream: {schema: {type: string}}}}
+  /api/compute-agents:
+    get:
+      summary: Hardware-hiding list of compute agents (single standalone workers and merged groups; RPC members are never listed)
+      parameters:
+        - {name: label, in: query, schema: {type: string}}
+        - {name: model, in: query, schema: {type: string}}
+        - {name: state, in: query, schema: {type: string}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+        - {name: include_members, in: query, schema: {type: integer, enum: [0, 1]}, description: "admin/operator only: include underlying worker IDs"}
+      responses:
+        "200":
+          description: ok
+          headers: {X-Total-Count: {schema: {type: integer}, description: compute agents matching the filter before paging}}
+          content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/ComputeAgent"}}}}
+  /api/compute-agents/stream:
+    get:
+      summary: Server-sent events stream of hardware-hiding ComputeAgent snapshots
+      parameters:
+        - {name: label, in: query, schema: {type: string}}
+        - {name: model, in: query, schema: {type: string}}
+        - {name: state, in: query, schema: {type: string}}
+      responses:
+        "200": {description: "text/event-stream; each event is `data: <ComputeAgent[] JSON>`", content: {text/event-stream: {schema: {type: string}}}}
+  /api/bestofn/v1/health:
+    get:
+      summary: Best-of-N service health (proxied via --bestofn-url; requires tenant API key or admin token)
+      responses:
+        "200": {description: ok}
+        "401": {description: missing or invalid API key}
+  /api/bestofn/v1/chat/completions:
+    post:
+      summary: OpenAI-compatible Best-of-N code generation endpoint (model bon:<base_model>, n <= 16)
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [messages], properties: {model: {type: string}, messages: {type: array, items: {type: object}}, bon: {type: object}}}}}
+      responses:
+        "200": {description: ok}
+        "400": {description: invalid parameters or n > 16}
+        "401": {description: missing or invalid API key}
+        "503": {description: no compute agent or sandbox available}
   /api/models/catalog:
     get:
       summary: Curated model catalogue with the architecture facts the VRAM estimator uses
@@ -618,3 +659,18 @@ components:
         kv_type: {type: string, enum: [f16, q8_0]}
         tensor_split: {type: string}
         rpc_port: {type: integer}
+    ComputeAgent:
+      type: object
+      required: [agent_id, kind, model, ctx_per_slot, slots, state, busy, inflight, labels, tok_s_ref]
+      properties:
+        agent_id: {type: string}
+        kind: {type: string, enum: [single, group]}
+        model: {type: string}
+        ctx_per_slot: {type: integer, minimum: 1}
+        slots: {type: integer, minimum: 1}
+        state: {type: string}
+        busy: {type: boolean}
+        inflight: {type: integer, minimum: 0}
+        labels: {type: array, items: {type: string}}
+        tok_s_ref: {type: number, minimum: 0}
+        members: {type: array, items: {type: string}}

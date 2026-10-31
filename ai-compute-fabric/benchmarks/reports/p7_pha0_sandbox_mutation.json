@@ -1,0 +1,71 @@
+{
+  "all_passed": true,
+  "checks": {
+    "network_external_blocked": true,
+    "network_loopback_gateway_blocked": true,
+    "readonly_fs_blocked": true,
+    "infinite_loop_killed": true,
+    "output_flood_bounded": true,
+    "valid_code_passes": true
+  },
+  "details": {
+    "network_external": {
+      "passed": false,
+      "error_type": "OSError",
+      "error": "OSError: [Errno 101] Network unreachable",
+      "exec_ms": 7.58,
+      "stdout": "",
+      "output_truncated": false,
+      "stdout_bytes": 0,
+      "sandbox_wall_ms": 380.37
+    },
+    "network_loopback": {
+      "passed": false,
+      "error_type": "ConnectionRefusedError",
+      "error": "ConnectionRefusedError: [Errno 111] Connection refused",
+      "exec_ms": 7.35,
+      "stdout": "",
+      "output_truncated": false,
+      "stdout_bytes": 0,
+      "sandbox_wall_ms": 453.4
+    },
+    "readonly_fs": {
+      "passed": false,
+      "error_type": "OSError",
+      "error": "OSError: [Errno 30] Read-only file system: '/etc/pwn_test'",
+      "exec_ms": 0.09,
+      "stdout": "",
+      "output_truncated": false,
+      "stdout_bytes": 0,
+      "sandbox_wall_ms": 388.65
+    },
+    "infinite_loop": {
+      "passed": false,
+      "error_type": "SandboxError",
+      "error": "tool timed out after 2.0s",
+      "exec_ms": 0.0,
+      "sandbox_wall_ms": 2083.56,
+      "stdout": "",
+      "output_truncated": false
+    },
+    "output_flood": {
+      "passed": true,
+      "error_type": "",
+      "error": "",
+      "exec_ms": 0.17,
+      "output_truncated": true,
+      "stdout_bytes": 16384,
+      "sandbox_wall_ms": 401.94
+    },
+    "valid_code": {
+      "passed": true,
+      "error_type": "",
+      "error": "",
+      "exec_ms": 0.05,
+      "stdout": "",
+      "output_truncated": false,
+      "stdout_bytes": 0,
+      "sandbox_wall_ms": 395.95
+    }
+  }
+}

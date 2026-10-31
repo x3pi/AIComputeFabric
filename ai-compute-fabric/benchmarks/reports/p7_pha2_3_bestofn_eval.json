@@ -1,0 +1,2525 @@
+{
+  "timestamp": "2026-10-31T01:54:47Z",
+  "evidence_label": "[ĐO]",
+  "model": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+  "cluster_mode": "Mode C (Merged 2 GPU: pc-001 RTX 3060 12GB + pc-win-01 RTX 5070 12GB, PARALLEL=1, CTX=32768)",
+  "pha0_baseline_reference": {
+    "run1_passed": 149,
+    "run1_pct": 90.85,
+    "run2_passed": 147,
+    "run2_pct": 89.63,
+    "union_failing_tasks": [
+      "HumanEval/32",
+      "HumanEval/75",
+      "HumanEval/76",
+      "HumanEval/81",
+      "HumanEval/113",
+      "HumanEval/115",
+      "HumanEval/116",
+      "HumanEval/118",
+      "HumanEval/122",
+      "HumanEval/124",
+      "HumanEval/127",
+      "HumanEval/130",
+      "HumanEval/132",
+      "HumanEval/134",
+      "HumanEval/145",
+      "HumanEval/160",
+      "HumanEval/163"
+    ]
+  },
+  "latency_breakdown_n8_mean_ms": {
+    "sampling_8_candidates_ms": 12225.82,
+    "sandbox_pool_m4_8_candidates_ms": 1214.61,
+    "total_problem_wall_ms": 17577.67,
+    "self_test_generation_plus_eval_m3_ms": 4137.23
+  },
+  "humaneval_summary_by_n": {
+    "1": {
+      "cohort_total": 30,
+      "cohort_provided_tests_passed": 18,
+      "cohort_provided_tests_pct": 60.0,
+      "cohort_self_gen_tests_passed": 18,
+      "cohort_self_gen_tests_pct": 60.0,
+      "pha0_17_failures_recovered_provided_tests": 5,
+      "pha0_17_failures_recovered_self_gen_tests": 5,
+      "false_selection_vs_oracle_count": 0,
+      "false_selection_vs_oracle_pct": 0.0,
+      "false_selection_broke_anchor_count": 0,
+      "false_selection_broke_anchor_pct": 0.0,
+      "full_164_provided_tests_passed": 152,
+      "full_164_provided_tests_pct": 92.68
+    },
+    "2": {
+      "cohort_total": 30,
+      "cohort_provided_tests_passed": 19,
+      "cohort_provided_tests_pct": 63.33,
+      "cohort_self_gen_tests_passed": 18,
+      "cohort_self_gen_tests_pct": 60.0,
+      "pha0_17_failures_recovered_provided_tests": 6,
+      "pha0_17_failures_recovered_self_gen_tests": 5,
+      "false_selection_vs_oracle_count": 1,
+      "false_selection_vs_oracle_pct": 3.33,
+      "false_selection_broke_anchor_count": 0,
+      "false_selection_broke_anchor_pct": 0.0,
+      "full_164_provided_tests_passed": 153,
+      "full_164_provided_tests_pct": 93.29
+    },
+    "4": {
+      "cohort_total": 30,
+      "cohort_provided_tests_passed": 23,
+      "cohort_provided_tests_pct": 76.67,
+      "cohort_self_gen_tests_passed": 20,
+      "cohort_self_gen_tests_pct": 66.67,
+      "pha0_17_failures_recovered_provided_tests": 10,
+      "pha0_17_failures_recovered_self_gen_tests": 7,
+      "false_selection_vs_oracle_count": 3,
+      "false_selection_vs_oracle_pct": 10.0,
+      "false_selection_broke_anchor_count": 1,
+      "false_selection_broke_anchor_pct": 3.33,
+      "full_164_provided_tests_passed": 157,
+      "full_164_provided_tests_pct": 95.73
+    },
+    "8": {
+      "cohort_total": 30,
+      "cohort_provided_tests_passed": 25,
+      "cohort_provided_tests_pct": 83.33,
+      "cohort_self_gen_tests_passed": 23,
+      "cohort_self_gen_tests_pct": 76.67,
+      "pha0_17_failures_recovered_provided_tests": 12,
+      "pha0_17_failures_recovered_self_gen_tests": 10,
+      "false_selection_vs_oracle_count": 2,
+      "false_selection_vs_oracle_pct": 6.67,
+      "false_selection_broke_anchor_count": 0,
+      "false_selection_broke_anchor_pct": 0.0,
+      "full_164_provided_tests_passed": 159,
+      "full_164_provided_tests_pct": 96.95
+    }
+  },
+  "mbpp_20_summary_by_n": {
+    "1": {
+      "total": 15,
+      "provided_tests_passed": 15,
+      "provided_tests_pct": 100.0
+    },
+    "2": {
+      "total": 15,
+      "provided_tests_passed": 15,
+      "provided_tests_pct": 100.0
+    },
+    "4": {
+      "total": 15,
+      "provided_tests_passed": 15,
+      "provided_tests_pct": 100.0
+    },
+    "8": {
+      "total": 15,
+      "provided_tests_passed": 15,
+      "provided_tests_pct": 100.0
+    }
+  },
+  "humaneval_cohort_records": [
+    {
+      "task_id": "HumanEval/0",
+      "was_pha0_failure": false,
+      "wall_s": 18.32,
+      "sampling_wall_ms": 12407.65,
+      "gt_sandbox_wall_ms": 1322.97,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 9,
+      "kept_executable_gen_suites": 7,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 4,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 4589.38
+    },
+    {
+      "task_id": "HumanEval/11",
+      "was_pha0_failure": false,
+      "wall_s": 14.45,
+      "sampling_wall_ms": 9505.42,
+      "gt_sandbox_wall_ms": 1264.47,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 8,
+      "kept_executable_gen_suites": 8,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 7,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 7,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3680.11
+    },
+    {
+      "task_id": "HumanEval/22",
+      "was_pha0_failure": false,
+      "wall_s": 14.71,
+      "sampling_wall_ms": 9084.14,
+      "gt_sandbox_wall_ms": 1238.41,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 8,
+      "kept_executable_gen_suites": 7,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "low"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        },
+        "8": {
+          "provided_tests_selected_idx": 5,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        }
+      },
+      "gen_test_plus_eval_ms": 4387.45
+    },
+    {
+      "task_id": "HumanEval/32",
+      "was_pha0_failure": true,
+      "wall_s": 42.45,
+      "sampling_wall_ms": 36073.1,
+      "gt_sandbox_wall_ms": 1252.68,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 9,
+      "kept_executable_gen_suites": 9,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": false,
+        "3": false,
+        "4": true,
+        "5": false,
+        "6": false,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 4,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 4,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 5124.22
+    },
+    {
+      "task_id": "HumanEval/34",
+      "was_pha0_failure": false,
+      "wall_s": 12.08,
+      "sampling_wall_ms": 7069.54,
+      "gt_sandbox_wall_ms": 1213.85,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 8,
+      "kept_executable_gen_suites": 8,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3796.61
+    },
+    {
+      "task_id": "HumanEval/45",
+      "was_pha0_failure": false,
+      "wall_s": 9.57,
+      "sampling_wall_ms": 4989.04,
+      "gt_sandbox_wall_ms": 1238.66,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 7,
+      "kept_executable_gen_suites": 7,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3342.3
+    },
+    {
+      "task_id": "HumanEval/56",
+      "was_pha0_failure": false,
+      "wall_s": 15.03,
+      "sampling_wall_ms": 10788.44,
+      "gt_sandbox_wall_ms": 1197.96,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 5,
+      "kept_executable_gen_suites": 5,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3043.6
+    },
+    {
+      "task_id": "HumanEval/67",
+      "was_pha0_failure": false,
+      "wall_s": 14.6,
+      "sampling_wall_ms": 9221.64,
+      "gt_sandbox_wall_ms": 1187.21,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 4,
+      "kept_executable_gen_suites": 4,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 7,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 7,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 4191.15
+    },
+    {
+      "task_id": "HumanEval/75",
+      "was_pha0_failure": true,
+      "wall_s": 20.27,
+      "sampling_wall_ms": 16025.69,
+      "gt_sandbox_wall_ms": 1191.89,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 8,
+      "kept_executable_gen_suites": 7,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": true,
+        "3": true,
+        "4": false,
+        "5": false,
+        "6": false,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": true,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": true,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3052.42
+    },
+    {
+      "task_id": "HumanEval/76",
+      "was_pha0_failure": true,
+      "wall_s": 13.77,
+      "sampling_wall_ms": 9323.39,
+      "gt_sandbox_wall_ms": 1182.01,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 8,
+      "kept_executable_gen_suites": 7,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3264.6
+    },
+    {
+      "task_id": "HumanEval/80",
+      "was_pha0_failure": false,
+      "wall_s": 11.27,
+      "sampling_wall_ms": 7087.18,
+      "gt_sandbox_wall_ms": 1239.0,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 5,
+      "kept_executable_gen_suites": 5,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 2943.82
+    },
+    {
+      "task_id": "HumanEval/81",
+      "was_pha0_failure": true,
+      "wall_s": 28.87,
+      "sampling_wall_ms": 20568.62,
+      "gt_sandbox_wall_ms": 1184.55,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 9,
+      "kept_executable_gen_suites": 4,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 7116.83
+    },
+    {
+      "task_id": "HumanEval/92",
+      "was_pha0_failure": false,
+      "wall_s": 12.5,
+      "sampling_wall_ms": 7630.02,
+      "gt_sandbox_wall_ms": 1253.2,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 4,
+      "kept_executable_gen_suites": 4,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 3,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 3,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3616.78
+    },
+    {
+      "task_id": "HumanEval/103",
+      "was_pha0_failure": false,
+      "wall_s": 13.36,
+      "sampling_wall_ms": 8293.14,
+      "gt_sandbox_wall_ms": 1214.18,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 4,
+      "kept_executable_gen_suites": 4,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3852.68
+    },
+    {
+      "task_id": "HumanEval/113",
+      "was_pha0_failure": true,
+      "wall_s": 15.28,
+      "sampling_wall_ms": 8453.98,
+      "gt_sandbox_wall_ms": 1264.79,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 7,
+      "kept_executable_gen_suites": 7,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 4,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 4,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 5561.23
+    },
+    {
+      "task_id": "HumanEval/115",
+      "was_pha0_failure": true,
+      "wall_s": 13.16,
+      "sampling_wall_ms": 6323.33,
+      "gt_sandbox_wall_ms": 1204.72,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 6,
+      "kept_executable_gen_suites": 6,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": false,
+        "3": false,
+        "4": false,
+        "5": false,
+        "6": false,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "low"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "low"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        }
+      },
+      "gen_test_plus_eval_ms": 5631.95
+    },
+    {
+      "task_id": "HumanEval/116",
+      "was_pha0_failure": true,
+      "wall_s": 15.27,
+      "sampling_wall_ms": 8575.81,
+      "gt_sandbox_wall_ms": 1191.66,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 7,
+      "kept_executable_gen_suites": 4,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": false,
+        "2": false,
+        "3": false,
+        "4": true,
+        "5": false,
+        "6": false,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": true,
+          "false_selection_broke_anchor": true,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 5502.53
+    },
+    {
+      "task_id": "HumanEval/117",
+      "was_pha0_failure": false,
+      "wall_s": 13.07,
+      "sampling_wall_ms": 8382.68,
+      "gt_sandbox_wall_ms": 1235.92,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 8,
+      "kept_executable_gen_suites": 8,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3451.4
+    },
+    {
+      "task_id": "HumanEval/118",
+      "was_pha0_failure": true,
+      "wall_s": 15.27,
+      "sampling_wall_ms": 10699.09,
+      "gt_sandbox_wall_ms": 1213.55,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 4,
+      "kept_executable_gen_suites": 4,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": false,
+        "5": false,
+        "6": true,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": true,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3357.36
+    },
+    {
+      "task_id": "HumanEval/122",
+      "was_pha0_failure": true,
+      "wall_s": 12.23,
+      "sampling_wall_ms": 5774.44,
+      "gt_sandbox_wall_ms": 1177.16,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 9,
+      "kept_executable_gen_suites": 8,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": true,
+        "3": false,
+        "4": false,
+        "5": false,
+        "6": false,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": true,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": true,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 5278.4
+    },
+    {
+      "task_id": "HumanEval/124",
+      "was_pha0_failure": true,
+      "wall_s": 25.13,
+      "sampling_wall_ms": 19837.52,
+      "gt_sandbox_wall_ms": 1203.77,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 5,
+      "kept_executable_gen_suites": 5,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 4088.71
+    },
+    {
+      "task_id": "HumanEval/127",
+      "was_pha0_failure": true,
+      "wall_s": 25.62,
+      "sampling_wall_ms": 19955.92,
+      "gt_sandbox_wall_ms": 1186.84,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 8,
+      "kept_executable_gen_suites": 7,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": true,
+        "3": false,
+        "4": false,
+        "5": false,
+        "6": false,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "low"
+        },
+        "2": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        },
+        "8": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        }
+      },
+      "gen_test_plus_eval_ms": 4477.24
+    },
+    {
+      "task_id": "HumanEval/130",
+      "was_pha0_failure": true,
+      "wall_s": 35.48,
+      "sampling_wall_ms": 30428.41,
+      "gt_sandbox_wall_ms": 1192.16,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 8,
+      "kept_executable_gen_suites": 3,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": false,
+        "3": false,
+        "4": false,
+        "5": false,
+        "6": false,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3859.43
+    },
+    {
+      "task_id": "HumanEval/132",
+      "was_pha0_failure": true,
+      "wall_s": 17.97,
+      "sampling_wall_ms": 13730.65,
+      "gt_sandbox_wall_ms": 1152.04,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 6,
+      "kept_executable_gen_suites": 6,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": false,
+        "3": false,
+        "4": false,
+        "5": false,
+        "6": false,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3087.31
+    },
+    {
+      "task_id": "HumanEval/134",
+      "was_pha0_failure": true,
+      "wall_s": 15.03,
+      "sampling_wall_ms": 10221.29,
+      "gt_sandbox_wall_ms": 1172.85,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 4,
+      "kept_executable_gen_suites": 4,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": false,
+        "3": false,
+        "4": false,
+        "5": false,
+        "6": false,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "low"
+        },
+        "2": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        },
+        "4": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        },
+        "8": {
+          "provided_tests_selected_idx": 7,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 7,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        }
+      },
+      "gen_test_plus_eval_ms": 3635.86
+    },
+    {
+      "task_id": "HumanEval/135",
+      "was_pha0_failure": false,
+      "wall_s": 15.41,
+      "sampling_wall_ms": 10669.65,
+      "gt_sandbox_wall_ms": 1167.96,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 8,
+      "kept_executable_gen_suites": 6,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3572.39
+    },
+    {
+      "task_id": "HumanEval/145",
+      "was_pha0_failure": true,
+      "wall_s": 13.87,
+      "sampling_wall_ms": 7888.23,
+      "gt_sandbox_wall_ms": 1228.56,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 7,
+      "kept_executable_gen_suites": 6,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": false,
+        "3": false,
+        "4": false,
+        "5": false,
+        "6": false,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 3,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 3,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 5,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 5,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 4753.21
+    },
+    {
+      "task_id": "HumanEval/147",
+      "was_pha0_failure": false,
+      "wall_s": 21.41,
+      "sampling_wall_ms": 16544.5,
+      "gt_sandbox_wall_ms": 1238.6,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 9,
+      "kept_executable_gen_suites": 8,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 1,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 7,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 7,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3626.9
+    },
+    {
+      "task_id": "HumanEval/160",
+      "was_pha0_failure": true,
+      "wall_s": 18.82,
+      "sampling_wall_ms": 13194.13,
+      "gt_sandbox_wall_ms": 1192.85,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 9,
+      "kept_executable_gen_suites": 6,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": true,
+        "3": false,
+        "4": false,
+        "5": false,
+        "6": false,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "low"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        },
+        "8": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": true,
+          "oracle_any_gt_passed": true,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "medium"
+        }
+      },
+      "gen_test_plus_eval_ms": 4433.02
+    },
+    {
+      "task_id": "HumanEval/163",
+      "was_pha0_failure": true,
+      "wall_s": 13.06,
+      "sampling_wall_ms": 8028.06,
+      "gt_sandbox_wall_ms": 1233.92,
+      "gen_test_ms": 0.0,
+      "gen_suites_count": 4,
+      "kept_executable_gen_suites": 3,
+      "gt_pass_by_sample_idx": {
+        "0": false,
+        "1": false,
+        "2": false,
+        "3": false,
+        "4": false,
+        "5": false,
+        "6": false,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 0,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        },
+        "8": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": false,
+          "self_gen_selected_idx": 2,
+          "self_gen_gt_passed": false,
+          "oracle_any_gt_passed": false,
+          "false_selection_vs_oracle": false,
+          "false_selection_broke_anchor": false,
+          "confidence": "high"
+        }
+      },
+      "gen_test_plus_eval_ms": 3798.02
+    }
+  ],
+  "mbpp_records": [
+    {
+      "task_id": "MBPP/2",
+      "entry_point": "set",
+      "sampling_wall_ms": 7599.19,
+      "gt_sandbox_wall_ms": 1210.0,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/3",
+      "entry_point": "is_not_prime",
+      "sampling_wall_ms": 14591.61,
+      "gt_sandbox_wall_ms": 1224.23,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 7,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/4",
+      "entry_point": "heap_queue_largest",
+      "sampling_wall_ms": 7656.25,
+      "gt_sandbox_wall_ms": 1227.94,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 7,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/6",
+      "entry_point": "differ_At_One_Bit_Pos",
+      "sampling_wall_ms": 11837.04,
+      "gt_sandbox_wall_ms": 1201.53,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/7",
+      "entry_point": "set",
+      "sampling_wall_ms": 7376.11,
+      "gt_sandbox_wall_ms": 1198.92,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/8",
+      "entry_point": "square_nums",
+      "sampling_wall_ms": 6588.74,
+      "gt_sandbox_wall_ms": 1206.12,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/9",
+      "entry_point": "find_Rotations",
+      "sampling_wall_ms": 9934.62,
+      "gt_sandbox_wall_ms": 1219.64,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 7,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/11",
+      "entry_point": "remove_Occ",
+      "sampling_wall_ms": 7540.63,
+      "gt_sandbox_wall_ms": 1231.64,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 4,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/12",
+      "entry_point": "sort_matrix",
+      "sampling_wall_ms": 10067.32,
+      "gt_sandbox_wall_ms": 1208.91,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/14",
+      "entry_point": "find_Volume",
+      "sampling_wall_ms": 10358.28,
+      "gt_sandbox_wall_ms": 1221.95,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": false
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/16",
+      "entry_point": "text_lowercase_underscore",
+      "sampling_wall_ms": 14188.51,
+      "gt_sandbox_wall_ms": 1177.23,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": false,
+        "5": false,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 7,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/17",
+      "entry_point": "square_perimeter",
+      "sampling_wall_ms": 4919.06,
+      "gt_sandbox_wall_ms": 1203.86,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/18",
+      "entry_point": "remove_dirty_chars",
+      "sampling_wall_ms": 8629.56,
+      "gt_sandbox_wall_ms": 1209.4,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 7,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/19",
+      "entry_point": "test_duplicate",
+      "sampling_wall_ms": 8709.73,
+      "gt_sandbox_wall_ms": 1216.25,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 2,
+          "provided_tests_gt_passed": true
+        }
+      }
+    },
+    {
+      "task_id": "MBPP/20",
+      "entry_point": "is_woodall",
+      "sampling_wall_ms": 21561.41,
+      "gt_sandbox_wall_ms": 1214.57,
+      "gt_pass_by_sample_idx": {
+        "0": true,
+        "1": true,
+        "2": true,
+        "3": true,
+        "4": true,
+        "5": true,
+        "6": true,
+        "7": true
+      },
+      "by_n": {
+        "1": {
+          "provided_tests_selected_idx": 0,
+          "provided_tests_gt_passed": true
+        },
+        "2": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true
+        },
+        "4": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true
+        },
+        "8": {
+          "provided_tests_selected_idx": 1,
+          "provided_tests_gt_passed": true
+        }
+      }
+    }
+  ]
+}

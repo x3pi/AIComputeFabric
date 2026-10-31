@@ -1,0 +1,97 @@
+{
+  "timestamp": "2026-10-31T01:41:27Z",
+  "evidence_label": "[ĐO]",
+  "pha4_security_and_validation_checks": {
+    "missing_api_key": {
+      "status": 401,
+      "ms": 17.86,
+      "passed": true
+    },
+    "invalid_api_key": {
+      "status": 401,
+      "ms": 5.96,
+      "passed": true
+    },
+    "n_exceeds_max_16_n20": {
+      "status": 400,
+      "ms": 7.01,
+      "passed": true
+    },
+    "unsupported_language_rust": {
+      "status": 400,
+      "ms": 48.15,
+      "passed": true
+    },
+    "timeout_exceeds_max_30s": {
+      "status": 400,
+      "ms": 50.19,
+      "passed": true
+    }
+  },
+  "pha5_ide_simulation_runs": [
+    {
+      "n": 4,
+      "stream": false,
+      "http_status": 200,
+      "client_wall_ms": 4857.02,
+      "service_total_wall_ms": 4808.49,
+      "sampling_wall_ms": 4166.02,
+      "sandbox_wall_ms": 642.12,
+      "n_candidates": 4,
+      "n_compilable": 4,
+      "n_all_tests_passed": 4,
+      "selected_sample_index": 2,
+      "selected_agent_id": "pc-001",
+      "confidence": "high",
+      "consensus_ratio": 1.0
+    },
+    {
+      "n": 4,
+      "stream": true,
+      "http_status": 200,
+      "client_wall_ms": 4487.73,
+      "service_total_wall_ms": 4480.3,
+      "sampling_wall_ms": 3867.06,
+      "sandbox_wall_ms": 612.8,
+      "n_candidates": 4,
+      "n_compilable": 4,
+      "n_all_tests_passed": 4,
+      "selected_sample_index": 2,
+      "selected_agent_id": "pc-001",
+      "confidence": "high",
+      "consensus_ratio": 1.0
+    },
+    {
+      "n": 8,
+      "stream": false,
+      "http_status": 200,
+      "client_wall_ms": 10044.05,
+      "service_total_wall_ms": 10036.72,
+      "sampling_wall_ms": 8841.11,
+      "sandbox_wall_ms": 1195.34,
+      "n_candidates": 8,
+      "n_compilable": 8,
+      "n_all_tests_passed": 8,
+      "selected_sample_index": 0,
+      "selected_agent_id": "pc-001",
+      "confidence": "high",
+      "consensus_ratio": 1.0
+    },
+    {
+      "n": 8,
+      "stream": true,
+      "http_status": 200,
+      "client_wall_ms": 9872.43,
+      "service_total_wall_ms": 9865.3,
+      "sampling_wall_ms": 8537.64,
+      "sandbox_wall_ms": 1327.37,
+      "n_candidates": 8,
+      "n_compilable": 8,
+      "n_all_tests_passed": 8,
+      "selected_sample_index": 0,
+      "selected_agent_id": "pc-001",
+      "confidence": "high",
+      "consensus_ratio": 1.0
+    }
+  ]
+}

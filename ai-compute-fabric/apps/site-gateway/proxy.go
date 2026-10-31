@@ -135,6 +135,8 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	agentPin := strings.TrimSpace(r.Header.Get("X-AICF-Agent"))
+	labelReq := strings.TrimSpace(r.Header.Get("X-AICF-Label"))
 	session := r.Header.Get("X-Session-ID")
 	if session == "" {
 		session = sessionKey(tenant, probe.Messages)
@@ -142,8 +144,21 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		session = tenant + "|" + session // a client-chosen id is only ever scoped to its own tenant
 	}
 	skip := ""
-	for attempt := 0; attempt < 2; attempt++ { // one retry on another worker, only before any byte is sent
-		rt, err := in.R.Acquire(Req{Model: probe.Model, Skip: skip, Tenant: tenant, Prio: prio, Deadline: deadline, Session: session}, r.Context().Done())
+	maxAttempts := 2
+	if agentPin != "" {
+		maxAttempts = 1 // never fall back to another worker when pinned via X-AICF-Agent
+	}
+	for attempt := 0; attempt < maxAttempts; attempt++ { // one retry on another worker, only before any byte is sent
+		rt, err := in.R.Acquire(Req{
+			Model:    probe.Model,
+			Agent:    agentPin,
+			Label:    labelReq,
+			Skip:     skip,
+			Tenant:   tenant,
+			Prio:     prio,
+			Deadline: deadline,
+			Session:  session,
+		}, r.Context().Done())
 		switch err {
 		case nil:
 		case ErrQueueFull:
@@ -154,6 +169,12 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		case ErrTenantQueueFull:
 			reject(w, http.StatusTooManyRequests, time.Second, "too many waiting requests for this tenant")
+			return
+		case ErrPinnedAgentBusy:
+			reject(w, http.StatusServiceUnavailable, time.Second, "pinned agent is busy")
+			return
+		case ErrNoAgent:
+			reject(w, http.StatusServiceUnavailable, 5*time.Second, "pinned agent is offline or not routable")
 			return
 		case ErrWaitTimeout:
 			if r.Context().Err() == nil {
@@ -202,6 +223,7 @@ func (in *Inference) forward(w http.ResponseWriter, r *http.Request, rt Route, b
 		w.Header()[k] = v
 	}
 	w.Header().Set("X-AICF-Worker", rt.ID)
+	w.Header().Set("X-AICF-Agent", rt.ID)
 	w.WriteHeader(resp.StatusCode)
 	fl, _ := w.(http.Flusher)
 	buf := make([]byte, 8192)

@@ -95,6 +95,11 @@ func StudioProxy(target string, maxBody int64) (http.Handler, error) {
 
 // NewAPIStudio is NewAPIFull plus an optional handler mounted at /api/studio/.
 func NewAPIStudio(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents, studio http.Handler, routers ...*Router) http.Handler {
+	return NewAPIBestOfN(f, ts, auth, audit, agents, studio, nil, routers...)
+}
+
+// NewAPIBestOfN is NewAPIStudio plus an optional handler mounted at /api/bestofn/.
+func NewAPIBestOfN(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents, studio, bestofn http.Handler, routers ...*Router) http.Handler {
 	inner := HTTPHandler(f)
 	mux := http.NewServeMux()
 	var rt *Router
@@ -105,10 +110,14 @@ func NewAPIStudio(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents
 	var topo *TopologyCoordinator
 	if f != nil {
 		topo = NewTopologyCoordinator(f.reg, audit)
+		if rt != nil {
+			rt.IsBusy = topo.IsWorkerBusy
+		}
 		if DefaultTopologyFile != "" {
 			go topo.RunReconciler(nil)
 		}
 	}
+	registerComputeAgentsRoutes(mux, f, topo, rt)
 	mux.HandleFunc("/api/cluster/topology", func(w http.ResponseWriter, r *http.Request) {
 		if topo == nil {
 			http.Error(w, "topology coordinator not initialized", http.StatusServiceUnavailable)
@@ -151,6 +160,9 @@ func NewAPIStudio(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents
 	}
 	if studio != nil {
 		mux.Handle("/api/studio/", studio)
+	}
+	if bestofn != nil {
+		mux.Handle("/api/bestofn/", bestofn)
 	}
 	mux.HandleFunc("/api/tenants", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -238,6 +250,60 @@ func NewAPIStudio(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents
 		}
 		r.Header.Del("X-Aicf-User") // identity headers are set below from the credential, never taken from the client
 		r.Header.Del("X-Aicf-Role")
+		r.Header.Del("X-Aicf-Tenant")
+		bearer := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+
+		// /api/bestofn/* always requires a valid tenant API key (or admin/operator token when configured).
+		if strings.HasPrefix(r.URL.Path, "/api/bestofn/") {
+			if ts != nil {
+				if t, ok := ts.Authenticate(bearer); ok {
+					r.Header.Set("X-Aicf-Tenant", t.ID)
+					r.Header.Set("X-Aicf-User", t.Name)
+					r.Header.Set("X-Aicf-Role", "tenant")
+					sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+					mux.ServeHTTP(sw, r)
+					note(Principal{Name: "tenant:" + t.Name, Role: "tenant"}, r, sw.code)
+					return
+				}
+			}
+			if !auth.Open() {
+				if p, ok := auth.Identify(bearer); ok {
+					r.Header.Set("X-Aicf-User", p.Name)
+					r.Header.Set("X-Aicf-Role", p.Role)
+					sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+					mux.ServeHTTP(sw, r)
+					note(p, r, sw.code)
+					return
+				}
+			}
+			w.Header().Set("WWW-Authenticate", `Bearer realm="aicf"`)
+			http.Error(w, "missing, invalid or disabled API key", http.StatusUnauthorized)
+			note(Principal{Name: "-", Role: "-"}, r, http.StatusUnauthorized)
+			return
+		}
+
+		// /api/compute-agents* accepts either an admin/operator/viewer token or a tenant API key (tenant keys never see members).
+		if (r.URL.Path == "/api/compute-agents" || r.URL.Path == "/api/compute-agents/stream") && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+			if p, ok := auth.Identify(bearer); ok {
+				r.Header.Set("X-Aicf-User", p.Name)
+				r.Header.Set("X-Aicf-Role", p.Role)
+				mux.ServeHTTP(w, r)
+				return
+			}
+			if ts != nil && bearer != "" {
+				if t, ok := ts.Authenticate(bearer); ok {
+					r.Header.Set("X-Aicf-Tenant", t.ID)
+					r.Header.Set("X-Aicf-User", t.Name)
+					r.Header.Set("X-Aicf-Role", "tenant")
+					mux.ServeHTTP(w, r)
+					return
+				}
+				w.Header().Set("WWW-Authenticate", `Bearer realm="aicf"`)
+				http.Error(w, "invalid API key or admin token", http.StatusUnauthorized)
+				return
+			}
+		}
+
 		if !strings.HasPrefix(r.URL.Path, "/api/") || auth.Open() {
 			if auth.Open() {
 				r.Header.Set("X-Aicf-User", "open")
