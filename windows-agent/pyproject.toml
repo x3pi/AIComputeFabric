@@ -1,0 +1,10 @@
+[project]
+name = "wagent"
+version = "0.0.1"
+requires-python = ">=3.10"
+dependencies = ["uiautomation>=2.0.20", "requests>=2.31"]
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+[tool.setuptools.packages.find]
+where = ["src"]
