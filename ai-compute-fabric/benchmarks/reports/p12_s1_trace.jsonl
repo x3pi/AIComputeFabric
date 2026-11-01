@@ -1,0 +1,1 @@
+{"phase": "S1c", "tag": "t1", "partition": "13,23", "ts": "2026-11-01T09:09:06+0700", "mem_avail_mib_before": 22352.7, "startup_s": 24.56, "decode_tok_s": {"median": 55.32, "min": 51.78, "max": 63.36, "mean": 56.12, "stdev": 3.89}, "status": "OK"}

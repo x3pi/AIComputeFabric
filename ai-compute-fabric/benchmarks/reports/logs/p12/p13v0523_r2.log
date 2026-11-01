@@ -1,0 +1,52 @@
+/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/launch_server.py:71: UserWarning: 'python -m sglang.launch_server' is still supported, but 'sglang serve' is the recommended entrypoint.
+  Example: sglang serve --model-path <model> [options]
+  warnings.warn(
+[2026-11-01 16:41:05] kill_process_tree called: parent_pid=2601715, include_parent=False, pid=2601715
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/launch_server.py", line 84, in <module>
+    run_server(server_args)
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/launch_server.py", line 29, in run_server
+    server_args.resolve_once()
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/srt/server_args.py", line 259, in resolve_once
+    from sglang.srt.arg_groups.pipeline import run_resolution_pipeline
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/srt/arg_groups/pipeline.py", line 9, in <module>
+    from sglang.srt.arg_groups.kv_shard_hook import handle_kv_cache_sharding
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/srt/arg_groups/kv_shard_hook.py", line 17, in <module>
+    from sglang.srt.configs.model_config import (
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/srt/configs/model_config.py", line 34, in <module>
+    from sglang.srt.layers.quantization import QUANTIZATION_METHODS
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/srt/layers/quantization/__init__.py", line 18, in <module>
+    from sglang.srt.layers.quantization.compressed_tensors.compressed_tensors import (
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/srt/layers/quantization/compressed_tensors/compressed_tensors.py", line 40, in <module>
+    from sglang.srt.layers.quantization.compressed_tensors.schemes import (
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/srt/layers/quantization/compressed_tensors/schemes/__init__.py", line 17, in <module>
+    from .compressed_tensors_w8a8_int8 import (
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/sglang-v0523/python/sglang/srt/layers/quantization/compressed_tensors/schemes/compressed_tensors_w8a8_int8.py", line 30, in <module>
+    from sgl_kernel import int8_scaled_mm
+  File "/tmp/claude-1000/-mnt-2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d-Work-AIComputeFabric/14b82a36-f871-446c-84d6-2254bb428e24/scratchpad/kern/sgl_kernel/__init__.py", line 19, in <module>
+    common_ops = _load_architecture_specific_ops()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/claude-1000/-mnt-2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d-Work-AIComputeFabric/14b82a36-f871-446c-84d6-2254bb428e24/scratchpad/kern/sgl_kernel/load_utils.py", line 192, in _load_architecture_specific_ops
+    raise ImportError(error_msg)
+ImportError: 
+[sgl_kernel] CRITICAL: Could not load any common_ops library!
+
+Attempted locations:
+1. Architecture-specific pattern: /tmp/claude-1000/-mnt-2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d-Work-AIComputeFabric/14b82a36-f871-446c-84d6-2254bb428e24/scratchpad/kern/sgl_kernel/sm100/common_ops.* - found files: ['/tmp/claude-1000/-mnt-2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d-Work-AIComputeFabric/14b82a36-f871-446c-84d6-2254bb428e24/scratchpad/kern/sgl_kernel/sm100/common_ops.abi3.so']
+2. Fallback pattern: /tmp/claude-1000/-mnt-2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d-Work-AIComputeFabric/14b82a36-f871-446c-84d6-2254bb428e24/scratchpad/kern/sgl_kernel/common_ops.* - found files: []
+3. Standard Python import: common_ops - failed
+
+GPU Info:
+- Compute capability: 86
+- Expected variant: SM86 (precise math for compatibility)
+- CUDA version: 13.0
+
+Please ensure sgl_kernel is properly installed with:
+pip install --upgrade sglang-kernel
+
+Error details from previous import attempts:
+- ImportError: /tmp/claude-1000/-mnt-2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d-Work-AIComputeFabric/14b82a36-f871-446c-84d6-2254bb428e24/scratchpad/kern/sgl_kernel/sm100/common_ops.abi3.so: undefined symbol: _ZN3c104cuda19CUDAErrorLogCaptureC1Ev
+- ModuleNotFoundError: No module named 'common_ops'
+

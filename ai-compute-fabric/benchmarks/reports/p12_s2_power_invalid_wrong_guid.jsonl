@@ -1,0 +1,12 @@
+{"phase": "S2b", "engine": "sglang", "round": 101, "ts": "2026-11-01T09:31:13+0700", "startup_s": 26.06, "decode_tok_s": {"median": 79.72, "min": 65.94, "max": 97.11, "mean": 81.07, "stdev": 13.2}, "status": "OK"}
+{"phase": "S2c", "round": 101, "power_plan": "balanced"}
+{"phase": "S2b", "engine": "sglang", "round": 102, "ts": "2026-11-01T09:32:26+0700", "startup_s": 15.54, "decode_tok_s": {"median": 84.06, "min": 59.08, "max": 92.81, "mean": 80.52, "stdev": 13.85}, "status": "OK"}
+{"phase": "S2c", "round": 102, "power_plan": "high"}
+{"phase": "S2b", "engine": "sglang", "round": 103, "ts": "2026-11-01T09:33:19+0700", "startup_s": 15.02, "decode_tok_s": {"median": 86.01, "min": 49.93, "max": 103.5, "mean": 82.72, "stdev": 18.83}, "status": "OK"}
+{"phase": "S2c", "round": 103, "power_plan": "high"}
+{"phase": "S2b", "engine": "sglang", "round": 104, "ts": "2026-11-01T09:34:11+0700", "startup_s": 15.02, "decode_tok_s": {"median": 90.85, "min": 61.11, "max": 97.15, "mean": 84.98, "stdev": 12.44}, "status": "OK"}
+{"phase": "S2c", "round": 104, "power_plan": "balanced"}
+{"phase": "S2b", "engine": "sglang", "round": 105, "ts": "2026-11-01T09:35:01+0700", "startup_s": 15.03, "decode_tok_s": {"median": 86.17, "min": 68.54, "max": 104.16, "mean": 89.13, "stdev": 12.68}, "status": "OK"}
+{"phase": "S2c", "round": 105, "power_plan": "balanced"}
+{"phase": "S2b", "engine": "sglang", "round": 106, "ts": "2026-11-01T09:35:51+0700", "startup_s": 15.02, "decode_tok_s": {"median": 91.56, "min": 67.09, "max": 94.36, "mean": 87.19, "stdev": 9.77}, "status": "OK"}
+{"phase": "S2c", "round": 106, "power_plan": "high"}

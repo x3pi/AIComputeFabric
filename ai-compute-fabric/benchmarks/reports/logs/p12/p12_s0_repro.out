@@ -1,0 +1,6 @@
+[sglang r1] decode C=1: {'median': 55.76, 'min': 41.53, 'max': 57.18, 'mean': 52.44, 'stdev': 6.24}
+[vllm r1] decode C=1: {'median': 68.72, 'min': 54.9, 'max': 72.3, 'mean': 64.64, 'stdev': 6.96}
+[sglang r2] decode C=1: {'median': 57.68, 'min': 53.54, 'max': 62.31, 'mean': 57.97, 'stdev': 3.89}
+[vllm r2] decode C=1: {'median': 65.99, 'min': 59.35, 'max': 75.0, 'mean': 67.57, 'stdev': 5.64}
+[sglang r3] decode C=1: {'median': 61.99, 'min': 56.66, 'max': 66.95, 'mean': 61.33, 'stdev': 3.7}
+[vllm r3] decode C=1: {'median': 62.76, 'min': 62.25, 'max': 64.72, 'mean': 63.12, 'stdev': 0.85}

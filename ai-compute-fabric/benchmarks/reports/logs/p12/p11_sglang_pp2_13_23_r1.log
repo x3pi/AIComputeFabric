@@ -1,0 +1,4 @@
+/opt/sglang-src/python/sglang/launch_server.py:63: UserWarning: 'python -m sglang.launch_server' is still supported, but 'sglang serve' is the recommended entrypoint.
+  Example: sglang serve --model-path <model> [options]
+  warnings.warn(
+[2026-11-01 12:21:33] The model is convertible to awq_marlin during runtime. Using awq_marlin kernel.

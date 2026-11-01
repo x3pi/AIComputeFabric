@@ -1,0 +1,8 @@
+[triton r1] {'median': 64.97, 'min': 47.86, 'max': 65.76, 'mean': 62.3, 'stdev': 6.52}
+[default r1] {'median': 0.0, 'min': 0.0, 'max': 0.0, 'mean': 0.0, 'stdev': 0.0}
+[default r2] {'median': 0.0, 'min': 0.0, 'max': 0.0, 'mean': 0.0, 'stdev': 0.0}
+[triton r2] {'median': 50.71, 'min': 44.49, 'max': 58.4, 'mean': 51.04, 'stdev': 5.42}
+[triton r3] {'median': 62.7, 'min': 61.01, 'max': 64.4, 'mean': 62.7, 'stdev': 2.4}
+[default r3] {'median': 0.0, 'min': 0.0, 'max': 0.0, 'mean': 0.0, 'stdev': 0.0}
+[default r4] {'median': 0.0, 'min': 0.0, 'max': 0.0, 'mean': 0.0, 'stdev': 0.0}
+[triton r4] {'median': 48.29, 'min': 42.17, 'max': 56.17, 'mean': 49.16, 'stdev': 5.6}

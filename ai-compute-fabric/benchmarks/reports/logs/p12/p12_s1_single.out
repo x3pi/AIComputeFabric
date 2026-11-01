@@ -1,0 +1,8 @@
+[sglang r1] {'median': 61.63, 'min': 61.61, 'max': 61.67, 'mean': 61.63, 'stdev': 0.02}
+[vllm r1] {'median': 58.45, 'min': 58.44, 'max': 58.5, 'mean': 58.47, 'stdev': 0.03}
+[vllm r2] {'median': 58.46, 'min': 58.44, 'max': 58.49, 'mean': 58.46, 'stdev': 0.02}
+[sglang r2] {'median': 61.62, 'min': 61.61, 'max': 61.66, 'mean': 61.63, 'stdev': 0.02}
+[sglang r3] {'median': 61.63, 'min': 61.6, 'max': 61.66, 'mean': 61.63, 'stdev': 0.02}
+[vllm r3] {'median': 58.45, 'min': 58.44, 'max': 58.49, 'mean': 58.46, 'stdev': 0.02}
+[vllm r4] {'median': 58.44, 'min': 58.43, 'max': 58.5, 'mean': 58.45, 'stdev': 0.03}
+[sglang r4] {'median': 61.62, 'min': 61.59, 'max': 61.65, 'mean': 61.62, 'stdev': 0.02}

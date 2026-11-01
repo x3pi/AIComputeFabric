@@ -1,0 +1,9 @@
+{"phase": "S2b", "engine": "sglang", "round": 2, "ts": "2026-11-01T09:23:34+0700", "startup_s": 25.87, "decode_tok_s": {"median": 84.84, "min": 84.84, "max": 84.84, "mean": 84.84, "stdev": 0.0}, "status": "OK"}
+{"phase": "S2b", "engine": "sglang", "round": 1, "ts": "2026-11-01T09:24:13+0700", "status": "FAILED", "error": "RuntimeError: Process exited early with code 9"}
+{"phase": "S2b", "engine": "sglang", "round": 3, "ts": "2026-11-01T09:24:29+0700", "startup_s": 15.54, "decode_tok_s": {"median": 58.47, "min": 28.65, "max": 89.33, "mean": 62.11, "stdev": 22.3}, "status": "OK"}
+{"phase": "S2b", "engine": "vllm", "round": 1, "ts": "2026-11-01T09:24:30+0700", "startup_s": 15.02, "decode_tok_s": {"median": 58.22, "min": 28.97, "max": 88.92, "mean": 62.3, "stdev": 22.48}, "status": "OK"}
+{"phase": "S2b", "engine": "vllm", "round": 3, "ts": "2026-11-01T09:25:39+0700", "status": "FAILED", "error": "RuntimeError: Process exited early with code 127"}
+{"phase": "S2b", "engine": "vllm", "round": 2, "ts": "2026-11-01T09:25:40+0700", "status": "FAILED", "error": "RuntimeError: Process exited early with code 9"}
+{"phase": "S2b", "engine": "sglang", "round": 2, "ts": "2026-11-01T09:25:55+0700", "startup_s": 15.03, "decode_tok_s": {"median": 85.97, "min": 67.33, "max": 99.35, "mean": 84.97, "stdev": 12.36}, "status": "OK"}
+{"phase": "S2b", "engine": "sglang", "round": 3, "ts": "2026-11-01T09:26:45+0700", "startup_s": 15.02, "decode_tok_s": {"median": 96.55, "min": 84.43, "max": 103.93, "mean": 96.17, "stdev": 6.65}, "status": "OK"}
+{"phase": "S2b", "engine": "vllm", "round": 3, "ts": "2026-11-01T09:27:33+0700", "startup_s": 18.55, "decode_tok_s": {"median": 69.31, "min": 53.08, "max": 92.74, "mean": 68.17, "stdev": 13.09}, "status": "OK"}

@@ -1,0 +1,21 @@
+[graph_vllm r2] {'median': 82.43, 'min': 79.02, 'max': 83.58, 'mean': 81.52, 'stdev': 1.9}
+[graph_off r2] {'median': 81.58, 'min': 80.32, 'max': 83.35, 'mean': 81.59, 'stdev': 0.97}
+[graph_on r2] {'median': 82.0, 'min': 79.94, 'max': 82.27, 'mean': 81.52, 'stdev': 0.85}
+[graph_off r3] {'median': 74.06, 'min': 59.87, 'max': 82.7, 'mean': 73.15, 'stdev': 9.57}
+[graph_on r3] {'median': 73.01, 'min': 61.71, 'max': 80.41, 'mean': 72.51, 'stdev': 6.63}
+[graph_vllm r3] {'median': 73.92, 'min': 58.31, 'max': 78.0, 'mean': 71.62, 'stdev': 6.64}
+[graph_on r4] {'median': 79.65, 'min': 77.76, 'max': 81.15, 'mean': 79.69, 'stdev': 1.18}
+[graph_vllm r4] {'median': 77.69, 'min': 71.29, 'max': 81.14, 'mean': 77.38, 'stdev': 3.23}
+[graph_off r4] {'median': 82.92, 'min': 81.88, 'max': 83.48, 'mean': 82.79, 'stdev': 0.51}
+[graph_vllm r5] {'median': 69.26, 'min': 59.57, 'max': 77.47, 'mean': 67.94, 'stdev': 6.08}
+[graph_off r5] {'median': 83.02, 'min': 82.51, 'max': 83.56, 'mean': 83.02, 'stdev': 0.39}
+[graph_on r5] {'median': 73.94, 'min': 70.61, 'max': 82.92, 'mean': 76.05, 'stdev': 4.83}
+[graph_off r6] {'median': 76.83, 'min': 68.43, 'max': 82.05, 'mean': 77.04, 'stdev': 5.28}
+[graph_on r6] {'median': 82.57, 'min': 81.61, 'max': 82.97, 'mean': 82.5, 'stdev': 0.52}
+[graph_vllm r6] {'median': 85.35, 'min': 84.93, 'max': 86.1, 'mean': 85.51, 'stdev': 0.43}
+[graph_on r7] {'median': 80.67, 'min': 60.93, 'max': 83.79, 'mean': 74.27, 'stdev': 10.74}
+[graph_vllm r7] {'median': 86.21, 'min': 85.29, 'max': 86.42, 'mean': 86.02, 'stdev': 0.42}
+[graph_off r7] {'median': 79.67, 'min': 78.59, 'max': 81.38, 'mean': 79.79, 'stdev': 1.1}
+[graph_vllm r8] {'median': 70.2, 'min': 60.38, 'max': 78.66, 'mean': 69.32, 'stdev': 5.4}
+[graph_off r8] {'median': 83.91, 'min': 82.44, 'max': 84.25, 'mean': 83.66, 'stdev': 0.63}
+ERR Process exited early with code -11
