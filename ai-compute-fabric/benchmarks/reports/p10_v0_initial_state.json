@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-10-31T09:25:00+07:00",
+  "evidence_label": "[ĐO]",
+  "pc_001_linux": {
+    "os": "Ubuntu 24.04 Linux",
+    "cpu": "Intel Core Ultra 7 265K (8 P-cores 0..7 + 12 E-cores 8..19)",
+    "gpu": "NVIDIA GeForce RTX 3060 12288 MiB",
+    "driver_version": "580.178.04",
+    "root_fs_free_gib": 9.4,
+    "data_fs_free_gib": 40.0,
+    "venv_vllm_path": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-vllm",
+    "vllm_version": "0.32.0",
+    "torch_version": "2.13.0+cu130",
+    "torch_cuda_arch_list": ["sm_75", "sm_80", "sm_86", "sm_90", "sm_100", "sm_120"],
+    "services_before_p10": {
+      "site_gateway_pid": 1973029,
+      "bestofn_service_pid": 1973031,
+      "worker_guard_pid": 4047197,
+      "llama_server_pid": 4047493,
+      "llama_server_cmdline": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bin/llama-server -m /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf -c 32768 -np 1 -ngl 99 --port 18090 --host 0.0.0.0 -fa on -ctk f16 -ctv f16 --no-warmup --fit off -lv 4 -t 8 -Cr 0-7 --cpu-strict 1 --rpc 10.42.0.225:50052 --split-mode layer --tensor-split 52,48"
+    }
+  },
+  "pc_win_01_windows": {
+    "ssh_host": "fios02@10.42.0.225",
+    "os": "Microsoft Windows 10 Pro",
+    "version": "10.0.19045",
+    "build_number": 19045,
+    "cpu": "AMD Ryzen 7 9700X 8-Core Processor (8C/16T)",
+    "bios_virtualization_enabled": true,
+    "ram_total_gib": 61.59,
+    "ram_free_gib": 52.45,
+    "drive_c_used_gib": 143.9,
+    "drive_c_free_gib": 88.36,
+    "gpu": "NVIDIA GeForce RTX 5070 12227 MiB",
+    "driver_version": "617.42",
+    "wsl_features_before_p10": {
+      "Microsoft-Windows-Subsystem-Linux": "Disabled",
+      "VirtualMachinePlatform": "Disabled"
+    },
+    "services_before_p10": {
+      "AICFWorkerGuard_service": "Running (Automatic)",
+      "worker_guard_pid": 15700,
+      "ggml_rpc_server_pid": 10224,
+      "ggml_rpc_server_path": "C:\\aicf\\llama\\ggml-rpc-server.exe"
+    }
+  }
+}
+

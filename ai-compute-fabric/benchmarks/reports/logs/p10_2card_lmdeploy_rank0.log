@@ -1,0 +1,45 @@
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+2026-10-31 15:56:03,949 - lmdeploy - ERROR - base.py:55 - <Dist> check failed!
+Multi-nodes support requires `ray`.
+2026-10-31 15:56:07,505 - lmdeploy - ERROR - zmq_rpc.py:62 - PyTorch ZMQ engine process is not alive.
+Traceback (most recent call last):
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/bin/lmdeploy", line 8, in <module>
+    sys.exit(run())
+             ^^^^^
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/cli/entrypoint.py", line 39, in run
+    args.run(args)
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/cli/serve.py", line 324, in api_server
+    run_api_server(
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/serve/openai/api_server.py", line 371, in serve
+    server_context.async_engine = pipeline_class(
+                                  ^^^^^^^^^^^^^^^
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/serve/core/async_engine.py", line 157, in __init__
+    self.engine = self._build_pytorch(model_path=model_path,
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/serve/core/async_engine.py", line 224, in _build_pytorch
+    return Engine.from_pretrained(model_path,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/pytorch/engine/engine.py", line 282, in from_pretrained
+    return build_mp_engine(
+           ^^^^^^^^^^^^^^^^
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/pytorch/engine/mp_engine/__init__.py", line 10, in build_mp_engine
+    return ZMQMPEngine(model_path, engine_config=engine_config, trust_remote_code=trust_remote_code, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/pytorch/engine/mp_engine/zmq_engine.py", line 57, in __init__
+    super().__init__()
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/pytorch/engine/mp_engine/base.py", line 33, in __init__
+    self.engine_config = self._collective_rpc('get_engine_config')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/pytorch/engine/mp_engine/zmq_engine.py", line 199, in _collective_rpc
+    return self.rpc_client.call(func, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/pytorch/engine/mp_engine/zmq_rpc.py", line 446, in call
+    reply = self._poll_recv()
+            ^^^^^^^^^^^^^^^^^
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/pytorch/engine/mp_engine/zmq_rpc.py", line 428, in _poll_recv
+    self._check_server_alive()
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/pytorch/engine/mp_engine/zmq_rpc.py", line 392, in _check_server_alive
+    self._server_liveness.check_alive()
+  File "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-lmdeploy/lib/python3.12/site-packages/lmdeploy/pytorch/engine/mp_engine/zmq_rpc.py", line 86, in check_alive
+    raise self.new_dead_error()
+lmdeploy.pytorch.engine.mp_engine.zmq_rpc.RPCServerDeadError: PyTorch ZMQ engine process is not alive.

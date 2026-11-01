@@ -1,0 +1,112 @@
+[TM][WARN][1031.15:36:55.631550][turbomind.cc:128] `max_context_token_num` is not set, default to 16384.
+Loading:   0%|          | 0/36 [00:00<?, ?it/s]Loading:   3%|▎         | 1/36 [00:00<00:08,  4.07it/s]Loading:  11%|█         | 4/36 [00:00<00:02, 11.95it/s]Loading:  19%|█▉        | 7/36 [00:00<00:01, 15.74it/s]Loading:  28%|██▊       | 10/36 [00:00<00:01, 17.88it/s]Loading:  36%|███▌      | 13/36 [00:00<00:01, 18.99it/s]Loading:  44%|████▍     | 16/36 [00:00<00:01, 19.51it/s]Loading:  53%|█████▎    | 19/36 [00:01<00:00, 19.78it/s]Loading:  61%|██████    | 22/36 [00:01<00:00, 19.76it/s]Loading:  69%|██████▉   | 25/36 [00:01<00:00, 20.00it/s]Loading:  78%|███████▊  | 28/36 [00:01<00:00, 20.11it/s]Loading:  86%|████████▌ | 31/36 [00:01<00:00, 20.08it/s]Loading:  94%|█████████▍| 34/36 [00:01<00:00, 20.19it/s]                                                        [TM][WARN][1031.15:36:58.228909][slab.h:136] slab_size 67108864, object_size 9437184, object_count 7, ratio 0.984375
+[TM][FATAL][1031.15:37:14.018740][allocator.cc:49] CUDA error: out of memory
+*** stacktrace of thread 0x7fc8f5ffd6c0 ***
+  [ 0] TM_CUDA_CHECK @ allocator.cc:49
+  [ 1] LlamaLinear::Forward() @ LlamaLinear.cu:261
+  [ 2] linear_.Forward @ LlamaFfnLayer.cc:58
+  [ 3] LlamaFfnLayer::forward() @ LlamaFfnLayer.cc:30
+  [ 4] layer_0 @ unified_decoder.cc:263
+  [ 5] UnifiedDecoder::Forward() @ unified_decoder.cc:185
+  [ 6] LanguageModel::Impl::Forward() @ language_model.cc:495
+  [ 7] ModelExecutor::Impl::Run() @ model_executor.cc:81
+  [ 8] ModelExecutor::Impl::InternalThreadEntry() @ model_executor.cc:39
+[TM][WARN][1031.15:38:34.980356][turbomind.cc:128] `max_context_token_num` is not set, default to 16384.
+Loading:   0%|          | 0/36 [00:00<?, ?it/s]Loading:   3%|▎         | 1/36 [00:00<00:08,  4.12it/s]Loading:  11%|█         | 4/36 [00:00<00:02, 12.02it/s]Loading:  19%|█▉        | 7/36 [00:00<00:01, 15.78it/s]Loading:  28%|██▊       | 10/36 [00:00<00:01, 17.84it/s]Loading:  36%|███▌      | 13/36 [00:00<00:01, 19.14it/s]Loading:  44%|████▍     | 16/36 [00:00<00:01, 19.96it/s]Loading:  53%|█████▎    | 19/36 [00:01<00:00, 20.48it/s]Loading:  61%|██████    | 22/36 [00:01<00:00, 20.84it/s]Loading:  69%|██████▉   | 25/36 [00:01<00:00, 21.10it/s]Loading:  78%|███████▊  | 28/36 [00:01<00:00, 21.27it/s]Loading:  86%|████████▌ | 31/36 [00:01<00:00, 21.39it/s]Loading:  94%|█████████▍| 34/36 [00:01<00:00, 21.46it/s]                                                        [TM][WARN][1031.15:38:37.400283][slab.h:136] slab_size 67108864, object_size 9437184, object_count 7, ratio 0.984375
+HINT:    Please open [93m[1mhttp://127.0.0.1:18090[0m in a browser for detailed api usage!!!
+HINT:    Please open [93m[1mhttp://127.0.0.1:18090[0m in a browser for detailed api usage!!!
+HINT:    Please open [93m[1mhttp://127.0.0.1:18090[0m in a browser for detailed api usage!!!
+INFO:     Started server process [295408]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:18090 (Press CTRL+C to quit)
+INFO:     127.0.0.1:50510 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50524 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42408 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42424 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:39:11 DP0] Avg thr (in/out): 21.3 / 58.6 tokens/s, Server (succeeded/failed/routed/waiting): 2 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 0.8%, 
+INFO:     127.0.0.1:53206 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53214 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:39:21 DP0] Avg thr (in/out): 14.0 / 60.8 tokens/s, Server (succeeded/failed/routed/waiting): 4 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 1.3%, 
+INFO:     127.0.0.1:53226 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57994 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57996 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:39:31 DP0] Avg thr (in/out): 21.3 / 60.5 tokens/s, Server (succeeded/failed/routed/waiting): 7 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 0.5%, 
+INFO:     127.0.0.1:36478 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36484 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36500 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36516 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36528 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:39:41 DP0] Avg thr (in/out): 842.2 / 27.2 tokens/s, Server (succeeded/failed/routed/waiting): 12 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 34.3%, 
+INFO:     127.0.0.1:60946 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60958 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:39:51 DP0] Avg thr (in/out): 1637.1 / 3.2 tokens/s, Server (succeeded/failed/routed/waiting): 14 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 34.3%, 
+INFO:     127.0.0.1:35826 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:40:01 DP0] Avg thr (in/out): 817.9 / 1.6 tokens/s, Server (succeeded/failed/routed/waiting): 15 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 34.3%, 
+INFO:     127.0.0.1:35834 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56530 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56540 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56552 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:40:11 DP0] Avg thr (in/out): 882.3 / 56.1 tokens/s, Server (succeeded/failed/routed/waiting): 20 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 0.8%, 
+INFO:     127.0.0.1:56564 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56568 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57482 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57488 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57498 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57512 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57524 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:40:21 DP0] Avg thr (in/out): 55.6 / 58.7 tokens/s, Server (succeeded/failed/routed/waiting): 27 / 0 / 0 / 0, Engine (running/waiting): 0 / 0, KV cache: 0.0%, 
+INFO:     127.0.0.1:57526 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57398 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57408 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57422 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57432 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57442 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57446 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57462 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57474 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:40:31 DP0] Avg thr (in/out): 99.7 / 56.8 tokens/s, Server (succeeded/failed/routed/waiting): 32 / 0 / 4 / 0, Engine (running/waiting): 1 / 0, KV cache: 2.4%, 
+INFO:     127.0.0.1:57018 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57010 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57022 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57024 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57030 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57038 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57042 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57048 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57058 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57080 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57104 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57116 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57126 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57070 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57088 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57110 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57136 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57144 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57152 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57154 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57168 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57186 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57184 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57172 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:40:41 DP0] Avg thr (in/out): 737.2 / 153.8 tokens/s, Server (succeeded/failed/routed/waiting): 44 / 0 / 16 / 0, Engine (running/waiting): 16 / 0, KV cache: 39.4%, 
+[TM][WARN][1031.15:40:55.416685][turbomind.cc:128] `max_context_token_num` is not set, default to 16384.
+Loading:   0%|          | 0/36 [00:00<?, ?it/s]Loading:   3%|▎         | 1/36 [00:00<00:08,  4.13it/s]Loading:  11%|█         | 4/36 [00:00<00:02, 12.11it/s]Loading:  19%|█▉        | 7/36 [00:00<00:01, 15.94it/s]Loading:  28%|██▊       | 10/36 [00:00<00:01, 18.09it/s]Loading:  36%|███▌      | 13/36 [00:00<00:01, 19.41it/s]Loading:  44%|████▍     | 16/36 [00:00<00:00, 20.23it/s]Loading:  53%|█████▎    | 19/36 [00:01<00:00, 20.76it/s]Loading:  61%|██████    | 22/36 [00:01<00:00, 21.14it/s]Loading:  69%|██████▉   | 25/36 [00:01<00:00, 21.29it/s]Loading:  78%|███████▊  | 28/36 [00:01<00:00, 21.52it/s]Loading:  86%|████████▌ | 31/36 [00:01<00:00, 21.37it/s]Loading:  94%|█████████▍| 34/36 [00:01<00:00, 21.25it/s]                                                        [TM][WARN][1031.15:40:57.913182][slab.h:136] slab_size 67108864, object_size 9437184, object_count 7, ratio 0.984375
+HINT:    Please open [93m[1mhttp://127.0.0.1:18090[0m in a browser for detailed api usage!!!
+HINT:    Please open [93m[1mhttp://127.0.0.1:18090[0m in a browser for detailed api usage!!!
+HINT:    Please open [93m[1mhttp://127.0.0.1:18090[0m in a browser for detailed api usage!!!
+INFO:     Started server process [299835]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:18090 (Press CTRL+C to quit)
+INFO:     127.0.0.1:45320 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45336 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45542 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45554 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45544 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45558 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45562 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45572 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45588 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45604 - "POST /v1/chat/completions HTTP/1.1" 200 OK

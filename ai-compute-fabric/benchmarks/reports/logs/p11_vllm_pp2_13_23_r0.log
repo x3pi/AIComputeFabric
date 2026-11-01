@@ -1,0 +1,273 @@
+(APIServer pid=790649) INFO 10-31 21:24:10 [api_utils.py:347] 
+(APIServer pid=790649) INFO 10-31 21:24:10 [api_utils.py:347]        █     █     █▄   ▄█
+(APIServer pid=790649) INFO 10-31 21:24:10 [api_utils.py:347]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.32.0
+(APIServer pid=790649) INFO 10-31 21:24:10 [api_utils.py:347]   █▄█▀ █     █     █     █  model   /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/hf-models/Qwen3-8B-AWQ
+(APIServer pid=790649) INFO 10-31 21:24:10 [api_utils.py:347]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=790649) INFO 10-31 21:24:10 [api_utils.py:347] 
+(APIServer pid=790649) INFO 10-31 21:24:10 [api_utils.py:286] non-default args: {'model_tag': '/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/hf-models/Qwen3-8B-AWQ', 'host': '0.0.0.0', 'port': 18090, 'model': '/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/hf-models/Qwen3-8B-AWQ', 'max_model_len': 16384, 'enforce_eager': True, 'served_model_name': ['aicf'], 'distributed_executor_backend': 'mp', 'pipeline_parallel_size': 2, 'master_addr': '10.42.0.1', 'master_port': 29500, 'nnodes': 2, 'gpu_memory_utilization': 0.82, 'max_num_seqs': 16}
+(APIServer pid=790649) INFO 10-31 21:24:10 [model.py:733] Resolved architecture: Qwen3ForCausalLM
+(APIServer pid=790649) INFO 10-31 21:24:10 [model.py:2152] Using max model len 16384
+(APIServer pid=790649) INFO 10-31 21:24:10 [arg_utils.py:2472] Inferred data_parallel_rank 0 from node_rank 0
+(APIServer pid=790649) WARNING 10-31 21:24:10 [vllm.py:1703] Enforce eager set, disabling torch.compile, CUDAGraphs, and JIT kernel warmup. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none and --kernel_config.enable_jit_warmup=False
+(APIServer pid=790649) WARNING 10-31 21:24:10 [vllm.py:1727] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(APIServer pid=790649) INFO 10-31 21:24:10 [kernel.py:467] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native'])
+(APIServer pid=790649) INFO 10-31 21:24:10 [vllm.py:1929] Cudagraph is disabled under eager mode
+(APIServer pid=790649) INFO 10-31 21:24:10 [compilation.py:317] Enabled custom fusions: norm_quant, act_quant
+(EngineCore pid=790830) INFO 10-31 21:24:15 [core.py:133] Initializing a V1 LLM engine (v0.32.0) with config: model='/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/hf-models/Qwen3-8B-AWQ', speculative_config=None, tokenizer='/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/hf-models/Qwen3-8B-AWQ', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.float16, max_seq_len=16384, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=2, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=False, quantization=auto_awq, quantization_config=None, enforce_eager=True, aux_output_config=AuxOutputConfig(enable_return_routed_experts=False, max_bytes=None), kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, per_request_spec_decode_metrics='none', kv_cache_metrics=False, kv_cache_metrics_sample=0.01, custom_histogram_buckets=None, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=aicf, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['all'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'cudagraph_decoder_replay': True, 'decoder_replay_cudagraph_capture_sizes': [], 'decoder_replay_trim_threshold': 768, 'compile_sizes': [], 'compile_ranges_endpoints': [2048], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.NONE: 0>, 'cudagraph_num_of_warmups': 0, 'cudagraph_capture_sizes': [], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'fuse_allreduce_rms': False, 'enable_qk_norm_rope_fusion': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False, 'fuse_qk_norm_rope_kvcache': False}, 'max_cudagraph_capture_size': 0, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': False, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native']), enable_flashinfer_autotune=True, enable_rocm_segmented_attn_autotune=False, enable_cutedsl_warmup=True, enable_jit_warmup=False, moe_backend='auto', sparse_indexer_topk_backend='auto', linear_backend='auto', linear_backend_per_quant=None)
+(EngineCore pid=790830) INFO 10-31 21:24:15 [multiproc_executor.py:153] DP group leader: node_rank=0, node_rank_within_dp=0, master_addr=10.42.0.1, mq_connect_ip=10.42.0.1 (local), world_size=2, local_world_size=1
+(Worker pid=790933) INFO 10-31 21:24:19 [parallel_state.py:1906] world_size=2 rank=0 local_rank=0 distributed_init_method=tcp://10.42.0.1:29500 backend=nccl
+(Worker pid=790933) INFO 10-31 21:24:22 [pynccl.py:148] vLLM is using nccl==2.29.7
+(Worker pid=790933) INFO 10-31 21:24:23 [cuda_communicator.py:353] Using ['PYNCCL'] all-reduce backends (in dispatch order) for group 'pp:0' out of potential backends: ['FLASHINFER_PCIE_IPC', 'FLASHINFER', 'NCCL_SYMM_MEM', 'QUICK_REDUCE', 'AITER_CUSTOM', 'CUSTOM', 'SYMM_MEM', 'PYNCCL'].
+(Worker pid=790933) INFO 10-31 21:24:23 [parallel_state.py:2350] rank 0 in world size 2 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, ETP rank 0, EP rank N/A, EPLB rank N/A
+(Worker pid=790933) INFO 10-31 21:24:23 [gpu_worker.py:518] Using V2 Model Runner
+(Worker_PP0 pid=790933) INFO 10-31 21:24:23 [model_runner.py:392] Loading model from scratch...
+(Worker_PP0 pid=790933) INFO 10-31 21:24:23 [__init__.py:923] Using MarlinLinearKernel for mixed-precision linear
+(Worker_PP0 pid=790933) INFO 10-31 21:24:23 [auto_awq.py:451] Using MarlinLinearKernel for AutoAWQMarlinLinearMethod
+(Worker_PP0 pid=790933) INFO 10-31 21:24:23 [cuda.py:506] Using FLASH_ATTN attention backend out of potential backends: ['FLASH_ATTN', 'FLASHINFER', 'TRITON_ATTN', 'FLEX_ATTENTION'].
+(Worker_PP0 pid=790933) INFO 10-31 21:24:23 [flash_attn.py:1117] Using FlashAttention version 2
+(Worker_PP0 pid=790933) INFO 10-31 21:24:23 [base_loader.py:82] Initializing model took 0.102491 seconds
+(Worker_PP0 pid=790933) INFO 10-31 21:24:23 [weight_utils.py:1108] Filesystem type for checkpoints: EXT4. Checkpoint size: 5.68 GiB. Available RAM: 18.22 GiB.
+(Worker_PP0 pid=790933) INFO 10-31 21:24:23 [weight_utils.py:1131] Auto-prefetch is disabled because the filesystem (EXT4) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+Loading safetensors checkpoint shards:   0% Completed | 0/2 [00:00<?, ?it/s]
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:23 [utils.py:333] Attempted to load weight embed_tokens.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.0.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.0.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.0.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.0.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.0.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.0.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.1.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.1.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.1.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.1.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.1.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.1.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.10.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.10.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.10.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.10.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.10.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.10.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.11.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.11.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.11.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.11.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.11.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.11.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.12.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.12.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.12.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.12.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.12.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.12.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.2.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.2.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.2.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.2.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.2.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.2.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.3.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.3.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.3.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.3.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.3.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.3.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.4.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.4.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.4.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.4.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.4.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.4.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.5.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.5.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.5.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.5.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.5.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.5.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.6.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.6.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.6.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.6.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.6.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.6.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.7.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.7.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.7.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.7.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.7.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.7.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.8.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.8.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.8.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.8.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.8.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.8.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.9.input_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.9.mlp.down_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.9.post_attention_layernorm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.9.self_attn.k_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.9.self_attn.o_proj.scales with dtype torch.bfloat16 into parameter with dtype torch.float16
+(Worker_PP0 pid=790933) WARNING 10-31 21:24:24 [utils.py:333] Attempted to load weight layers.9.self_attn.q_norm.weight with dtype torch.bfloat16 into parameter with dtype torch.float16
+Loading safetensors checkpoint shards:  50% Completed | 1/2 [00:00<00:00,  1.55it/s]
+Loading safetensors checkpoint shards: 100% Completed | 2/2 [00:00<00:00,  3.01it/s]
+
+(Worker_PP0 pid=790933) INFO 10-31 21:24:24 [default_loader.py:501] Loading weights took 0.67 seconds
+(Worker_PP0 pid=790933) INFO 10-31 21:24:25 [model_runner.py:424] Model loading took 2.39 GiB memory and 2.158580 seconds
+(Worker_PP0 pid=790933) INFO 10-31 21:24:25 [torch_utils.py:295] Reducing Torch threads from 20 to 1 for serving. Set OMP_NUM_THREADS in the external environment to override.
+(EngineCore pid=790830) INFO 10-31 21:24:30 [torch_utils.py:295] Reducing Torch threads from 20 to 1 for serving. Set OMP_NUM_THREADS in the external environment to override.
+(EngineCore pid=790830) INFO 10-31 21:24:30 [utils.py:347] Using LBNHC KV cache layout.
+(Worker_PP0 pid=790933) INFO 10-31 21:24:31 [gpu_worker.py:759] Available KV cache memory: 6.93 GiB
+(EngineCore pid=790830) INFO 10-31 21:24:32 [kv_cache_utils.py:2327] GPU KV cache size: 70,416 tokens, Maximum concurrency for 16,384 tokens per request: 4.30x
+(Worker_PP0 pid=790933) INFO 10-31 21:24:32 [gpu_worker.py:1034] Free memory on device (11.4/11.63 GiB) on startup. Desired GPU memory utilization is (0.82, 9.54 GiB). Actual usage is 2.4 GiB for consumed memory (weights + non-torch), 0.2 GiB for peak activation, and 0.0 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=7283719537` (6.78 GiB) to fit into requested memory, or `--kv-cache-memory=9281732608` (8.64 GiB) to fully utilize gpu memory. Current kv cache memory in use is 6.93 GiB.
+(EngineCore pid=790830) INFO 10-31 21:24:33 [core.py:402] init engine (profile, create kv cache, warmup model) took 2.65 s
+(EngineCore pid=790830) WARNING 10-31 21:24:33 [vllm.py:1703] Enforce eager set, disabling torch.compile, CUDAGraphs, and JIT kernel warmup. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none and --kernel_config.enable_jit_warmup=False
+(EngineCore pid=790830) WARNING 10-31 21:24:33 [vllm.py:1727] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(EngineCore pid=790830) INFO 10-31 21:24:33 [kernel.py:467] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['vllm_c', 'native'], fused_add_rms_norm=['vllm_c', 'native'], gelu_and_mul_sparse=['triton', 'native'])
+(EngineCore pid=790830) INFO 10-31 21:24:33 [vllm.py:1929] Cudagraph is disabled under eager mode
+(EngineCore pid=790830) INFO 10-31 21:24:33 [compilation.py:317] Enabled custom fusions: norm_quant, act_quant
+(APIServer pid=790649) INFO 10-31 21:24:33 [entry.py:136] Supported tasks: ['generate']
+(APIServer pid=790649) INFO 10-31 21:24:33 [factories.py:89] Scale-out endpoints are disabled. Restart vllm serve with --enable-scale-out to enable them.
+(APIServer pid=790649) INFO 10-31 21:24:34 [hf.py:648] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+(APIServer pid=790649) WARNING 10-31 21:24:34 [model.py:1893] Default vLLM sampling parameters have been overridden by the model's `generation_config.json`: `{'temperature': 0.6, 'top_k': 20, 'top_p': 0.95}`. If this is not intended, please relaunch vLLM instance with `--generation-config vllm`.
+(APIServer pid=790649) INFO 10-31 21:24:34 [entry.py:140] Starting vLLM server on http://0.0.0.0:18090
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:186] Available routes are:
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /openapi.json, Methods: HEAD, GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /docs, Methods: HEAD, GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /docs/oauth2-redirect, Methods: HEAD, GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /redoc, Methods: HEAD, GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /load, Methods: GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /version, Methods: GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /kv_event_sources, Methods: GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /health, Methods: GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /metrics, Methods: GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /tokenize, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /detokenize, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/models, Methods: GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/systemone, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /ping, Methods: GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /ping, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /invocations, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/chat/completions, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/chat/completions/batch, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/responses, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/responses/{response_id}, Methods: GET
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/responses/{response_id}/cancel, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/completions, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/messages, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/messages/count_tokens, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /generative_scoring, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /scale_elastic_ep, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /is_scaling_elastic_ep, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/chat/completions/render, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/messages/render, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/completions/render, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/responses/render, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/chat/completions/derender, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /v1/completions/derender, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /inference/v1/generate, Methods: POST
+(APIServer pid=790649) INFO 10-31 21:24:34 [launcher.py:195] Route: /inference/v1/abort_requests, Methods: POST
+INFO:     Started server process [790649]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:34742 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34752 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-vllm/lib/python3.12/site-packages/vllm/distributed/parallel_state.py:969: UserWarning: The given buffer is not writable, and PyTorch does not support non-writable tensors. This means you can write to the underlying (supposedly non-writable) buffer using the tensor. You may want to copy the buffer to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_new.cpp:1556.)
+  object_tensor = torch.frombuffer(pickle.dumps(obj), dtype=torch.uint8)
+[rank0]:[W1031 21:24:34.657130238 ProcessGroupNCCL.cpp:4173] Warning: An unbatched P2P op (send/recv) was called on this ProcessGroup with size 2.  In lazy initialization mode, this will result in a new 2-rank NCCL communicator to be created. (function operator())
+INFO:     127.0.0.1:34754 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34762 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=790649) INFO 10-31 21:24:44 [loggers.py:335] Engine 000: Avg prompt throughput: 17.2 tokens/s, Avg generation throughput: 62.0 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.3%, Prefix cache hit rate: 15.0%
+INFO:     127.0.0.1:59316 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59328 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59336 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=790649) INFO 10-31 21:24:54 [loggers.py:335] Engine 000: Avg prompt throughput: 16.2 tokens/s, Avg generation throughput: 73.5 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.3%, Prefix cache hit rate: 18.9%
+INFO:     127.0.0.1:44506 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44508 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44522 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=790649) INFO 10-31 21:25:04 [loggers.py:335] Engine 000: Avg prompt throughput: 10.6 tokens/s, Avg generation throughput: 65.2 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 19.9%
+INFO:     127.0.0.1:48622 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48628 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48630 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48644 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48660 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=790649) INFO 10-31 21:25:14 [loggers.py:335] Engine 000: Avg prompt throughput: 1652.3 tokens/s, Avg generation throughput: 8.0 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 11.6%, Prefix cache hit rate: 0.8%
+INFO:     127.0.0.1:33560 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33568 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33580 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=790649) INFO 10-31 21:25:24 [loggers.py:335] Engine 000: Avg prompt throughput: 2504.9 tokens/s, Avg generation throughput: 15.6 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 1.0%, Prefix cache hit rate: 0.6%
+INFO:     127.0.0.1:35788 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35804 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35806 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35812 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35820 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35826 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35836 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35840 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35854 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35862 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35878 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35888 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35898 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35912 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35928 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35934 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35942 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35956 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35964 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35974 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35986 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35994 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36006 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36022 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36030 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36036 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36038 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36052 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=790649) INFO 10-31 21:25:34 [loggers.py:335] Engine 000: Avg prompt throughput: 825.5 tokens/s, Avg generation throughput: 156.0 tokens/s, Running: 11 reqs, Waiting: 5 reqs, GPU KV cache usage: 8.3%, Prefix cache hit rate: 1.1%
+INFO:     127.0.0.1:44304 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44316 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44328 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44344 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44348 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44360 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44372 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44386 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44392 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=790649) INFO 10-31 21:25:44 [loggers.py:335] Engine 000: Avg prompt throughput: 1154.7 tokens/s, Avg generation throughput: 270.8 tokens/s, Running: 8 reqs, Waiting: 0 reqs, GPU KV cache usage: 4.2%, Prefix cache hit rate: 19.9%
+INFO:     127.0.0.1:44362 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44374 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44390 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44394 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44404 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44410 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44422 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44430 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44436 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44438 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44446 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44454 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44456 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44466 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44478 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44482 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44484 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=790649) INFO 10-31 21:25:54 [loggers.py:335] Engine 000: Avg prompt throughput: 261.0 tokens/s, Avg generation throughput: 264.4 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.2%, Prefix cache hit rate: 42.1%
+INFO:     127.0.0.1:44488 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44660 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44668 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44680 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44684 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44688 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+(APIServer pid=790649) INFO 10-31 21:26:04 [loggers.py:335] Engine 000: Avg prompt throughput: 59.9 tokens/s, Avg generation throughput: 67.1 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.2%, Prefix cache hit rate: 41.9%
+INFO:     127.0.0.1:44692 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37306 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37318 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37326 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37332 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37336 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37346 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37348 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+/usr/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+/usr/lib/python3.12/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 2 leaked shared_memory objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

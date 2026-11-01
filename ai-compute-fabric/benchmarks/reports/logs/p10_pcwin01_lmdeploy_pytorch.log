@@ -1,0 +1,86 @@
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+2026-10-31 15:53:14,538 - lmdeploy - WARNING - config.py:365 - Can not perform weight quantization on quantized model.
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+2026-10-31 15:53:15,507 - lmdeploy - WARNING - __init__.py:47 - For higher performance, please install FlashAttention-3 https://github.com/Dao-AILab/flash-attention
+Loading weights from safetensors:   0%|          | 0/2 [00:00<?, ?it/s]Loading weights from safetensors:  50%|█████     | 1/2 [00:00<00:00,  5.40it/s]Loading weights from safetensors: 100%|██████████| 2/2 [00:00<00:00,  2.17it/s]Loading weights from safetensors: 100%|██████████| 2/2 [00:00<00:00,  2.38it/s]
+/opt/venv-lmdeploy/lib/python3.12/site-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+  warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+Warming up decoding:   0%|          | 0/5 [00:00<?, ?it/s]Warming up decoding:  20%|██        | 1/5 [00:00<00:01,  2.81it/s]Warming up decoding:  40%|████      | 2/5 [00:01<00:02,  1.32it/s]Warming up decoding:  80%|████████  | 4/5 [00:01<00:00,  2.90it/s]Warming up decoding: 100%|██████████| 5/5 [00:03<00:00,  1.24it/s]Warming up decoding: 100%|██████████| 5/5 [00:03<00:00,  1.46it/s]
+HINT:    Please open [93m[1mhttp://0.0.0.0:18090[0m in a browser for detailed api usage!!!
+HINT:    Please open [93m[1mhttp://0.0.0.0:18090[0m in a browser for detailed api usage!!!
+HINT:    Please open [93m[1mhttp://0.0.0.0:18090[0m in a browser for detailed api usage!!!
+INFO:     Started server process [1220]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:18090 (Press CTRL+C to quit)
+INFO:     172.30.64.1:59740 - "GET /v1/models HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59741 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+2026-10-31 15:53:27,923 - lmdeploy - WARNING - messages.py:120 - `temperature` is 0, set top_k=1.
+INFO:     172.30.64.1:59742 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59743 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:53:37 DP0] Avg thr (in/out): 21.6 / 59.6 tokens/s, Server (succeeded/failed/routed/waiting): 2 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 1.3%, 
+INFO:     172.30.64.1:59744 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59745 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59746 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:53:47 DP0] Avg thr (in/out): 21.3 / 89.2 tokens/s, Server (succeeded/failed/routed/waiting): 5 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 2.1%, 
+INFO:     172.30.64.1:59747 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59748 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59749 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59750 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59751 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59752 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:53:57 DP0] Avg thr (in/out): 856.7 / 62.1 tokens/s, Server (succeeded/failed/routed/waiting): 12 / 0 / 0 / 0, Engine (running/waiting): 0 / 0, KV cache: 0.0%, 
+INFO:     172.30.64.1:59753 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59754 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59755 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59756 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:54:07 DP0] Avg thr (in/out): 2454.8 / 4.8 tokens/s, Server (succeeded/failed/routed/waiting): 15 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 54.4%, 
+INFO:     172.30.64.1:59757 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59758 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59759 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59760 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:54:17 DP0] Avg thr (in/out): 882.3 / 64.9 tokens/s, Server (succeeded/failed/routed/waiting): 20 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 2.1%, 
+INFO:     172.30.64.1:59761 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59762 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59763 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59764 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59765 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59766 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59767 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59768 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59769 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:54:27 DP0] Avg thr (in/out): 90.2 / 81.8 tokens/s, Server (succeeded/failed/routed/waiting): 29 / 0 / 1 / 0, Engine (running/waiting): 1 / 0, KV cache: 1.3%, 
+INFO:     172.30.64.1:59770 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59771 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59772 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59773 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59774 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59775 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59776 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59778 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59777 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59779 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59780 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59781 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59782 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59783 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59784 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+/opt/venv-lmdeploy/lib/python3.12/site-packages/triton/language/core.py:2284: UserWarning: tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.
+  warn("tl.make_block_ptr is deprecated. Use TensorDescriptor or tl.make_tensor_descriptor instead.")
+INFO:     172.30.64.1:59787 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59788 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59789 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59790 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59791 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59793 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59785 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59786 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59792 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59794 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59795 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59796 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59797 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59798 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59799 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     172.30.64.1:59800 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[2026-10-31 15:54:37 DP0] Avg thr (in/out): 743.8 / 178.5 tokens/s, Server (succeeded/failed/routed/waiting): 44 / 0 / 16 / 0, Engine (running/waiting): 7 / 9, KV cache: 29.5%, 

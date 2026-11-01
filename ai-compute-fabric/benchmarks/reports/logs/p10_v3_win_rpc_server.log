@@ -1,0 +1,231 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12199 MiB):
+  Device 0: NVIDIA GeForce RTX 5070, compute capability 12.0, VMM: yes, VRAM: 12199 MiB
+load_backend: loaded CUDA backend from C:\aicf\llama\ggml-cuda.dll
+load_backend: loaded RPC backend from C:\aicf\llama\ggml-rpc.dll
+load_backend: loaded CPU backend from C:\aicf\llama\ggml-cpu-zen4.dll
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+WARNING: Host ('0.0.0.0') is != '127.0.0.1'
+         Never expose the RPC server to an open network!
+         This is an experimental feature and is not secure!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Starting RPC server v8.0.1
+  endpoint       : 0.0.0.0:50052
+  local cache    : C:\Users\Fios02\AppData\Local\llama.cpp\rpc
+Devices:
+  CUDA0: NVIDIA GeForce RTX 5070 (12199 MiB, 11034 MiB free)
+  transport      : TCP
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\45aeba2ea535457b'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\89801fcba3d63c08'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\d25b274340de1cae'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\6dacdc944b39f05d'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\0266113664b6d54b'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\5258323d02704e46'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\1083348b4a4fc551'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\b6b38815869a8391'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\bc5f77499948f3a0'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\ef8bb969d45fb060'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\ec8813f69fae5c9e'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\20f0a824128e34e4'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\c62f18bbbce18989'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\3583aa6590699da5'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\54ba2dff6f31be04'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\0e7ca56a0f55c86d'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\2272cb153b22f18f'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\1cd6e642671f33a9'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\12a76cade266f23d'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\44c7cbc44440c3d3'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\92d9c152154024ac'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\3bb72c66730f4b9a'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\8198af701459d6cb'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\85ab4f022ed23e88'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\920c1c6b1dc80d60'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\3737d33ac50a8b83'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\e11b8176d351d6bd'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\85f3e58db7e73f8c'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\541159b8978a2fda'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\56475d3f2262cc23'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\0c524208ffa1b95f'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\1c84479e189b8cef'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\5310b310d154deb0'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\3ef6c95bed1779d1'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\8677203e6f125aa1'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\c38c40f046729218'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\abab2e3d13fb401b'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\ea7bb8d1c97f04f8'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\cde063cafc7659cb'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\31ca53028cf73211'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\c28a2850f92eee4d'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\2be7e4d4e8227719'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\a8e1735a407297e8'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\ed5a1b0650fe736a'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\3070605b75e1ad8f'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\8324feb9b4d8770c'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\6755749caa2b2bd4'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\903b8e69a94f8f55'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\97b234257f9b2bf1'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\e654484752910d3e'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\d1d6db8e827618cf'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\656edacafef360b6'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\04e38723ad788ceb'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\31b249f989752735'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\c928509207da3739'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\bac3a677928418a3'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\54d65523fac6f310'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\6bc1443848e2c168'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\7d1b06927eac02be'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\b31853f8d00b60f5'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\0c7a8f87d0c3e74c'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\36afb14a003ee982'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\6abc816e6185399a'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\6bb721eefb841839'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\c234f2eca982dafc'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\a75d9e4d629b3735'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\920bb66d39ed46c6'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\4f22ecfc7ee58918'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\a13521cff195c466'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\3810c1c6dfb575e9'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\be9a71b60adee60c'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\a1de7d69233c3840'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\be84c064a4969430'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\cb7cb81bc50b3f59'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\18a52710ea6e1025'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\e0123bf2ead65353'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\a4004a5d42266371'
+[set_tensor] saved to 'C:\Users\Fios02\AppData\Local\llama.cpp\rpc\37f9d4571de61100'
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
+Accepted client connection
+recv returned 0 (peer closed?)
+Client connection closed
