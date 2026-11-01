@@ -42,6 +42,13 @@ class UIA:
         walk(win, 0)
         return "\n".join(lines)
 
+    def describe(self, id):
+        try:
+            c = self._el(id)
+            return "%s %s" % (c.Name, c.AutomationId or "")
+        except Exception:
+            return ""
+
     def _el(self, id):
         if int(id) not in self.ids:
             raise ValueError("id %s khong ton tai (goi observe lai)" % id)
