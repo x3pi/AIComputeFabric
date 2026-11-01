@@ -5,7 +5,7 @@ from .loop import Agent
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--url", required=True, help="vd http://10.42.0.1:18090/v1")
+    p.add_argument("--url", default="", help="vd http://10.42.0.1:18090/v1")
     p.add_argument("--model", default="")
     p.add_argument("--key", default=os.environ.get("WAGENT_KEY", ""))
     p.add_argument("--sandbox", default=r"C:\wagent\sandbox")
@@ -15,9 +15,22 @@ def main():
     p.add_argument("--approvals-dir", default=r"C:\wagent\approvals")
     p.add_argument("--stop-file", default=r"C:\wagent\STOP")
     p.add_argument("--max-seconds", type=int, default=600)
-    p.add_argument("task")
+    p.add_argument("--web", type=int, default=0, help="chay UI web tren 127.0.0.1:PORT")
+    p.add_argument("task", nargs="?", default="")
     a = p.parse_args()
     os.makedirs(a.sandbox, exist_ok=True)
+    if a.web:
+        from .web import serve
+        from .skills.uia import UIA
+        def make_agent(cfg, log, approver, stop):
+            return Agent(LLM(cfg["url"], cfg.get("model", ""), cfg.get("key", "")), UIA(), Audit(a.audit),
+                         a.sandbox, a.max_steps, log=log, approver=approver, stop_event=stop, max_seconds=a.max_seconds)
+        srv = serve(make_agent, port=a.web)
+        print("UI: http://127.0.0.1:%d/?t=%s" % (a.web, srv.token), flush=True)
+        srv.serve_forever()
+        return
+    if not a.task or not a.url:
+        p.error("can nhiem vu va --url (hoac dung --web)")
     from .skills.uia import UIA
     from .approver import FileApprover, DenyAll, AllowAll
     ap = {"ask": lambda: FileApprover(a.approvals_dir), "deny": DenyAll, "allow": AllowAll}[a.approve]()

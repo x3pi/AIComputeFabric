@@ -115,3 +115,60 @@ def test_kill_switch_and_timeout():
     assert a.run("t")[0] == "stopped"
     a, u, _ = mk2(['{"tool":"observe"}'], max_seconds=-1)
     assert a.run("t")[0] == "timeout"
+
+# ---- GD3: web ----
+import threading, time, urllib.request, urllib.error
+from wagent.web import serve
+
+def _web(replies, uia=None):
+    d = tempfile.mkdtemp(); uia = uia or RiskUIA()
+    def make_agent(cfg, log, approver, stop):
+        return Agent(FakeLLM(replies), uia, Audit(d + "/a.jsonl"), d + "/sb", log=log, approver=approver, stop_event=stop)
+    srv = serve(make_agent, port=0, token="tok", approve_timeout=5)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, uia, "http://127.0.0.1:%d" % srv.server_address[1]
+
+def _call(base, path, data=None, tok="tok"):
+    req = urllib.request.Request(base + path, data=json.dumps(data).encode() if data is not None else None,
+                                 headers={"X-Token": tok, "Content-Type": "application/json"})
+    return json.loads(urllib.request.urlopen(req, timeout=5).read())
+
+def _wait(base, pred, t=5):
+    end = time.time() + t
+    while time.time() < end:
+        s = _call(base, "/api/state")
+        if pred(s): return s
+        time.sleep(0.05)
+    raise AssertionError(s)
+
+def test_web_requires_token():
+    srv, u, b = _web(['{"tool":"done"}'])
+    with pytest.raises(urllib.error.HTTPError) as e: _call(b, "/api/state", tok="bad")
+    assert e.value.code == 403
+
+def test_web_run_approve_flow():
+    srv, u, b = _web(['{"tool":"click","args":{"id":1}}', '{"tool":"done","args":{"summary":"ok"}}'])
+    _call(b, "/api/run", {"task": "x", "url": "u"})
+    s = _wait(b, lambda s: s["pending"])
+    assert "Delete" in s["pending"][0]["reason"] and "ev" not in s["pending"][0]
+    _call(b, "/api/approve", {"id": s["pending"][0]["id"], "allow": True})
+    s = _wait(b, lambda s: s["status"] == "done")
+    assert u.calls == [("click", 1)]
+
+def test_web_deny_and_stop():
+    srv, u, b = _web(['{"tool":"click","args":{"id":1}}', '{"tool":"done"}'])
+    _call(b, "/api/run", {"task": "x"})
+    s = _wait(b, lambda s: s["pending"])
+    _call(b, "/api/approve", {"id": s["pending"][0]["id"], "allow": False})
+    _wait(b, lambda s: s["status"] == "done")
+    assert u.calls == []
+    srv2, u2, b2 = _web(['{"tool":"click","args":{"id":1}}'] + ['{"tool":"observe"}'] * 20)
+    _call(b2, "/api/run", {"task": "x"}); _wait(b2, lambda s: s["pending"])
+    _call(b2, "/api/stop", {})
+    _wait(b2, lambda s: s["status"] == "stopped"); assert u2.calls == []
+
+def test_web_timeout_denies():
+    srv, u, b = _web(['{"tool":"click","args":{"id":1}}', '{"tool":"done"}'])
+    _call(b, "/api/run", {"task": "x"})
+    _wait(b, lambda s: s["status"] == "done", t=9)
+    assert u.calls == []
