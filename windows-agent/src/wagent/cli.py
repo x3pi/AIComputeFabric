@@ -3,6 +3,22 @@ from .llm import LLM
 from .audit import Audit
 from .loop import Agent
 
+def load_token(path):
+    """Doc token tu file; chua co thi tao moi (32 byte ngau nhien). Rong => de serve() tu sinh."""
+    if not path:
+        return None
+    try:
+        t = open(path, encoding="utf-8").read().strip()
+        if len(t) >= 16:
+            return t
+    except OSError:
+        pass
+    import secrets
+    t = secrets.token_urlsafe(24)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(t)
+    return t
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--url", default="", help="vd http://10.42.0.1:18090/v1")
@@ -17,6 +33,7 @@ def main():
     p.add_argument("--max-seconds", type=int, default=600)
     p.add_argument("--no-think", action="store_true", help="tat che do suy nghi (Qwen3)")
     p.add_argument("--ui-dir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui_dist"))
+    p.add_argument("--token-file", default="", help="doc/tao token co dinh (de shortcut mo dung dia chi)")
     p.add_argument("--web", type=int, default=0, help="chay UI web tren 127.0.0.1:PORT")
     p.add_argument("task", nargs="?", default="")
     a = p.parse_args()
@@ -27,7 +44,7 @@ def main():
         def make_agent(cfg, log, approver, stop):
             return Agent(LLM(cfg["url"], cfg.get("model", ""), cfg.get("key", ""), no_think=a.no_think), UIA(), Audit(a.audit),
                          a.sandbox, a.max_steps, log=log, approver=approver, stop_event=stop, max_seconds=a.max_seconds)
-        srv = serve(make_agent, port=a.web, ui_dir=a.ui_dir if os.path.isfile(os.path.join(a.ui_dir, "index.html")) else None)
+        srv = serve(make_agent, port=a.web, token=load_token(a.token_file), ui_dir=a.ui_dir if os.path.isfile(os.path.join(a.ui_dir, "index.html")) else None)
         print("UI: http://127.0.0.1:%d/?t=%s" % (a.web, srv.token), flush=True)
         srv.serve_forever()
         return

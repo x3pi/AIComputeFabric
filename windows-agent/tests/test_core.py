@@ -241,3 +241,38 @@ def test_static_path_traversal_blocked():
             if not c: break
             data += c
         assert b"TOPSECRET" not in data, path
+
+# ---- GD6: shortcut/launcher ----
+import importlib.util, struct, socket
+from wagent.cli import load_token
+
+def _load_launcher():
+    from importlib.machinery import SourceFileLoader
+    return SourceFileLoader("launch", os.path.join(os.path.dirname(__file__), "..", "scripts", "launch.pyw")).load_module()
+
+def test_token_file_created_then_stable(tmp_path):
+    f = str(tmp_path / "t")
+    t1 = load_token(f); t2 = load_token(f)
+    assert t1 == t2 and len(t1) >= 16
+    assert load_token("") is None
+    open(f, "w").write("short"); assert load_token(f) != "short"   # token qua ngan bi thay
+
+def test_launcher_port_open_and_token_wait(tmp_path):
+    L = _load_launcher()
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); s.listen(1)
+    port = s.getsockname()[1]
+    assert L.port_open(port); s.close()
+    assert not L.port_open(port)
+    open(tmp_path / "tk", "w").write("x" * 20)
+    assert L.read_token(str(tmp_path / "tk"), wait=1) == "x" * 20
+    assert L.read_token(str(tmp_path / "none"), wait=0.3) == ""
+
+def test_icon_is_valid_ico(tmp_path):
+    spec = importlib.util.spec_from_file_location("mk", os.path.join(os.path.dirname(__file__), "..", "scripts", "make_icon.py"))
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    p = str(tmp_path / "a.ico"); m.make_ico(p, sizes=(16, 32))
+    d = open(p, "rb").read()
+    assert struct.unpack("<HHH", d[:6]) == (0, 1, 2)
+    for i in range(2):
+        w, h, _, _, _, bpp, sz, off = struct.unpack("<BBBBHHII", d[6 + 16 * i:22 + 16 * i])
+        assert d[off:off + 8] == b"\x89PNG\r\n\x1a\n" and off + sz <= len(d)
