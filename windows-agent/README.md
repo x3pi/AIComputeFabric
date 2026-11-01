@@ -3,6 +3,9 @@
 Agent điều khiển máy Windows bằng một model OpenAI-compatible (Qwen local qua llama.cpp/vLLM/SGLang/gateway AICF).
 Kế hoạch & nhật ký đo đạc: `../KE_HOACH_APP_DIEU_KHIEN_WINDOWS.md`.
 
+## Mở bằng icon trên desktop (Windows)
+Sau khi `scripts/sync-to-windows.sh` (đã gồm `ui_dist`) chạy `powershell -File C:\wagent\scripts\install_shortcut.ps1` một lần → có icon **Wagent** trên Desktop. Bấm vào: tự bật server ẩn và mở trình duyệt vào giao diện (token cố định ở `C:\wagent\web.token`). Build giao diện: `cd ui && npm install && npm run build`.
+
 ## Cách hoạt động
 `observe (cây UI Automation dạng văn bản) → model trả 1 JSON {"tool","args"} → guard → thực thi → audit`.
 Không cần model thị giác. Nội dung đọc từ màn hình/file là **dữ liệu không tin cậy**.

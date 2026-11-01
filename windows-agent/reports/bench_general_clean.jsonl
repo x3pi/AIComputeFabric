@@ -1,0 +1,30 @@
+{"scenario": "notepad_ghi_file", "run": 0, "agent_status": "done", "verified": true, "steps": 4, "tokens": 2759, "seconds": 5.2, "summary": "Da mo notepad, go chu 'Xin chao' vao o soan thao va ghi file ghichu.txt vao sandbox."}
+{"scenario": "notepad_ghi_file", "run": 1, "agent_status": "done", "verified": true, "steps": 4, "tokens": 2759, "seconds": 5.0, "summary": "Da mo notepad, go chu 'Xin chao' vao o soan thao va ghi file ghichu.txt vao sandbox."}
+{"scenario": "notepad_ghi_file", "run": 2, "agent_status": "done", "verified": true, "steps": 4, "tokens": 2759, "seconds": 4.9, "summary": "Da mo notepad, go chu 'Xin chao' vao o soan thao va ghi file ghichu.txt vao sandbox."}
+{"scenario": "notepad_ghi_file", "run": 3, "agent_status": "done", "verified": true, "steps": 4, "tokens": 2759, "seconds": 4.9, "summary": "Da mo notepad, go chu 'Xin chao' vao o soan thao va ghi file ghichu.txt vao sandbox."}
+{"scenario": "notepad_ghi_file", "run": 4, "agent_status": "done", "verified": true, "steps": 4, "tokens": 2759, "seconds": 4.9, "summary": "Da mo notepad, go chu 'Xin chao' vao o soan thao va ghi file ghichu.txt vao sandbox."}
+{"scenario": "phan_loai_file", "run": 0, "agent_status": "done", "verified": false, "steps": 1, "tokens": 822, "seconds": 1.0, "summary": "Da chuyen cac file trong thu muc in/ sang out/ theo duoi file."}
+{"scenario": "phan_loai_file", "run": 1, "agent_status": "done", "verified": false, "steps": 1, "tokens": 822, "seconds": 0.9, "summary": "Da chuyen cac file trong thu muc in/ sang out/ theo duoi file."}
+{"scenario": "phan_loai_file", "run": 2, "agent_status": "done", "verified": false, "steps": 1, "tokens": 822, "seconds": 0.8, "summary": "Da chuyen cac file trong thu muc in/ sang out/ theo duoi file."}
+{"scenario": "phan_loai_file", "run": 3, "agent_status": "done", "verified": false, "steps": 1, "tokens": 822, "seconds": 0.8, "summary": "Da chuyen cac file trong thu muc in/ sang out/ theo duoi file."}
+{"scenario": "phan_loai_file", "run": 4, "agent_status": "done", "verified": false, "steps": 1, "tokens": 822, "seconds": 0.8, "summary": "Da chuyen cac file trong thu muc in/ sang out/ theo duoi file."}
+{"scenario": "doi_ten_hang_loat", "run": 0, "agent_status": "done", "verified": false, "steps": 2, "tokens": 1269, "seconds": 0.8, "summary": "Khong the thuc hien nhiem vu vi khong tim thay thu muc docs/."}
+{"scenario": "doi_ten_hang_loat", "run": 1, "agent_status": "done", "verified": false, "steps": 2, "tokens": 1269, "seconds": 0.7, "summary": "Khong the thuc hien nhiem vu vi khong tim thay thu muc docs/."}
+{"scenario": "doi_ten_hang_loat", "run": 2, "agent_status": "done", "verified": false, "steps": 2, "tokens": 1269, "seconds": 0.8, "summary": "Khong the thuc hien nhiem vu vi khong tim thay thu muc docs/."}
+{"scenario": "doi_ten_hang_loat", "run": 3, "agent_status": "done", "verified": false, "steps": 2, "tokens": 1269, "seconds": 0.7, "summary": "Khong the thuc hien nhiem vu vi khong tim thay thu muc docs/."}
+{"scenario": "doi_ten_hang_loat", "run": 4, "agent_status": "done", "verified": false, "steps": 2, "tokens": 1269, "seconds": 0.7, "summary": "Khong the thuc hien nhiem vu vi khong tim thay thu muc docs/."}
+{"scenario": "tong_csv", "run": 0, "agent_status": "max_steps", "verified": false, "steps": 20, "tokens": 16624, "seconds": 15.5, "summary": "het so buoc"}
+{"scenario": "tong_csv", "run": 1, "agent_status": "max_steps", "verified": false, "steps": 20, "tokens": 16624, "seconds": 15.8, "summary": "het so buoc"}
+{"scenario": "tong_csv", "run": 2, "agent_status": "max_steps", "verified": false, "steps": 20, "tokens": 16624, "seconds": 15.6, "summary": "het so buoc"}
+{"scenario": "tong_csv", "run": 3, "agent_status": "max_steps", "verified": false, "steps": 20, "tokens": 16624, "seconds": 15.4, "summary": "het so buoc"}
+{"scenario": "tong_csv", "run": 4, "agent_status": "max_steps", "verified": false, "steps": 20, "tokens": 16624, "seconds": 15.6, "summary": "het so buoc"}
+{"scenario": "sao_luu_txt", "run": 0, "agent_status": "done", "verified": true, "steps": 3, "tokens": 1809, "seconds": 2.1, "summary": "Da sao chep thanh cong cac file .txt trong proj/ sang backup/."}
+{"scenario": "sao_luu_txt", "run": 1, "agent_status": "done", "verified": true, "steps": 3, "tokens": 1809, "seconds": 2.0, "summary": "Da sao chep thanh cong cac file .txt trong proj/ sang backup/."}
+{"scenario": "sao_luu_txt", "run": 2, "agent_status": "done", "verified": true, "steps": 3, "tokens": 1809, "seconds": 2.0, "summary": "Da sao chep thanh cong cac file .txt trong proj/ sang backup/."}
+{"scenario": "sao_luu_txt", "run": 3, "agent_status": "done", "verified": true, "steps": 3, "tokens": 1809, "seconds": 2.0, "summary": "Da sao chep thanh cong cac file .txt trong proj/ sang backup/."}
+{"scenario": "sao_luu_txt", "run": 4, "agent_status": "done", "verified": true, "steps": 3, "tokens": 1809, "seconds": 2.0, "summary": "Da sao chep thanh cong cac file .txt trong proj/ sang backup/."}
+{"scenario": "may_tinh_gui", "run": 0, "agent_status": "done", "verified": false, "steps": 9, "tokens": 10992, "seconds": 6.1, "summary": "Da thuc hien phep tinh 12 + 30 va ghi ket qua vao ketqua.txt."}
+{"scenario": "may_tinh_gui", "run": 1, "agent_status": "done", "verified": false, "steps": 9, "tokens": 10992, "seconds": 5.9, "summary": "Da thuc hien phep tinh 12 + 30 va ghi ket qua vao ketqua.txt."}
+{"scenario": "may_tinh_gui", "run": 2, "agent_status": "done", "verified": false, "steps": 9, "tokens": 10992, "seconds": 5.9, "summary": "Da thuc hien phep tinh 12 + 30 va ghi ket qua vao ketqua.txt."}
+{"scenario": "may_tinh_gui", "run": 3, "agent_status": "done", "verified": false, "steps": 9, "tokens": 10992, "seconds": 5.9, "summary": "Da thuc hien phep tinh 12 + 30 va ghi ket qua vao ketqua.txt."}
+{"scenario": "may_tinh_gui", "run": 4, "agent_status": "done", "verified": false, "steps": 9, "tokens": 10992, "seconds": 5.9, "summary": "Da thuc hien phep tinh 12 + 30 va ghi ket qua vao ketqua.txt."}
