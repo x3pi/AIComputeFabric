@@ -24,3 +24,17 @@ def write_file(sandbox, path, content, **_):
 
 def list_dir(sandbox, path=".", **_):
     return "\n".join(sorted(os.listdir(resolve(sandbox, path))))
+
+def move_file(sandbox, src, dst, **_):
+    import shutil
+    a, b = resolve(sandbox, src), resolve(sandbox, dst)
+    os.makedirs(os.path.dirname(b), exist_ok=True)
+    shutil.move(a, b)
+    return "da chuyen %s -> %s" % (src, dst)
+
+def copy_file(sandbox, src, dst, **_):
+    import shutil
+    a, b = resolve(sandbox, src), resolve(sandbox, dst)
+    os.makedirs(os.path.dirname(b), exist_ok=True)
+    shutil.copy2(a, b)
+    return "da sao chep %s -> %s" % (src, dst)

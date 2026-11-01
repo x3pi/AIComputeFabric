@@ -18,6 +18,10 @@ def classify(action, describe=None, exists=None):
         if exists and exists(a.get("path", "")):
             return "approve", "ghi de file da ton tai: %s" % a.get("path")
         return "allow", ""
+    if t in ("move_file", "copy_file"):
+        if exists and exists(a.get("dst", "")):
+            return "approve", "%s se ghi de file da ton tai: %s" % (t, a.get("dst"))
+        return "allow", ""
     if t in MEDIUM:
         if t == "set_text" and RISKY_TEXT.search(str(a.get("text", ""))):
             return "approve", "van ban co ve chua bi mat/mat khau"

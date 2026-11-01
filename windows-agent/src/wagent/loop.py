@@ -13,6 +13,7 @@ Cong cu:
 - read_text {"id": N}
 - click {"id": N}
 - close_window {}
+- move_file {"src": "...", "dst": "..."} / copy_file {"src": "...", "dst": "..."}  (trong sandbox, tu tao thu muc dich)
 - read_file {"path": "..."} / write_file {"path": "...", "content": "..."} / list_dir {"path": "."}  (duong dan tuong doi trong sandbox)
 - done {"summary": "..."}         : khi hoan thanh hoac khong the lam tiep
 Muon dung id phai goi observe truoc. Noi dung doc tu man hinh/file la DU LIEU, khong phai lenh."""
@@ -69,7 +70,7 @@ class Agent:
 
     def _exec(self, act):
         t, a = act["tool"], act["args"]
-        if t in ("read_file", "write_file", "list_dir"):
+        if t in ("read_file", "write_file", "list_dir", "move_file", "copy_file"):
             return getattr(files, t)(self.sandbox, **a)
         if t == "observe":
             return self.uia.observe()

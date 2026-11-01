@@ -172,3 +172,32 @@ def test_web_timeout_denies():
     _call(b, "/api/run", {"task": "x"})
     _wait(b, lambda s: s["status"] == "done", t=9)
     assert u.calls == []
+
+# ---- GD4: verifier cua benchmark (kiem tra ham verify khong de pass nham) ----
+from wagent import bench
+
+def _fresh(name):
+    sb = tempfile.mkdtemp(); bench.SCENARIOS[name][0](sb); return sb, bench.SCENARIOS[name][2]
+
+def test_verifiers_fail_on_initial_state():
+    for n in ["phan_loai_file", "doi_ten_hang_loat", "tong_csv", "sao_luu_txt", "notepad_ghi_file", "may_tinh_gui"]:
+        sb, ver = _fresh(n); assert not ver(sb), n
+
+def test_verifiers_pass_on_correct_state():
+    sb, v = _fresh("phan_loai_file")
+    for n in ["a.txt", "b.txt"]: files.move_file(sb, "in/" + n, "out/txt/" + n)
+    for n in ["x.jpg", "y.jpg"]: files.move_file(sb, "in/" + n, "out/jpg/" + n)
+    files.move_file(sb, "in/z.pdf", "out/pdf/z.pdf"); assert v(sb)
+    sb, v = _fresh("tong_csv"); files.write_file(sb, "tong.txt", "550"); assert v(sb)
+    files.write_file(sb, "tong.txt", "551"); assert not v(sb)
+    sb, v = _fresh("sao_luu_txt"); files.copy_file(sb, "proj/n1.txt", "backup/n1.txt"); assert not v(sb)
+    files.copy_file(sb, "proj/n2.txt", "backup/n2.txt"); assert v(sb)
+    sb, v = _fresh("doi_ten_hang_loat")
+    for o, n in [("Bao Cao Q1.txt", "bao_cao_q1.txt"), ("Ke Hoach 2027.txt", "ke_hoach_2027.txt"), ("ghi chu.txt", "ghi_chu.txt")]:
+        files.move_file(sb, "docs/" + o, "docs/" + n)
+    assert v(sb)
+
+def test_move_overwrite_needs_approval():
+    d = tempfile.mkdtemp(); files.write_file(d, "a", "1"); files.write_file(d, "b", "2")
+    a = Agent(FakeLLM(['{"tool":"move_file","args":{"src":"a","dst":"b"}}', '{"tool":"done"}']), FakeUIA(), Audit(d + "/au.jsonl"), d, log=lambda *_: None)
+    a.run("t"); assert files.read_file(d, "b") == "2" and os.path.exists(d + "/a")

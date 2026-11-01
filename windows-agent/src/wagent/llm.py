@@ -5,6 +5,7 @@ class LLM:
     def __init__(self, base_url, model="", api_key="", timeout=300):
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.model, self.key, self.timeout = model, api_key, timeout
+        self.tokens = 0
 
     def chat(self, messages, max_tokens=400):
         h = {"Content-Type": "application/json"}
@@ -14,6 +15,7 @@ class LLM:
             "model": self.model, "messages": messages, "temperature": 0,
             "max_tokens": max_tokens})
         r.raise_for_status()
+        self.tokens += (r.json().get("usage") or {}).get("total_tokens", 0)
         return r.json()["choices"][0]["message"]["content"]
 
 def parse_action(text):
