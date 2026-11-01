@@ -1,5 +1,5 @@
 """UI web cuc bo (stdlib). Bind 127.0.0.1 + token. Key chi nam trong bo nho, khong ghi log/audit."""
-import json, os, secrets, threading, time, uuid
+import json, mimetypes, os, secrets, threading, time, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -46,7 +46,7 @@ class WebApprover:
         with self.s.lock:
             return self.s.pending.pop(pid)["ok"] if ev.is_set() else (self.s.pending.pop(pid), False)[1]
 
-def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=120):
+def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=120, ui_dir=None):
     """make_agent(cfg, log, approver, stop_event) -> obj co .run(task)->(status, summary)"""
     token = token or secrets.token_urlsafe(16)
     st = State()
@@ -60,9 +60,23 @@ def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=1
             b = body if isinstance(body, bytes) else body.encode()
             self.send_response(code); self.send_header("Content-Type", ct + "; charset=utf-8")
             self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+        def _static(self, p):
+            root = os.path.realpath(ui_dir)
+            rel = "index.html" if p in ("", "/") else p.lstrip("/")
+            f = os.path.realpath(os.path.join(root, rel))
+            if not (f == root or f.startswith(root + os.sep)) or not os.path.isfile(f):
+                return self._send(404, '{"error":"not found"}')
+            ct = mimetypes.guess_type(f)[0] or "application/octet-stream"
+            self.send_response(200); self.send_header("Content-Type", ct)
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'")
+            data = open(f, "rb").read()
+            self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
         def do_GET(self):
-            if not self._ok(): return self._send(403, '{"error":"token"}')
             p = urlparse(self.path).path
+            if ui_dir and not p.startswith("/api/"):
+                return self._static(p)       # file tinh cua UI khong chua bi mat; /api/* van can token
+            if not self._ok(): return self._send(403, '{"error":"token"}')
             if p == "/": return self._send(200, PAGE, "text/html")
             if p == "/api/state":
                 with st.lock:

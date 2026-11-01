@@ -201,3 +201,43 @@ def test_move_overwrite_needs_approval():
     d = tempfile.mkdtemp(); files.write_file(d, "a", "1"); files.write_file(d, "b", "2")
     a = Agent(FakeLLM(['{"tool":"move_file","args":{"src":"a","dst":"b"}}', '{"tool":"done"}']), FakeUIA(), Audit(d + "/au.jsonl"), d, log=lambda *_: None)
     a.run("t"); assert files.read_file(d, "b") == "2" and os.path.exists(d + "/a")
+
+def test_llm_strips_think_and_sets_flag(monkeypatch):
+    import wagent.llm as L
+    seen = {}
+    class R:
+        def raise_for_status(self): pass
+        def json(self): return {"choices": [{"message": {"content": "<think>x</think>{\"tool\":\"done\"}"}}], "usage": {"total_tokens": 7}}
+    def post(url, headers=None, timeout=0, json=None): seen.update(json); return R()
+    monkeypatch.setattr(L.requests, "post", post)
+    m = L.LLM("http://x/v1", no_think=True)
+    assert m.chat([]) == '{"tool":"done"}' and seen["chat_template_kwargs"] == {"enable_thinking": False} and m.tokens == 7
+
+# ---- GD5: UI tinh ----
+def _web_ui():
+    d = tempfile.mkdtemp(); os.makedirs(d + "/ui/assets")
+    open(d + "/ui/index.html", "w").write("<html>UI</html>"); open(d + "/ui/assets/a.js", "w").write("x=1")
+    open(d + "/secret.txt", "w").write("TOPSECRET")
+    srv = serve(lambda *a: None, port=0, token="tok", ui_dir=d + "/ui")
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return "http://127.0.0.1:%d" % srv.server_address[1]
+
+def test_static_served_and_api_still_needs_token():
+    b = _web_ui()
+    assert urllib.request.urlopen(b + "/", timeout=5).read() == b"<html>UI</html>"
+    r = urllib.request.urlopen(b + "/assets/a.js", timeout=5); assert r.read() == b"x=1" and r.headers["X-Content-Type-Options"] == "nosniff"
+    with pytest.raises(urllib.error.HTTPError) as e: urllib.request.urlopen(b + "/api/state", timeout=5)
+    assert e.value.code == 403
+
+def test_static_path_traversal_blocked():
+    import socket
+    b = _web_ui(); host, port = b[7:].split(":")
+    for path in ["/../secret.txt", "/%2e%2e/secret.txt", "/assets/../../secret.txt"]:
+        s = socket.create_connection((host, int(port)), 5)
+        s.sendall(("GET %s HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" % path).encode())
+        data = b""
+        while True:
+            c = s.recv(4096)
+            if not c: break
+            data += c
+        assert b"TOPSECRET" not in data, path

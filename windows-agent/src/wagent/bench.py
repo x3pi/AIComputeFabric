@@ -56,7 +56,7 @@ def main():
     p.add_argument("--url", required=True); p.add_argument("--model", default=""); p.add_argument("--key", default="")
     p.add_argument("--n", type=int, default=3); p.add_argument("--only", default="")
     p.add_argument("--out", default=r"C:\wagent\bench.jsonl"); p.add_argument("--work", default=r"C:\wagent\bench_sb")
-    p.add_argument("--max-steps", type=int, default=20)
+    p.add_argument("--max-steps", type=int, default=20); p.add_argument("--no-think", action="store_true")
     a = p.parse_args()
     names = [n for n in SCENARIOS if not a.only or n in a.only.split(",")]
     uia = UIA()
@@ -65,7 +65,7 @@ def main():
         for i in range(a.n):
             sb = os.path.join(a.work, name); shutil.rmtree(sb, ignore_errors=True); os.makedirs(sb)
             setup(sb)
-            llm = LLM(a.url, a.model, a.key)
+            llm = LLM(a.url, a.model, a.key, no_think=a.no_think)
             audit = Audit(os.path.join(a.work, "audit-%s-%d.jsonl" % (name, i)))
             t0 = time.time(); steps = []
             try:

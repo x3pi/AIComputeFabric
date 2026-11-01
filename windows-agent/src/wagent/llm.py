@@ -2,7 +2,8 @@
 import json, re, requests
 
 class LLM:
-    def __init__(self, base_url, model="", api_key="", timeout=300):
+    def __init__(self, base_url, model="", api_key="", timeout=300, no_think=False):
+        self.no_think = no_think
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.model, self.key, self.timeout = model, api_key, timeout
         self.tokens = 0
@@ -11,12 +12,14 @@ class LLM:
         h = {"Content-Type": "application/json"}
         if self.key:
             h["Authorization"] = "Bearer " + self.key
-        r = requests.post(self.url, headers=h, timeout=self.timeout, json={
-            "model": self.model, "messages": messages, "temperature": 0,
-            "max_tokens": max_tokens})
+        body = {"model": self.model, "messages": messages, "temperature": 0, "max_tokens": max_tokens}
+        if self.no_think:
+            body["chat_template_kwargs"] = {"enable_thinking": False}
+        r = requests.post(self.url, headers=h, timeout=self.timeout, json=body)
         r.raise_for_status()
         self.tokens += (r.json().get("usage") or {}).get("total_tokens", 0)
-        return r.json()["choices"][0]["message"]["content"]
+        txt = r.json()["choices"][0]["message"]["content"] or ""
+        return re.sub(r"<think>.*?</think>", "", txt, flags=re.S).strip()
 
 def parse_action(text):
     """Lay object JSON dau tien co khoa 'tool'. Tra (dict|None, loi|None)."""
