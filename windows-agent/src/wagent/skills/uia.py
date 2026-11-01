@@ -1,5 +1,17 @@
 """Skill UI Automation (chi chay duoc tren Windows). Uu tien pattern, khong dung SendKeys."""
-import subprocess, time
+import os, subprocess, time
+
+# Cua so agent KHONG duoc thay/dong: console/terminal chay chinh no (agent tu dong cua so me => tu giet minh).
+PROTECTED_CLASSES = {"ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS", "PseudoConsoleWindow"}
+
+def is_protected(class_name, pid, own_pids):
+    return class_name in PROTECTED_CLASSES or pid in own_pids
+
+def own_pids():
+    pids = {os.getpid()}
+    if hasattr(os, "getppid"):
+        pids.add(os.getppid())
+    return pids
 
 # whitelist app cho phep mo
 APPS = {"notepad": "notepad.exe", "calc": "calc.exe", "mspaint": "mspaint.exe"}
@@ -22,8 +34,9 @@ class UIA:
         a = self.auto
         self.ids, lines = {}, []
         win = a.GetForegroundControl().GetTopLevelControl() if a.GetForegroundControl() else None
-        if win is None or win.ControlTypeName == "PaneControl" and not win.Name:
-            wins = [w for w in a.GetRootControl().GetChildren() if w.ControlTypeName == "WindowControl" and w.Name]
+        if win is None or (win.ControlTypeName == "PaneControl" and not win.Name) or self._protected(win):
+            wins = [w for w in a.GetRootControl().GetChildren()
+                    if w.ControlTypeName == "WindowControl" and w.Name and not self._protected(w)]
             win = wins[0] if wins else None
         if win is None:
             return "(khong co cua so)"
@@ -73,6 +86,14 @@ class UIA:
             c.GetLegacyIAccessiblePattern().DoDefaultAction()
         return "da bam"
 
+    def _protected(self, w):
+        try:
+            return is_protected(w.ClassName, w.ProcessId, own_pids())
+        except Exception:
+            return True   # khong xac dinh duoc => coi nhu duoc bao ve
+
     def close_window(self, **_):
+        if self.win is None or self._protected(self.win):
+            raise ValueError("khong duoc dong cua so nay (cua so cua chinh agent/terminal)")
         self.win.GetWindowPattern().Close()
         return "da dong cua so"

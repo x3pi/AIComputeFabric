@@ -46,6 +46,28 @@ SCENARIOS = {
     "may_tinh_gui": (s6_setup, "Mo calc, dung may tinh bam 1 2 + 3 0 = de tinh 12+30 (observe de lay id cac nut), doc ket qua tren man hinh, ghi con so ket qua vao ketqua.txt. Xong thi done", s6_ver),
 }
 
+APP_IMAGES = ["notepad.exe", "CalculatorApp.exe", "calc.exe", "mspaint.exe"]
+
+def cleanup_apps(run=None):
+    """Dong cac app ma agent co the da mo (kich ban truoc de lai cua so/hop thoai 'Save changes' lam nhieu kich ban sau)."""
+    import subprocess
+    run = run or subprocess.run
+    for img in APP_IMAGES:
+        run(["taskkill", "/F", "/IM", img], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1)
+
+class BenchLocked(Exception):
+    pass
+
+def acquire_lock(path):
+    """Chi cho 1 benchmark chay mot luc (hai ban chay chung se dung sandbox/cua so cua nhau). Tra ve ham giai phong."""
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        raise BenchLocked("benchmark khac dang chay (khoa: %s)" % path)
+    os.write(fd, str(os.getpid()).encode()); os.close(fd)
+    return lambda: os.path.exists(path) and os.remove(path)
+
 def main():
     from .llm import LLM
     from .audit import Audit
@@ -57,12 +79,16 @@ def main():
     p.add_argument("--n", type=int, default=3); p.add_argument("--only", default="")
     p.add_argument("--out", default=r"C:\wagent\bench.jsonl"); p.add_argument("--work", default=r"C:\wagent\bench_sb")
     p.add_argument("--max-steps", type=int, default=20); p.add_argument("--no-think", action="store_true")
+    p.add_argument("--lock", default=r"C:\wagent\bench.lock")
     a = p.parse_args()
+    release = acquire_lock(a.lock)
+    import atexit; atexit.register(release)
     names = [n for n in SCENARIOS if not a.only or n in a.only.split(",")]
     uia = UIA()
     for name in names:
         setup, task, ver = SCENARIOS[name]
         for i in range(a.n):
+            cleanup_apps()
             sb = os.path.join(a.work, name); shutil.rmtree(sb, ignore_errors=True); os.makedirs(sb)
             setup(sb)
             llm = LLM(a.url, a.model, a.key, no_think=a.no_think)

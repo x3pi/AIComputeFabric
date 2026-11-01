@@ -276,3 +276,36 @@ def test_icon_is_valid_ico(tmp_path):
     for i in range(2):
         w, h, _, _, _, bpp, sz, off = struct.unpack("<BBBBHHII", d[6 + 16 * i:22 + 16 * i])
         assert d[off:off + 8] == b"\x89PNG\r\n\x1a\n" and off + sz <= len(d)
+
+def test_bench_lock_blocks_second_instance(tmp_path):
+    lk = str(tmp_path / "b.lock")
+    rel = bench.acquire_lock(lk)
+    with pytest.raises(bench.BenchLocked): bench.acquire_lock(lk)
+    rel(); bench.acquire_lock(lk)()   # giai phong xong thi lay lai duoc
+
+def test_cleanup_apps_kills_all_known_images(monkeypatch):
+    monkeypatch.setattr(bench.time, "sleep", lambda *_: None)
+    calls = []
+    bench.cleanup_apps(run=lambda cmd, **k: calls.append(cmd))
+    assert [c[3] for c in calls] == bench.APP_IMAGES and all(c[:3] == ["taskkill", "/F", "/IM"] for c in calls)
+
+# ---- bao ve cua so cua chinh agent ----
+from wagent.skills import uia as uiamod
+
+def test_protected_windows():
+    own = {100, 99}
+    assert uiamod.is_protected("ConsoleWindowClass", 5, own)          # console
+    assert uiamod.is_protected("CASCADIA_HOSTING_WINDOW_CLASS", 5, own)  # Windows Terminal
+    assert uiamod.is_protected("Notepad", 100, own)                   # chinh tien trinh agent
+    assert uiamod.is_protected("Notepad", 99, own)                    # tien trinh cha (cmd)
+    assert not uiamod.is_protected("Notepad", 5, own)
+
+def test_close_window_refuses_protected():
+    u = uiamod.UIA.__new__(uiamod.UIA)
+    class W:
+        ClassName = "ConsoleWindowClass"; ProcessId = 1
+        def GetWindowPattern(self): raise AssertionError("khong duoc goi Close")
+    u.win = W()
+    with pytest.raises(ValueError): u.close_window()
+    u.win = None
+    with pytest.raises(ValueError): u.close_window()
