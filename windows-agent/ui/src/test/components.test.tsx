@@ -50,6 +50,15 @@ describe("ConfigForm - chọn model", () => {
   });
 });
 
+describe("api - server khong ket noi duoc", () => {
+  it("turns a failed fetch into a clear Vietnamese message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const { api } = await import("../lib/api");
+    await expect(api.state()).rejects.toThrow(/Không kết nối được server Wagent/);
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("ApprovalCards", () => {
   const item = { id: "a1", reason: "ghi de file", action: { tool: "write_file", args: { path: "a.txt" } } };
   it("calls onDecide with allow/deny", () => {

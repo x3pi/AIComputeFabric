@@ -328,3 +328,9 @@ Chạy thật qua web UI (Chrome đang ở phía trước) cho thấy:
 5. Gợi ý lỗi: `click {"name":"Save As..."}` khớp cả tên có phím tắt (`Save As...\tCtrl+Shift+S`); `set_text` vào `[Text]` báo id `[Edit]` gần nhất. Mặc định `--max-steps` 12 -> 20.
 Kết quả (1 lần chạy thật, chưa phải benchmark): agent lưu file bằng Notepad (File -> Save As -> gõ đường dẫn vào `File name` -> Save) và đọc lại xác nhận; trước sửa: hết bước, không có file. Test 65 đạt, đã mutation-test từng sửa đổi.
 Chưa làm: thêm kịch bản benchmark "lưu bằng Notepad"; một lần chạy chưa chứng minh độ ổn định. Agent từng "lách" bằng `write_file`/`move_file` file cũ khi GUI lỗi - bản tóm tắt vẫn nói "đã tạo file".
+
+### "Failed to fetch" = server Wagent sập (2026-11-02 10:49)
+- Đo: không còn tiến trình `pythonw`, cổng 8765 không LISTEN; Windows ghi `APPCRASH` `pythonw.exe` / `_ctypes.pyd`, exception `0xc0000005` (access violation, không bắt được bằng try/except Python). Audit chỉ có dòng `start` của nhiệm vụ mới -> sập ngay ở các bước đầu của nhiệm vụ.
+- Nguyên nhân CHƯA chứng minh; giả thuyết hợp lý nhất: lần sửa trước (`open_app` thăm dò mỗi 0,5 s, `observe` duyệt) chạm thuộc tính của nhiều đối tượng UIA/COM cửa sổ desktop (có cửa sổ biến mất giữa chừng như NVIDIA Overlay). Sửa: thay bằng Win32 `EnumWindows`/`GetForegroundWindow` (chỉ đọc số nguyên) và chỉ tạo đối tượng UIA cho đúng một cửa sổ được chọn (`ControlFromHandle`).
+- Kiểm: 6 nhiệm vụ "lưu bằng Notepad" liên tiếp qua web server: 6/6 `done`, file tạo bằng đường GUI (File -> Save As -> Save, không dùng write_file), không có APPCRASH mới. 6 lần chưa đủ để nói lỗi đã hết; theo dõi `Application` log (Id 1000, pythonw.exe).
+- UI: `fetch` thất bại giờ báo "Không kết nối được server Wagent ... bấm lại icon Wagent" thay vì "Failed to fetch". Phục hồi sau sập: bấm lại icon Wagent (launcher bật server nếu cổng đóng).

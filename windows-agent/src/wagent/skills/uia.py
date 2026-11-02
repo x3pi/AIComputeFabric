@@ -16,6 +16,36 @@ def own_pids():
 # whitelist app cho phep mo
 APPS = {"notepad": "notepad.exe", "calc": "calc.exe", "mspaint": "mspaint.exe"}
 
+def top_windows():
+    """Cua so top-level hien thi, co tieu de, theo z-order (tren cung truoc): [(hwnd, pid, title)].
+    Dung Win32 EnumWindows (chi doc so nguyen) thay vi duyet doi tuong UIA/COM cua ca desktop: tranh crash native
+    (0xc0000005 trong _ctypes) khi cua so bien mat giua luc duyet."""
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.windll.user32
+    out = []
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def cb(hwnd, _):
+        if u.IsWindowVisible(hwnd):
+            n = u.GetWindowTextLengthW(hwnd)
+            if n:
+                buf = ctypes.create_unicode_buffer(n + 1)
+                u.GetWindowTextW(hwnd, buf, n + 1)
+                pid = wintypes.DWORD()
+                u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                out.append((int(hwnd), int(pid.value), buf.value))
+        return True
+    u.EnumWindows(cb, 0)
+    return out
+
+def foreground_pid():
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.windll.user32
+    pid = wintypes.DWORD()
+    u.GetWindowThreadProcessId(u.GetForegroundWindow(), ctypes.byref(pid))
+    return int(pid.value) or None
+
 # thu theo thu tu: (ten pattern, ham goi)
 CLICK_PATTERNS = [("Invoke", "Invoke"), ("ExpandCollapse", "Expand"), ("SelectionItem", "Select"),
                   ("Toggle", "Toggle"), ("LegacyIAccessible", "DoDefaultAction")]
@@ -81,7 +111,7 @@ class UIA:
             raise ValueError("app khong nam trong whitelist: %s (cho phep: %s)" % (name, ", ".join(APPS)))
         def tops():
             try:
-                return {c.NativeWindowHandle: c.ProcessId for c in self.auto.GetRootControl().GetChildren()}
+                return {h: pid for h, pid, _ in top_windows()}
             except Exception:
                 return {}
         before = tops()
@@ -107,10 +137,12 @@ class UIA:
             win = wins[0] if wins else None
         if self.opened_pids:
             try:
-                tl = [w for w in a.GetRootControl().GetChildren() if w.ControlTypeName == "WindowControl" and w.Name and not self._protected(w)]
-                k = pick_window(win.ProcessId if win is not None else None, self.opened_pids, [w.ProcessId for w in tl])
+                tl = [w for w in top_windows() if w[2] != "Program Manager"]
+                k = pick_window(foreground_pid(), self.opened_pids, [w[1] for w in tl])
                 if k is not None:
-                    win = tl[k]
+                    c = a.ControlFromHandle(tl[k][0])
+                    if c is not None and not self._protected(c):
+                        win = c
             except Exception:
                 pass
         if win is None:

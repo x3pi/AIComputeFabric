@@ -10,10 +10,15 @@ export class ApiError extends Error {
 }
 
 async function call<T>(path: string, init?: RequestInit, parse?: (x: unknown) => T): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { "X-Token": token, "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: { "X-Token": token, "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    });
+  } catch {
+    throw new ApiError(0, "Không kết nối được server Wagent (có thể đã dừng/sập). Bấm lại icon Wagent trên Desktop rồi tải lại trang.");
+  }
   if (!res.ok) {
     let msg = res.statusText;
     try {

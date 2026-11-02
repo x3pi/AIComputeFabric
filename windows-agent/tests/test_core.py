@@ -615,16 +615,12 @@ def test_open_app_waits_for_slow_window(monkeypatch):
     from wagent.skills.uia import UIA
     import wagent.skills.uia as mod
     state = {"n": 0}
-    class W:
-        def __init__(s, h, p): s.NativeWindowHandle, s.ProcessId = h, p
-    class Root:
-        def GetChildren(s):
-            state["n"] += 1
-            return [W(1, 10)] + ([W(2, 20)] if state["n"] >= 4 else [])   # cua so moi chi xuat hien sau vai lan do
-    class Auto:
-        def GetRootControl(s): return Root()
-    u = UIA.__new__(UIA); u.auto, u.ids, u.win = Auto(), {}, None
-    u.opened_hwnds, u.opened_pids, u.friendly = set(), set(), False
+    def fake_tops():
+        state["n"] += 1
+        return [(1, 10, "Chrome")] + ([(2, 20, "Untitled - Notepad")] if state["n"] >= 4 else [])   # cua so moi chi xuat hien sau vai lan do
+    monkeypatch.setattr(mod, "top_windows", fake_tops)
     monkeypatch.setattr(mod.time, "sleep", lambda *_: None); monkeypatch.setattr(mod.subprocess, "Popen", lambda *_: None)
+    u = UIA.__new__(UIA); u.auto, u.ids, u.win = None, {}, None
+    u.opened_hwnds, u.opened_pids, u.friendly = set(), set(), False
     u.open_app("notepad")
     assert u.opened_hwnds == {2} and u.opened_pids == {20}
