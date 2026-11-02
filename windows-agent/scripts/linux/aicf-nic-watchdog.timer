@@ -1,0 +1,7 @@
+[Unit]
+Description=AICF NIC RX-hang watchdog timer
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+[Install]
+WantedBy=timers.target

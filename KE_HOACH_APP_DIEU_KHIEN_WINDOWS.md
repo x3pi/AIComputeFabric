@@ -291,3 +291,7 @@ Chi phí: reflect làm tăng token/lượt đáng kể (~5x trên held3).
 - Nguyên nhân: card r8169/RTL8125 trên Linux treo RX (bộ đếm RX đứng; AER CmpltTO + "transmit queue 0 timed out"). Cáp không hỏng. Windows rơi về APIPA 169.254.x.x.
 - Khắc phục: `ip link set enp133s0 down/up` (nmcli con down/up không reset PHY). Có thể tái diễn; chưa đổi tham số kernel/ASPM.
 - Windows đặt IP tĩnh 10.42.0.225; thêm reservation dnsmasq `/etc/NetworkManager/dnsmasq-shared.d/aicf-windows-fixed-ip.conf` (có hiệu lực khi NM khởi động lại kết nối shared).
+
+### Giảm thiểu treo card mạng (2026-11-02)
+- Reservation dnsmasq đã nạp (reload NM + up lại kết nối); Windows vẫn 10.42.0.225, engine merged Coder vẫn trả lời.
+- Watchdog: `windows-agent/scripts/linux/aicf-nic-watchdog.{sh,service,timer}` (cài ở `/usr/local/sbin` + `/etc/systemd/system`, timer mỗi 1 phút): nếu RX đứng mà TX tăng >=5 gói giữa hai lần kiểm tra thì `ip link down/up` và ghi `logger -t aicf-nic-watchdog`. Logic đã kiểm bằng số liệu giả (đứng→flap, tăng→không); CHƯA gặp lần treo thật để xác nhận watchdog phục hồi được. Chưa đổi tham số boot (pcie_aspm=off) - cần quyết định riêng.

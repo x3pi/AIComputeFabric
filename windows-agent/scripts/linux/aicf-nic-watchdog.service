@@ -1,0 +1,5 @@
+[Unit]
+Description=AICF NIC RX-hang watchdog
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/aicf-nic-watchdog.sh
