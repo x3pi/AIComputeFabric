@@ -275,3 +275,19 @@ windows-agent/
   - **Held-out 2 (khách quan với v2):** 24/30 → 24/30, **không có lợi ròng**: `g_dem_md` 0→4/5 nhưng `g_chuyen_hoa_don` **5→0/5 (thụt lùi)** — nguyên nhân: model `list_dir` thư mục đích chưa tồn tại, gặp lỗi, rồi kết thúc mà chưa làm gì; v3 sửa bằng `list_dir` thân thiện + cảnh báo “chưa thay đổi gì”.
   - **Chi phí:** token/lần chạy tăng ~3–6 lần (ví dụ held-out 2: 3107 → 8469).
   - **Lượt đo cuối cho v3 (held-out 3 mới + chạy lại các bộ cũ) CHƯA lấy được kết quả:** máy Windows mất kết nối (ARP FAILED, ssh “No route to host”) trong lúc chạy. Dữ liệu nằm ở `C:\wagent\fin_*.jsonl` (+ `fin.log`) trên Windows; lấy về khi máy online lại. **Chưa có kết luận cho v3.** Lưu ý: held-out 1 và 2 đã bị “nhìn” khi sửa v3 nên không còn khách quan; chỉ held-out 3 là khách quan.
+
+## Kết quả cuối cải thiện agent (2026-11-02, Coder, temp 0.3, n=5/kịch bản, kiểm bằng trạng thái thật)
+| Bộ | Baseline | Cải thiện | Ghi chú |
+|---|---|---|---|
+| held3 (không thiên lệch) | 29/30 | 30/30 | quá dễ, chạm trần; token/lượt 2022→10178 |
+| held2 | 24/30 | 29/30 | đã thấy khi chỉnh -> thiên lệch |
+| held1 | 23/30 | 30/30 | đã thấy khi chỉnh -> thiên lệch |
+| dev (v3, chạy lại hợp lệ) | 15/30 | 17/30 | v1 21, v2 18; chênh lệch nằm trong nhiễu của n=5 -> KHÔNG kết luận được cải thiện trên dev |
+
+Dev còn 0/5: `doi_ten_hang_loat` (model báo "đã đổi tên" nhưng trạng thái sai), `may_tinh_gui`. `notepad_ghi_file` giảm 5→2 từ v2 (vòng lặp `open_app` bị loop_guard cắt); nguyên nhân chưa xác định. Lần chạy dev v3 đầu tiên không hợp lệ (mạng đứt, 19 crash).
+Chi phí: reflect làm tăng token/lượt đáng kể (~5x trên held3).
+
+## Sự cố mạng Linux–Windows (2026-11-01/02)
+- Nguyên nhân: card r8169/RTL8125 trên Linux treo RX (bộ đếm RX đứng; AER CmpltTO + "transmit queue 0 timed out"). Cáp không hỏng. Windows rơi về APIPA 169.254.x.x.
+- Khắc phục: `ip link set enp133s0 down/up` (nmcli con down/up không reset PHY). Có thể tái diễn; chưa đổi tham số kernel/ASPM.
+- Windows đặt IP tĩnh 10.42.0.225; thêm reservation dnsmasq `/etc/NetworkManager/dnsmasq-shared.d/aicf-windows-fixed-ip.conf` (có hiệu lực khi NM khởi động lại kết nối shared).
