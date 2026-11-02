@@ -210,3 +210,11 @@ Giới hạn của đường nhanh: khóa không hết hạn và chưa có hạn
 4. **Ghi nội dung prompt hay không?** *Mặc định: không ghi nội dung, chỉ ghi số liệu và hành động quản trị.*
 5. **Hạn mức mặc định cho khách và người quen** (token/ngày, đồng thời, mô hình được dùng).
 6. **Có cho phép Coder-30B ghép hai máy phục vụ người ngoài không?** *Mặc định: không; chỉ chủ và tenant tin cậy.*
+
+## Phase 0 đã triển khai (2026-11-02): chặn đường vòng tới engine :18090
+- Trước: `llama-server` nghe 0.0.0.0:18090, không key, không firewall; máy bất kỳ trong LAN gọi thẳng `chat/completions`, `/props`, `/slots` (đo: HTTP 200 không cần key; gateway :18080 thì 401).
+- Sau: bảng nft `inet aicf_engine` (file `windows-agent/scripts/linux/aicf-engine-firewall.nft`, service `aicf-engine-firewall`, bật cùng máy). Cho phép :18090 từ `lo` (gồm gateway/worker-guard gọi vào `192.168.1.40:18090`) và Windows 10.42.0.225 qua `enp133s0`; mọi nguồn khác bị DROP.
+- Đã đo: Linux→127.0.0.1 và →192.168.1.40: 200; Windows→10.42.0.1:18090: 200; máy giả lập (netns 10.99.0.2) → :18090 timeout (counter drop tăng), cùng máy đó trước khi áp quy tắc: 200; :18080 không bị ảnh hưởng.
+- CHƯA đo: gọi qua gateway bằng key tenant thật (key chỉ lưu dạng băm; không tạo tenant thử). Đường gateway→engine tương đương Linux→192.168.1.40:18090 (đã đo 200).
+- Gỡ khẩn: `sudo systemctl disable --now aicf-engine-firewall` (hoặc `sudo nft delete table inet aicf_engine`).
+- Còn lại của kế hoạch: cấp key theo từng người, TLS/VPN cho truy cập từ ngoài, giới hạn tốc độ. RDP (mstsc) là việc riêng, không dùng cổng này.

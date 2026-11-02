@@ -1,0 +1,11 @@
+[Unit]
+Description=AICF: chan truy cap truc tiep engine :18090 tu ngoai may/Windows
+After=network-pre.target
+Before=network.target
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/aicf-engine-firewall.nft
+ExecStop=/usr/sbin/nft delete table inet aicf_engine
+[Install]
+WantedBy=multi-user.target
