@@ -444,3 +444,60 @@ def test_heldout3_verifiers():
     sb = tempfile.mkdtemp(); bench.HELDOUT3["k_them_tien_to"][0](sb)
     for n in ("img1.png", "img2.png"): files.move_file(sb, "pics/" + n, "pics/anh_" + n)
     assert bench.HELDOUT3["k_them_tien_to"][2](sb)
+
+
+# ---- v4: goi y bam nham Text, bat loi chep sai ten khi doi ten ----
+def test_click_hint_points_to_preceding_button():
+    from wagent.skills.uia import click_hint
+    kinds = {49: ("ButtonControl", "Zero"), 50: ("TextControl", "0"), 51: ("ButtonControl", "One")}
+    m = click_hint(kinds, 50)
+    assert "id 49" in m and "Zero" in m and "id 51" not in m
+
+def test_click_hint_without_button():
+    from wagent.skills.uia import click_hint
+    assert "[Button]" in click_hint({5: ("TextControl", "x")}, 5)
+
+def test_rename_typo_detected():
+    from wagent.loop import rename_typos, reflection_message
+    before = [("docs/Bao Cao Q1.txt", 14), ("docs/ghi chu.txt", 11)]
+    after = [("docs/bao_bao_q1.txt", 14), ("docs/ghi_chu.txt", 11)]
+    assert rename_typos(before, after) == [("docs/Bao Cao Q1.txt", "docs/bao_bao_q1.txt")]
+    assert "bao_bao_q1.txt" in reflection_message(before, after, "doi ten")
+
+def test_rename_ok_not_flagged():
+    from wagent.loop import rename_typos
+    assert rename_typos([("docs/Bao Cao Q1.txt", 14)], [("docs/bao_cao_q1.txt", 14)]) == []
+    assert rename_typos([("a.txt", 3)], [("a.md", 3)]) == []                   # doi duoi hop le
+    assert rename_typos([("in/x.txt", 3)], [("out/txt/x.txt", 3)]) == []       # chuyen thu muc, giu ten
+    assert rename_typos([("a.txt", 3), ("b.txt", 3)], [("a1.txt", 3), ("b1.txt", 3)]) == []  # mo ho (cung kich thuoc) -> bo qua
+
+
+def test_find_by_name():
+    import pytest
+    from wagent.skills.uia import find_by_name
+    k = {49: ("ButtonControl", "Zero"), 50: ("TextControl", "0"), 51: ("ButtonControl", "One"), 60: ("ButtonControl", "One")}
+    assert find_by_name(k, "zero") == 49
+    with pytest.raises(ValueError, match="nhieu"): find_by_name(k, "One")
+    with pytest.raises(ValueError, match="khong co"): find_by_name(k, "0")        # Text khong tinh
+    with pytest.raises(ValueError, match="observe"): find_by_name({}, "Zero")
+
+def test_agent_click_by_name_and_guard_still_applies(tmp_path):
+    from wagent.loop import Agent, Improve
+    from wagent.audit import Audit
+    class U:
+        def __init__(s): s.clicked = []
+        def find_by_name(s, n):
+            if n == "Send": return 7
+            raise ValueError("khong co phan tu bam duoc ten %r" % n)
+        def describe(s, i): return "Send" if i == 7 else ""
+        def click(s, id=None, name=None, **_): s.clicked.append(id if id is not None else name); return "da bam"
+    class L:
+        def __init__(s, outs): s.o = list(outs)
+        def chat(s, m): return s.o.pop(0)
+    u = U()
+    out = ['{"tool":"click","args":{"name":"Nope"}}', '{"tool":"click","args":{"name":"Send"}}', '{"tool":"done","args":{"summary":"x"}}']
+    a = Agent(L(out), u, Audit(str(tmp_path / "a.jsonl")), str(tmp_path), improve=Improve(True, True, False, False))
+    a.run("t")
+    assert u.clicked == []          # 'Send' la ten rui ro -> guard van chan (DenyAll) sau khi doi name->id
+    log = (tmp_path / "a.jsonl").read_text()
+    assert '"event": "approval"' in log and '"id": 7' in log   # guard thay id da giai ma, khong phai name

@@ -295,3 +295,26 @@ Chi phí: reflect làm tăng token/lượt đáng kể (~5x trên held3).
 ### Giảm thiểu treo card mạng (2026-11-02)
 - Reservation dnsmasq đã nạp (reload NM + up lại kết nối); Windows vẫn 10.42.0.225, engine merged Coder vẫn trả lời.
 - Watchdog: `windows-agent/scripts/linux/aicf-nic-watchdog.{sh,service,timer}` (cài ở `/usr/local/sbin` + `/etc/systemd/system`, timer mỗi 1 phút): nếu RX đứng mà TX tăng >=5 gói giữa hai lần kiểm tra thì `ip link down/up` và ghi `logger -t aicf-nic-watchdog`. Logic đã kiểm bằng số liệu giả (đứng→flap, tăng→không); CHƯA gặp lần treo thật để xác nhận watchdog phục hồi được. Chưa đổi tham số boot (pcie_aspm=off) - cần quyết định riêng.
+
+## Vòng cải thiện v4/v5 (2026-11-02) - đi từ audit từng bước của ca thất bại
+Nguyên nhân gốc đo được (đọc `bench_sb/audit-*.jsonl`, không đoán):
+| Ca | Nguyên nhân | Sửa |
+|---|---|---|
+| doi_ten_hang_loat 0/5 | model chép sai tên ở cả 5 lần: `Bao Cao Q1` -> `bao_bao_q1`; reflection chỉ liệt kê tên nên không bắt được | `rename_typos`: ghép file mất/mới cùng kích thước, tên khác nhau ngoài hoa/thường/dấu cách/gạch nhưng rất gần -> cảnh báo kèm tên chuẩn hoá đúng |
+| may_tinh_gui 0/5 | (a) bấm nhầm id `[Text]` (nhãn đi sau nút) -> COMError, mất chữ số; (b) đoán id số học sai (bấm Five thay vì Zero) | (a) `click_hint` gợi ý nút ngay trước; (b) `click {"name":"Eight"}` -> `find_by_name` rồi đổi sang id TRƯỚC guard (guard vẫn chặn click rủi ro) |
+| notepad_ghi_file 0-2/5 | `observe` trả `Program Manager` (desktop) thay vì Notepad -> model lặp `open_app` đến khi loop_guard cắt. Đây là lỗi của công cụ, không phải của model | `observe` bỏ qua `Program Manager` |
+
+Đo lại (Coder, temp 0.3, seed=i+1, kiểm bằng trạng thái thật). `held4` được viết SAU khi sửa v4 và chưa dùng để chỉnh:
+| Bộ | Baseline | v3 | v4 | **v5** |
+|---|---|---|---|---|
+| held4 (n=8, không thiên lệch) | 8/24 | - | 17/24 | **24/24** |
+| dev (n=5) | 15/30 | 17/30 | 15/30 | **29/30** |
+| held | 23/30 | 30/30 | 30/30 | 30/30 |
+| held2 | 24/30 | 29/30 | 25/30 | 25/30 |
+| held3 | 29/30 | 30/30 | - | 30/30 |
+Lưu ý trung thực:
+- dev đã được dùng để CHẨN ĐOÁN nên 29/30 thiên lệch; bằng chứng không thiên lệch là held4 (8/24 -> 24/24; thang đo mới, n=8). Hai kịch bản máy tính của held4 khác dev (số khác, có phép nhân), nhưng cùng ứng dụng, nên chưa chứng minh tổng quát hoá sang ứng dụng GUI khác.
+- Phần đổi tên (`rename_typos`) KHÔNG được held4 kiểm chứng: ở held4 model không chép sai tên (8/8 cả baseline). Chỉ có dev (4/5) làm bằng chứng, và dev bị thiên lệch.
+- held2 `g_dem_md` (đếm file .md) 0/5: model liệt kê đúng 3 file nhưng ghi `4` (lỗi đếm của model); kịch bản dao động 0/5 -> 4/5 -> 0/5 theo phiên bản prompt. Chưa sửa.
+- Không tách được đóng góp từng sửa đổi (không chạy ablation); v4->v5 gồm cả ba thay đổi cùng lúc.
+- Test: 53 đạt; đã mutation-test (bỏ ngưỡng giống nhau, bỏ chuẩn hoá tên, bỏ bước đổi name->id đều làm test hỏng).

@@ -137,6 +137,20 @@ def k6_setup(sb):
     _w(sb, "cfg/a.ini", "A"); _w(sb, "cfg/b.ini", "B"); _w(sb, "cfg/readme.txt", "R")
 def k6_ver(sb): return _ls(sb, "cfg/backup") == ["a.ini", "b.ini"] and _ls(sb, "cfg") == ["a.ini", "b.ini", "backup", "readme.txt"]
 
+# ---- bo HELD-OUT 4 (viet SAU khi sua v4; chua tung dung de chinh) ----
+def m1_setup(sb):
+    for n in ["Hoa Don Thang Ba.txt", "Bien Ban Hop.txt", "Thu Moi.txt"]: _w(sb, "van_ban/" + n, n)
+def m1_ver(sb): return _ls(sb, "van_ban") == ["bien_ban_hop.txt", "hoa_don_thang_ba.txt", "thu_moi.txt"]
+def m2_setup(sb): pass
+def m2_ver(sb): return (_r(sb, "kq.txt") or "").strip() == "112"
+def m3_setup(sb): pass
+def m3_ver(sb): return (_r(sb, "kq.txt") or "").strip() == "72"
+HELDOUT4 = {
+    "m_doi_ten_van_ban": (m1_setup, "Trong thu muc van_ban/, doi ten moi file thanh chu thuong va thay dau cach bang gach duoi (tao ban moi bang move_file den ten moi). Xong thi done", m1_ver),
+    "m_tinh_cong": (m2_setup, "Mo calc, dung may tinh bam 4 5 + 6 7 = (observe de lay id cac nut), doc ket qua tren man hinh, ghi con so ket qua vao kq.txt. Xong thi done", m2_ver),
+    "m_tinh_nhan": (m3_setup, "Mo calc, dung may tinh bam 9 x 8 = (nut nhan la 'Multiply by'; observe de lay id cac nut), doc ket qua tren man hinh, ghi con so ket qua vao kq.txt. Xong thi done", m3_ver),
+}
+
 HELDOUT3 = {
     "k_ten_ban_ghi": (k1_setup, "Tao 3 file trong sao_luu/: ban_ghi_hai.txt noi dung a, ban_ghi_ba.txt noi dung b, ban_ghi_bon.txt noi dung c. Xong thi done", k1_ver),
     "k_gom_log": (k2_setup, "Chuyen tat ca file .log trong app/ vao app/logs/. File khac giu nguyen. Xong thi done", k2_ver),
@@ -159,13 +173,13 @@ def main():
     p.add_argument("--n", type=int, default=3); p.add_argument("--only", default="")
     p.add_argument("--out", default=r"C:\wagent\bench.jsonl"); p.add_argument("--work", default=r"C:\wagent\bench_sb")
     p.add_argument("--max-steps", type=int, default=20); p.add_argument("--no-think", action="store_true")
-    p.add_argument("--set", default="dev", choices=["dev", "held", "held2", "held3", "all"]); p.add_argument("--baseline", action="store_true", help="tat moi cai tien cua agent")
+    p.add_argument("--set", default="dev", choices=["dev", "held", "held2", "held3", "held4", "all"]); p.add_argument("--baseline", action="store_true", help="tat moi cai tien cua agent")
     p.add_argument("--temp", type=float, default=0.0); p.add_argument("--tag", default="")
     p.add_argument("--lock", default=r"C:\wagent\bench.lock")
     a = p.parse_args()
     release = acquire_lock(a.lock)
     import atexit; atexit.register(release)
-    pool = {**SCENARIOS, **HELDOUT, **HELDOUT2, **HELDOUT3} if a.set == "all" else {"held": HELDOUT, "held2": HELDOUT2, "held3": HELDOUT3}.get(a.set, SCENARIOS)
+    pool = {**SCENARIOS, **HELDOUT, **HELDOUT2, **HELDOUT3, **HELDOUT4} if a.set == "all" else {"held": HELDOUT, "held2": HELDOUT2, "held3": HELDOUT3, "held4": HELDOUT4}.get(a.set, SCENARIOS)
     names = [n for n in pool if not a.only or n in a.only.split(",")]
     improve = Improve.none() if a.baseline else Improve.all()
     uia = UIA()

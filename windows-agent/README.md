@@ -30,7 +30,7 @@ GUI automation cần phiên tương tác của user (phiên ở trạng thái "D
 Task chạy ở Medium integrity (token lọc UAC), không có quyền admin.
 
 ## Công cụ (skill)
-`observe, open_app(whitelist: notepad|calc|mspaint), set_text, read_text, click, close_window, read_file, write_file, list_dir, move_file, copy_file, done`. File chỉ trong sandbox (`C:\wagent\sandbox`), chống `..` và symlink.
+`observe, open_app(whitelist: notepad|calc|mspaint), set_text, read_text, click (theo `id` hoặc `name` của nút, vd `{"name":"Eight"}`), close_window, read_file, write_file, list_dir, move_file, copy_file, done`. File chỉ trong sandbox (`C:\wagent\sandbox`), chống `..` và symlink.
 
 ## An toàn
 - Tool ngoài whitelist → từ chối. Cần duyệt: click phần tử tên rủi ro (delete/send/pay/install/password…), ghi đè file, văn bản giống mật khẩu.

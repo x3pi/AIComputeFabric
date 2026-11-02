@@ -1,0 +1,10 @@
+[Unit]
+Description=AICF: tat EEE tren enp133s0 (nghi pham treo RX cua RTL8125)
+After=network-pre.target sys-subsystem-net-devices-enp133s0.device
+Wants=sys-subsystem-net-devices-enp133s0.device
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ethtool --set-eee enp133s0 eee off
+[Install]
+WantedBy=multi-user.target
