@@ -24,6 +24,9 @@ export const State = z.object({
 });
 export type State = z.infer<typeof State>;
 
+export const Models = z.object({ models: z.array(z.string()) });
+export type Models = z.infer<typeof Models>;
+
 export const RunRequest = z.object({
   url: z.string().url("URL không hợp lệ (vd http://10.42.0.1:18090/v1)"),
   model: z.string().optional(),

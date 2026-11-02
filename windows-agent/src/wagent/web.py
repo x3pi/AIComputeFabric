@@ -46,6 +46,24 @@ class WebApprover:
         with self.s.lock:
             return self.s.pending.pop(pid)["ok"] if ev.is_set() else (self.s.pending.pop(pid), False)[1]
 
+def list_models(url, key="", timeout=5, _open=None):
+    """Hoi server model (OpenAI-compatible) danh sach model: GET <url>/models. Chi http/https, toi da 1 MB. Tra ve [id]."""
+    import urllib.request
+    u = urlparse(str(url))
+    if u.scheme not in ("http", "https") or not u.netloc:
+        raise ValueError("URL phai la http(s)://host[:port]/v1")
+    req = urllib.request.Request(str(url).rstrip("/") + "/models")
+    if key:
+        req.add_header("Authorization", "Bearer " + key)
+    with (_open or urllib.request.urlopen)(req, timeout=timeout) as r:
+        raw = r.read(1_000_001)
+    if len(raw) > 1_000_000:
+        raise ValueError("phan hoi qua lon")
+    data = json.loads(raw).get("data")
+    if not isinstance(data, list):
+        raise ValueError("phan hoi khong phai danh sach model OpenAI")
+    return [str(m["id"]) for m in data if isinstance(m, dict) and "id" in m]
+
 def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=120, ui_dir=None):
     """make_agent(cfg, log, approver, stop_event) -> obj co .run(task)->(status, summary)"""
     token = token or secrets.token_urlsafe(16)
@@ -96,6 +114,14 @@ def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=1
                     st.stop.clear()
                 threading.Thread(target=self._work, args=(d,), daemon=True).start()
                 return self._send(200, '{"ok":true}')
+            if p == "/api/models":
+                try:
+                    return self._send(200, json.dumps({"models": list_models(d.get("url", ""), d.get("key", ""))}))
+                except Exception as e:     # khong lo noi dung phan hoi cua server dich; chi loai loi
+                    code = getattr(e, "code", None)
+                    msg = ("server model tra HTTP %s%s" % (code, " (can API key?)" if code in (401, 403) else "")) if code else \
+                          "%s: %s" % (type(e).__name__, e)
+                    return self._send(502, json.dumps({"error": msg[:200]}))
             if p == "/api/stop":
                 st.stop.set()
                 with st.lock:

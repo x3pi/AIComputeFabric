@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApprovalCards } from "../components/ApprovalCard";
 import { ConfigForm } from "../components/ConfigForm";
@@ -23,6 +23,30 @@ describe("ConfigForm", () => {
   it("is disabled while running", () => {
     render(<ConfigForm disabled onRun={() => {}} />);
     expect((screen.getByRole("button", { name: "Đang chạy…" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("ConfigForm - chọn model", () => {
+  it("loads models into a select and submits the chosen one", async () => {
+    const onRun = vi.fn();
+    const load = vi.fn().mockResolvedValue(["qwen-a", "qwen-b"]);
+    render(<ConfigForm disabled={false} onRun={onRun} loadModels={load} />);
+    fireEvent.change(screen.getByLabelText(/API key/), { target: { value: "k1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Tải danh sách" }));
+    await waitFor(() => expect((screen.getByLabelText(/^Model/) as HTMLElement).tagName).toBe("SELECT"));
+    const sel = screen.getByLabelText(/^Model/) as HTMLSelectElement;
+    expect(load).toHaveBeenCalledWith("http://10.42.0.1:18090/v1", "k1");
+    fireEvent.change(sel, { target: { value: "qwen-b" } });
+    fireEvent.change(screen.getByLabelText("Nhiệm vụ"), { target: { value: "mo notepad" } });
+    fireEvent.click(screen.getByRole("button", { name: "Chạy" }));
+    expect(onRun.mock.calls[0]?.[0].model).toBe("qwen-b");
+  });
+  it("shows the error and keeps a free-text input when loading fails", async () => {
+    const load = vi.fn().mockRejectedValue(new Error("server model tra HTTP 401 (can API key?)"));
+    render(<ConfigForm disabled={false} onRun={() => {}} loadModels={load} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tải danh sách" }));
+    expect(await screen.findByText(/API key\?/)).toBeTruthy();
+    expect((screen.getByLabelText(/^Model/) as HTMLElement).tagName).toBe("INPUT");
   });
 });
 

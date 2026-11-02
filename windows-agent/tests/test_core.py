@@ -501,3 +501,54 @@ def test_agent_click_by_name_and_guard_still_applies(tmp_path):
     assert u.clicked == []          # 'Send' la ten rui ro -> guard van chan (DenyAll) sau khi doi name->id
     log = (tmp_path / "a.jsonl").read_text()
     assert '"event": "approval"' in log and '"id": 7' in log   # guard thay id da giai ma, khong phai name
+
+
+# ---- chon model: /api/models ----
+def _fake_models_server(handler_body, code=200, need_key=None):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    seen = {}
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            seen["path"], seen["auth"] = self.path, self.headers.get("Authorization")
+            if need_key and seen["auth"] != "Bearer " + need_key:
+                self.send_response(401); self.end_headers(); return
+            b = handler_body if isinstance(handler_body, bytes) else json.dumps(handler_body).encode()
+            self.send_response(code); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, seen, "http://127.0.0.1:%d/v1" % srv.server_address[1]
+
+def test_models_listed_and_key_sent():
+    m, seen, url = _fake_models_server({"data": [{"id": "qwen-a"}, {"id": "qwen-b"}, {"nope": 1}]}, need_key="k1")
+    srv, u, b = _web(['{"tool":"done"}'])
+    r = _call(b, "/api/models", {"url": url, "key": "k1"})
+    assert r == {"models": ["qwen-a", "qwen-b"]}
+    assert seen["path"] == "/v1/models" and seen["auth"] == "Bearer k1"
+
+def test_models_wrong_key_is_clear_error():
+    m, seen, url = _fake_models_server({"data": []}, need_key="k1")
+    srv, u, b = _web(['{"tool":"done"}'])
+    with pytest.raises(urllib.error.HTTPError) as e: _call(b, "/api/models", {"url": url, "key": "sai"})
+    assert e.value.code == 502 and "API key" in json.loads(e.value.read())["error"]
+
+def test_models_rejects_non_http_and_junk():
+    srv, u, b = _web(['{"tool":"done"}'])
+    for bad in ("file:///etc/passwd", "ftp://x/y", "khong-phai-url", ""):
+        with pytest.raises(urllib.error.HTTPError) as e: _call(b, "/api/models", {"url": bad})
+        assert e.value.code == 502
+    m, seen, url = _fake_models_server(b"<html>khong phai json</html>")
+    with pytest.raises(urllib.error.HTTPError): _call(b, "/api/models", {"url": url})
+
+def test_models_requires_token():
+    srv, u, b = _web(['{"tool":"done"}'])
+    with pytest.raises(urllib.error.HTTPError) as e: _call(b, "/api/models", {"url": "http://127.0.0.1:1/v1"}, tok="bad")
+    assert e.value.code == 403
+
+def test_list_models_never_opens_bad_scheme():
+    from wagent.web import list_models
+    opened = []
+    def spy(req, timeout=None): opened.append(req.full_url); raise AssertionError("khong duoc mo")
+    for bad in ("file:///etc/passwd", "ftp://h/v1", "javascript:alert(1)", "//h/v1", "h:80/v1"):
+        with pytest.raises(ValueError): list_models(bad, _open=spy)
+    assert opened == []

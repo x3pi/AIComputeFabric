@@ -21,6 +21,7 @@ Từ Linux: `scripts/sync-to-windows.sh` (đẩy mã sang `C:\wagent`).
 ## Chạy
 - Một nhiệm vụ: `python -m wagent --url http://HOST:PORT/v1 [--key K] [--model M] "nhiệm vụ"`
 - Giao diện web: `python -m wagent --web 8765` → in `http://127.0.0.1:8765/?t=<token>`. Chỉ nghe 127.0.0.1; từ máy khác dùng `ssh -L 18765:127.0.0.1:8765 user@windows`.
+- Chọn model: bấm **Tải danh sách** cạnh ô Model (server Wagent gọi `GET <URL>/models`, key gửi kèm nếu có). Engine trực tiếp (`:18090`) không cần key và chỉ chạy một model; gateway (`:18080`) cần API key tenant. Lỗi hiện ngay dưới ô (vd 401 → cần key). Không tải được thì vẫn gõ tay hoặc để trống.
 - Duyệt hành động rủi ro: web UI (nút Cho phép/Từ chối) hoặc `--approve ask` (file `C:\wagent\approvals\pending-*.json` → tạo `.allow`/`.deny`). Mặc định `--approve deny`. Hết giờ chờ = từ chối.
 - Dừng: nút DUNG trên web, hoặc tạo file `C:\wagent\STOP`.
 

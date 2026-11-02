@@ -1,4 +1,4 @@
-import { RunRequest, State } from "./schema";
+import { Models, RunRequest, State } from "./schema";
 
 const token = new URLSearchParams(location.search).get("t") ?? sessionStorage.getItem("wagent_t") ?? "";
 if (token) sessionStorage.setItem("wagent_t", token);
@@ -31,6 +31,8 @@ async function call<T>(path: string, init?: RequestInit, parse?: (x: unknown) =>
 export const api = {
   state: () => call("/api/state", undefined, (x) => State.parse(x)),
   run: (req: RunRequest) => call("/api/run", { method: "POST", body: JSON.stringify(req) }),
+  models: (url: string, key?: string) =>
+    call("/api/models", { method: "POST", body: JSON.stringify({ url, key: key ?? "" }) }, (x) => Models.parse(x).models),
   stop: () => call("/api/stop", { method: "POST", body: "{}" }),
   approve: (id: string, allow: boolean) => call("/api/approve", { method: "POST", body: JSON.stringify({ id, allow }) }),
 };
