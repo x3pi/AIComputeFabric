@@ -206,6 +206,7 @@ def test_llm_strips_think_and_sets_flag(monkeypatch):
     import wagent.llm as L
     seen = {}
     class R:
+        status_code, text = 200, ""
         def raise_for_status(self): pass
         def json(self): return {"choices": [{"message": {"content": "<think>x</think>{\"tool\":\"done\"}"}}], "usage": {"total_tokens": 7}}
     def post(url, headers=None, timeout=0, json=None): seen.update(json); return R()
@@ -673,3 +674,243 @@ def test_open_extra_app_requires_approval_end_to_end(tmp_path, monkeypatch):
     u, llm = U(), L()
     Agent(llm, u, Audit(str(tmp_path / "a.jsonl")), str(tmp_path)).run("mo chrome")     # approver mac dinh = DenyAll
     assert u.opened == [] and "chrome" in llm.seen and "nguoi duyet" in llm.seen
+
+
+def test_web_task_runs_inside_thread_ctx():
+    import contextlib
+    events = []
+    @contextlib.contextmanager
+    def ctx():
+        events.append(("enter", threading.get_ident())); yield; events.append(("exit", threading.get_ident()))
+    d = tempfile.mkdtemp()
+    class A:
+        def run(s, task): events.append(("run", threading.get_ident())); return "done", "ok"
+    srv = serve(lambda *a: A(), port=0, token="tok", thread_ctx=ctx)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    b = "http://127.0.0.1:%d" % srv.server_address[1]
+    _call(b, "/api/run", {"task": "x"}); _wait(b, lambda s: s["status"] == "done")
+    time.sleep(0.1)
+    assert [e for e, _ in events] == ["enter", "run", "exit"]
+    assert len({t for _, t in events}) == 1 and events[0][1] != threading.get_ident()   # cung mot luong cong viec, khong phai luong chinh
+
+
+# ---- open_app url + read_page ----
+def test_extra_app_spec_with_args_and_url(tmp_path):
+    from wagent.skills.uia import load_extra_apps
+    f = tmp_path / "a.json"
+    f.write_text(json.dumps({
+        "chrome": {"exe": "C:\\Chrome\\chrome.exe", "args": ["--force-renderer-accessibility", "--new-window"], "allow_url": True},
+        "evil": {"exe": "C:\\x\\a.exe", "args": ["--no-sandbox --disable-x"]},        # co khoang trang -> bo
+        "evil2": {"exe": "C:\\x\\a.exe", "args": ["--user-data-dir=C:\\x"]},            # co gia tri -> bo
+        "evil3": {"exe": "C:\\x\\a.exe", "args": "--x"}}), encoding="utf-8")
+    ok, bad = load_extra_apps(str(f))
+    assert ok == {"chrome": {"exe": "C:\\Chrome\\chrome.exe", "args": ["--force-renderer-accessibility", "--new-window"], "allow_url": True}}
+    assert len(bad) == 3
+
+@pytest.mark.parametrize("url", ["https://vnexpress.net", "http://example.com/a?b=1#c", "https://8.8.8.8/x", "https://tuoitre.vn/tin-moi.htm"])
+def test_safe_url_ok(url):
+    from wagent.skills.uia import safe_url
+    assert safe_url(url) == url
+
+@pytest.mark.parametrize("url", ["file:///C:/x", "javascript:alert(1)", "ftp://a.b", "https://a.b/ x", "https://a.b/\"--x", "https://a.b/&calc",
+                                 "http://localhost:18080/", "http://127.0.0.1/", "http://10.42.0.1:18090/", "http://192.168.1.40:18080/",
+                                 "http://172.20.0.5/", "http://169.254.169.254/", "http://[::1]/", "http://[fe80::1]/", "http://2130706433/", "http://0x7f.0.0.1/",
+                                 "http://0177.0.0.1/", "http://127.1/", "http://printer.local/", "http://nas.lan:5000/", "http://0.0.0.0/", "", "https://a.b/;rm", "https://a.b/`x`"])
+def test_safe_url_rejects(url):
+    from wagent.skills.uia import safe_url
+    with pytest.raises(ValueError): safe_url(url)
+
+def test_extract_titles_dedupes_filters_and_cuts():
+    from wagent.skills.uia import extract_titles
+    n = [("HyperlinkControl", "Vệt sáng nghi sao băng lớn xuất hiện"), ("HyperlinkControl", "Vệt sáng nghi sao băng lớn xuất hiện"),
+         ("TextControl", "Chu thich khong phai lien ket dai dai dai"), ("HyperlinkControl", "ngan"),
+         ("HyperlinkControl", "https://vnexpress.net/bai-viet-dai-dai-dai-dai"), ("HyperlinkControl", "  Bài   toán 300 tỷ USD \n mỗi năm  ")]
+    t, cut = extract_titles(n)
+    assert t == ["Vệt sáng nghi sao băng lớn xuất hiện", "Bài toán 300 tỷ USD mỗi năm"] and not cut
+    t2, cut2 = extract_titles(n, max_chars=45)
+    assert len(t2) == 1 and cut2
+
+def test_open_app_url_builds_single_argv(monkeypatch):
+    from wagent.skills.uia import UIA
+    import wagent.skills.uia as mod
+    got = []
+    monkeypatch.setattr(mod.subprocess, "Popen", lambda argv: got.append(argv)); monkeypatch.setattr(mod.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(mod, "top_windows", lambda: [])
+    u = UIA.__new__(UIA); u.auto, u.ids, u.win, u.friendly = None, {}, None, False
+    u.opened_hwnds, u.opened_pids = set(), set()
+    u.extra_apps = {"chrome": {"exe": "C:\\c\\chrome.exe", "args": ["--new-window"], "allow_url": True},
+                    "tool": {"exe": "C:\\t\\t.exe", "args": [], "allow_url": False}}
+    u.open_app("chrome", url="https://vnexpress.net")
+    assert got == [["C:\\c\\chrome.exe", "--new-window", "https://vnexpress.net"]]
+    with pytest.raises(ValueError, match="allow_url"): u.open_app("tool", url="https://a.b")
+    with pytest.raises(ValueError, match="noi bo"): u.open_app("chrome", url="http://localhost:8765/")
+    with pytest.raises(ValueError, match="allow_url"): u.open_app("notepad", url="https://a.b")      # app mac dinh khong nhan url
+    assert len(got) == 1                                                                                 # cac lan bi tu choi khong chay gi
+
+def test_guard_reason_shows_url_and_read_page_allowed():
+    from wagent.guard import classify
+    d, why = classify({"tool": "open_app", "args": {"name": "chrome", "url": "https://vnexpress.net"}}, extra_app=lambda n: True)
+    assert d == "approve" and "https://vnexpress.net" in why
+    assert classify({"tool": "read_page", "args": {}})[0] == "allow"
+
+
+# ---- ngan sach ngu canh ----
+def _msgs(n_results, size=1000):
+    m = [{"role": "system", "content": "S" * 300}, {"role": "user", "content": "Nhiem vu: x"}]
+    for i in range(n_results):
+        m += [{"role": "assistant", "content": '{"tool":"read_page","args":{}}'}, {"role": "user", "content": "KET QUA:\n" + "r%d " % i * (size // 4)}]
+    return m
+
+def test_compact_noop_when_small():
+    from wagent.loop import compact_messages
+    m = _msgs(2, 100)
+    assert compact_messages(m, 10000) is m
+
+def test_compact_shrinks_old_results_keeps_system_task_and_tail():
+    from wagent.loop import compact_messages, _size
+    m = _msgs(6, 2000)
+    out = compact_messages(m, 4000)
+    assert _size(out) <= 4000 and out[0] == m[0] and out[1] == m[1] and out[-2:] == m[-2:]
+    assert m[3]["content"].startswith("KET QUA:") and len(m[3]["content"]) > 1000          # khong sua danh sach goc
+
+def test_compact_drops_pairs_when_still_too_big():
+    from wagent.loop import compact_messages, _size
+    out = compact_messages(_msgs(8, 100), 1000)
+    assert _size(out) <= 1000 or len(out) <= 5
+    assert out[0]["role"] == "system" and out[1]["content"].startswith("Nhiem vu")
+
+def test_clip_result():
+    from wagent.loop import clip_result
+    assert clip_result("abc", 10) == "abc"
+    c = clip_result("x" * 100, 10)
+    assert c.startswith("x" * 10) and "da cat 90" in c
+
+def test_agent_retries_on_context_exceeded(tmp_path):
+    from wagent.loop import Agent
+    from wagent.audit import Audit
+    from wagent.llm import ContextExceeded
+    calls = []
+    class L:
+        def chat(s, m):
+            calls.append(sum(len(x["content"]) for x in m))
+            if len(calls) == 1: raise ContextExceeded("n_ctx 4096")
+            return '{"tool":"done","args":{"summary":"ok"}}'
+    a = Agent(L(), None, Audit(str(tmp_path / "a.jsonl")), str(tmp_path), ctx_chars=4000)
+    assert a.run("t") == ("done", "ok") and len(calls) == 2
+    assert "context_retry" in (tmp_path / "a.jsonl").read_text()
+
+def test_agent_gives_up_when_context_never_fits(tmp_path):
+    from wagent.loop import Agent
+    from wagent.audit import Audit
+    from wagent.llm import ContextExceeded
+    class L:
+        def chat(s, m): raise ContextExceeded("x")
+    st, sm = Agent(L(), None, Audit(str(tmp_path / "a.jsonl")), str(tmp_path), ctx_chars=4000).run("t")
+    assert st == "failed" and "ngu canh" in sm
+
+
+def test_llm_raises_context_exceeded_only_for_that_400(monkeypatch):
+    import wagent.llm as L
+    class R:
+        def __init__(s, code, text): s.status_code, s.text = code, text
+        def raise_for_status(s): raise L.requests.HTTPError("%d" % s.status_code)
+    monkeypatch.setattr(L.requests, "post", lambda *a, **k: R(400, '{"error":{"type":"exceed_context_size_error"}}'))
+    with pytest.raises(L.ContextExceeded): L.LLM("http://x/v1").chat([])
+    monkeypatch.setattr(L.requests, "post", lambda *a, **k: R(400, '{"error":"bad json"}'))
+    with pytest.raises(L.requests.HTTPError): L.LLM("http://x/v1").chat([])           # 400 khac van la loi that
+
+
+# ---- read_page: cho trang tai, bo qua nut loi ----
+class _Node:
+    def __init__(self, t, n, kids=(), boom=False): self.ControlTypeName, self.Name, self._k, self._b = t, n, list(kids), boom
+    def GetChildren(self):
+        if self._b: raise OSError("COMError: event unable to invoke subscribers")
+        return self._k
+
+def _uia_for_page(monkeypatch, windows):
+    import wagent.skills.uia as mod
+    u = mod.UIA.__new__(mod.UIA)
+    it = iter(windows); last = {}
+    def app_window():
+        try: last["w"] = next(it)
+        except StopIteration: pass
+        return last["w"]
+    u._app_window = app_window; u._protected = lambda w: False
+    monkeypatch.setattr(mod.time, "sleep", lambda *_: None)
+    return u
+
+def test_read_page_retries_until_links_appear(monkeypatch):
+    empty = _Node("WindowControl", "Chrome", [_Node("DocumentControl", "x")])
+    loaded = _Node("WindowControl", "Chrome", [_Node("DocumentControl", "x", [_Node("HyperlinkControl", "Tieu de bai bao dau tien hom nay")])])
+    u = _uia_for_page(monkeypatch, [empty, empty, loaded])
+    clock = iter(range(0, 1000, 1)); import wagent.skills.uia as mod; monkeypatch.setattr(mod.time, "time", lambda: next(clock))
+    out = u.read_page(wait_s=50)
+    assert "KHONG TIN CAY" in out and "1. Tieu de bai bao dau tien hom nay" in out
+
+def test_read_page_reports_empty_after_wait(monkeypatch):
+    import wagent.skills.uia as mod
+    u = _uia_for_page(monkeypatch, [_Node("WindowControl", "Chrome")])
+    clock = iter(range(0, 1000, 5)); monkeypatch.setattr(mod.time, "time", lambda: next(clock))
+    assert "khong thay lien ket nao" in u.read_page(wait_s=10)
+
+def test_read_page_skips_broken_nodes(monkeypatch):
+    import wagent.skills.uia as mod
+    good = _Node("HyperlinkControl", "Bai bao nay van doc duoc binh thuong")
+    root = _Node("WindowControl", "Chrome", [_Node("PaneControl", "hong", boom=True), good])
+    u = _uia_for_page(monkeypatch, [root])
+    assert "Bai bao nay van doc duoc binh thuong" in u.read_page(wait_s=0)
+
+
+def test_extract_titles_drops_description_like_lines():
+    from wagent.skills.uia import extract_titles
+    n = [("HyperlinkControl", "Lo thi truong tac thanh khoan neu siet chuyen nhuong"),
+         ("HyperlinkControl", "Hom 17/10, Chinh phu trinh Quoc hoi muc tieu phan dau tang truong GDP 2027 ..."),
+         ("HyperlinkControl", "Muc tieu tang truong hai chu so cua Viet Nam phu thuoc kha nang huy dong va dung hieu qua 300 ty USD moi nam di kem voi tang nang suat, theo chuyen gia."),
+         ("HyperlinkControl", "Halloween va dinh kien lai cang")]
+    assert extract_titles(n)[0] == ["Lo thi truong tac thanh khoan neu siet chuyen nhuong", "Halloween va dinh kien lai cang"]
+
+
+def test_compact_never_shrinks_latest_observe():
+    from wagent.loop import compact_messages
+    m = [{"role": "system", "content": "S" * 200}, {"role": "user", "content": "Nhiem vu: x"}]
+    m += [{"role": "assistant", "content": '{"tool":"observe","args":{}}'}, {"role": "user", "content": "KET QUA:\nWINDOW 'Calculator'\n" + "49 [Button] 'Zero'\n" * 100}]
+    m += [{"role": "assistant", "content": '{"tool":"click","args":{"id":49}}'}, {"role": "user", "content": "KET QUA:\nda bam"}] * 3
+    m += [{"role": "assistant", "content": '{"tool":"click","args":{"id":51}}'}, {"role": "user", "content": "KET QUA:\n" + "y" * 3000}]
+    out = compact_messages(m, 2500)
+    obs = [x for x in out if x["content"].startswith("KET QUA:\nWINDOW")]
+    assert obs and "da rut gon" not in obs[0]["content"] and "49 [Button] 'Zero'" in obs[0]["content"]
+
+def test_compact_shrinks_old_observe_keeps_new_one():
+    from wagent.loop import compact_messages
+    big = lambda t: "KET QUA:\nWINDOW 'W'\n" + t * 400
+    m = [{"role": "system", "content": "S"}, {"role": "user", "content": "Nhiem vu: x"},
+         {"role": "assistant", "content": "a"}, {"role": "user", "content": big("OLD ")},
+         {"role": "assistant", "content": "b"}, {"role": "user", "content": big("NEW ")},
+         {"role": "assistant", "content": "c"}, {"role": "user", "content": "KET QUA:\nok"}]
+    out = compact_messages(m, 2500)
+    assert "da rut gon" in out[3]["content"] and "NEW NEW" in out[5]["content"]
+
+
+def test_browser_note_only_when_relevant():
+    from wagent.loop import browser_note, SYSTEM, SYSTEM_V2
+    extra = {"chrome": {}}
+    assert "read_page" not in SYSTEM and "read_page" not in SYSTEM_V2 and "chrome" not in SYSTEM_V2     # prompt chung giu nguyen
+    assert browser_note("Chuyen file .log vao app/logs", extra) == ""                                  # nhiem vu file: khong them gi
+    assert browser_note("Mo calc bam 1 + 2", extra) == ""
+    for t in ("Mo chrome roi doc", "vao https://vnexpress.net", "mo trinh duyet", "M\u1edf tr\u00ecnh duy\u1ec7t", "doc web"):
+        n = browser_note(t, extra)
+        assert "read_page" in n and "chrome" in n and "KHONG TIN CAY" in n, t
+    assert browser_note("mo chrome", {}) == "" and browser_note("mo chrome", None) == ""                # chua cau hinh app bo sung
+
+def test_agent_prompt_has_browser_note_only_for_browser_tasks(tmp_path):
+    from wagent.loop import Agent
+    from wagent.audit import Audit
+    seen = []
+    class U:
+        extra_apps = {"chrome": {}}
+        def is_extra_app(s, n): return True
+    class L:
+        def chat(s, m): seen.append(m[0]["content"]); return '{"tool":"done","args":{"summary":"x"}}'
+    for task in ("sao chep file a.txt", "mo chrome vao https://x.vn"):
+        Agent(L(), U(), Audit(str(tmp_path / "a.jsonl")), str(tmp_path)).run(task)
+    assert "read_page" not in seen[0] and "read_page" in seen[1]

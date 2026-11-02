@@ -64,8 +64,9 @@ def list_models(url, key="", timeout=5, _open=None):
         raise ValueError("phan hoi khong phai danh sach model OpenAI")
     return [str(m["id"]) for m in data if isinstance(m, dict) and "id" in m]
 
-def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=120, ui_dir=None):
-    """make_agent(cfg, log, approver, stop_event) -> obj co .run(task)->(status, summary)"""
+def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=120, ui_dir=None, thread_ctx=None):
+    """make_agent(cfg, log, approver, stop_event) -> obj co .run(task)->(status, summary)
+    thread_ctx: ham tra ve context manager, vao/ra tren CHINH luong chay nhiem vu (Windows: khoi tao COM cho UI Automation)."""
     token = token or secrets.token_urlsafe(16)
     st = State()
 
@@ -137,8 +138,10 @@ def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=1
             def log(m):
                 with st.lock: st.log.append(str(m))
             try:
-                ag = make_agent(cfg, log, WebApprover(st, approve_timeout), st.stop)
-                s, m = ag.run(cfg.get("task", ""))
+                import contextlib
+                with (thread_ctx() if thread_ctx else contextlib.nullcontext()):
+                    ag = make_agent(cfg, log, WebApprover(st, approve_timeout), st.stop)
+                    s, m = ag.run(cfg.get("task", ""))
             except Exception as e:
                 s, m = "failed", "%s: %s" % (type(e).__name__, e)
             with st.lock: st.status, st.summary = s, m

@@ -1,3 +1,7 @@
 {
-  "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+  "chrome": {
+    "exe": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "args": ["--force-renderer-accessibility", "--new-window"],
+    "allow_url": true
+  }
 }

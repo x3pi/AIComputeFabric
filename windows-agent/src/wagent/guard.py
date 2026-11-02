@@ -1,7 +1,7 @@
 """Guard: whitelist tool + phan loai rui ro + duyet. Ket qua: ('allow'|'approve'|'deny', ly do)."""
 import re
 
-LOW = {"observe", "read_text", "read_file", "list_dir", "done", "open_app"}
+LOW = {"observe", "read_text", "read_file", "list_dir", "done", "open_app", "read_page"}
 MEDIUM = {"set_text", "write_file", "close_window"}      # cho phep, ghi audit
 CLICK = {"click"}
 # click vao phan tu co ten khop => can nguoi duyet (xoa, gui, thanh toan, cai dat, mat khau...)
@@ -13,7 +13,7 @@ RISKY_TEXT = re.compile(r"password|passwd|m[aậ]t kh[aẩ]u|api[_ -]?key|token|
 def classify(action, describe=None, exists=None, identical=None, extra_app=None):
     t, a = action["tool"], action.get("args", {})
     if t == "open_app" and extra_app and extra_app(a.get("name", "")):
-        return "approve", "mo app ngoai danh sach mac dinh: %s" % a.get("name")
+        return "approve", "mo app ngoai danh sach mac dinh: %s%s" % (a.get("name"), (" -> " + str(a["url"])) if a.get("url") else "")
     if t in LOW:
         return "allow", ""
     if t == "write_file":

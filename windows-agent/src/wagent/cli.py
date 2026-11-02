@@ -48,7 +48,10 @@ def main():
         def make_agent(cfg, log, approver, stop):
             return Agent(LLM(cfg["url"], cfg.get("model", ""), cfg.get("key", ""), no_think=a.no_think), UIA(), Audit(a.audit),
                          a.sandbox, a.max_steps, log=log, approver=approver, stop_event=stop, max_seconds=a.max_seconds, improve=_improve(a))
-        srv = serve(make_agent, port=a.web, token=load_token(a.token_file), ui_dir=a.ui_dir if os.path.isfile(os.path.join(a.ui_dir, "index.html")) else None)
+        def com_ctx():      # moi nhiem vu chay tren luong rieng: UI Automation can CoInitialize tren luong do
+            import uiautomation
+            return uiautomation.UIAutomationInitializerInThread()
+        srv = serve(make_agent, thread_ctx=com_ctx, port=a.web, token=load_token(a.token_file), ui_dir=a.ui_dir if os.path.isfile(os.path.join(a.ui_dir, "index.html")) else None)
         print("UI: http://127.0.0.1:%d/?t=%s" % (a.web, srv.token), flush=True)
         srv.serve_forever()
         return

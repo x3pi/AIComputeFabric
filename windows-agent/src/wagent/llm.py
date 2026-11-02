@@ -1,6 +1,9 @@
 """Client OpenAI-compatible. Model tra ve 1 JSON {"tool":..., "args":{...}} trong text."""
 import json, re, requests
 
+class ContextExceeded(Exception):
+    """Prompt vuot cua so ngu canh cua engine (HTTP 400 exceed_context_size)."""
+
 class LLM:
     def __init__(self, base_url, model="", api_key="", timeout=300, no_think=False, temperature=0, seed=None):
         self.temperature, self.seed = temperature, seed
@@ -19,6 +22,8 @@ class LLM:
         if self.no_think:
             body["chat_template_kwargs"] = {"enable_thinking": False}
         r = requests.post(self.url, headers=h, timeout=self.timeout, json=body)
+        if r.status_code == 400 and "exceed_context_size" in r.text:
+            raise ContextExceeded(r.text[:200])
         r.raise_for_status()
         self.tokens += (r.json().get("usage") or {}).get("total_tokens", 0)
         txt = r.json()["choices"][0]["message"]["content"] or ""
