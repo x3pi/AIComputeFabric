@@ -10,7 +10,7 @@ RISKY_NAME = re.compile(r"delete|remove|erase|format|uninstall|install|send|subm
                         r"overwrite|replace|don.t save|empty", re.I)
 RISKY_TEXT = re.compile(r"password|passwd|m[aậ]t kh[aẩ]u|api[_ -]?key|token|secret", re.I)
 
-def classify(action, describe=None, exists=None):
+def classify(action, describe=None, exists=None, identical=None):
     t, a = action["tool"], action.get("args", {})
     if t in LOW:
         return "allow", ""
@@ -20,6 +20,8 @@ def classify(action, describe=None, exists=None):
         return "allow", ""
     if t in ("move_file", "copy_file"):
         if exists and exists(a.get("dst", "")):
+            if identical and identical(a.get("src", ""), a.get("dst", "")):
+                return "allow", ""        # dich da co noi dung y het nguon => khong mat du lieu
             return "approve", "%s se ghi de file da ton tai: %s" % (t, a.get("dst"))
         return "allow", ""
     if t in MEDIUM:

@@ -37,6 +37,31 @@ def s5_ver(sb): return _ls(sb, "backup") == ["n1.txt", "n2.txt"] and _ls(sb, "pr
 def s6_setup(sb): pass
 def s6_ver(sb): return (_r(sb, "ketqua.txt") or "").strip() == "42"
 
+# ---- bo HELD-OUT: nhiem vu moi, KHONG dung de tinh chinh agent ----
+def h1_setup(sb): pass
+def h1_ver(sb): return [_r(sb, "notes/%s.txt" % n) for n in ("mot", "hai", "ba")] == ["mot", "hai", "ba"] and _ls(sb, "notes") == ["ba.txt", "hai.txt", "mot.txt"]
+def h2_setup(sb):
+    for n in ["bao_cao_q1.txt", "bao_cao_q2.txt", "ghi_chu.txt", "du_lieu.csv"]: _w(sb, "data/" + n, n)
+def h2_ver(sb): return _ls(sb, "data/reports") == ["bao_cao_q1.txt", "bao_cao_q2.txt"] and _ls(sb, "data") == ["du_lieu.csv", "ghi_chu.txt", "reports"]
+def h3_setup(sb):
+    for n in ["a.txt", "b.txt", "c.log"]: _w(sb, "docs/" + n, n)
+def h3_ver(sb): return _ls(sb, "docs") == ["a.md", "b.md", "c.log"]
+def h4_setup(sb): _w(sb, "log.txt", "\n".join("dong %d" % i for i in range(1, 8)) + "\n")
+def h4_ver(sb): return (_r(sb, "count.txt") or "").strip() == "7"
+def h5_setup(sb): _w(sb, "people.csv", "name,age\nAn,25\nBinh,41\nChi,30\nDung,35\nEm,19\n")
+def h5_ver(sb): return [x.strip() for x in (_r(sb, "out.txt") or "").strip().splitlines()] == ["Binh", "Dung"]
+def h6_setup(sb): pass
+def h6_ver(sb): return [_r(sb, "2026/0%d/note.txt" % n) for n in (1, 2, 3)] == ["thang 1", "thang 2", "thang 3"]
+
+HELDOUT = {
+    "h_ghi_ba_file": (h1_setup, "Tao 3 file trong thu muc notes/: mot.txt noi dung mot, hai.txt noi dung hai, ba.txt noi dung ba (noi dung chi la chu do, khong them gi). Xong thi done", h1_ver),
+    "h_gom_bao_cao": (h2_setup, "Trong data/, chuyen tat ca file co ten bat dau bang bao_cao_ vao data/reports/. Cac file khac giu nguyen. Xong thi done", h2_ver),
+    "h_doi_duoi": (h3_setup, "Trong docs/, doi duoi .txt thanh .md cho cac file .txt (file duoi khac giu nguyen). Xong thi done", h3_ver),
+    "h_dem_dong": (h4_setup, "Dem so dong cua log.txt, ghi chi con so do vao count.txt. Xong thi done", h4_ver),
+    "h_loc_tuoi": (h5_setup, "Doc people.csv, ghi vao out.txt ten nhung nguoi co tuoi lon hon 30, moi ten mot dong, theo thu tu xuat hien. Xong thi done", h5_ver),
+    "h_cay_thang": (h6_setup, "Tao 3 file: 2026/01/note.txt noi dung 'thang 1', 2026/02/note.txt noi dung 'thang 2', 2026/03/note.txt noi dung 'thang 3'. Xong thi done", h6_ver),
+}
+
 SCENARIOS = {
     "notepad_ghi_file": (s1_setup, "Mo notepad, go chu 'Xin chao' vao o soan thao, sau do ghi file ghichu.txt trong sandbox voi noi dung Xin chao, roi done", s1_ver),
     "phan_loai_file": (s2_setup, "Thu muc in/ co cac file. Chuyen moi file vao out/<duoi>/ (vd a.txt vao out/txt/a.txt, x.jpg vao out/jpg/x.jpg). Dung list_dir de xem. Xong thi done", s2_ver),
@@ -68,10 +93,12 @@ def acquire_lock(path):
     os.write(fd, str(os.getpid()).encode()); os.close(fd)
     return lambda: os.path.exists(path) and os.remove(path)
 
+ALL_SETS = lambda: {"dev": SCENARIOS, "held": HELDOUT}
+
 def main():
     from .llm import LLM
     from .audit import Audit
-    from .loop import Agent
+    from .loop import Agent, Improve
     from .approver import DenyAll
     from .skills.uia import UIA
     p = argparse.ArgumentParser()
@@ -79,27 +106,31 @@ def main():
     p.add_argument("--n", type=int, default=3); p.add_argument("--only", default="")
     p.add_argument("--out", default=r"C:\wagent\bench.jsonl"); p.add_argument("--work", default=r"C:\wagent\bench_sb")
     p.add_argument("--max-steps", type=int, default=20); p.add_argument("--no-think", action="store_true")
+    p.add_argument("--set", default="dev", choices=["dev", "held", "all"]); p.add_argument("--baseline", action="store_true", help="tat moi cai tien cua agent")
+    p.add_argument("--temp", type=float, default=0.0); p.add_argument("--tag", default="")
     p.add_argument("--lock", default=r"C:\wagent\bench.lock")
     a = p.parse_args()
     release = acquire_lock(a.lock)
     import atexit; atexit.register(release)
-    names = [n for n in SCENARIOS if not a.only or n in a.only.split(",")]
+    pool = {**SCENARIOS, **HELDOUT} if a.set == "all" else (HELDOUT if a.set == "held" else SCENARIOS)
+    names = [n for n in pool if not a.only or n in a.only.split(",")]
+    improve = Improve.none() if a.baseline else Improve.all()
     uia = UIA()
     for name in names:
-        setup, task, ver = SCENARIOS[name]
+        setup, task, ver = pool[name]
         for i in range(a.n):
             cleanup_apps()
             sb = os.path.join(a.work, name); shutil.rmtree(sb, ignore_errors=True); os.makedirs(sb)
             setup(sb)
-            llm = LLM(a.url, a.model, a.key, no_think=a.no_think)
+            llm = LLM(a.url, a.model, a.key, no_think=a.no_think, temperature=a.temp, seed=i + 1)
             audit = Audit(os.path.join(a.work, "audit-%s-%d.jsonl" % (name, i)))
             t0 = time.time(); steps = []
             try:
-                st, sm = Agent(llm, uia, audit, sb, a.max_steps, log=lambda m: steps.append(m), approver=DenyAll(), max_seconds=300).run(task)
+                st, sm = Agent(llm, uia, audit, sb, a.max_steps, log=lambda m: steps.append(m), approver=DenyAll(), max_seconds=300, improve=improve).run(task)
             except Exception as e:
                 st, sm = "crash", "%s: %s" % (type(e).__name__, e)
             ok = bool(ver(sb))
-            rec = dict(scenario=name, run=i, agent_status=st, verified=ok, steps=len(steps),
+            rec = dict(scenario=name, run=i, set=a.set, baseline=a.baseline, temp=a.temp, tag=a.tag, agent_status=st, verified=ok, steps=len(steps),
                        tokens=llm.tokens, seconds=round(time.time() - t0, 1), summary=sm[:200])
             open(a.out, "a", encoding="utf-8").write(json.dumps(rec, ensure_ascii=False) + "\n")
             print(json.dumps(rec, ensure_ascii=False), flush=True)

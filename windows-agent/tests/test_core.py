@@ -309,3 +309,86 @@ def test_close_window_refuses_protected():
     with pytest.raises(ValueError): u.close_window()
     u.win = None
     with pytest.raises(ValueError): u.close_window()
+
+# ---- cai tien agent ----
+from wagent.loop import Improve, reflection_message, missing_args, SYSTEM, SYSTEM_V2
+
+class CapLLM(FakeLLM):
+    def __init__(self, r): super().__init__(r); self.seen = []
+    def chat(self, m, **k): self.seen.append([x["content"] for x in m]); return super().chat(m, **k)
+
+def mk3(replies, improve, pre=None):
+    d = tempfile.mkdtemp(); sb = d + "/sb"; os.makedirs(sb)
+    for rel, txt in (pre or {}).items(): files.write_file(sb, rel, txt)
+    llm = CapLLM(replies)
+    return Agent(llm, FakeUIA(), Audit(d + "/a.jsonl"), sb, log=lambda *_: None, improve=improve), llm, d
+
+def test_reflect_lets_model_fix_wrong_copy():
+    # model dung copy thay vi move, thay file goc con -> sua bang move
+    a, llm, d = mk3(['{"tool":"copy_file","args":{"src":"a.txt","dst":"x/a.txt"}}', '{"tool":"done"}',
+                     '{"tool":"move_file","args":{"src":"a.txt","dst":"x/a.txt"}}', '{"tool":"done"}', '{"tool":"done"}'],
+                    Improve(reflect=True), pre={"a.txt": "1"})
+    assert a.run("chuyen a.txt vao x/")[0] == "done"
+    assert any("KIEM TRA TRUOC KHI KET THUC" in c and "x/a.txt" in c for c in llm.seen[2])
+    assert not os.path.exists(d + "/sb/a.txt") and os.path.exists(d + "/sb/x/a.txt")
+
+def test_reflect_off_accepts_first_done():
+    a, llm, d = mk3(['{"tool":"copy_file","args":{"src":"a.txt","dst":"x/a.txt"}}', '{"tool":"done"}'], Improve.none(), pre={"a.txt": "1"})
+    a.run("t"); assert os.path.exists(d + "/sb/a.txt") and len(llm.seen) == 2
+
+def test_reflect_once_when_no_new_action_and_capped_at_three():
+    a, llm, d = mk3(['{"tool":"done"}'] * 2, Improve(reflect=True))        # khong hanh dong moi -> khong doi chieu lai
+    assert a.run("t")[0] == "done" and len(llm.seen) == 2
+    rep = []
+    for _ in range(6): rep += ['{"tool":"observe"}', '{"tool":"done"}']   # moi lan done deu co hanh dong moi -> toi da 3 lan doi chieu
+    a, llm, d = mk3(rep, Improve(reflect=True)); a.max_steps = 50
+    assert a.run("t")[0] == "done" and sum("KIEM TRA TRUOC" in c[-1] for c in llm.seen) == 3
+
+def test_reflection_message_content():
+    m = reflection_message([("a", 1), ("b", 2)], [("b", 5), ("c", 1)])
+    assert "Moi xuat hien: c" in m and "Da mat: a" in m and "Doi noi dung: b" in m
+
+def test_loop_guard_warns_then_aborts():
+    a, llm, d = mk3(['{"tool":"observe"}'] * 6, Improve(loop_guard=True), )
+    s, _ = a.run("t")
+    assert s == "failed" and any("CANH BAO" in c[-1] for c in llm.seen)
+    a2, _, _ = mk3(['{"tool":"observe"}'] * 6, Improve.none(), ); a2.max_steps = 6
+    assert a2.run("t")[0] == "max_steps"          # khong bat co thi chay het buoc
+
+def test_validate_missing_args_message():
+    a, llm, d = mk3(['{"tool":"set_text","args":{"id":1}}', '{"tool":"done"}'], Improve(validate=True))
+    a.run("t"); assert any("thieu tham so ['text']" in c[-1] for c in llm.seen)
+    assert missing_args({"tool": "move_file", "args": {"src": "a"}}) == ["dst"]
+
+def test_prompt_flag_switches_system():
+    a, llm, _ = mk3(['{"tool":"done"}'], Improve(prompt=True)); a.run("t")
+    assert llm.seen[0][0] == SYSTEM_V2 and "CHUYEN" in SYSTEM_V2 and "SAO CHEP" in SYSTEM_V2
+    a, llm, _ = mk3(['{"tool":"done"}'], Improve.none()); a.run("t"); assert llm.seen[0][0] == SYSTEM
+
+def test_move_onto_identical_copy_allowed_but_different_content_needs_approval():
+    d = tempfile.mkdtemp(); files.write_file(d, "a", "same"); files.write_file(d, "x/a", "same"); files.write_file(d, "b", "new"); files.write_file(d, "x/b", "OLD")
+    a = Agent(FakeLLM(['{"tool":"move_file","args":{"src":"a","dst":"x/a"}}', '{"tool":"move_file","args":{"src":"b","dst":"x/b"}}', '{"tool":"done"}']),
+              FakeUIA(), Audit(d + "/au.jsonl"), d, log=lambda *_: None)
+    a.run("t")
+    assert not os.path.exists(d + "/a")                       # trung y het -> da chuyen (xoa ban trung)
+    assert files.read_file(d, "x/b") == "OLD" and os.path.exists(d + "/b")   # khac noi dung -> bi tu choi
+
+def test_heldout_verifiers():
+    for n, (setup, task, ver) in bench.HELDOUT.items():
+        sb = tempfile.mkdtemp(); setup(sb); assert not ver(sb), n         # trang thai ban dau khong duoc pass
+    sb = tempfile.mkdtemp(); bench.HELDOUT["h_ghi_ba_file"][0](sb)
+    for n in ("mot", "hai", "ba"): files.write_file(sb, "notes/%s.txt" % n, n)
+    assert bench.HELDOUT["h_ghi_ba_file"][2](sb)
+    files.write_file(sb, "notes/extra.txt", "x"); assert not bench.HELDOUT["h_ghi_ba_file"][2](sb)
+    sb = tempfile.mkdtemp(); bench.HELDOUT["h_loc_tuoi"][0](sb); files.write_file(sb, "out.txt", "Binh\nDung\n"); assert bench.HELDOUT["h_loc_tuoi"][2](sb)
+    files.write_file(sb, "out.txt", "Binh\nChi\nDung\n"); assert not bench.HELDOUT["h_loc_tuoi"][2](sb)
+    sb = tempfile.mkdtemp(); bench.HELDOUT["h_dem_dong"][0](sb); files.write_file(sb, "count.txt", "7"); assert bench.HELDOUT["h_dem_dong"][2](sb)
+    sb = tempfile.mkdtemp(); bench.HELDOUT["h_doi_duoi"][0](sb)
+    for o, n in (("a.txt", "a.md"), ("b.txt", "b.md")): files.move_file(sb, "docs/" + o, "docs/" + n)
+    assert bench.HELDOUT["h_doi_duoi"][2](sb)
+    sb = tempfile.mkdtemp(); bench.HELDOUT["h_gom_bao_cao"][0](sb)
+    for n in ("bao_cao_q1.txt", "bao_cao_q2.txt"): files.move_file(sb, "data/" + n, "data/reports/" + n)
+    assert bench.HELDOUT["h_gom_bao_cao"][2](sb)
+    sb = tempfile.mkdtemp()
+    for m in (1, 2, 3): files.write_file(sb, "2026/0%d/note.txt" % m, "thang %d" % m)
+    assert bench.HELDOUT["h_cay_thang"][2](sb)

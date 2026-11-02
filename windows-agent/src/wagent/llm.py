@@ -2,7 +2,8 @@
 import json, re, requests
 
 class LLM:
-    def __init__(self, base_url, model="", api_key="", timeout=300, no_think=False):
+    def __init__(self, base_url, model="", api_key="", timeout=300, no_think=False, temperature=0, seed=None):
+        self.temperature, self.seed = temperature, seed
         self.no_think = no_think
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.model, self.key, self.timeout = model, api_key, timeout
@@ -12,7 +13,9 @@ class LLM:
         h = {"Content-Type": "application/json"}
         if self.key:
             h["Authorization"] = "Bearer " + self.key
-        body = {"model": self.model, "messages": messages, "temperature": 0, "max_tokens": max_tokens}
+        body = {"model": self.model, "messages": messages, "temperature": self.temperature, "max_tokens": max_tokens}
+        if self.seed is not None:
+            body["seed"] = self.seed
         if self.no_think:
             body["chat_template_kwargs"] = {"enable_thinking": False}
         r = requests.post(self.url, headers=h, timeout=self.timeout, json=body)

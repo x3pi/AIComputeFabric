@@ -38,3 +38,12 @@ def copy_file(sandbox, src, dst, **_):
     os.makedirs(os.path.dirname(b), exist_ok=True)
     shutil.copy2(a, b)
     return "da sao chep %s -> %s" % (src, dst)
+
+def tree(sandbox, limit=200):
+    """Danh sach (duong_dan_tuong_doi, kich_thuoc) cua moi file trong sandbox - dung de doi chieu trang thai that."""
+    root = os.path.realpath(sandbox); out = []
+    for d, _, fs in os.walk(root):
+        for f in fs:
+            full = os.path.join(d, f)
+            out.append((os.path.relpath(full, root).replace(os.sep, "/"), os.path.getsize(full)))
+    return sorted(out)[:limit]
