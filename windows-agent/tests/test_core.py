@@ -624,3 +624,52 @@ def test_open_app_waits_for_slow_window(monkeypatch):
     u.opened_hwnds, u.opened_pids, u.friendly = set(), set(), False
     u.open_app("notepad")
     assert u.opened_hwnds == {2} and u.opened_pids == {20}
+
+
+# ---- app bo sung (apps.json) ----
+def test_load_extra_apps_validates(tmp_path):
+    from wagent.skills.uia import load_extra_apps
+    f = tmp_path / "apps.json"
+    f.write_text(json.dumps({
+        "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "Calc": "C:\\evil\\calc.exe",                         # trung app mac dinh -> bo
+        "bad name": "x.exe",                                  # ten sai
+        "sh": "cmd.exe /c del *",                             # co doi so/shell -> bo
+        "ps": "powershell.exe -enc AAA",
+        "rel": "..\\..\\evil.exe",                            # duong dan tuong doi -> bo
+        "notexe": "C:\\x\\a.bat",
+        "ok2": "tool.exe"}), encoding="utf-8")
+    ok, bad = load_extra_apps(str(f))
+    assert set(ok) == {"chrome", "ok2"} and len(bad) == 6
+    assert load_extra_apps(str(tmp_path / "none.json")) == ({}, [])
+    (tmp_path / "junk.json").write_text("[1,2]"); assert load_extra_apps(str(tmp_path / "junk.json"))[0] == {}
+    (tmp_path / "broken.json").write_text("{nope"); assert load_extra_apps(str(tmp_path / "broken.json"))[0] == {}
+
+def test_new_windows_does_not_claim_existing_process():
+    from wagent.skills.uia import new_windows
+    # Chrome cua user (pid 9) da co cua so; mo 'chrome' tao them cua so moi cung pid 9 -> chi nhan cua so, KHONG nhan pid 9
+    assert new_windows({1: 9, 2: 5}, {1: 9, 2: 5, 3: 9}) == ({3}, set())
+    # Notepad moi (pid 7 chua tung co cua so) -> nhan ca hwnd lan pid (de dong duoc hop thoai 'Save changes?')
+    assert new_windows({1: 9}, {1: 9, 4: 7}) == ({4}, {7})
+
+def test_guard_extra_app_needs_approval():
+    from wagent.guard import classify
+    extra = lambda n: n == "chrome"
+    assert classify({"tool": "open_app", "args": {"name": "chrome"}}, extra_app=extra)[0] == "approve"
+    assert classify({"tool": "open_app", "args": {"name": "notepad"}}, extra_app=extra)[0] == "allow"
+    assert classify({"tool": "open_app", "args": {"name": "chrome"}})[0] == "allow"      # khong khai bao app bo sung => hanh vi cu
+
+def test_open_extra_app_requires_approval_end_to_end(tmp_path, monkeypatch):
+    from wagent.loop import Agent
+    from wagent.audit import Audit
+    class U:
+        extra_apps = {"chrome": "C:\\x\\chrome.exe"}
+        opened = []
+        def is_extra_app(s, n): return n in s.extra_apps
+        def open_app(s, name, **_): s.opened.append(name); return "da mo"
+    class L:
+        def __init__(s): s.o = ['{"tool":"open_app","args":{"name":"chrome"}}', '{"tool":"done","args":{"summary":"x"}}']; s.seen = None
+        def chat(s, m): s.seen = s.seen or m[0]["content"]; return s.o.pop(0)
+    u, llm = U(), L()
+    Agent(llm, u, Audit(str(tmp_path / "a.jsonl")), str(tmp_path)).run("mo chrome")     # approver mac dinh = DenyAll
+    assert u.opened == [] and "chrome" in llm.seen and "nguoi duyet" in llm.seen

@@ -16,6 +16,41 @@ def own_pids():
 # whitelist app cho phep mo
 APPS = {"notepad": "notepad.exe", "calc": "calc.exe", "mspaint": "mspaint.exe"}
 
+import json, re
+_APP_NAME = re.compile(r"^[a-z0-9_-]{1,32}$")
+_APP_EXE = re.compile(r"^([A-Za-z]:\\[^<>|?*\"\r\n]+\.exe|[\w.-]+\.exe)$")   # duong dan tuyet doi .exe hoac ten .exe tran
+
+def load_extra_apps(path):
+    """Doc file cau hinh app bo sung {"ten": "duong/dan.exe"}. Tra ve (apps_hop_le, [ly_do_bo_qua]). Khong co file => ({}, []).
+    Khong bao gio ghi de app mac dinh; chi nhan ten don gian va .exe (khong shell, khong doi so)."""
+    try:
+        raw = json.load(open(path, encoding="utf-8"))
+    except FileNotFoundError:
+        return {}, []
+    except (OSError, ValueError) as e:
+        return {}, ["%s: khong doc duoc (%s)" % (path, type(e).__name__)]
+    if not isinstance(raw, dict):
+        return {}, ["%s: phai la object {ten: duong_dan}" % path]
+    ok, bad = {}, []
+    for k, v in raw.items():
+        k2 = str(k).lower()
+        if k2 in APPS:
+            bad.append("%s: trung app mac dinh" % k)
+        elif not _APP_NAME.match(k2):
+            bad.append("%s: ten khong hop le (a-z 0-9 _ -)" % k)
+        elif not isinstance(v, str) or not _APP_EXE.match(v):
+            bad.append("%s: duong dan phai la .exe" % k)
+        else:
+            ok[k2] = v
+    return ok, bad
+
+def new_windows(before, after):
+    """before/after: {hwnd: pid}. Tra ve (hwnd_moi, pid_moi). Chi coi la 'cua agent' ca tien trinh khi tien trinh do CHUA co cua so
+    truoc khi mo; neu tai dung tien trinh dang chay (vd Chrome cua user) thi chi nhan dung cua so moi, khong nhan ca tien trinh."""
+    old_pids = set(before.values())
+    new = {h: p for h, p in after.items() if h not in before}
+    return set(new), {p for p in new.values() if p not in old_pids}
+
 def top_windows():
     """Cua so top-level hien thi, co tieu de, theo z-order (tren cung truoc): [(hwnd, pid, title)].
     Dung Win32 EnumWindows (chi doc so nguyen) thay vi duyet doi tuong UIA/COM cua ca desktop: tranh crash native
@@ -102,13 +137,15 @@ class UIA:
     def __init__(self):
         import uiautomation as auto
         self.auto, self.ids, self.win = auto, {}, None
+        self.extra_apps, self.apps_warnings = load_extra_apps(os.environ.get("WAGENT_APPS_FILE") or os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "apps.json"))
         self.opened_hwnds, self.opened_pids = set(), set()   # cua so/tien trinh do agent mo (cho phep dong/uu tien observe)
         self.friendly = False   # True: bao loi ro khi bam nham phan tu Text (goi y nut ngay truoc)
 
     def open_app(self, name, **_):
-        exe = APPS.get(str(name).lower())
+        exe = APPS.get(str(name).lower()) or self.extra_apps.get(str(name).lower())
         if not exe:
-            raise ValueError("app khong nam trong whitelist: %s (cho phep: %s)" % (name, ", ".join(APPS)))
+            raise ValueError("app khong nam trong whitelist: %s (cho phep: %s)" % (name, ", ".join(list(APPS) + list(self.extra_apps))))
         def tops():
             try:
                 return {h: pid for h, pid, _ in top_windows()}
@@ -118,10 +155,9 @@ class UIA:
         subprocess.Popen([exe])
         time.sleep(1)
         for _ in range(14):                      # cho cua so moi xuat hien (toi ~8s); app cham thi 2s la khong du
-            new = {h: pid for h, pid in tops().items() if h not in before}
-            if new:
-                for h, pid in new.items():
-                    self.opened_hwnds.add(h); self.opened_pids.add(pid)
+            hs, ps = new_windows(before, tops())
+            if hs:
+                self.opened_hwnds |= hs; self.opened_pids |= ps
                 break
             time.sleep(0.5)
         return "da mo " + exe
@@ -168,6 +204,10 @@ class UIA:
             return "%s %s" % (c.Name, c.AutomationId or "")
         except Exception:
             return ""
+
+    def is_extra_app(self, name):
+        n = str(name).lower()
+        return n in self.extra_apps and n not in APPS
 
     def find_by_name(self, name):
         return find_by_name({i: (e.ControlTypeName, e.Name) for i, e in self.ids.items()}, name)

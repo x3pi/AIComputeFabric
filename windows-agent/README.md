@@ -33,6 +33,11 @@ Task chạy ở Medium integrity (token lọc UAC), không có quyền admin.
 ## Công cụ (skill)
 `observe, open_app(whitelist: notepad|calc|mspaint), set_text, read_text, click (theo `id` hoặc `name` của nút, vd `{"name":"Eight"}`), close_window, read_file, write_file, list_dir, move_file, copy_file, done`. File chỉ trong sandbox (`C:\wagent\sandbox`), chống `..` và symlink.
 
+## Thêm app cho `open_app` (mặc định chỉ notepad|calc|mspaint)
+Tạo `C:\wagent\apps.json` (hoặc đặt biến `WAGENT_APPS_FILE`), mẫu ở `apps.example.json`:
+`{"chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"}`.
+Chỉ nhận tên `a-z0-9_-` và đường dẫn tuyệt đối `.exe` (không đối số, không shell, không ghi đè app mặc định); mục sai bị bỏ qua. **Mỗi lần mở app thêm đều cần bạn bấm Cho phép.** Sau khi sửa file, mở lại server (icon Wagent). Lưu ý: agent mở trình duyệt thì có thể đọc nội dung web không tin cậy (prompt injection); `close_window` chỉ đóng cửa sổ do agent mở, không đóng Chrome cũ của bạn.
+
 ## An toàn
 - Tool ngoài whitelist → từ chối. Cần duyệt: click phần tử tên rủi ro (delete/send/pay/install/password…), ghi đè file, văn bản giống mật khẩu.
 - Audit JSONL hash-chain (`wagent.audit.verify`). API key chỉ ở bộ nhớ, không ghi log.

@@ -10,8 +10,10 @@ RISKY_NAME = re.compile(r"delete|remove|erase|format|uninstall|install|send|subm
                         r"overwrite|replace|don.t save|empty", re.I)
 RISKY_TEXT = re.compile(r"password|passwd|m[aậ]t kh[aẩ]u|api[_ -]?key|token|secret", re.I)
 
-def classify(action, describe=None, exists=None, identical=None):
+def classify(action, describe=None, exists=None, identical=None, extra_app=None):
     t, a = action["tool"], action.get("args", {})
+    if t == "open_app" and extra_app and extra_app(a.get("name", "")):
+        return "approve", "mo app ngoai danh sach mac dinh: %s" % a.get("name")
     if t in LOW:
         return "allow", ""
     if t == "write_file":

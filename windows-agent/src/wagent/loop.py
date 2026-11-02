@@ -131,7 +131,11 @@ class Agent:
         self.sandbox, self.max_steps, self.log = sandbox, max_steps, log
 
     def run(self, task):
-        msgs = [{"role": "system", "content": SYSTEM_V2 if self.improve.prompt else SYSTEM}, {"role": "user", "content": "Nhiem vu: " + task}]
+        sysmsg = SYSTEM_V2 if self.improve.prompt else SYSTEM
+        extra = sorted(getattr(self.uia, "extra_apps", None) or [])
+        if extra:
+            sysmsg += "\nApp bo sung cho open_app (moi lan mo can nguoi duyet): " + ", ".join(extra)
+        msgs = [{"role": "system", "content": sysmsg}, {"role": "user", "content": "Nhiem vu: " + task}]
         tree0 = files.tree(self.sandbox) if os.path.isdir(self.sandbox) else []
         seen, reflections, acted = {}, 0, False
         self.audit.write(event="start", task=task)
@@ -160,7 +164,8 @@ class Agent:
                     msgs += [{"role": "assistant", "content": text}, {"role": "user", "content": "KET QUA:\n" + res}]
                     continue
             dec, why = guard.classify(act, describe=getattr(self.uia, "describe", None),
-                                      exists=lambda p: self._exists(p), identical=self._identical)
+                                      exists=lambda p: self._exists(p), identical=self._identical,
+                                      extra_app=getattr(self.uia, "is_extra_app", None))
             if dec == "approve":
                 okk = bool(self.approver(act, why))
                 self.audit.write(event="approval", step=step, action=act, reason=why, approved=okk)

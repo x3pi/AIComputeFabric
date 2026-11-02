@@ -334,3 +334,9 @@ Chưa làm: thêm kịch bản benchmark "lưu bằng Notepad"; một lần ch�
 - Nguyên nhân CHƯA chứng minh; giả thuyết hợp lý nhất: lần sửa trước (`open_app` thăm dò mỗi 0,5 s, `observe` duyệt) chạm thuộc tính của nhiều đối tượng UIA/COM cửa sổ desktop (có cửa sổ biến mất giữa chừng như NVIDIA Overlay). Sửa: thay bằng Win32 `EnumWindows`/`GetForegroundWindow` (chỉ đọc số nguyên) và chỉ tạo đối tượng UIA cho đúng một cửa sổ được chọn (`ControlFromHandle`).
 - Kiểm: 6 nhiệm vụ "lưu bằng Notepad" liên tiếp qua web server: 6/6 `done`, file tạo bằng đường GUI (File -> Save As -> Save, không dùng write_file), không có APPCRASH mới. 6 lần chưa đủ để nói lỗi đã hết; theo dõi `Application` log (Id 1000, pythonw.exe).
 - UI: `fetch` thất bại giờ báo "Không kết nối được server Wagent ... bấm lại icon Wagent" thay vì "Failed to fetch". Phục hồi sau sập: bấm lại icon Wagent (launcher bật server nếu cổng đóng).
+
+### App bổ sung cho open_app qua `apps.json` (2026-11-02)
+- Yêu cầu người dùng: `open_app chrome` bị từ chối (whitelist 3 app). Chọn cách 2: file cấu hình `C:\wagent\apps.json`, mặc định rỗng; trên máy này đã thêm `chrome`.
+- Ràng buộc: tên `a-z0-9_-`, đường dẫn tuyệt đối `.exe` hoặc tên `.exe` trần; từ chối đối số/shell/đường dẫn tương đối/trùng app mặc định. Mở app thêm luôn cần duyệt (guard `approve`). Tên app thêm được đưa vào system prompt.
+- Rủi ro đã xử lý: khởi chạy Chrome khi Chrome của user đang chạy dùng lại tiến trình cũ -> `new_windows` chỉ ghi nhận hwnd mới, không ghi nhận pid cũ (nếu không thì `close_window` có thể đóng các cửa sổ Chrome khác của user).
+- Kiểm: chạy thật "Mo chrome roi done": xin duyệt -> Cho phép -> mở Chrome (9 -> 11 tiến trình, không tắt tiến trình nào). Test 69 đạt, 3 mutation bị bắt. Chưa kiểm: agent thao tác trong trang web (rủi ro prompt injection chưa được đo cho trình duyệt).
