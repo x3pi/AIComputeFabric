@@ -23,7 +23,12 @@ def write_file(sandbox, path, content, **_):
     return "da ghi %d ky tu vao %s" % (len(content), path)
 
 def list_dir(sandbox, path=".", **_):
-    return "\n".join(sorted(os.listdir(resolve(sandbox, path))))
+    p = resolve(sandbox, path)
+    if not os.path.exists(p):
+        return "(thu muc '%s' chua ton tai - khong sao: no se duoc tu tao khi ban move_file/copy_file/write_file vao do)" % path
+    if not os.path.isdir(p):
+        raise NotADirectoryError("%s la file, khong phai thu muc" % path)
+    return "\n".join(sorted(os.listdir(p))) or "(thu muc rong)"
 
 def move_file(sandbox, src, dst, **_):
     import shutil

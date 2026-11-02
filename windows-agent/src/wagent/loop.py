@@ -54,6 +54,17 @@ def missing_args(act):
 import re
 _NAME = re.compile(r"[\w][\w./-]*\.[A-Za-z0-9]{1,5}(?![\w])")
 
+def did_you_mean(missing, after):
+    """Voi moi ten thieu, tim file co ten gan giong nhat dang ton tai (loi go sai) -> [(ten_dung, ten_dang_co)]."""
+    import difflib
+    have = [k.rsplit("/", 1)[-1] for k, _ in after]
+    out = []
+    for m in missing:
+        near = difflib.get_close_matches(m, [h for h in have if h != m], n=1, cutoff=0.75)
+        if near:
+            out.append((m, near[0]))
+    return out
+
 def mentioned_missing(task, after):
     """Ten file nhac trong nhiem vu (co duoi) ma khong co trong sandbox (so khop theo ten co so) - bat loi go sai ten."""
     have = {k.rsplit("/", 1)[-1] for k, _ in after}
@@ -77,6 +88,10 @@ def reflection_message(before, after, task=None):
     if miss:
         lines.append("- CANH BAO: ten nhac trong nhiem vu nhung KHONG co trong sandbox: " + ", ".join(miss) +
                      ". Neu day la file phai tao/chuyen den, kiem tra lai CHINH TA ten file (so sanh tung ky tu).")
+        for want, have in did_you_mean(miss, after):
+            lines.append("- GOI Y: ban co the da dat NHAM TEN '%s' thay vi '%s' -> sua bang move_file (doi ten) sang ten dung." % (have, want))
+    if not (added or gone or changed):
+        lines.append("- CANH BAO: sandbox CHUA THAY DOI GI so voi luc dau. Neu nhiem vu yeu cau tao/chuyen/sua file thi ban chua lam gi - hay lam ngay.")
     lines.append("Doi chieu TUNG yeu cau cua nhiem vu voi trang thai tren (dung ten, dung vi tri, khong thua/thieu file). "
                  "Neu con thieu hoac sai, tiep tuc sua bang cong cu. Neu da dung hoan toan, tra ve done.")
     return "\n".join(lines)

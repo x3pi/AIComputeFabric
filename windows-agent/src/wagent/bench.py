@@ -119,6 +119,33 @@ HELDOUT2 = {
     "g_dong_dau": (g6_setup, "Doc todo.txt, ghi dong dau tien cua no vao first.txt. Xong thi done", g6_ver),
 }
 
+# ---- bo HELD-OUT 3: viet SAU khi chot cai tien, chi chay mot lan cho so lieu khach quan ----
+def k1_setup(sb): pass
+def k1_ver(sb): return [_r(sb, "sao_luu/%s.txt" % n) for n in ("ban_ghi_hai", "ban_ghi_ba", "ban_ghi_bon")] == ["a", "b", "c"] and len(_ls(sb, "sao_luu")) == 3
+def k2_setup(sb):
+    for n in ["x.log", "y.log", "main.py"]: _w(sb, "app/" + n, n)
+def k2_ver(sb): return _ls(sb, "app/logs") == ["x.log", "y.log"] and _ls(sb, "app") == ["logs", "main.py"]
+def k3_setup(sb):
+    for n in ["img1.png", "img2.png"]: _w(sb, "pics/" + n, n)
+def k3_ver(sb): return _ls(sb, "pics") == ["anh_img1.png", "anh_img2.png"]
+def k4_setup(sb): _w(sb, "menu.txt", "pho\ncom tam\nbun cha\nche\n")
+def k4_ver(sb): return (_r(sb, "third.txt") or "").strip() == "bun cha"
+def k5_setup(sb):
+    _w(sb, "a.txt", "xin\n"); _w(sb, "b.txt", "chao\n")
+def k5_ver(sb): return [x.strip() for x in (_r(sb, "all.txt") or "").strip().splitlines()] == ["xin", "chao"]
+def k6_setup(sb):
+    _w(sb, "cfg/a.ini", "A"); _w(sb, "cfg/b.ini", "B"); _w(sb, "cfg/readme.txt", "R")
+def k6_ver(sb): return _ls(sb, "cfg/backup") == ["a.ini", "b.ini"] and _ls(sb, "cfg") == ["a.ini", "b.ini", "backup", "readme.txt"]
+
+HELDOUT3 = {
+    "k_ten_ban_ghi": (k1_setup, "Tao 3 file trong sao_luu/: ban_ghi_hai.txt noi dung a, ban_ghi_ba.txt noi dung b, ban_ghi_bon.txt noi dung c. Xong thi done", k1_ver),
+    "k_gom_log": (k2_setup, "Chuyen tat ca file .log trong app/ vao app/logs/. File khac giu nguyen. Xong thi done", k2_ver),
+    "k_them_tien_to": (k3_setup, "Doi ten moi file trong pics/ bang cach them tien to anh_ truoc ten (vd img1.png thanh anh_img1.png). Xong thi done", k3_ver),
+    "k_dong_thu_ba": (k4_setup, "Lay dong thu ba cua menu.txt ghi vao third.txt. Xong thi done", k4_ver),
+    "k_gop_file": (k5_setup, "Gop noi dung a.txt roi b.txt thanh all.txt, moi file mot dong. Xong thi done", k5_ver),
+    "k_sao_ini": (k6_setup, "Sao chep cac file .ini trong cfg/ vao cfg/backup/ giu nguyen ten. Khong dong vao file khac. Xong thi done", k6_ver),
+}
+
 ALL_SETS = lambda: {"dev": SCENARIOS, "held": HELDOUT}
 
 def main():
@@ -132,13 +159,13 @@ def main():
     p.add_argument("--n", type=int, default=3); p.add_argument("--only", default="")
     p.add_argument("--out", default=r"C:\wagent\bench.jsonl"); p.add_argument("--work", default=r"C:\wagent\bench_sb")
     p.add_argument("--max-steps", type=int, default=20); p.add_argument("--no-think", action="store_true")
-    p.add_argument("--set", default="dev", choices=["dev", "held", "held2", "all"]); p.add_argument("--baseline", action="store_true", help="tat moi cai tien cua agent")
+    p.add_argument("--set", default="dev", choices=["dev", "held", "held2", "held3", "all"]); p.add_argument("--baseline", action="store_true", help="tat moi cai tien cua agent")
     p.add_argument("--temp", type=float, default=0.0); p.add_argument("--tag", default="")
     p.add_argument("--lock", default=r"C:\wagent\bench.lock")
     a = p.parse_args()
     release = acquire_lock(a.lock)
     import atexit; atexit.register(release)
-    pool = {**SCENARIOS, **HELDOUT, **HELDOUT2} if a.set == "all" else {"held": HELDOUT, "held2": HELDOUT2}.get(a.set, SCENARIOS)
+    pool = {**SCENARIOS, **HELDOUT, **HELDOUT2, **HELDOUT3} if a.set == "all" else {"held": HELDOUT, "held2": HELDOUT2, "held3": HELDOUT3}.get(a.set, SCENARIOS)
     names = [n for n in pool if not a.only or n in a.only.split(",")]
     improve = Improve.none() if a.baseline else Improve.all()
     uia = UIA()
@@ -159,7 +186,7 @@ def main():
             rec = dict(scenario=name, run=i, set=a.set, baseline=a.baseline, temp=a.temp, tag=a.tag, agent_status=st, verified=ok, steps=len(steps),
                        tokens=llm.tokens, seconds=round(time.time() - t0, 1), summary=sm[:200])
             open(a.out, "a", encoding="utf-8").write(json.dumps(rec, ensure_ascii=False) + "\n")
-            print(json.dumps(rec, ensure_ascii=False), flush=True)
+            print(json.dumps(rec, ensure_ascii=True), flush=True)   # console Windows (cp1252) khong in duoc moi ky tu
             try: uia.close_window()
             except Exception: pass
 

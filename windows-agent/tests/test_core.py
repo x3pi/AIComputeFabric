@@ -410,3 +410,37 @@ def test_heldout2_verifiers():
     files.write_file(sb, "sum.txt", "41"); assert not bench.HELDOUT2["g_tong_so"][2](sb)
     sb = tempfile.mkdtemp(); bench.HELDOUT2["g_sao_cau_hinh"][0](sb); files.copy_file(sb, "config.ini", "backup/config.ini.bak"); assert bench.HELDOUT2["g_sao_cau_hinh"][2](sb)
     files.move_file(sb, "config.ini", "x.ini"); assert not bench.HELDOUT2["g_sao_cau_hinh"][2](sb)
+
+def test_bench_record_printable_on_cp1252():
+    rec = {"summary": "da ghi \u2192 xong \u2713 \u0111\u00e3"}
+    line = json.dumps(rec, ensure_ascii=True)
+    line.encode("cp1252")                      # khong duoc raise UnicodeEncodeError
+
+def test_list_dir_nonexistent_is_friendly_not_error(tmp_path):
+    out = files.list_dir(str(tmp_path), "archive/2026/")
+    assert "chua ton tai" in out
+    (tmp_path / "e").mkdir(); assert files.list_dir(str(tmp_path), "e") == "(thu muc rong)"
+    (tmp_path / "f.txt").write_text("x")
+    with pytest.raises(NotADirectoryError): files.list_dir(str(tmp_path), "f.txt")
+    with pytest.raises(files.PathDenied): files.list_dir(str(tmp_path), "../")      # van chan thoat sandbox
+
+def test_did_you_mean_and_no_change_warning():
+    from wagent.loop import did_you_mean
+    after = [("notes/ha.txt", 3), ("notes/mot.txt", 3)]
+    assert did_you_mean(["hai.txt"], after) == [("hai.txt", "ha.txt")]
+    assert did_you_mean(["zzz.txt"], after) == []
+    m = reflection_message([], after, "Tao notes/hai.txt")
+    assert "NHAM TEN 'ha.txt' thay vi 'hai.txt'" in m
+    assert "CHUA THAY DOI GI" in reflection_message([("a", 1)], [("a", 1)], "t")
+    assert "CHUA THAY DOI GI" not in reflection_message([], [("a", 1)], "t")
+
+def test_heldout3_verifiers():
+    for n, (setup, task, ver) in bench.HELDOUT3.items():
+        sb = tempfile.mkdtemp(); setup(sb); assert not ver(sb), n
+    sb = tempfile.mkdtemp(); bench.HELDOUT3["k_sao_ini"][0](sb)
+    for n in ("a.ini", "b.ini"): files.copy_file(sb, "cfg/" + n, "cfg/backup/" + n)
+    assert bench.HELDOUT3["k_sao_ini"][2](sb)
+    files.copy_file(sb, "cfg/readme.txt", "cfg/backup/readme.txt"); assert not bench.HELDOUT3["k_sao_ini"][2](sb)
+    sb = tempfile.mkdtemp(); bench.HELDOUT3["k_them_tien_to"][0](sb)
+    for n in ("img1.png", "img2.png"): files.move_file(sb, "pics/" + n, "pics/anh_" + n)
+    assert bench.HELDOUT3["k_them_tien_to"][2](sb)
