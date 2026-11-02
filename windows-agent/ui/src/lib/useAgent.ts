@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
-import type { RunRequest, State } from "./schema";
+import type { Lesson, RunRequest, State } from "./schema";
 
-const EMPTY: State = { status: "idle", summary: "", log: [], pending: [] };
+const EMPTY: State = { status: "idle", summary: "", log: [], pending: [], can_save_lesson: false };
 
 /** Poll trạng thái; dừng poll khi tab ẩn để tiết kiệm tài nguyên. */
 export function useAgent(intervalMs = 1000) {
   const [state, setState] = useState<State>(EMPTY);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lessons, setLessons] = useState<Lesson[] | null>(null);   // null = tính năng bài học tắt/không tải được
   const alive = useRef(true);
 
   useEffect(() => {
@@ -29,6 +30,11 @@ export function useAgent(intervalMs = 1000) {
     return () => { alive.current = false; window.clearTimeout(timer); };
   }, [intervalMs]);
 
+  const loadLessons = useCallback(async () => {
+    try { if (alive.current) setLessons(await api.lessons()); } catch { if (alive.current) setLessons(null); }
+  }, []);
+  useEffect(() => { void loadLessons(); }, [loadLessons, state.status]);   // tải lại khi trạng thái đổi (vd vừa xong nhiệm vụ)
+
   const guard = useCallback(async (fn: () => Promise<unknown>) => {
     setBusy(true);
     try { await fn(); setError(null); }
@@ -37,9 +43,11 @@ export function useAgent(intervalMs = 1000) {
   }, []);
 
   return {
-    state, error, busy,
+    state, error, busy, lessons,
     run: (r: RunRequest) => guard(() => api.run(r)),
     stop: () => guard(() => api.stop()),
+    saveLesson: (title: string) => guard(async () => { await api.saveLesson(title); await loadLessons(); }),
+    deleteLesson: (id: string) => guard(async () => { await api.deleteLesson(id); await loadLessons(); }),
     approve: (id: string, allow: boolean) => guard(() => api.approve(id, allow)),
   };
 }

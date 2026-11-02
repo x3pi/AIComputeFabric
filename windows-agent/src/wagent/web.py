@@ -1,5 +1,6 @@
 """UI web cuc bo (stdlib). Bind 127.0.0.1 + token. Key chi nam trong bo nho, khong ghi log/audit."""
 import json, mimetypes, os, secrets, threading, time, uuid
+from . import lessons as lessons_mod
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -33,6 +34,7 @@ class State:
         self.lock = threading.Lock()
         self.status, self.summary, self.log, self.pending = "idle", "", [], {}
         self.stop = threading.Event()
+        self.last = None     # {"task","status","actions","lesson"} cua lan chay gan nhat (de luu thanh bai hoc)
 
 class WebApprover:
     def __init__(self, state, timeout=120):
@@ -64,7 +66,7 @@ def list_models(url, key="", timeout=5, _open=None):
         raise ValueError("phan hoi khong phai danh sach model OpenAI")
     return [str(m["id"]) for m in data if isinstance(m, dict) and "id" in m]
 
-def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=120, ui_dir=None, thread_ctx=None):
+def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=120, ui_dir=None, thread_ctx=None, lessons_dir=None):
     """make_agent(cfg, log, approver, stop_event) -> obj co .run(task)->(status, summary)
     thread_ctx: ham tra ve context manager, vao/ra tren CHINH luong chay nhiem vu (Windows: khoi tao COM cho UI Automation)."""
     token = token or secrets.token_urlsafe(16)
@@ -101,7 +103,12 @@ def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=1
                 with st.lock:
                     pend = [{k: v for k, v in x.items() if k not in ("ev", "ok")} for x in st.pending.values()]
                     return self._send(200, json.dumps({"status": st.status, "summary": st.summary,
-                                                       "log": st.log[-200:], "pending": pend}))
+                                                       "log": st.log[-200:], "pending": pend,
+                                                       "can_save_lesson": bool(lessons_dir and st.last and st.last["status"] == "done" and st.last["actions"]),
+                                                       "lesson_used": (st.last or {}).get("lesson")}))
+            if p == "/api/lessons":
+                if not lessons_dir: return self._send(404, '{"error":"bai hoc chua bat"}')
+                return self._send(200, json.dumps({"lessons": [lessons_mod.summary(x) for x in lessons_mod.load_all(lessons_dir)]}))
             self._send(404, "{}")
         def do_POST(self):
             if not self._ok(): return self._send(403, '{"error":"token"}')
@@ -123,6 +130,24 @@ def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=1
                     msg = ("server model tra HTTP %s%s" % (code, " (can API key?)" if code in (401, 403) else "")) if code else \
                           "%s: %s" % (type(e).__name__, e)
                     return self._send(502, json.dumps({"error": msg[:200]}))
+            if p in ("/api/lessons", "/api/lessons/delete"):
+                if not lessons_dir: return self._send(404, '{"error":"bai hoc chua bat"}')
+                try:
+                    if p == "/api/lessons/delete":
+                        lessons_mod.delete(lessons_dir, str(d.get("id", "")))
+                        return self._send(200, '{"ok":true}')
+                    with st.lock:
+                        last = dict(st.last) if st.last else None
+                    if not last or last["status"] != "done":
+                        return self._send(409, '{"error":"chi luu duoc bai hoc tu lan chay vua hoan thanh (done)"}')
+                    les = lessons_mod.from_run(last["task"], last["actions"], title=str(d.get("title", "")))
+                    les = lessons_mod.unique_id(lessons_dir, les)
+                    lessons_mod.save(lessons_dir, les)
+                    return self._send(200, json.dumps({"lesson": lessons_mod.summary(les)}))
+                except FileNotFoundError:
+                    return self._send(404, '{"error":"khong co bai hoc nay"}')
+                except ValueError as e:
+                    return self._send(400, json.dumps({"error": str(e)[:200]}))
             if p == "/api/stop":
                 st.stop.set()
                 with st.lock:
@@ -137,14 +162,24 @@ def serve(make_agent, host="127.0.0.1", port=8765, token=None, approve_timeout=1
         def _work(self, cfg):
             def log(m):
                 with st.lock: st.log.append(str(m))
+            actions, lesson = [], None
             try:
-                import contextlib
+                import contextlib, gc
                 with (thread_ctx() if thread_ctx else contextlib.nullcontext()):
-                    ag = make_agent(cfg, log, WebApprover(st, approve_timeout), st.stop)
-                    s, m = ag.run(cfg.get("task", ""))
+                    ag = None
+                    try:
+                        ag = make_agent(cfg, log, WebApprover(st, approve_timeout), st.stop)
+                        s, m = ag.run(cfg.get("task", ""))
+                    finally:
+                        actions = list(getattr(ag, "actions", []) or [])
+                        lesson = getattr(ag, "lesson_used", None)
+                        ag = None
+                        gc.collect()      # giai phong con tro COM (UIA) TRUOC khi thoat COM; sau CoUninitialize se crash 0xc0000005
             except Exception as e:
                 s, m = "failed", "%s: %s" % (type(e).__name__, e)
-            with st.lock: st.status, st.summary = s, m
+            with st.lock:
+                st.status, st.summary = s, m
+                st.last = {"task": str(cfg.get("task", "")), "status": s, "actions": actions, "lesson": lesson}
 
     srv = ThreadingHTTPServer((host, port), H)
     srv.token = token

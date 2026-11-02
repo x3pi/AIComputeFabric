@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApprovalCards } from "../components/ApprovalCard";
 import { ConfigForm } from "../components/ConfigForm";
+import { LessonPanel } from "../components/LessonPanel";
 import { StepTimeline } from "../components/StepTimeline";
 
 describe("ConfigForm", () => {
@@ -82,5 +83,43 @@ describe("StepTimeline", () => {
     rerender(<StepTimeline log={['[1] {"tool": "read_file", "args": {"path": "a"}} -> TU CHOI: x']} />);
     expect(screen.getByText("1. read_file")).toBeTruthy();
     expect(screen.getByText("TU CHOI: x").className).toContain("text-bad");
+  });
+});
+
+describe("Bài học", () => {
+  const ls = [{ id: "doc-bao", title: "Đọc báo", task: "t", steps: 4 }];
+  it("ConfigForm: ẩn ô chọn khi không có bài học, gửi lesson khi chọn", () => {
+    const { unmount } = render(<ConfigForm disabled={false} onRun={() => {}} lessons={[]} />);
+    expect(screen.queryByLabelText(/Bài học/)).toBeNull();
+    unmount();
+    const onRun = vi.fn();
+    render(<ConfigForm disabled={false} onRun={onRun} lessons={ls} />);
+    fireEvent.change(screen.getByLabelText(/Bài học/), { target: { value: "doc-bao" } });
+    fireEvent.change(screen.getByLabelText("Nhiệm vụ"), { target: { value: "doc bao moi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Chạy" }));
+    expect(onRun.mock.calls[0]?.[0].lesson).toBe("doc-bao");
+  });
+  it("ConfigForm: mặc định không gửi lesson (tự động)", () => {
+    const onRun = vi.fn();
+    render(<ConfigForm disabled={false} onRun={onRun} lessons={ls} />);
+    fireEvent.change(screen.getByLabelText("Nhiệm vụ"), { target: { value: "doc bao moi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Chạy" }));
+    expect(onRun.mock.calls[0]?.[0].lesson).toBeUndefined();
+  });
+  it("LessonPanel: chỉ hiện form lưu khi canSave, lưu gọi onSave với tên", () => {
+    const onSave = vi.fn();
+    const { unmount } = render(<LessonPanel canSave={false} lessons={ls} onSave={onSave} onDelete={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Lưu thành bài học" })).toBeNull();
+    unmount();
+    render(<LessonPanel canSave lessons={ls} onSave={onSave} onDelete={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Tên bài học"), { target: { value: " Báo X " } });
+    fireEvent.click(screen.getByRole("button", { name: "Lưu thành bài học" }));
+    expect(onSave).toHaveBeenCalledWith("Báo X");
+  });
+  it("LessonPanel: xoá gọi onDelete đúng id", () => {
+    const onDelete = vi.fn();
+    render(<LessonPanel canSave={false} lessons={ls} onSave={() => {}} onDelete={onDelete} />);
+    fireEvent.click(screen.getByRole("button", { name: "Xoá Đọc báo" }));
+    expect(onDelete).toHaveBeenCalledWith("doc-bao");
   });
 });

@@ -494,7 +494,7 @@ def test_agent_click_by_name_and_guard_still_applies(tmp_path):
         def click(s, id=None, name=None, **_): s.clicked.append(id if id is not None else name); return "da bam"
     class L:
         def __init__(s, outs): s.o = list(outs)
-        def chat(s, m): return s.o.pop(0)
+        def chat(s, m, **k): return s.o.pop(0)
     u = U()
     out = ['{"tool":"click","args":{"name":"Nope"}}', '{"tool":"click","args":{"name":"Send"}}', '{"tool":"done","args":{"summary":"x"}}']
     a = Agent(L(out), u, Audit(str(tmp_path / "a.jsonl")), str(tmp_path), improve=Improve(True, True, False, False))
@@ -670,7 +670,7 @@ def test_open_extra_app_requires_approval_end_to_end(tmp_path, monkeypatch):
         def open_app(s, name, **_): s.opened.append(name); return "da mo"
     class L:
         def __init__(s): s.o = ['{"tool":"open_app","args":{"name":"chrome"}}', '{"tool":"done","args":{"summary":"x"}}']; s.seen = None
-        def chat(s, m): s.seen = s.seen or m[0]["content"]; return s.o.pop(0)
+        def chat(s, m, **k): s.seen = s.seen or m[0]["content"]; return s.o.pop(0)
     u, llm = U(), L()
     Agent(llm, u, Audit(str(tmp_path / "a.jsonl")), str(tmp_path)).run("mo chrome")     # approver mac dinh = DenyAll
     assert u.opened == [] and "chrome" in llm.seen and "nguoi duyet" in llm.seen
@@ -791,7 +791,7 @@ def test_agent_retries_on_context_exceeded(tmp_path):
     from wagent.llm import ContextExceeded
     calls = []
     class L:
-        def chat(s, m):
+        def chat(s, m, **k):
             calls.append(sum(len(x["content"]) for x in m))
             if len(calls) == 1: raise ContextExceeded("n_ctx 4096")
             return '{"tool":"done","args":{"summary":"ok"}}'
@@ -804,7 +804,7 @@ def test_agent_gives_up_when_context_never_fits(tmp_path):
     from wagent.audit import Audit
     from wagent.llm import ContextExceeded
     class L:
-        def chat(s, m): raise ContextExceeded("x")
+        def chat(s, m, **k): raise ContextExceeded("x")
     st, sm = Agent(L(), None, Audit(str(tmp_path / "a.jsonl")), str(tmp_path), ctx_chars=4000).run("t")
     assert st == "failed" and "ngu canh" in sm
 
@@ -910,7 +910,259 @@ def test_agent_prompt_has_browser_note_only_for_browser_tasks(tmp_path):
         extra_apps = {"chrome": {}}
         def is_extra_app(s, n): return True
     class L:
-        def chat(s, m): seen.append(m[0]["content"]); return '{"tool":"done","args":{"summary":"x"}}'
+        def chat(s, m, **k): seen.append(m[0]["content"]); return '{"tool":"done","args":{"summary":"x"}}'
     for task in ("sao chep file a.txt", "mo chrome vao https://x.vn"):
         Agent(L(), U(), Audit(str(tmp_path / "a.jsonl")), str(tmp_path)).run(task)
     assert "read_page" not in seen[0] and "read_page" in seen[1]
+
+
+# ---- thu vien bai hoc ----
+from wagent import lessons as LS
+
+VNE_TASK = "Mo chrome vao https://vnexpress.net roi doc cac tieu de bai bao, tong hop 10 tieu de vao file tin.txt"
+VNE_ACTS = [{"tool": "open_app", "args": {"name": "chrome", "url": "https://vnexpress.net"}},
+            {"tool": "read_page", "args": {}},
+            {"tool": "write_file", "args": {"path": "tin.txt", "content": "Tieu de 1 rat dai " * 20}},
+            {"tool": "list_dir", "args": {"path": "."}}]
+
+def test_tokens_strip_diacritics_and_stopwords():
+    assert LS.tokens("Mở Chrome vào VnExpress, đọc các tiêu đề") == ["chrome", "vnexpress", "doc", "tieu"]
+
+def test_from_run_redacts_and_caps():
+    les = LS.from_run(VNE_TASK, VNE_ACTS, title="Doc tieu de bao")
+    assert les["id"] == "doc-tieu-bao" and LS.validate(les)
+    w = [s for s in les["steps"] if s["tool"] == "write_file"][0]
+    assert w["args"]["content"].startswith("<noi dung")           # noi dung dai khong duoc luu nguyen van
+    assert "chrome" in les["keywords"] and "tieu" in les["keywords"]
+    assert not {"vnexpress", "https", "tin", "txt", "10"} & set(les["keywords"])           # URL/ten file/so khong phai y dinh
+
+def test_from_run_drops_secrets_and_converts_click_id_to_name():
+    acts = [{"tool": "set_text", "args": {"id": 3, "text": "mat khau cua toi la 123"}},
+            {"tool": "click", "args": {"id": 49}, "target": "Zero"},
+            {"tool": "click", "args": {"id": 47}, "target": "Save As...\tCtrl+Shift+S"}]
+    les = LS.from_run("bam so", acts)
+    tools = [(s["tool"], s["args"]) for s in les["steps"]]
+    assert tools == [("click", {"name": "Zero"}), ("click", {"name": "Save As..."})]          # secret bi bo; id -> ten
+
+def test_from_run_rejects_empty_and_too_long():
+    with pytest.raises(ValueError): LS.from_run("x", [{"tool": "observe", "args": {}}])
+    with pytest.raises(ValueError): LS.from_run("x", [{"tool": "list_dir", "args": {"path": "p%d" % i}} for i in range(25)])
+    with pytest.raises(ValueError): LS.from_run("x", [{"tool": "format_disk", "args": {}}])      # tool la bi bo -> khong con hanh dong
+
+def test_match_threshold_no_false_positive():
+    les = LS.from_run(VNE_TASK, VNE_ACTS, title="Doc tieu de bao")
+    assert LS.best_match("Mo chrome vao https://tuoitre.vn doc tieu de bai bao ghi vao file tin_tuoi_tre.txt", [les]) is les
+    # cac nhiem vu cua benchmark KHONG duoc khop (se lam chech prompt)
+    for t in ("Chuyen tat ca file .log trong app/ vao app/logs/", "Mo calc bam 4 5 + 6 7 =, ghi ket qua vao kq.txt",
+              "Doi ten moi file trong thu muc docs/ thanh chu thuong", "Sao chep cac file .txt trong proj/ sang backup/",
+              "Mo notepad, go Xin chao, ghi file ghichu.txt", "Mo chrome"):
+        assert LS.best_match(t, [les]) is None, t
+
+def test_match_prefers_best_and_note_format():
+    a = LS.from_run("copy file ini cfg backup", [{"tool": "copy_file", "args": {"src": "a", "dst": "b"}}], title="sao ini")
+    b = LS.from_run(VNE_TASK, VNE_ACTS, title="Doc tieu de bao")
+    assert LS.best_match("Mo chrome vao https://tuoitre.vn doc tieu de bai bao tong hop vao file t.txt", [a, b]) is b
+    n = LS.lesson_note(b)
+    assert "THAM KHAO" in n and "1. open_app" in n and len(n) <= 1810
+
+def test_save_load_delete_and_path_safety(tmp_path):
+    d = str(tmp_path / "ls")
+    les = LS.from_run(VNE_TASK, VNE_ACTS, title="Doc tieu de bao")
+    LS.save(d, les)
+    assert [x["id"] for x in LS.load_all(d)] == ["doc-tieu-bao"]
+    bad = dict(les, id="../evil"); 
+    with pytest.raises(ValueError): LS.save(d, bad)
+    with pytest.raises(ValueError): LS.delete(d, "../../etc/passwd")
+    with pytest.raises(FileNotFoundError): LS.delete(d, "khong-co")
+    (tmp_path / "ls" / "hong.json").write_text("{nope")                                            # file hong bi bo qua
+    (tmp_path / "ls" / "khac-ten.json").write_text(json.dumps(dict(les, id="doc-tieu-bao")))   # ten file != id -> bo
+    assert len(LS.load_all(d)) == 1
+    LS.delete(d, "doc-tieu-bao"); assert LS.load_all(d) == []
+    assert LS.load_all(str(tmp_path / "none")) == []
+
+
+def test_vnexpress_lesson_matches_no_benchmark_task():
+    """Bai hoc chen chu vao prompt => khong duoc khop nhiem vu benchmark (da do: prompt chech -> hoi quy)."""
+    from wagent import bench
+    les = LS.from_run(VNE_TASK, VNE_ACTS, title="Doc tieu de bao")
+    tasks = [v[1] for pool in (bench.SCENARIOS, bench.HELDOUT, bench.HELDOUT2, bench.HELDOUT3, bench.HELDOUT4) for v in pool.values()]
+    assert len(tasks) >= 27
+    assert [t for t in tasks if LS.best_match(t, [les])] == []
+
+def test_auto_match_only_between_same_kind_of_benchmark_tasks():
+    """Tu dong chen chi giua cac nhiem vu CUNG LOAI (may tinh GUI, doi ten hang loat); khong cheo loai."""
+    from wagent import bench
+    pools = {k: v for pool in (bench.SCENARIOS, bench.HELDOUT, bench.HELDOUT2, bench.HELDOUT3, bench.HELDOUT4) for k, v in pool.items()}
+    les = {k: LS.from_run(v[1], [{"tool": "list_dir", "args": {"path": "."}}], title=k) for k, v in pools.items()}
+    same_kind = [{"may_tinh_gui", "m_tinh_cong", "m_tinh_nhan"}, {"doi_ten_hang_loat", "m_doi_ten_van_ban"}, {"h_dem_dong", "g_dem_md"}]
+    ok = lambda a, b: any(a in g and b in g for g in same_kind)
+    wrong = [(a, b) for a, v in pools.items() for b, l in les.items() if a != b and LS.best_match(v[1], [l]) and not ok(a, b)]
+    assert wrong == [], wrong
+    assert all(LS.best_match(pools[k][1], [l]) is l for k, l in les.items())               # va tu khop chinh no
+
+
+# ---- Agent + bai hoc ----
+class _LessonUIA:
+    def __init__(self): self.calls = []
+    def describe(self, id): return {7: "Save As...\tCtrl+Shift+S", 9: "Save"}.get(int(id), "")
+    def observe(self): return "WINDOW 'W'\n7 [MenuItem] 'Save As...'"
+    def click(self, id, **_):
+        self.calls.append(("click", id)); return "da bam"
+
+def _run_agent(tmp_path, replies, uia=None, task="mo menu luu", **kw):
+    from wagent.loop import Agent
+    from wagent.audit import Audit
+    seen = []
+    class L:
+        def __init__(s): s.o = list(replies)
+        def chat(s, m, **k): seen.append(m); return s.o.pop(0)
+    a = Agent(L(), uia or _LessonUIA(), Audit(str(tmp_path / "a.jsonl")), str(tmp_path / "sb"), **kw)
+    return a, a.run(task), seen
+
+def test_agent_records_only_successful_actions_with_target(tmp_path):
+    a, r, _ = _run_agent(tmp_path, ['{"tool":"observe","args":{}}', '{"tool":"click","args":{"id":7}}',
+                                    '{"tool":"read_file","args":{"path":"khong-co.txt"}}', '{"tool":"done","args":{"summary":"x"}}'])
+    assert r[0] == "done"
+    assert [x["tool"] for x in a.actions] == ["observe", "click"]            # read_file loi (khong ton tai) khong duoc ghi
+    assert a.actions[1]["target"] == "Save As...\tCtrl+Shift+S"
+    les = LS.from_run("mo menu luu", a.actions)
+    assert les["steps"][1] == {"tool": "click", "args": {"name": "Save As..."}}
+
+def test_agent_injects_lesson_only_when_matched_or_forced(tmp_path):
+    d = str(tmp_path / "ls")
+    les = LS.from_run(VNE_TASK, VNE_ACTS, title="Doc tieu de bao"); LS.save(d, les)
+    done = ['{"tool":"done","args":{"summary":"x"}}']
+    _, _, s1 = _run_agent(tmp_path, done, lessons_dir=d, task="Mo chrome vao https://tuoitre.vn doc tieu de bai bao tong hop vao file t.txt")
+    assert "BAI HOC THAM KHAO" in s1[0][1]["content"] and "BAI HOC" not in s1[0][0]["content"]       # chen vao tin nhan nhiem vu, KHONG vao system
+    _, _, s2 = _run_agent(tmp_path, done, lessons_dir=d, task="Chuyen file .log vao thu muc logs")
+    assert "BAI HOC" not in s2[0][1]["content"]                                                       # khong khop => prompt giu nguyen
+    _, _, s3 = _run_agent(tmp_path, done, lessons_dir=d, lesson_id=les["id"], task="viec la hoan toan khac")
+    assert "BAI HOC THAM KHAO" in s3[0][1]["content"]                                                 # nguoi dung ep chon
+    _, _, s4 = _run_agent(tmp_path, done, lessons_dir=d, lesson_id="none", task=VNE_TASK)
+    assert "BAI HOC" not in s4[0][1]["content"]                                                       # nguoi dung tat
+    _, _, s5 = _run_agent(tmp_path, done, task=VNE_TASK)                                              # khong cau hinh thu muc bai hoc
+    assert "BAI HOC" not in s5[0][1]["content"]
+    assert '"event": "lesson_used"' in (tmp_path / "a.jsonl").read_text()
+
+def test_lesson_does_not_bypass_guard(tmp_path):
+    d = str(tmp_path / "ls")
+    LS.save(d, LS.from_run("bam gui", [{"tool": "click", "args": {"id": 1}, "target": "Send"}], title="bam gui"))
+    class U(_LessonUIA):
+        def describe(self, id): return "Send"
+    u = U()
+    _run_agent(tmp_path, ['{"tool":"click","args":{"id":1}}', '{"tool":"done","args":{"summary":"x"}}'], uia=u, lessons_dir=d, lesson_id="bam-gui", task="bam gui")
+    assert u.calls == []                                   # click 'Send' van can duyet -> DenyAll tu choi du co bai hoc
+
+
+# ---- web: luu / liet ke / xoa bai hoc ----
+def _web_lessons(status="done", actions=None, lessons_dir=True):
+    d = tempfile.mkdtemp(); ld = d + "/lessons"
+    acts = VNE_ACTS if actions is None else actions
+    class A:
+        lesson_used = None
+        def __init__(s): s.actions = []
+        def run(s, task): s.actions = list(acts); return status, "tom tat"
+    srv = serve(lambda *a: A(), port=0, token="tok", lessons_dir=ld if lessons_dir else None)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return "http://127.0.0.1:%d" % srv.server_address[1], ld
+
+def _err(fn):
+    with pytest.raises(urllib.error.HTTPError) as e: fn()
+    return e.value.code, json.loads(e.value.read())
+
+def test_web_save_list_delete_lesson():
+    b, ld = _web_lessons()
+    assert _call(b, "/api/state")["can_save_lesson"] is False                       # chua chay gi
+    _call(b, "/api/run", {"task": VNE_TASK}); _wait(b, lambda s: s["status"] == "done")
+    assert _call(b, "/api/state")["can_save_lesson"] is True
+    r = _call(b, "/api/lessons", {"title": "Doc tieu de bao"})["lesson"]
+    assert r["id"] == "doc-tieu-bao" and r["steps"] >= 3
+    r2 = _call(b, "/api/lessons", {"title": "Doc tieu de bao"})["lesson"]             # trung ten => khong ghi de
+    assert r2["id"] == "doc-tieu-bao-2"
+    assert {x["id"] for x in _call(b, "/api/lessons")["lessons"]} == {"doc-tieu-bao", "doc-tieu-bao-2"}
+    _call(b, "/api/lessons/delete", {"id": "doc-tieu-bao"})
+    assert [x["id"] for x in _call(b, "/api/lessons")["lessons"]] == ["doc-tieu-bao-2"]
+    assert _err(lambda: _call(b, "/api/lessons/delete", {"id": "../../x"}))[0] == 400
+    assert _err(lambda: _call(b, "/api/lessons/delete", {"id": "khong-co"}))[0] == 404
+
+def test_web_lesson_refused_when_not_done_or_empty_or_disabled_or_no_token():
+    b, _ = _web_lessons(status="failed")
+    _call(b, "/api/run", {"task": "x"}); _wait(b, lambda s: s["status"] == "failed")
+    assert _call(b, "/api/state")["can_save_lesson"] is False
+    assert _err(lambda: _call(b, "/api/lessons", {"title": "t"}))[0] == 409          # that bai => khong cho hoc
+    b2, _ = _web_lessons(actions=[{"tool": "observe", "args": {}}])
+    _call(b2, "/api/run", {"task": "x"}); _wait(b2, lambda s: s["status"] == "done")
+    assert _err(lambda: _call(b2, "/api/lessons", {"title": "t"}))[0] == 400         # khong co hanh dong de hoc
+    b3, _ = _web_lessons(lessons_dir=False)
+    assert _err(lambda: _call(b3, "/api/lessons"))[0] == 404
+    assert _err(lambda: _call(b, "/api/lessons", tok="bad"))[0] == 403
+
+def test_agent_asks_for_enough_output_tokens_for_long_vietnamese_summary():
+    # do that: max_tokens=400 cat cut JSON done (tom tat tieng Viet co dau) -> 'dinh dang sai 3 lan'
+    seen = []
+    class L(FakeLLM):
+        def chat(self, m, **k): seen.append(k.get("max_tokens")); return super().chat(m, **k)
+    d = tempfile.mkdtemp()
+    a = Agent(L(['{"tool":"done","args":{"summary":"ok"}}']), FakeUIA(), Audit(d + "/a.jsonl"), d + "/sb", log=lambda *_: None)
+    a.run("t")
+    assert seen and all(x is not None and x >= 800 for x in seen)
+
+def test_uia_thread_resets_process_wide_client_before_and_after():
+    # do that: _AutomationClient._instance (singleton) cua luong 1 bi dung o luong 2 -> crash 0xc0000005
+    from wagent.comctx import uia_thread
+    class Client: _instance = "con-tro-cua-luong-cu"
+    class Init:
+        def __init__(s): events.append(("init", Client._instance))
+        def Uninitialize(s): events.append(("uninit", Client._instance))
+    events = []
+    class UA:
+        _AutomationClient = Client
+        UIAutomationInitializerInThread = Init
+    with uia_thread(UA):
+        assert Client._instance is None          # luong moi khong thua huong client cu
+        Client._instance = "client-cua-luong-nay"
+    assert Client._instance is None              # va khong de lai cho luong sau
+    # client phai duoc tha TRUOC Uninitialize (Release sau CoUninitialize => crash)
+    assert events == [("init", None), ("uninit", None)]
+
+def test_uia_thread_cleans_up_even_when_task_raises():
+    from wagent.comctx import uia_thread
+    class Client: _instance = None
+    done = []
+    class Init:
+        def Uninitialize(s): done.append(1)
+    class UA:
+        _AutomationClient = Client
+        UIAutomationInitializerInThread = Init
+    with pytest.raises(RuntimeError):
+        with uia_thread(UA):
+            Client._instance = "x"; raise RuntimeError("boom")
+    assert done == [1] and Client._instance is None
+
+def test_web_work_drops_agent_and_collects_before_leaving_com_context():
+    # do that: ag con song sau thread_ctx -> con tro COM bi giai phong sau CoUninitialize -> crash luc nhiem vu ke tiep
+    import contextlib, gc, threading, urllib.request, json, weakref
+    from wagent.web import serve
+    order = []
+    alive = []
+    class Ag:
+        actions = [{"tool": "done", "args": {}}]; lesson_used = None
+        def run(self, t):
+            alive.append(weakref.ref(self)); return "done", "ok"
+    @contextlib.contextmanager
+    def ctx():
+        yield
+        order.append("agent_freed" if alive and alive[0]() is None else "agent_STILL_ALIVE")
+    srv = serve(lambda cfg, log, ap, stop: Ag(), port=0, token="t", thread_ctx=ctx)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+    def call(p, b=None):
+        r = urllib.request.Request("http://127.0.0.1:%d%s" % (port, p), data=None if b is None else json.dumps(b).encode(), headers={"X-Token": "t"})
+        return json.load(urllib.request.urlopen(r, timeout=5))
+    call("/api/run", {"task": "abc def", "url": "http://x/v1"})
+    import time
+    for _ in range(50):
+        if call("/api/state")["status"] != "running" and order: break
+        time.sleep(0.05)
+    srv.shutdown()
+    assert order == ["agent_freed"]

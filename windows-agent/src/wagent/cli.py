@@ -37,21 +37,26 @@ def main():
     p.add_argument("--no-think", action="store_true", help="tat che do suy nghi (Qwen3)")
     p.add_argument("--ui-dir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui_dist"))
     p.add_argument("--token-file", default="", help="doc/tao token co dinh (de shortcut mo dung dia chi)")
+    p.add_argument("--lessons-dir", default=r"C:\wagent\lessons", help="thu muc bai hoc (ngoai sandbox); \"\" = tat")
     p.add_argument("--baseline", action="store_true", help="tat cac cai tien cua agent (de so sanh)")
     p.add_argument("--web", type=int, default=0, help="chay UI web tren 127.0.0.1:PORT")
     p.add_argument("task", nargs="?", default="")
     a = p.parse_args()
     os.makedirs(a.sandbox, exist_ok=True)
     if a.web:
+        import faulthandler      # crash native (0xc0000005) -> stack Python vao file (pythonw khong co stderr)
+        faulthandler.enable(open(os.path.join(os.path.dirname(a.audit) or ".", "fault.log"), "a"), all_threads=True)
         from .web import serve
         from .skills.uia import UIA
         def make_agent(cfg, log, approver, stop):
             return Agent(LLM(cfg["url"], cfg.get("model", ""), cfg.get("key", ""), no_think=a.no_think), UIA(), Audit(a.audit),
-                         a.sandbox, a.max_steps, log=log, approver=approver, stop_event=stop, max_seconds=a.max_seconds, improve=_improve(a))
+                         a.sandbox, a.max_steps, log=log, approver=approver, stop_event=stop, max_seconds=a.max_seconds, improve=_improve(a),
+                         lessons_dir=a.lessons_dir or None, lesson_id=str(cfg.get("lesson", "")))
         def com_ctx():      # moi nhiem vu chay tren luong rieng: UI Automation can CoInitialize tren luong do
             import uiautomation
-            return uiautomation.UIAutomationInitializerInThread()
-        srv = serve(make_agent, thread_ctx=com_ctx, port=a.web, token=load_token(a.token_file), ui_dir=a.ui_dir if os.path.isfile(os.path.join(a.ui_dir, "index.html")) else None)
+            from .comctx import uia_thread
+            return uia_thread(uiautomation)
+        srv = serve(make_agent, thread_ctx=com_ctx, lessons_dir=a.lessons_dir or None, port=a.web, token=load_token(a.token_file), ui_dir=a.ui_dir if os.path.isfile(os.path.join(a.ui_dir, "index.html")) else None)
         print("UI: http://127.0.0.1:%d/?t=%s" % (a.web, srv.token), flush=True)
         srv.serve_forever()
         return

@@ -4,6 +4,7 @@ from .llm import parse_action, ContextExceeded
 from . import guard
 from .skills import files
 from .approver import DenyAll
+from . import lessons as lessons_mod
 
 SYSTEM = """Ban dieu khien may Windows bang cac cong cu. Moi luot CHI tra ve MOT object JSON, khong giai thich:
 {"tool": "<ten>", "args": {...}}
@@ -132,6 +133,7 @@ def reflection_message(before, after, task=None):
                  "Neu con thieu hoac sai, tiep tuc sua bang cong cu. Neu da dung hoan toan, tra ve done.")
     return "\n".join(lines)
 
+MAX_OUT_TOKENS = 900   # 400 cat cut JSON done khi tom tat tieng Viet dai (do that: vnexpress)
 MAX_RESULT_CHARS = 2500
 
 def clip_result(res, limit=MAX_RESULT_CHARS):
@@ -166,9 +168,12 @@ def compact_messages(msgs, budget):
     return out
 
 class Agent:
-    def __init__(self, llm, uia, audit, sandbox, max_steps=12, log=print, approver=None, stop_file=None, max_seconds=600, stop_event=None, improve=None, ctx_chars=14000):
+    def __init__(self, llm, uia, audit, sandbox, max_steps=12, log=print, approver=None, stop_file=None, max_seconds=600, stop_event=None, improve=None, ctx_chars=14000, lessons_dir=None, lesson_id=""):
         self.stop_event = stop_event
         self.ctx_chars = ctx_chars
+        self.lessons_dir, self.lesson_id = lessons_dir, lesson_id   # lesson_id: "" = tu dong (khop rat cao), "none" = tat, "<id>" = ep dung
+        self.actions = []        # cac hanh dong THANH CONG cua lan chay gan nhat (de luu thanh bai hoc)
+        self.lesson_used = None
         self.improve = improve or Improve.none()
         if self.improve.validate and hasattr(uia, "friendly"):
             uia.friendly = True
@@ -180,10 +185,14 @@ class Agent:
     def run(self, task):
         sysmsg = SYSTEM_V2 if self.improve.prompt else SYSTEM
         sysmsg += browser_note(task, getattr(self.uia, "extra_apps", None))
-        msgs = [{"role": "system", "content": sysmsg}, {"role": "user", "content": "Nhiem vu: " + task}]
+        self.actions, self.lesson_used = [], None
+        note = self._lesson_note(task)
+        msgs = [{"role": "system", "content": sysmsg}, {"role": "user", "content": "Nhiem vu: " + task + note}]
         tree0 = files.tree(self.sandbox) if os.path.isdir(self.sandbox) else []
         seen, reflections, acted = {}, 0, False
         self.audit.write(event="start", task=task)
+        if self.lesson_used:
+            self.audit.write(event="lesson_used", id=self.lesson_used, mode="manual" if self.lesson_id else "auto")
         bad = 0
         t0 = time.time()
         for step in range(1, self.max_steps + 1):
@@ -194,7 +203,7 @@ class Agent:
             budget = self.ctx_chars
             while True:
                 try:
-                    text = self.llm.chat(compact_messages(msgs, budget))
+                    text = self.llm.chat(compact_messages(msgs, budget), max_tokens=MAX_OUT_TOKENS)
                     break
                 except ContextExceeded:
                     budget //= 2                                   # engine bao tran ngu canh: rut gon manh hon roi thu lai
@@ -241,8 +250,15 @@ class Agent:
                 if miss:
                     res = "LOI: thieu tham so %s cho %s. Dung dinh dang: %s" % (miss, act["tool"], {act["tool"]: REQUIRED[act["tool"]]})
                 else:
+                    target = ""
+                    if act["tool"] in ("click", "set_text", "read_text") and "id" in act["args"]:
+                        try:
+                            target = (getattr(self.uia, "describe", lambda i: "")(act["args"]["id"]) or "").strip()
+                        except Exception:
+                            target = ""
                     try:
                         res = self._exec(act)
+                        self.actions.append({"tool": act["tool"], "args": dict(act["args"]), **({"target": target} if target else {})})   # chi khi chay xong khong loi
                     except Exception as e:
                         res = "LOI: %s: %s" % (type(e).__name__, e)
                 if self.improve.loop_guard:
@@ -259,6 +275,20 @@ class Agent:
             msgs += [{"role": "assistant", "content": json.dumps(act, ensure_ascii=False)},
                      {"role": "user", "content": "KET QUA:\n" + clip_result(res)}]
         return self._end("max_steps", "het so buoc")
+
+    def _lesson_note(self, task):
+        """Chen goi y tu bai hoc: ep dung theo lesson_id, hoac tu dong khi khop RAT cao. Khong khop => '' (prompt giu nguyen)."""
+        if not self.lessons_dir or self.lesson_id == "none":
+            return ""
+        try:
+            allv = lessons_mod.load_all(self.lessons_dir)
+        except Exception:
+            return ""
+        les = next((x for x in allv if x["id"] == self.lesson_id), None) if self.lesson_id else lessons_mod.best_match(task, allv)
+        if les is None:
+            return ""
+        self.lesson_used = les["id"]
+        return lessons_mod.lesson_note(les)
 
     def _exec(self, act):
         t, a = act["tool"], act["args"]

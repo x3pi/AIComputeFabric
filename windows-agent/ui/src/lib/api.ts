@@ -1,4 +1,4 @@
-import { Models, RunRequest, State } from "./schema";
+import { Lessons, Models, RunRequest, State } from "./schema";
 
 const token = new URLSearchParams(location.search).get("t") ?? sessionStorage.getItem("wagent_t") ?? "";
 if (token) sessionStorage.setItem("wagent_t", token);
@@ -38,6 +38,9 @@ export const api = {
   run: (req: RunRequest) => call("/api/run", { method: "POST", body: JSON.stringify(req) }),
   models: (url: string, key?: string) =>
     call("/api/models", { method: "POST", body: JSON.stringify({ url, key: key ?? "" }) }, (x) => Models.parse(x).models),
+  lessons: () => call("/api/lessons", undefined, (x) => Lessons.parse(x).lessons),
+  saveLesson: (title: string) => call("/api/lessons", { method: "POST", body: JSON.stringify({ title }) }),
+  deleteLesson: (id: string) => call("/api/lessons/delete", { method: "POST", body: JSON.stringify({ id }) }),
   stop: () => call("/api/stop", { method: "POST", body: "{}" }),
   approve: (id: string, allow: boolean) => call("/api/approve", { method: "POST", body: JSON.stringify({ id, allow }) }),
 };

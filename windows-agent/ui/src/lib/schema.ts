@@ -21,16 +21,23 @@ export const State = z.object({
   summary: z.string().default(""),
   log: z.array(z.string()),
   pending: z.array(Approval),
+  can_save_lesson: z.boolean().default(false),
+  lesson_used: z.string().nullable().optional(),
 });
 export type State = z.infer<typeof State>;
 
 export const Models = z.object({ models: z.array(z.string()) });
 export type Models = z.infer<typeof Models>;
 
+export const Lesson = z.object({ id: z.string(), title: z.string(), task: z.string().default(""), steps: z.number() });
+export type Lesson = z.infer<typeof Lesson>;
+export const Lessons = z.object({ lessons: z.array(Lesson) });
+
 export const RunRequest = z.object({
   url: z.string().url("URL không hợp lệ (vd http://10.42.0.1:18090/v1)"),
   model: z.string().optional(),
   key: z.string().optional(),
+  lesson: z.string().optional(),   // "" = tự động (chỉ khi rất giống), "none" = không dùng, hoặc id bài học
   task: z.string().trim().min(3, "Nhập nhiệm vụ (ít nhất 3 ký tự)"),
 });
 export type RunRequest = z.infer<typeof RunRequest>;

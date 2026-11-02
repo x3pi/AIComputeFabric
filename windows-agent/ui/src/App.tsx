@@ -1,12 +1,13 @@
 import { ApprovalCards } from "./components/ApprovalCard";
 import { ConfigForm } from "./components/ConfigForm";
+import { LessonPanel } from "./components/LessonPanel";
 import { StatusBadge } from "./components/StatusBadge";
 import { StepTimeline } from "./components/StepTimeline";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { useAgent } from "./lib/useAgent";
 
 export default function App() {
-  const { state, error, busy, run, stop, approve } = useAgent();
+  const { state, error, busy, lessons, run, stop, approve, saveLesson, deleteLesson } = useAgent();
   const running = state.status === "running";
 
   return (
@@ -25,7 +26,7 @@ export default function App() {
       {error && <div role="alert" className="rounded-lg border border-bad bg-surface p-3 text-sm text-bad">{error}</div>}
 
       <section className="rounded-xl border border-line bg-surface p-5" aria-label="Cấu hình và nhiệm vụ">
-        <ConfigForm disabled={running || busy} onRun={run} />
+        <ConfigForm disabled={running || busy} onRun={run} lessons={lessons} />
       </section>
 
       <ApprovalCards items={state.pending} onDecide={approve} />
@@ -41,6 +42,11 @@ export default function App() {
             <span className="block text-xs text-muted">Chỉ là lời model tự báo — hãy kiểm tra kết quả thật.</span></p>
         )}
       </section>
+
+      {lessons !== null && (
+        <LessonPanel canSave={state.can_save_lesson && !running} used={state.lesson_used} lessons={lessons}
+          onSave={saveLesson} onDelete={deleteLesson} disabled={busy} />
+      )}
     </div>
   );
 }

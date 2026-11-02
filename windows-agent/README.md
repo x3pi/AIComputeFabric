@@ -38,6 +38,12 @@ Tạo `C:\wagent\apps.json` (hoặc đặt biến `WAGENT_APPS_FILE`), mẫu ở
 `{"chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"}`.
 Chỉ nhận tên `a-z0-9_-` và đường dẫn tuyệt đối `.exe` (không đối số, không shell, không ghi đè app mặc định); mục sai bị bỏ qua. **Mỗi lần mở app thêm đều cần bạn bấm Cho phép.** Sau khi sửa file, mở lại server (icon Wagent). Lưu ý: agent mở trình duyệt thì có thể đọc nội dung web không tin cậy (prompt injection); `close_window` chỉ đóng cửa sổ do agent mở, không đóng Chrome cũ của bạn.
 
+## Bài học (dạy agent nhiệm vụ mới không cần sửa code)
+1. Chạy nhiệm vụ trên giao diện, duyệt các bước. Khi **thành công**, bấm **Lưu thành bài học** (đặt tên). Lưu ở `C:\wagent\lessons\<id>.json` (`--lessons-dir`, `""` = tắt).
+2. Lần sau: ô **Bài học** = *Tự động* (chỉ dùng khi nhiệm vụ mới trùng ≥5 từ khoá và ≥80% ý chính), *Không dùng*, hoặc chọn một bài. Xoá bài ngay trong panel.
+3. Bài học chỉ là **gợi ý** gắn vào tin nhắn nhiệm vụ (không vào system prompt); mọi hành động vẫn qua guard/duyệt. URL, tên file, số, văn bản giống mật khẩu bị loại/thay placeholder khi lưu.
+API: `GET /api/lessons`, `POST /api/lessons {"title"}`, `POST /api/lessons/delete {"id"}`; run nhận `"lesson"`. Crash native khi chạy nhiều nhiệm vụ liên tiếp được ghi ở `C:\wagent\fault.log` (faulthandler).
+
 ## An toàn
 - Tool ngoài whitelist → từ chối. Cần duyệt: click phần tử tên rủi ro (delete/send/pay/install/password…), ghi đè file, văn bản giống mật khẩu.
 - Audit JSONL hash-chain (`wagent.audit.verify`). API key chỉ ở bộ nhớ, không ghi log.

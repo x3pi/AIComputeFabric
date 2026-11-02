@@ -1,21 +1,24 @@
 import { useState } from "react";
 import { api } from "../lib/api";
-import { RunRequest } from "../lib/schema";
+import { Lesson, RunRequest } from "../lib/schema";
 
 type Props = {
   disabled: boolean;
   onRun: (r: RunRequest) => void;
   /** Lấy danh sách model từ server; mặc định gọi /api/models của Wagent (tiêm vào khi test). */
+  /** Danh sách bài học để chọn (null/rỗng = ẩn ô chọn). */
+  lessons?: Lesson[] | null;
   loadModels?: (url: string, key?: string) => Promise<string[]>;
 };
 
 const field = "w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm placeholder:text-muted";
 
-export function ConfigForm({ disabled, onRun, loadModels = api.models }: Props) {
+export function ConfigForm({ disabled, onRun, loadModels = api.models, lessons = null }: Props) {
   const [url, setUrl] = useState(() => localStorage.getItem("wagent_url") ?? "http://10.42.0.1:18090/v1");
   const [model, setModel] = useState("");
   const [key, setKey] = useState("");
   const [task, setTask] = useState("");
+  const [lesson, setLesson] = useState("");
   const [models, setModels] = useState<string[] | null>(null);
   const [mState, setMState] = useState<{ busy: boolean; error: string }>({ busy: false, error: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -35,7 +38,7 @@ export function ConfigForm({ disabled, onRun, loadModels = api.models }: Props) 
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const parsed = RunRequest.safeParse({ url, model: model || undefined, key: key || undefined, task });
+    const parsed = RunRequest.safeParse({ url, model: model || undefined, key: key || undefined, lesson: lesson || undefined, task });
     if (!parsed.success) {
       const out: Record<string, string> = {};
       for (const i of parsed.error.issues) out[String(i.path[0])] = i.message;
@@ -77,6 +80,16 @@ export function ConfigForm({ disabled, onRun, loadModels = api.models }: Props) 
           <input id="key" type="password" autoComplete="off" className={field} value={key} onChange={(e) => setKey(e.target.value)} />
         </div>
       </div>
+      {lessons && lessons.length > 0 && (
+        <div>
+          <label htmlFor="lesson" className="mb-1 block text-sm font-medium">Bài học <span className="text-muted">(gợi ý từ lần làm thành công trước)</span></label>
+          <select id="lesson" className={field} value={lesson} onChange={(e) => setLesson(e.target.value)}>
+            <option value="">Tự động (chỉ khi nhiệm vụ rất giống)</option>
+            <option value="none">Không dùng bài học</option>
+            {lessons.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
+          </select>
+        </div>
+      )}
       <div>
         <label htmlFor="task" className="mb-1 block text-sm font-medium">Nhiệm vụ</label>
         <textarea id="task" rows={3} className={field} placeholder="Ví dụ: Phân loại file trong thư mục in/ theo đuôi vào out/…" value={task} onChange={(e) => setTask(e.target.value)} aria-invalid={!!errors.task} />
