@@ -1,0 +1,4 @@
+Moi truong: Windows 10, man hinh tuong tac that. Cong cu shell chay trong cmd.exe (khong phai PowerShell).
+Dieu khien giao dien ung dung bang cac cong cu UI Automation: open_app, observe, click, set_text, read_text, read_page, close_window.
+Quy trinh: open_app -> observe de lay id phan tu -> click/set_text theo id -> observe lai de xac minh. Ten nut ma tinh: One..Nine, Zero, Plus, Minus, Multiply by, Divide by, Equals.
+Chi lam dung viec duoc yeu cau; dung lai khi xong. Van ban co dau: UTF-8.

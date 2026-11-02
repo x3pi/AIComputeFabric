@@ -11,6 +11,8 @@ TASKS = {
  "t4": "Mở Calculator tính 12 * 34. Sau đó mở Notepad và gõ kết quả tính được (chỉ con số).",
 }
 TIMEOUT = {"t1": 300, "t2": 300, "t3": 900, "t4": 480}
+CAP = int(os.environ.get("CMP_TIMEOUT_MAX", "100000"))
+TIMEOUT = {k: min(v, CAP) for k, v in TIMEOUT.items()}
 
 def ssh(cmd, t=120):
     return subprocess.run(["ssh", "-o", "ConnectTimeout=10", H, cmd], capture_output=True, text=True, timeout=t).stdout
@@ -21,11 +23,11 @@ def scp_to(local, remote):
 def win_exists(path):
     return "Y" in ssh('if exist "%s" (echo Y) else (echo N)' % path)
 
-def win_job(cmdline, wait_file=None, timeout=60):
+def win_job(cmdline, wait_file=None, timeout=60, task="cmp_job"):
     """Chay lenh trong phien desktop (schtasks /IT) roi cho file danh dau xuat hien."""
     if wait_file: ssh('del "%s" 2>nul' % wait_file)
-    ssh('schtasks /Create /TN cmp_job /TR "%s" /SC ONCE /ST 23:59 /IT /F' % cmdline.replace('"', '\\"'))
-    ssh("schtasks /Run /TN cmp_job")
+    ssh('schtasks /Create /TN %s /TR "%s" /SC ONCE /ST 23:59 /IT /F' % (task, cmdline.replace('"', '\\"')))
+    ssh("schtasks /Run /TN %s" % task)
     t0 = time.time()
     while wait_file and time.time() - t0 < timeout:
         if win_exists(wait_file): return True
@@ -97,9 +99,24 @@ def run_uitars(task, rid, tk):
     log = ssh("type C:\\ufo_test\\run\\uitars_%s.jsonl 2>nul" % rid)
     return status, log.count('"step"'), log[-300:]
 
+def run_goose(task, rid, tk):
+    os.makedirs("/tmp/claude-1000/cmp", exist_ok=True)
+    rf = "/tmp/claude-1000/cmp/req_%s.txt" % rid; open(rf, "w", encoding="utf-8").write(task)
+    scp_to(rf, "C:/ufo_test/run/req_%s.txt" % rid)
+    ssh("del C:\\ufo_test\\run\\goose_%s.done 2>nul" % rid)
+    win_job(r"C:\ufo_test\venv\Scripts\pythonw.exe C:\ufo_test\goose_launch.py %s C:\ufo_test\run\req_%s.txt 25" % (rid, rid), None)
+    t0 = time.time(); status = "timeout"
+    while time.time() - t0 < TIMEOUT[tk]:
+        if win_exists("C:\\ufo_test\\run\\goose_%s.done" % rid):
+            status = ssh("type C:\\ufo_test\\run\\goose_%s.done" % rid).strip() or "exited"; break
+        time.sleep(3)
+    if status == "timeout": ssh("taskkill /F /T /IM goose.exe 2>nul")
+    log = ssh("type C:\\ufo_test\\run\\goose_%s.log 2>nul" % rid)
+    return status, log.count("tool call") + log.count("─── "), log[-400:]
+
 def verify(tk):
     out = "C:\\ufo_test\\run\\v.json"
-    if not win_job(r"C:\wagent\venv\Scripts\python.exe C:\ufo_test\verify.py %s %s" % (tk, out), out, 90): return {"ok": False, "err": "verify timeout"}
+    if not win_job(r"C:\wagent\venv\Scripts\python.exe C:\ufo_test\verify.py %s %s" % (tk, out), out, 90, "cmp_verify"): return {"ok": False, "err": "verify timeout"}
     err = ""
     for _ in range(8):                       # file xuat hien luc dang ghi -> doc lai neu chua parse duoc
         try: return json.loads(ssh("type %s" % out))
@@ -115,7 +132,7 @@ def main():
             if tk == "t3": open_vne()
             off = os.path.getsize(ENGINE_LOG); t0 = time.time()
             try:
-                st, steps, info = run_wagent(TASKS[tk], tk) if system == "wagent" else (run_uitars(TASKS[tk], rid, tk) if system == "uitars" else run_ufo(TASKS[tk], rid, tk))
+                st, steps, info = run_wagent(TASKS[tk], tk) if system == "wagent" else (run_uitars(TASKS[tk], rid, tk) if system == "uitars" else (run_goose(TASKS[tk], rid, tk) if system == "goose" else run_ufo(TASKS[tk], rid, tk)))
             except Exception as e:
                 st, steps, info = "driver_error", 0, repr(e)[:200]
             dur = time.time() - t0; tok = engine_tokens(off)
