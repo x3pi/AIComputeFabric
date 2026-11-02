@@ -51,7 +51,20 @@ def missing_args(act):
     need = REQUIRED.get(act["tool"], [])
     return [k for k in need if k not in act["args"]]
 
-def reflection_message(before, after):
+import re
+_NAME = re.compile(r"[\w][\w./-]*\.[A-Za-z0-9]{1,5}(?![\w])")
+
+def mentioned_missing(task, after):
+    """Ten file nhac trong nhiem vu (co duoi) ma khong co trong sandbox (so khop theo ten co so) - bat loi go sai ten."""
+    have = {k.rsplit("/", 1)[-1] for k, _ in after}
+    out = []
+    for m in _NAME.findall(task or ""):
+        base = m.rstrip(".").rsplit("/", 1)[-1]
+        if base and base not in have and base not in out:
+            out.append(base)
+    return out
+
+def reflection_message(before, after, task=None):
     b, a = dict(before), dict(after)
     added = sorted(k for k in a if k not in b); gone = sorted(k for k in b if k not in a)
     changed = sorted(k for k in a if k in b and a[k] != b[k])
@@ -60,6 +73,10 @@ def reflection_message(before, after):
     lines.append("- Da mat: " + (", ".join(gone) or "(khong)"))
     lines.append("- Doi noi dung: " + (", ".join(changed) or "(khong)"))
     lines.append("- Hien co toan bo: " + (", ".join("%s(%dB)" % kv for kv in after) or "(rong)"))
+    miss = mentioned_missing(task, after)
+    if miss:
+        lines.append("- CANH BAO: ten nhac trong nhiem vu nhung KHONG co trong sandbox: " + ", ".join(miss) +
+                     ". Neu day la file phai tao/chuyen den, kiem tra lai CHINH TA ten file (so sanh tung ky tu).")
     lines.append("Doi chieu TUNG yeu cau cua nhiem vu voi trang thai tren (dung ten, dung vi tri, khong thua/thieu file). "
                  "Neu con thieu hoac sai, tiep tuc sua bang cong cu. Neu da dung hoan toan, tra ve done.")
     return "\n".join(lines)
@@ -107,7 +124,7 @@ class Agent:
             elif act["tool"] == "done":
                 if self.improve.reflect and reflections < 3 and (reflections == 0 or acted):
                     reflections += 1; acted = False
-                    note = reflection_message(tree0, files.tree(self.sandbox) if os.path.isdir(self.sandbox) else [])
+                    note = reflection_message(tree0, files.tree(self.sandbox) if os.path.isdir(self.sandbox) else [], task)
                     self.audit.write(event="reflect", step=step, n=reflections, note=note[:600])
                     msgs += [{"role": "assistant", "content": json.dumps(act, ensure_ascii=False)}, {"role": "user", "content": note}]
                     continue

@@ -93,6 +93,32 @@ def acquire_lock(path):
     os.write(fd, str(os.getpid()).encode()); os.close(fd)
     return lambda: os.path.exists(path) and os.remove(path)
 
+# ---- bo HELD-OUT 2: tao SAU khi thay ket qua held-out 1, de kiem tra khong-thien-vi ----
+def g1_setup(sb): pass
+def g1_ver(sb): return _r(sb, "reports/ketqua_thang_hai.txt") == "ok" and _r(sb, "reports/ketqua_thang_ba.txt") == "xong" and len(_ls(sb, "reports")) == 2
+def g2_setup(sb):
+    for n in ["hoa_don_01.pdf", "hoa_don_02.pdf", "thu_moi.txt"]: _w(sb, "inbox/" + n, n)
+def g2_ver(sb): return _ls(sb, "archive/2026") == ["hoa_don_01.pdf", "hoa_don_02.pdf"] and _ls(sb, "inbox") == ["thu_moi.txt"]
+def g3_setup(sb): _w(sb, "config.ini", "[a]\nx=1\n")
+def g3_ver(sb): return _r(sb, "backup/config.ini.bak") == "[a]\nx=1\n" and _r(sb, "config.ini") == "[a]\nx=1\n"
+def g4_setup(sb):
+    for n, v in (("a.txt", 10), ("b.txt", 20), ("c.txt", 12)): _w(sb, "nums/" + n, "%d\n" % v)
+def g4_ver(sb): return (_r(sb, "sum.txt") or "").strip() == "42"
+def g5_setup(sb):
+    for n in ["a.md", "b.md", "c.md", "d.txt"]: _w(sb, "docs/" + n, n)
+def g5_ver(sb): return (_r(sb, "count.txt") or "").strip() == "3"
+def g6_setup(sb): _w(sb, "todo.txt", "mua sua\ngiat do\ngoi dien\n")
+def g6_ver(sb): return (_r(sb, "first.txt") or "").strip() == "mua sua"
+
+HELDOUT2 = {
+    "g_ten_dai": (g1_setup, "Tao file reports/ketqua_thang_hai.txt noi dung ok va reports/ketqua_thang_ba.txt noi dung xong. Xong thi done", g1_ver),
+    "g_chuyen_hoa_don": (g2_setup, "Trong inbox/, chuyen cac file hoa don (ten bat dau bang hoa_don) vao archive/2026/. File khac giu nguyen. Xong thi done", g2_ver),
+    "g_sao_cau_hinh": (g3_setup, "Sao luu config.ini thanh backup/config.ini.bak, giu nguyen ban goc config.ini. Xong thi done", g3_ver),
+    "g_tong_so": (g4_setup, "Moi file trong nums/ chua mot so. Cong tat ca cac so lai, ghi tong (chi mot con so) vao sum.txt. Xong thi done", g4_ver),
+    "g_dem_md": (g5_setup, "Dem so file .md trong docs/, ghi chi con so vao count.txt. Xong thi done", g5_ver),
+    "g_dong_dau": (g6_setup, "Doc todo.txt, ghi dong dau tien cua no vao first.txt. Xong thi done", g6_ver),
+}
+
 ALL_SETS = lambda: {"dev": SCENARIOS, "held": HELDOUT}
 
 def main():
@@ -106,13 +132,13 @@ def main():
     p.add_argument("--n", type=int, default=3); p.add_argument("--only", default="")
     p.add_argument("--out", default=r"C:\wagent\bench.jsonl"); p.add_argument("--work", default=r"C:\wagent\bench_sb")
     p.add_argument("--max-steps", type=int, default=20); p.add_argument("--no-think", action="store_true")
-    p.add_argument("--set", default="dev", choices=["dev", "held", "all"]); p.add_argument("--baseline", action="store_true", help="tat moi cai tien cua agent")
+    p.add_argument("--set", default="dev", choices=["dev", "held", "held2", "all"]); p.add_argument("--baseline", action="store_true", help="tat moi cai tien cua agent")
     p.add_argument("--temp", type=float, default=0.0); p.add_argument("--tag", default="")
     p.add_argument("--lock", default=r"C:\wagent\bench.lock")
     a = p.parse_args()
     release = acquire_lock(a.lock)
     import atexit; atexit.register(release)
-    pool = {**SCENARIOS, **HELDOUT} if a.set == "all" else (HELDOUT if a.set == "held" else SCENARIOS)
+    pool = {**SCENARIOS, **HELDOUT, **HELDOUT2} if a.set == "all" else {"held": HELDOUT, "held2": HELDOUT2}.get(a.set, SCENARIOS)
     names = [n for n in pool if not a.only or n in a.only.split(",")]
     improve = Improve.none() if a.baseline else Improve.all()
     uia = UIA()

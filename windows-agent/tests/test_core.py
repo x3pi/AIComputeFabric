@@ -392,3 +392,21 @@ def test_heldout_verifiers():
     sb = tempfile.mkdtemp()
     for m in (1, 2, 3): files.write_file(sb, "2026/0%d/note.txt" % m, "thang %d" % m)
     assert bench.HELDOUT["h_cay_thang"][2](sb)
+
+def test_mentioned_missing_catches_typos_but_not_moved_or_patterns():
+    from wagent.loop import mentioned_missing
+    after = [("notes/mot.txt", 3), ("notes/ha.txt", 3), ("docs/readme.md", 5)]
+    assert mentioned_missing("Tao notes/mot.txt va notes/hai.txt", after) == ["hai.txt"]
+    assert mentioned_missing("Chuyen readme.md vao docs/", after) == []          # da chuyen: khop theo ten co so
+    assert mentioned_missing("doi duoi .txt thanh .md", after) == []              # mau duoi, khong phai ten
+    assert mentioned_missing("", after) == [] and mentioned_missing(None, after) == []
+    assert "hai.txt" in reflection_message([], after, "Tao notes/hai.txt")
+    assert "CANH BAO" not in reflection_message([], after, "Tao notes/mot.txt")
+
+def test_heldout2_verifiers():
+    for n, (setup, task, ver) in bench.HELDOUT2.items():
+        sb = tempfile.mkdtemp(); setup(sb); assert not ver(sb), n
+    sb = tempfile.mkdtemp(); bench.HELDOUT2["g_tong_so"][0](sb); files.write_file(sb, "sum.txt", "42"); assert bench.HELDOUT2["g_tong_so"][2](sb)
+    files.write_file(sb, "sum.txt", "41"); assert not bench.HELDOUT2["g_tong_so"][2](sb)
+    sb = tempfile.mkdtemp(); bench.HELDOUT2["g_sao_cau_hinh"][0](sb); files.copy_file(sb, "config.ini", "backup/config.ini.bak"); assert bench.HELDOUT2["g_sao_cau_hinh"][2](sb)
+    files.move_file(sb, "config.ini", "x.ini"); assert not bench.HELDOUT2["g_sao_cau_hinh"][2](sb)
