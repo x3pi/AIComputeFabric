@@ -29,7 +29,7 @@ def main():
     p.add_argument("--key", default=os.environ.get("WAGENT_KEY", ""))
     p.add_argument("--sandbox", default=r"C:\wagent\sandbox")
     p.add_argument("--audit", default=r"C:\wagent\audit.jsonl")
-    p.add_argument("--max-steps", type=int, default=12)
+    p.add_argument("--max-steps", type=int, default=20)
     p.add_argument("--approve", choices=["ask", "deny", "allow"], default="deny")
     p.add_argument("--approvals-dir", default=r"C:\wagent\approvals")
     p.add_argument("--stop-file", default=r"C:\wagent\STOP")

@@ -318,3 +318,13 @@ Lưu ý trung thực:
 - held2 `g_dem_md` (đếm file .md) 0/5: model liệt kê đúng 3 file nhưng ghi `4` (lỗi đếm của model); kịch bản dao động 0/5 -> 4/5 -> 0/5 theo phiên bản prompt. Chưa sửa.
 - Không tách được đóng góp từng sửa đổi (không chạy ablation); v4->v5 gồm cả ba thay đổi cùng lúc.
 - Test: 53 đạt; đã mutation-test (bỏ ngưỡng giống nhau, bỏ chuẩn hoá tên, bỏ bước đổi name->id đều làm test hỏng).
+
+## Lỗi báo từ người dùng: "mở notepad xong không lưu file" (2026-11-02) - đọc audit/state, sửa 5 lỗi công cụ
+Chạy thật qua web UI (Chrome đang ở phía trước) cho thấy:
+1. **An toàn:** `observe` sau `open_app` trả cửa sổ Chrome (đang đứng trước) và `close_window` đã ĐÓNG cửa sổ Chrome chứa UI Wagent (2 lần chạy). Chỉ chặn console/tiến trình của agent là không đủ. Sửa: `close_window` chỉ đóng cửa sổ/tiến trình do `open_app` mở (kể cả hộp thoại cùng tiến trình); cửa sổ khác bị từ chối (đã đo: từ chối `NVIDIA GeForce Overlay`).
+2. `observe` ưu tiên cửa sổ của app agent đã mở (`pick_window`), kể cả hộp thoại Save As.
+3. `open_app` chờ tới ~8 s cho cửa sổ mới (2 s cố định không đủ -> `opened_pids` rỗng -> quay về cửa sổ trước nhất).
+4. `click` menu: menu `File` chỉ có pattern ExpandCollapse (không có Invoke) nên COMError; thêm chuỗi Invoke -> ExpandCollapse -> SelectionItem -> Toggle -> LegacyIAccessible.
+5. Gợi ý lỗi: `click {"name":"Save As..."}` khớp cả tên có phím tắt (`Save As...\tCtrl+Shift+S`); `set_text` vào `[Text]` báo id `[Edit]` gần nhất. Mặc định `--max-steps` 12 -> 20.
+Kết quả (1 lần chạy thật, chưa phải benchmark): agent lưu file bằng Notepad (File -> Save As -> gõ đường dẫn vào `File name` -> Save) và đọc lại xác nhận; trước sửa: hết bước, không có file. Test 65 đạt, đã mutation-test từng sửa đổi.
+Chưa làm: thêm kịch bản benchmark "lưu bằng Notepad"; một lần chạy chưa chứng minh độ ổn định. Agent từng "lách" bằng `write_file`/`move_file` file cũ khi GUI lỗi - bản tóm tắt vẫn nói "đã tạo file".

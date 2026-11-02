@@ -552,3 +552,79 @@ def test_list_models_never_opens_bad_scheme():
     for bad in ("file:///etc/passwd", "ftp://h/v1", "javascript:alert(1)", "//h/v1", "h:80/v1"):
         with pytest.raises(ValueError): list_models(bad, _open=spy)
     assert opened == []
+
+
+# ---- v6: close_window chi cua so agent mo; observe uu tien app da mo; ten menu co phim tat ----
+def test_may_close_only_agent_windows():
+    from wagent.skills.uia import may_close
+    assert may_close(100, 1, {100}, {1})              # cua so agent mo
+    assert may_close(101, 1, {100}, {1})              # hop thoai cung tien trinh (Save changes?)
+    assert not may_close(200, 2, {100}, {1})          # Chrome cua user
+    assert not may_close(200, 2, set(), set())        # agent chua mo gi -> khong dong gi
+
+def test_pick_window_prefers_opened_app():
+    from wagent.skills.uia import pick_window
+    assert pick_window(9, {1}, [9, 5, 1]) == 2        # Chrome (pid 9) o tren cung, Notepad (1) o vi tri 2
+    assert pick_window(1, {1}, [1, 9]) is None        # cua so truoc nhat da la cua app -> giu
+    assert pick_window(9, set(), [9, 1]) is None      # agent chua mo gi -> hanh vi cu
+    assert pick_window(9, {1}, [9, 5]) is None        # app da dong -> giu cua so truoc nhat
+
+def test_find_by_name_matches_menu_accelerator():
+    from wagent.skills.uia import find_by_name
+    k = {4: ("MenuItemControl", "Save\tCtrl+S"), 5: ("MenuItemControl", "Save As...\tCtrl+Shift+S")}
+    assert find_by_name(k, "Save As...") == 5
+    assert find_by_name(k, "save") == 4
+    assert find_by_name(k, "Save As...\tCtrl+Shift+S") == 5
+
+
+def test_click_falls_back_to_expandcollapse_for_menus():
+    from wagent.skills.uia import UIA
+    calls = []
+    class Pat:
+        def __init__(s, n, fail=False): s.n, s.fail = n, fail
+        def __getattr__(s, a):
+            def f():
+                calls.append((s.n, a))
+                if s.fail: raise OSError("com")
+            return f
+    class Ctl:
+        ControlTypeName = "MenuItemControl"
+        def GetInvokePattern(s): return None                       # menu File khong co Invoke
+        def GetExpandCollapsePattern(s): return Pat("ExpandCollapse")
+    u = UIA.__new__(UIA); u.ids = {15: Ctl()}; u.friendly = False
+    assert u.click(15) == "da bam" and calls == [("ExpandCollapse", "Expand")]
+
+def test_click_reports_all_patterns_tried():
+    from wagent.skills.uia import UIA
+    class Ctl:
+        ControlTypeName = "ButtonControl"
+        def GetInvokePattern(s): raise OSError("x")
+        def GetLegacyIAccessiblePattern(s): raise OSError("y")
+    u = UIA.__new__(UIA); u.ids = {1: Ctl()}; u.friendly = False
+    with pytest.raises(RuntimeError, match="Invoke.*LegacyIAccessible"): u.click(1)
+
+
+def test_set_text_hint_points_to_edit():
+    from wagent.skills.uia import set_text_hint
+    k = {1: ("EditControl", "Text Editor"), 6: ("TextControl", ""), 17: ("EditControl", "File name:")}
+    m = set_text_hint(k, 6)
+    assert "id 1 " in m and "[Edit]" in m and "[1, 17]" in m
+    assert "khong co o [Edit]" in set_text_hint({3: ("TextControl", "x")}, 3)
+
+def test_open_app_waits_for_slow_window(monkeypatch):
+    from wagent.skills.uia import UIA
+    import wagent.skills.uia as mod
+    state = {"n": 0}
+    class W:
+        def __init__(s, h, p): s.NativeWindowHandle, s.ProcessId = h, p
+    class Root:
+        def GetChildren(s):
+            state["n"] += 1
+            return [W(1, 10)] + ([W(2, 20)] if state["n"] >= 4 else [])   # cua so moi chi xuat hien sau vai lan do
+    class Auto:
+        def GetRootControl(s): return Root()
+    u = UIA.__new__(UIA); u.auto, u.ids, u.win = Auto(), {}, None
+    u.opened_hwnds, u.opened_pids, u.friendly = set(), set(), False
+    monkeypatch.setattr(mod.time, "sleep", lambda *_: None); monkeypatch.setattr(mod.subprocess, "Popen", lambda *_: None)
+    u.open_app("notepad")
+    assert u.opened_hwnds == {2} and u.opened_pids == {20}
