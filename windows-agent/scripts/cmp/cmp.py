@@ -3,7 +3,7 @@
 Dung: cmp.py <wagent|ufo> <t1,t2,..> <so_lan> <out.jsonl>"""
 import json, os, re, subprocess, sys, time, urllib.request
 H = "fios02@10.42.0.225"
-ENGINE_LOG = "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/logs/engine-pc001.log"
+ENGINE_LOG = os.environ.get("CMP_ENGINE_LOG") or "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/logs/engine-pc001.log"
 TASKS = {
  "t1": "Mở Notepad và gõ đúng một dòng: Xin chao the gioi",
  "t2": "Mở Calculator và tính 123 + 456, để kết quả hiển thị trên màn hình",
@@ -83,6 +83,20 @@ def run_ufo(task, rid, tk):
     log = ssh("type C:\\ufo_test\\run\\ufo_%s.log 2>nul" % rid)
     return status, log.count("Step") , log[-300:]
 
+def run_uitars(task, rid, tk):
+    os.makedirs("/tmp/claude-1000/cmp", exist_ok=True)
+    rf = "/tmp/claude-1000/cmp/req_%s.txt" % rid; open(rf, "w", encoding="utf-8").write(task)
+    scp_to(rf, "C:/ufo_test/run/req_%s.txt" % rid)
+    ssh("del C:\\ufo_test\\run\\uitars_%s.done 2>nul" % rid)
+    win_job(r"C:\ufo_test\venv\Scripts\pythonw.exe C:\ufo_test\uitars_run.py %s C:\ufo_test\run\req_%s.txt %d" % (rid, rid, 25 if tk in ("t3", "t4") else 15), None)
+    t0 = time.time(); status = "timeout"
+    while time.time() - t0 < TIMEOUT[tk]:
+        if win_exists("C:\\ufo_test\\run\\uitars_%s.done" % rid):
+            status = ssh("type C:\\ufo_test\\run\\uitars_%s.done" % rid).strip() or "exited"; break
+        time.sleep(3)
+    log = ssh("type C:\\ufo_test\\run\\uitars_%s.jsonl 2>nul" % rid)
+    return status, log.count('"step"'), log[-300:]
+
 def verify(tk):
     out = "C:\\ufo_test\\run\\v.json"
     if not win_job(r"C:\wagent\venv\Scripts\python.exe C:\ufo_test\verify.py %s %s" % (tk, out), out, 90): return {"ok": False, "err": "verify timeout"}
@@ -101,7 +115,7 @@ def main():
             if tk == "t3": open_vne()
             off = os.path.getsize(ENGINE_LOG); t0 = time.time()
             try:
-                st, steps, info = run_wagent(TASKS[tk], tk) if system == "wagent" else run_ufo(TASKS[tk], rid, tk)
+                st, steps, info = run_wagent(TASKS[tk], tk) if system == "wagent" else (run_uitars(TASKS[tk], rid, tk) if system == "uitars" else run_ufo(TASKS[tk], rid, tk))
             except Exception as e:
                 st, steps, info = "driver_error", 0, repr(e)[:200]
             dur = time.time() - t0; tok = engine_tokens(off)

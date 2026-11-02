@@ -2,7 +2,7 @@
 Chay trong phien desktop (schtasks /IT):  python verify.py <t1|t2|t3|t4> <out.json>
 t1: Notepad co dung 1 dong 'Xin chao the gioi' | t2: Calculator hien 579 | t3: Notepad co >=10 tieu de co that tren trang VnExpress dang mo
 t4: Calculator hien 408 VA Notepad chua 408."""
-import json, re, sys, time
+import json, re, sys, time, unicodedata
 import uiautomation as ua
 
 def notepad_text():
@@ -30,6 +30,10 @@ def norm(s):
     s = re.sub(r"^\s*(?:\d+[.)]|[-*•])\s*", "", s or "")
     return re.sub(r"\s+", " ", s).strip().lower()
 
+def noacc(s):
+    s = unicodedata.normalize("NFD", (s or "").replace("\u0111", "d").replace("\u0110", "D"))
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
 def page_titles():
     out, seen = [], set()
     for w in ua.GetRootControl().GetChildren():
@@ -54,6 +58,7 @@ def main():
     if task == "t1":
         t = notepad_text(); r["text"] = t
         r["ok"] = t is not None and norm(t) == "xin chao the gioi" and len([x for x in t.splitlines() if x.strip()]) == 1
+        r["lenient_ok"] = t is not None and noacc(norm(t)) == "xin chao the gioi" and len([x for x in t.splitlines() if x.strip()]) == 1
     elif task == "t2":
         d = calc_display(); r["display"] = d; r["ok"] = d == "579"
     elif task == "t4":
