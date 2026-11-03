@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Ban boc llama-server: them YaRN de vuot n_ctx_train (40960) cua Qwen3-30B-A3B. Dung qua WRAP=1 trong swap_big.sh
+exec "$(dirname "$0")/llama-server" "$@" --rope-scaling yarn --rope-scale "${YARN_SCALE:-4}" --yarn-orig-ctx 40960

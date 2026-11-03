@@ -1,0 +1,7 @@
+=== c96q8 ctx=98304 kv=q8_0 wrap=1 yarn=4 split=50,50
+('ready', [('pc-001', 'Qwen3-30B-A3B-Q4_K_M.gguf', '50,50')])
+n_ctx 98304 slots 1
+ctx 98304
+short prompt: decode=[51.1, 53.8, 52.6] tok/s | win 11855 MiB | linux 11691 MiB | ollama_models=0
+fill~24000: prompt_n=21970 prefill=201 tok/s decode=30.3 tok/s wall=112s | win 11899 MiB | linux 11713 MiB | ollama_models=0
+fill~59000: LOI sau 400s: HTTPConnectionPool(host='10.42.0.1', port=18090): Read timed out. (read timeout=400) | win 11899 MiB | linux 11713 MiB | ollama_models=0

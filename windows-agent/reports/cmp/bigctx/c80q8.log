@@ -1,0 +1,8 @@
+=== c80q8 ctx=81920 kv=q8_0 wrap=1 yarn=2 split=50,50
+('ready', [('pc-001', 'Qwen3-30B-A3B-Q4_K_M.gguf', '50,50')])
+n_ctx 81920 slots 1
+ctx 81920
+short prompt: decode=[117.2, 120.2, 116.3] tok/s | win 11831 MiB | linux 11205 MiB | ollama_models=0
+fill~20000: prompt_n=18188 prefill=2679 tok/s decode=49.1 tok/s wall=8s | win 11907 MiB | linux 11227 MiB | ollama_models=0
+fill~49000: prompt_n=45603 prefill=1848 tok/s decode=27.2 tok/s wall=27s | win 11907 MiB | linux 11227 MiB | ollama_models=0
+fill~73000: prompt_n=68295 prefill=1441 tok/s decode=19.9 tok/s wall=51s | win 11907 MiB | linux 11229 MiB | ollama_models=0

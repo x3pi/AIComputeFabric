@@ -1,0 +1,8 @@
+=== c64q8 ctx=65536 kv=q8_0 wrap=1 yarn=2 split=52,48
+('ready', [('pc-001', 'Qwen3-30B-A3B-Q4_K_M.gguf', '52,48')])
+n_ctx 65536 slots 1
+ctx 65536
+short prompt: decode=[112.3, 114.0, 114.9] tok/s | win 10907 MiB | linux 11119 MiB | ollama_models=0
+fill~16000: prompt_n=14408 prefill=2888 tok/s decode=55.7 tok/s wall=6s | win 11015 MiB | linux 11141 MiB | ollama_models=0
+fill~40000: prompt_n=37096 prefill=2106 tok/s decode=31.1 tok/s wall=20s | win 11015 MiB | linux 11141 MiB | ollama_models=0
+fill~58000: prompt_n=54113 prefill=1717 tok/s decode=23.4 tok/s wall=34s | win 11015 MiB | linux 11141 MiB | ollama_models=0

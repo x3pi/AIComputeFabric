@@ -11,5 +11,5 @@ w=json.load(sys.stdin)["workers"]; sys.exit(0 if {"pc-001","pc-win-01"} <= set(w
   sleep 5
 done
 curl -sf -m 900 -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$GW/api/cluster/topology" \
-  -d "{\"mode\":\"merged\",\"model\":\"$MODEL\",\"primary_worker_id\":\"pc-001\",\"rpc_worker_ids\":[\"pc-win-01\"],\"tensor_split\":\"$SPLIT\",\"rpc_port\":50052}" \
+  -d "{\"mode\":\"merged\",\"model\":\"$MODEL\",\"primary_worker_id\":\"pc-001\",\"rpc_worker_ids\":[\"pc-win-01\"],\"tensor_split\":\"$SPLIT\",\"kv_type\":\"${KV:-}\",\"rpc_port\":50052}" \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("error") or ("ready", [(g["id"], g["model"], g["tensor_split"]) for g in d["groups"]]))'

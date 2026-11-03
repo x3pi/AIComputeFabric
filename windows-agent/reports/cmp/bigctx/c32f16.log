@@ -1,0 +1,10 @@
+guard cmd: --model /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/Qwen3-30B-A3B-Q4_K_M.gguf
+--parallel 1 --ctx 32768 --kv-cache-type f16
+guard running Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf
+('ready', [('pc-001', 'Qwen3-30B-A3B-Q4_K_M.gguf', '48,52')])
+2026/11/03 08:28:32 socat[2989408] W exiting on signal 15
+n_ctx 32768 slots 1
+short [{'prompt_n': 8, 'prompt_per_second': 108.4, 'predicted_n': 128, 'predicted_per_second': 131.1}, {'prompt_n': 8, 'prompt_per_second': 264.3, 'predicted_n': 128, 'predicted_per_second': 132.6}, {'prompt_n': 8, 'prompt_per_second': 269.9, 'predicted_n': 128, 'predicted_per_second': 131.7}]
+long {'prompt_n': 26389, 'prompt_per_second': 2406.2, 'predicted_n': 64, 'predicted_per_second': 69.7}
+11521 MiB
+10015 MiB
