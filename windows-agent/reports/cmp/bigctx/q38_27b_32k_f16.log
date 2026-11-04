@@ -1,0 +1,5 @@
+ctx 32768
+short prompt: decode=[24.0, 24.2, 24.2] tok/s | W9405 L9003 ollama_proc=0
+fill~8000: prompt_n=7067 prefill=1062 tok/s decode=23.4 tok/s wall=9s | W9415 L9013 ollama_proc=0
+fill~20000: prompt_n=18188 prefill=1188 tok/s decode=22.2 tok/s wall=18s | W9415 L9013 ollama_proc=0
+fill~29000: prompt_n=26697 prefill=1161 tok/s decode=21.7 tok/s wall=25s | W9417 L9013 ollama_proc=0

@@ -1,0 +1,8 @@
+2026/11/04 14:06:59 socat[3365076] E bind(5, {AF=2 192.168.1.40:8099}, 16): Address already in use
+('ready', [('pc-001', 'Qwen3.8-27B-UD-Q4_K_M.gguf', '48,52')])
+n_ctx 131072 slots 1
+ctx 131072
+short prompt: decode=[23.3, 23.5, 23.4] tok/s | win 11331 MiB | linux 11007 MiB | ollama_models=0
+fill~30000: prompt_n=27640 prefill=1137 tok/s decode=20.2 tok/s wall=27s | win 11347 MiB | linux 11017 MiB | ollama_models=0
+fill~70000: prompt_n=65459 prefill=950 tok/s decode=16.6 tok/s wall=72s | win 11354 MiB | linux 11017 MiB | ollama_models=0
+fill~120000: prompt_n=112729 prefill=763 tok/s decode=13.5 tok/s wall=152s | win 11356 MiB | linux 11019 MiB | ollama_models=0

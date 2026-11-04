@@ -5,7 +5,7 @@ LOG = "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute
 def vram():
     w = subprocess.run(["ssh", "fios02@10.42.0.225", "nvidia-smi --query-gpu=memory.used --format=csv,noheader"], capture_output=True, text=True).stdout.strip()
     l = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader"], capture_output=True, text=True).stdout.strip()
-    o = subprocess.run(["ssh","fios02@10.42.0.225","ollama ps"],capture_output=True,text=True).stdout.count("GB")
+    o = subprocess.run(["ssh","fios02@10.42.0.225","tasklist /fi \"IMAGENAME eq ollama.exe\" | find /c \"ollama\""],capture_output=True,text=True,stdin=subprocess.DEVNULL).stdout.strip()
     return f"win {w} | linux {l} | ollama_models={o}"
 for _ in range(60):
     try:
