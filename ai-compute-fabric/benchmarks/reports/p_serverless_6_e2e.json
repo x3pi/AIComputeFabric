@@ -6,13 +6,18 @@
     "375x812"
   ],
   "pass": true,
-  "total_checks": 24,
-  "passed_checks": 24,
+  "total_checks": 25,
+  "passed_checks": 25,
   "checks": [
     {
       "name": "serverless service & gateway proxy ready with 2 warm containers",
       "ok": true,
       "detail": ""
+    },
+    {
+      "name": "HTTP responses enforce strict Content-Security-Policy (script-src 'self', no unsafe-inline/unsafe-eval)",
+      "ok": true,
+      "detail": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     },
     {
       "name": "viewer sees warm containers in #sl-rows but NO Force Evict button",
@@ -67,7 +72,7 @@
     {
       "name": "tenants.html displays measured GPU-seconds (4.500 s) and VRAM MiB·s (including idle lease on evict) for alpha",
       "ok": true,
-      "detail": "4.500 s (4500 ms) | 50978 MiB·s"
+      "detail": "4.500 s (4500 ms) | 48753 MiB·s"
     },
     {
       "name": "saving tenant Serverless quota updates policy on server",
@@ -82,7 +87,7 @@
     {
       "name": "serverless.html 1-Click Demo creates/rotates tenant key and enables Serverless",
       "ok": true,
-      "detail": "aicf_oYezC…"
+      "detail": "aicf_g3HZh…"
     },
     {
       "name": "serverless.html deploys v1 -> v2 and rolls back to v1 cleanly",

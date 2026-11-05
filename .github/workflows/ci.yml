@@ -67,8 +67,12 @@ jobs:
         run: ruff check .
       - name: mypy
         run: mypy
-      - name: unit, security and evidence tests (tests that need a GPU, a model server, NATS or Postgres skip themselves)
-        run: python -m pytest -q
+      - name: unit, security, serverless, and resilience tests (tests that need a GPU, a model server, NATS or Postgres skip themselves)
+        run: |
+          python -m pytest -q tests/serverless/test_core_unit.py tests/security tests/resilience
+          python -m pytest -q
+      - name: bandit SAST scan (MEDIUM/HIGH severity)
+        run: bandit -ll -r agents serverless studio bestofn core sdk
       - name: dependency audit
         run: pip-audit -r requirements-dev.txt
 
@@ -101,3 +105,26 @@ jobs:
           AICF_PG_ADMIN_DSN: postgresql://postgres:aicf@127.0.0.1:5432/aicf
           AICF_PG_APP_DSN: postgresql://aicf_app:aicf_app_pw@127.0.0.1:5432/aicf
         run: python -m pytest -q tests/studio
+
+  e2e-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.10"
+          cache: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ai-compute-fabric/requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -r requirements-dev.txt
+      - name: Playwright browser E2E (Serverless Console, Strict CSP, RBAC & Code Editor)
+        run: |
+          (cd tests/e2e && npm ci)
+          node tests/e2e/serverless_e2e.mjs
+          if [ -f tests/e2e/editor_e2e.mjs ]; then node tests/e2e/editor_e2e.mjs; fi

@@ -32,6 +32,17 @@ const check = (name, ok, detail = "") => {
   console.log((ok ? "PASS " : "FAIL ") + name + (detail ? " — " + detail : ""));
 };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function waitFor(page, fn, arg = null, { timeout = 10000 } = {}) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    try {
+      const ok = await page.evaluate(fn, arg);
+      if (ok) return ok;
+    } catch {}
+    await sleep(50);
+  }
+  throw new Error(`waitFor timed out after ${timeout}ms`);
+}
 const procs = [];
 const dir = mkdtempSync(join(tmpdir(), "aicf-sl-e2e-"));
 const rolesFile = join(dir, "roles.json");
@@ -86,6 +97,8 @@ try {
   procs.push(spawn(gwBin, [
     "-grpc", `127.0.0.1:${GRPC_PORT}`,
     "-http", `127.0.0.1:${HTTP_PORT}`,
+    "-allow-signup",
+    "-signup-auto-approve",
     "-roles-file", rolesFile,
     "-tenants-file", tenantsFile,
     "-serverless-url", `http://127.0.0.1:${SL_PORT}`,
@@ -226,6 +239,11 @@ while True:
   check("serverless service & gateway proxy ready with 2 warm containers", slReady);
   if (!slReady) throw new Error("serverless service did not become ready");
 
+  const cspRes = await fetch(`${BASE}/serverless.html`);
+  const cspHdr = cspRes.headers.get("content-security-policy") || "";
+  check("HTTP responses enforce strict Content-Security-Policy (script-src 'self', no unsafe-inline/unsafe-eval)",
+    cspHdr.includes("script-src 'self'") && !cspHdr.includes("script-src 'self' 'unsafe"), cspHdr);
+
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
 
   // ---- A. Viewer role checks (must NOT see Force Evict button or global state buttons) ----
@@ -234,7 +252,7 @@ while True:
     await page.goto(`${BASE}/index.html`);
     await page.waitForSelector("#serverless-card", { timeout: 15000 });
     await page.evaluate(() => window.AICF_READY);
-    await page.waitForFunction(() => document.querySelectorAll("#sl-rows tr[data-cid]").length === 2, null, { timeout: 10000 });
+    await waitFor(page, () => document.querySelectorAll("#sl-rows tr[data-cid]").length === 2, null, { timeout: 10000 });
 
     const evictBtnCount = await page.locator("#sl-rows .sl-evict-btn").count();
     const globalCtrlVisible = await page.evaluate(() => {
@@ -247,7 +265,7 @@ while True:
     await page.goto(`${BASE}/tenants.html`);
     await page.waitForSelector("#sl-tenants-card", { timeout: 10000 });
     await page.evaluate(() => window.AICF_READY);
-    await page.waitForFunction(() => document.querySelectorAll("#sl-tenant-rows tr[data-tenant]").length >= 2, null, { timeout: 10000 });
+    await waitFor(page, () => document.querySelectorAll("#sl-tenant-rows tr[data-tenant]").length >= 2, null, { timeout: 10000 });
     const saveBtnsDisabled = await page.$$eval("#sl-tenant-rows .sl-pol-save", bs => bs.length >= 2 && bs.every(b => b.disabled));
     check("viewer sees Serverless tenant GPU-seconds table with all quota controls disabled", saveBtnsDisabled);
     check("viewer session had zero JS errors", errors.length === 0, errors.join(" | "));
@@ -260,7 +278,7 @@ while True:
     await page.goto(`${BASE}/index.html`);
     await page.waitForSelector("#serverless-card", { timeout: 15000 });
     await page.evaluate(() => window.AICF_READY);
-    await page.waitForFunction(() => document.querySelectorAll("#sl-rows .sl-evict-btn").length === 2, null, { timeout: 10000 });
+    await waitFor(page, () => document.querySelectorAll("#sl-rows .sl-evict-btn").length === 2, null, { timeout: 10000 });
 
     // Check 2560x1440 layout: no horizontal overflow & full fluid width
     const wideLayout = await page.evaluate(() => ({
@@ -279,7 +297,7 @@ while True:
 
     // Click Force Evict on c-e2e-warm-01
     await page.click('#sl-rows .sl-evict-btn[data-cid="c-e2e-warm-01"]');
-    await page.waitForFunction(() => document.querySelectorAll("#sl-rows tr[data-cid]").length === 1, null, { timeout: 10000 });
+    await waitFor(page, () => document.querySelectorAll("#sl-rows tr[data-cid]").length === 1, null, { timeout: 10000 });
     const remainingCid = await page.getAttribute("#sl-rows tr[data-cid]", "data-cid");
     check("Force Evict removes c-e2e-warm-01 from UI table", remainingCid === "c-e2e-warm-02", `remaining=${remainingCid}`);
 
@@ -298,23 +316,23 @@ while True:
     // Toggle Drain & Disable Serverless from UI
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.click("#sl-btn-toggle-drain");
-    await page.waitForFunction(() => /DRAIN/.test(document.getElementById("sl-status-badge")?.textContent || ""), null, { timeout: 5000 });
+    await waitFor(page, () => /DRAIN/.test(document.getElementById("sl-status-badge")?.textContent || ""), null, { timeout: 5000 });
     let stDoc = await (await api("/api/serverless/v1/status", TOK.admin)).json();
     check("Drain button toggles serverless draining=true", stDoc.draining === true);
     await page.click("#sl-btn-toggle-drain");
-    await page.waitForFunction(() => /SẴN SÀNG/.test(document.getElementById("sl-status-badge")?.textContent || ""), null, { timeout: 5000 });
+    await waitFor(page, () => /SẴN SÀNG/.test(document.getElementById("sl-status-badge")?.textContent || ""), null, { timeout: 5000 });
 
     await page.click("#sl-btn-toggle-enabled");
-    await page.waitForFunction(() => /ĐÃ TẮT/.test(document.getElementById("sl-status-badge")?.textContent || ""), null, { timeout: 5000 });
+    await waitFor(page, () => /ĐÃ TẮT/.test(document.getElementById("sl-status-badge")?.textContent || ""), null, { timeout: 5000 });
     stDoc = await (await api("/api/serverless/v1/status", TOK.admin)).json();
     check("Disable Serverless button toggles enabled=false", stDoc.enabled === false);
     await page.click("#sl-btn-toggle-enabled");
-    await page.waitForFunction(() => /SẴN SÀNG/.test(document.getElementById("sl-status-badge")?.textContent || ""), null, { timeout: 5000 });
+    await waitFor(page, () => /SẴN SÀNG/.test(document.getElementById("sl-status-badge")?.textContent || ""), null, { timeout: 5000 });
 
     // Navigate to tenants.html and verify GPU-seconds & quota editing at 2560x1440 and 375x812
     await page.goto(`${BASE}/tenants.html`);
     await page.waitForSelector("#sl-tenants-card", { timeout: 10000 });
-    await page.waitForFunction(aid => !!document.querySelector(`#sl-tenant-rows tr[data-tenant="${aid}"]`), alphaId, { timeout: 10000 });
+    await waitFor(page, aid => !!document.querySelector(`#sl-tenant-rows tr[data-tenant="${aid}"]`), alphaId, { timeout: 10000 });
 
     const alphaGpuText = await page.textContent(`#sl-tenant-rows tr[data-tenant="${alphaId}"] .sl-gpu-sec`);
     const alphaVramText = await page.textContent(`#sl-tenant-rows tr[data-tenant="${alphaId}"] .sl-vram-mibs`);
@@ -326,7 +344,7 @@ while True:
     await page.fill(`#sl-tenant-rows tr[data-tenant="${alphaId}"] .sl-pol-vram`, "4096");
     await page.fill(`#sl-tenant-rows tr[data-tenant="${alphaId}"] .sl-pol-conc`, "12");
     await page.click(`#sl-tenant-rows tr[data-tenant="${alphaId}"] .sl-pol-save`);
-    await page.waitForFunction(() => /Đã lưu hạn mức/.test(document.getElementById("sl-tenant-msg")?.textContent || ""), null, { timeout: 5000 });
+    await waitFor(page, () => /Đã lưu hạn mức/.test(document.getElementById("sl-tenant-msg")?.textContent || ""), null, { timeout: 5000 });
     stDoc = await (await api("/api/serverless/v1/status", TOK.admin)).json();
     check("saving tenant Serverless quota updates policy on server",
       stDoc.policies?.[alphaId]?.max_vram_mb === 4096 && stDoc.policies?.[alphaId]?.max_concurrency === 12,
@@ -346,53 +364,53 @@ while True:
 
     // 1-Click Quick Tenant Demo Setup
     await page.click("#sl-btn-quick-demo");
-    await page.waitForFunction(() => (document.getElementById("sl-api-key")?.value || "").startsWith("aicf_"), null, { timeout: 10000 });
+    await waitFor(page, () => (document.getElementById("sl-api-key")?.value || "").startsWith("aicf_"), null, { timeout: 10000 });
     const demoKey = await page.inputValue("#sl-api-key");
     check("serverless.html 1-Click Demo creates/rotates tenant key and enables Serverless", demoKey.startsWith("aicf_"), demoKey.slice(0, 10) + "…");
 
     // Deploy v1, then v2, then Rollback
     await page.click("#sl-btn-deploy-v1");
-    await page.waitForFunction(() => document.querySelectorAll("#sl-apps-rows tr[data-app]").length >= 1, null, { timeout: 10000 });
+    await waitFor(page, () => document.querySelectorAll("#sl-apps-rows tr[data-app]").length >= 1, null, { timeout: 10000 });
     const ver1 = (await page.textContent("#sl-apps-rows .sl-active-ver")).trim();
     await page.click("#sl-btn-deploy-v2");
-    await page.waitForFunction(v1 => {
+    await waitFor(page, v1 => {
       const cur = document.querySelector("#sl-apps-rows .sl-active-ver")?.textContent?.trim();
       return cur && cur !== v1;
     }, ver1, { timeout: 10000 });
     const ver2 = (await page.textContent("#sl-apps-rows .sl-active-ver")).trim();
     await page.click("#sl-apps-rows .sl-btn-rollback");
-    await page.waitForFunction(v1 => document.querySelector("#sl-apps-rows .sl-active-ver")?.textContent?.trim() === v1, ver1, { timeout: 10000 });
+    await waitFor(page, v1 => document.querySelector("#sl-apps-rows .sl-active-ver")?.textContent?.trim() === v1, ver1, { timeout: 10000 });
     const verAfterRb = (await page.textContent("#sl-apps-rows .sl-active-ver")).trim();
     check("serverless.html deploys v1 -> v2 and rolls back to v1 cleanly",
       ver1.startsWith("v-") && ver2.startsWith("v-") && ver1 !== ver2 && verAfterRb === ver1, `${ver1} -> ${ver2} -> ${verAfterRb}`);
 
     // Call Web Endpoint from UI (Sync /web and Async /spawn)
     await page.click("#sl-btn-call-web");
-    await page.waitForFunction(() => /e2e-ok/.test(document.getElementById("sl-web-output")?.textContent || ""), null, { timeout: 10000 });
+    await waitFor(page, () => /e2e-ok/.test(document.getElementById("sl-web-output")?.textContent || ""), null, { timeout: 10000 });
     await page.click("#sl-btn-spawn-web");
-    await page.waitForFunction(() => /Task Queue Bất đồng bộ/.test(document.getElementById("sl-web-output")?.textContent || ""), null, { timeout: 10000 });
+    await waitFor(page, () => /Task Queue Bất đồng bộ/.test(document.getElementById("sl-web-output")?.textContent || ""), null, { timeout: 10000 });
     check("serverless.html Web Endpoint & Async Task Queue (/spawn) execute deployed function and render JSON + cURL", true);
 
     // Test Cloud Code Editor: custom Python source deploy & syntax check
     await page.fill("#sl-code-editor", "def classify(payload: dict) -> dict:\n    return {'custom_editor': True, 'len': len(str(payload))}\n");
     await page.click("#sl-btn-deploy-code");
-    await page.waitForFunction(() => /triển khai thành công/i.test(document.getElementById("sl-deploy-msg")?.textContent || ""), null, { timeout: 10000 });
+    await waitFor(page, () => /triển khai thành công/i.test(document.getElementById("sl-deploy-msg")?.textContent || ""), null, { timeout: 10000 });
     check("serverless.html Cloud Python Code Editor compiles and deploys custom source code", true);
 
     // Test Cloud Logout -> locks workspace -> Register Account -> Logout -> Login with Email+Password
     await page.click("#sl-btn-logout");
-    await page.waitForFunction(() => getComputedStyle(document.getElementById("sl-workspace-content")).display === "none", null, { timeout: 5000 });
+    await waitFor(page, () => getComputedStyle(document.getElementById("sl-workspace-content")).display === "none", null, { timeout: 5000 });
     await page.fill("#sl-signup-name-input", "e2e-cloud-acct");
     await page.fill("#sl-signup-email-input", "e2e@aicf.local");
     await page.fill("#sl-signup-pw-input", "e2e-password-2026");
     await page.click("#sl-btn-register-account");
-    await page.waitForFunction(() => getComputedStyle(document.getElementById("sl-workspace-content")).display !== "none", null, { timeout: 10000 });
+    await waitFor(page, () => getComputedStyle(document.getElementById("sl-workspace-content")).display !== "none", null, { timeout: 10000 });
     await page.click("#sl-btn-logout");
-    await page.waitForFunction(() => getComputedStyle(document.getElementById("sl-workspace-content")).display === "none", null, { timeout: 5000 });
+    await waitFor(page, () => getComputedStyle(document.getElementById("sl-workspace-content")).display === "none", null, { timeout: 5000 });
     await page.fill("#sl-login-id-input", "e2e@aicf.local");
     await page.fill("#sl-login-pw-input", "e2e-password-2026");
     await page.click("#sl-btn-login-account");
-    await page.waitForFunction(() => getComputedStyle(document.getElementById("sl-workspace-content")).display !== "none", null, { timeout: 10000 });
+    await waitFor(page, () => getComputedStyle(document.getElementById("sl-workspace-content")).display !== "none", null, { timeout: 10000 });
     check("serverless.html Cloud Auth (Register -> Logout locks workspace -> Login with Email+Password) works end-to-end", true);
 
     // Test User vs Admin UI mode switcher
@@ -412,7 +430,7 @@ while True:
     // Switch to Tab 3 (Volumes) and create sample file
     await page.click("#tab-btn-volumes");
     await page.click("#sl-btn-sample-vol");
-    await page.waitForFunction(() => document.querySelectorAll("#sl-vol-rows tr td.mono").length >= 1, null, { timeout: 10000 });
+    await waitFor(page, () => document.querySelectorAll("#sl-vol-rows tr td.mono").length >= 1, null, { timeout: 10000 });
     const volText = await page.textContent("#sl-vol-rows");
     check("serverless.html Volume manager uploads and lists tenant volume file with SHA-256",
       /configs\/prompt_template\.json/.test(volText));

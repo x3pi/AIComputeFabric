@@ -47,6 +47,10 @@ func main() {
 	tlsCert := flag.String("tls-cert", "", "gateway server certificate (enables mTLS on the gRPC port)")
 	tlsKey := flag.String("tls-key", "", "gateway server private key")
 	tlsCA := flag.String("tls-client-ca", "", "CA that must have signed every worker certificate")
+	httpTLSCert := flag.String("http-tls-cert", "", "HTTPS certificate for the HTTP/dashboard listener (production B2)")
+	httpTLSKey := flag.String("http-tls-key", "", "HTTPS private key for the HTTP/dashboard listener (production B2)")
+	allowSignup := flag.Bool("allow-signup", false, "allow public tenant registration via /api/serverless/v1/signup and /api/serverless/v1/auth/register (default false)")
+	signupAutoApprove := flag.Bool("signup-auto-approve", false, "auto-approve public signups instead of placing them in pending state (demo/dev only)")
 	vramSidecarFlag := flag.String("vram-sidecar-url", "", "GGUF facts service (python -m core.vram_sidecar), enables POST /api/v1/models/estimate-vram")
 	flag.Parse()
 	if *topologyFile != "" {
@@ -91,6 +95,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	store.AllowSignup = *allowSignup
+	store.SignupAutoApprove = *signupAutoApprove
 	var policy func(string) (float64, int)
 	if *tenantsFile != "" {
 		policy = store.Policy
@@ -110,8 +116,8 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	if h, _, _ := net.SplitHostPort(*httpAddr); auth.Open() && h != "127.0.0.1" && h != "localhost" && h != "::1" {
-		log.Fatal("refusing to expose the admin API on ", *httpAddr, " without --admin-token (or AICF_ADMIN_TOKEN) or --roles-file")
+	if err := ValidateListenAuth(*httpAddr, auth); err != nil {
+		log.Fatal(err)
 	}
 	inf := NewInference(router, NewLimiter(*rate, *burst))
 	inf.Tenants, inf.AuthRequired = store, *tenantsFile != ""
@@ -120,7 +126,7 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", inf)
-	mux.HandleFunc("/metrics", inf.Metrics)
+	mux.HandleFunc("/metrics", WrapRequireViewer(auth, inf.Metrics))
 	var agents http.Handler
 	if *agentsURL != "" {
 		if agents, err = AgentsProxy(*agentsURL); err != nil {
@@ -150,5 +156,9 @@ func main() {
 		}
 	}
 	mux.Handle("/", NewAPIServerless(fleet, store, auth, audit, agents, studio, bestofn, serverless, router))
-	log.Fatal(newHTTPServer(*httpAddr, mux, defaultTimeouts).ListenAndServe())
+	httpSrv := newHTTPServer(*httpAddr, mux, defaultTimeouts)
+	if *httpTLSCert != "" || *httpTLSKey != "" {
+		log.Fatal(httpSrv.ListenAndServeTLS(*httpTLSCert, *httpTLSKey))
+	}
+	log.Fatal(httpSrv.ListenAndServe())
 }

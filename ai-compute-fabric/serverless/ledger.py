@@ -160,8 +160,13 @@ class ServerlessAudit:
             ev["hash"] = hashlib.sha256(raw_no_hash).hexdigest()
             if self.path is not None:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
-                with open(self.path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(ev, separators=(",", ":"), ensure_ascii=False) + "\n")
+                raw = (json.dumps(ev, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
+                fd = os.open(str(self.path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+                try:
+                    os.write(fd, raw)
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
             self._events.append(ev)
             if len(self._events) > 1000:
                 self._events = self._events[-1000:]
@@ -172,4 +177,28 @@ class ServerlessAudit:
         with self._mu:
             evs = [dict(e) for e in self._events if not tenant or e["tenant"] == tenant]
             return evs[-limit:]
+
+    @staticmethod
+    def verify_file(path: str | Path) -> tuple[int, str]:
+        p = Path(path)
+        if not p.exists():
+            return 0, GENESIS
+        prev = GENESIS
+        count = 0
+        for idx, line in enumerate(p.read_text("utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            ev = json.loads(line)
+            count += 1
+            if ev.get("seq") != count:
+                raise ValueError(f"audit sequence mismatch at line {idx}: got {ev.get('seq')}, expected {count}")
+            if ev.get("prev") != prev:
+                raise ValueError(f"audit prev-hash mismatch at line {idx}")
+            copy = dict(ev)
+            copy["hash"] = ""
+            expected = hashlib.sha256(json.dumps(copy, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
+            if ev.get("hash") != expected:
+                raise ValueError(f"audit hash mismatch at line {idx}")
+            prev = str(ev["hash"])
+        return count, prev
 

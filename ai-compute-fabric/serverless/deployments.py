@@ -273,16 +273,38 @@ def _ensure_sandbox_aicf_shim() -> None:
 class _SandboxSourceRunner:
     """Callable pickled into the bundle. Executes user source ONLY inside `_warm_runner.py` in the isolated container."""
 
-    def __init__(self, source_code: str, entrypoint: str, filename: str = "user_app.py"):
+    def __init__(
+        self,
+        source_code: str,
+        entrypoint: str,
+        filename: str = "user_app.py",
+        extra_files: Optional[dict[str, str]] = None,
+    ):
         self.source_code = source_code
         self.entrypoint = entrypoint
         self.filename = filename
+        self.extra_files: dict[str, str] = dict(extra_files or {})
         self._fn: Any = None
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if self._fn is None:
+            import tempfile
             _ensure_sandbox_aicf_shim()
-            ns: dict[str, Any] = {"__name__": "__aicf_user_app__", "__file__": f"/tmp/aicf_files/{self.filename}"}
+            work_dir = Path(tempfile.mkdtemp(prefix="aicf_bundle_"))
+            for fname in self.extra_files:
+                safe_name = Path(fname).name
+                if safe_name.endswith(".py"):
+                    sys.modules.pop(safe_name[:-3], None)
+            try:
+                for fname, fcontent in self.extra_files.items():
+                    safe_name = Path(fname).name
+                    if safe_name and safe_name.endswith(".py"):
+                        (work_dir / safe_name).write_text(fcontent, encoding="utf-8")
+                if str(work_dir) not in sys.path:
+                    sys.path.insert(0, str(work_dir))
+            except OSError:
+                pass
+            ns: dict[str, Any] = {"__name__": "__aicf_user_app__", "__file__": str(work_dir / self.filename)}
             code_obj = compile(self.source_code, ns["__file__"], "exec")
             exec(code_obj, ns)  # noqa: S102 — runs strictly inside isolated rootless container (_warm_runner.py)
             fn = ns.get(self.entrypoint)
@@ -325,7 +347,209 @@ def _builtin_template_bundle(name: str) -> Optional[tuple[str, str, str]]:
     return None
 
 
-def compile_source_bundle(source_code: str, entrypoint: str = "", filename: str = "user_app.py") -> tuple[str, str, list[str]]:
+SAFE_PY_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,60}\.py$")
+
+
+def _static_ast_lint(source_code: str, filename: str = "user_app.py") -> dict[str, Any]:
+    """Pure AST static checker (syntax + undefined names + unused imports + function list). Never executes code."""
+    import builtins
+
+    diagnostics: list[dict[str, Any]] = []
+    try:
+        tree = ast.parse(source_code, filename=filename)
+    except SyntaxError as e:
+        diagnostics.append({
+            "file": filename,
+            "line": int(e.lineno or 1),
+            "col": int(e.offset or 1),
+            "severity": "error",
+            "code": "syntax_error",
+            "message": f"Lỗi cú pháp Python tại dòng {e.lineno or 1}: {e.msg}",
+        })
+        return {"ok": False, "syntax_valid": False, "functions": [], "diagnostics": diagnostics}
+
+    fn_names = [
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    if not fn_names and filename in ("user_app.py", "app.py"):
+        diagnostics.append({
+            "file": filename,
+            "line": 1,
+            "col": 1,
+            "severity": "warning",
+            "code": "no_function_defined",
+            "message": "Chưa định nghĩa hàm Python ở cấp cao nhất (ví dụ: def classify(payload: dict) -> dict:)",
+        })
+
+    builtin_names = set(dir(builtins)) | {
+        "__name__", "__file__", "__doc__", "__package__", "aicf", "aicf_gpu", "app",
+    }
+    defined_globals: set[str] = set(builtin_names)
+    imported_names: dict[str, int] = {}
+    used_names: set[str] = set()
+
+    # Collect top-level definitions and imports first
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined_globals.add(node.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                bound = (alias.asname or alias.name.split(".")[0]).strip()
+                defined_globals.add(bound)
+                imported_names.setdefault(bound, int(getattr(node, "lineno", 1)))
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                bound = (alias.asname or alias.name).strip()
+                defined_globals.add(bound)
+                imported_names.setdefault(bound, int(getattr(node, "lineno", 1)))
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            defined_globals.add(node.id)
+        elif isinstance(node, ast.arg):
+            defined_globals.add(node.arg)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            defined_globals.add(node.name)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            used_names.add(node.id)
+            if node.id not in defined_globals:
+                diagnostics.append({
+                    "file": filename,
+                    "line": int(getattr(node, "lineno", 1)),
+                    "col": int(getattr(node, "col_offset", 0)) + 1,
+                    "severity": "error",
+                    "code": "undefined_name",
+                    "message": f"Biến hoặc hàm '{node.id}' chưa được định nghĩa hoặc chưa import",
+                })
+
+    for imp_name, line_no in sorted(imported_names.items(), key=lambda x: x[1]):
+        if imp_name not in used_names and not imp_name.startswith("_"):
+            diagnostics.append({
+                "file": filename,
+                "line": line_no,
+                "col": 1,
+                "severity": "warning",
+                "code": "unused_import",
+                "message": f"Thư viện '{imp_name}' được import nhưng chưa sử dụng",
+            })
+
+    has_err = any(d["severity"] == "error" for d in diagnostics)
+    return {
+        "ok": not has_err,
+        "syntax_valid": True,
+        "functions": fn_names,
+        "diagnostics": diagnostics,
+    }
+
+
+def _lint_worker_entry(payload_json: str) -> str:
+    import resource
+    try:
+        resource.setrlimit(resource.RLIMIT_CPU, (2, 2))
+        resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
+    except Exception:
+        pass
+    req = json.loads(payload_json)
+    src = str(req.get("source_code") or "")
+    fname = str(req.get("filename") or "user_app.py")
+    entrypoint = str(req.get("entrypoint") or "").strip()
+    extra = req.get("files") or {}
+    res = _static_ast_lint(src, fname)
+    if entrypoint and res["syntax_valid"] and entrypoint not in res["functions"]:
+        res["diagnostics"].append({
+            "file": fname,
+            "line": 1,
+            "col": 1,
+            "severity": "error",
+            "code": "missing_entrypoint",
+            "message": f"Không tìm thấy hàm entrypoint '{entrypoint}' trong {fname}",
+        })
+        res["ok"] = False
+    if isinstance(extra, dict):
+        for ef_name, ef_src in extra.items():
+            if ef_name == fname or not isinstance(ef_src, str):
+                continue
+            sub = _static_ast_lint(ef_src, str(ef_name))
+            res["diagnostics"].extend(sub["diagnostics"])
+            if not sub["syntax_valid"]:
+                res["syntax_valid"] = False
+            if not sub["ok"]:
+                res["ok"] = False
+    return json.dumps(res, ensure_ascii=False)
+
+
+def lint_python_source(
+    source_code: str,
+    filename: str = "user_app.py",
+    extra_files: Optional[dict[str, str]] = None,
+    timeout_s: float = 2.0,
+    entrypoint: str = "",
+) -> dict[str, Any]:
+    """Run static AST lint inside a resource-limited subprocess (RLIMIT_CPU=2s, RLIMIT_AS=256MB, timeout<=2s)."""
+    import subprocess
+    if not isinstance(source_code, str) or not source_code.strip():
+        return {
+            "ok": False,
+            "syntax_valid": False,
+            "functions": [],
+            "diagnostics": [{"file": filename, "line": 1, "col": 1, "severity": "error", "code": "empty_source", "message": "Mã nguồn Python không được để trống"}],
+        }
+    if "\x00" in source_code:
+        return {
+            "ok": False,
+            "syntax_valid": False,
+            "functions": [],
+            "diagnostics": [{"file": filename, "line": 1, "col": 1, "severity": "error", "code": "nul_byte", "message": "Mã nguồn chứa ký tự NUL không hợp lệ"}],
+        }
+    if len(source_code.encode("utf-8")) > 512 * 1024:
+        return {
+            "ok": False,
+            "syntax_valid": False,
+            "functions": [],
+            "diagnostics": [{"file": filename, "line": 1, "col": 1, "severity": "error", "code": "source_too_large", "message": "Mã nguồn vượt quá giới hạn 512 KiB"}],
+        }
+    payload = json.dumps({"source_code": source_code, "filename": filename, "files": extra_files or {}, "entrypoint": entrypoint})
+    cmd = [
+        sys.executable,
+        "-c",
+        "import sys; from serverless.deployments import _lint_worker_entry; sys.stdout.write(_lint_worker_entry(sys.stdin.read()))",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=payload,
+            capture_output=True,
+            text=True,
+            timeout=max(0.005, min(float(timeout_s), 2.0)),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "syntax_valid": False,
+            "functions": [],
+            "diagnostics": [{"file": filename, "line": 1, "col": 1, "severity": "error", "code": "lint_timeout", "message": "Kiểm tra cú pháp vượt quá thời gian giới hạn (2.0s)"}],
+        }
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return {
+            "ok": False,
+            "syntax_valid": False,
+            "functions": [],
+            "diagnostics": [{"file": filename, "line": 1, "col": 1, "severity": "error", "code": "lint_resource_limit", "message": "Biểu thức quá phức tạp hoặc vượt giới hạn bộ nhớ/đệ quy AST"}],
+        }
+    return json.loads(proc.stdout)
+
+
+def compile_source_bundle(
+    source_code: str,
+    entrypoint: str = "",
+    filename: str = "user_app.py",
+    extra_files: Optional[dict[str, str]] = None,
+) -> tuple[str, str, list[str]]:
     """Validate Python syntax via `ast.parse` (no host execution) and package into a sandbox bundle.
 
     Returns `(bundle_b64, resolved_entrypoint, all_function_names)`.
@@ -339,6 +563,18 @@ def compile_source_bundle(source_code: str, entrypoint: str = "", filename: str 
     except SyntaxError as e:
         line_info = f"dòng {e.lineno}" + (f", cột {e.offset}" if e.offset else "")
         raise DeploymentError(400, "syntax_error", f"Lỗi cú pháp Python tại {line_info}: {e.msg}") from None
+
+    clean_extra: dict[str, str] = {}
+    for ef_name, ef_src in (extra_files or {}).items():
+        if not isinstance(ef_name, str) or not SAFE_PY_FILE.match(ef_name) or ".." in ef_name:
+            raise DeploymentError(400, "invalid_filename", f"Tên tệp phụ không hợp lệ: {ef_name!r} (chỉ chấp nhận *.py)")
+        if not isinstance(ef_src, str) or len(ef_src.encode("utf-8")) > 256 * 1024:
+            raise DeploymentError(413, "file_too_large", f"Tệp phụ {ef_name!r} vượt quá 256 KiB")
+        try:
+            ast.parse(ef_src, filename=ef_name)
+        except SyntaxError as e:
+            raise DeploymentError(400, "syntax_error", f"Lỗi cú pháp trong tệp {ef_name} tại dòng {e.lineno}: {e.msg}") from None
+        clean_extra[ef_name] = ef_src
 
     fn_names = [
         node.name
@@ -365,13 +601,16 @@ def compile_source_bundle(source_code: str, entrypoint: str = "", filename: str 
 
     import cloudpickle
     cloudpickle.register_pickle_by_value(sys.modules[__name__])
-    runner = _SandboxSourceRunner(source_code=source_code, entrypoint=chosen, filename=filename)
+    runner = _SandboxSourceRunner(source_code=source_code, entrypoint=chosen, filename=filename, extra_files=clean_extra)
+    files_b64 = {
+        filename: base64.b64encode(source_code.encode("utf-8")).decode("ascii"),
+    }
+    for ef_name, ef_src in clean_extra.items():
+        files_b64[ef_name] = base64.b64encode(ef_src.encode("utf-8")).decode("ascii")
     bundle_doc = {
         "kind": "function",
         "obj": runner,
-        "files": {
-            filename: base64.b64encode(source_code.encode("utf-8")).decode("ascii"),
-        },
+        "files": files_b64,
     }
     b64 = base64.b64encode(cloudpickle.dumps(bundle_doc)).decode("ascii")
     return b64, chosen, fn_names
@@ -405,10 +644,24 @@ class DeploymentStore:
     def _save_locked(self) -> None:
         if self.path is None:
             return
+        import os
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"apps": list(self._apps.values())}, indent=2, ensure_ascii=False), encoding="utf-8")
+        payload = json.dumps({"apps": list(self._apps.values())}, indent=2, ensure_ascii=False).encode("utf-8")
+        with open(tmp, "wb") as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, 0o600)
         tmp.replace(self.path)
+        try:
+            dir_fd = os.open(str(self.path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
 
     def deploy(self, tenant: str, app_name: str, functions: list[dict], web_endpoints: Optional[dict[str, dict]] = None) -> dict:
         if not IDENT.match(tenant or "") or not IDENT.match(app_name or ""):
@@ -422,10 +675,12 @@ class DeploymentStore:
             f_copy = dict(f)
             if not isinstance(f_copy.get("bundle_b64"), str):
                 if isinstance(f_copy.get("source_code"), str) and f_copy["source_code"].strip():
+                    extra_files = f_copy.get("files") if isinstance(f_copy.get("files"), dict) else None
                     b64, resolved_ep, _ = compile_source_bundle(
                         f_copy["source_code"],
                         str(f_copy.get("entrypoint") or f_copy["fn_id"]),
                         str(f_copy.get("filename") or f"{app_name}.py"),
+                        extra_files=extra_files,
                     )
                     f_copy["bundle_b64"] = b64
                     f_copy["entrypoint"] = resolved_ep
@@ -528,17 +783,32 @@ class DeploymentStore:
                 "fn_id": fn_id,
                 "entrypoint": fdef.get("entrypoint") or fn_id,
                 "source_code": fdef.get("source_code") or "",
+                "files": fdef.get("files") if isinstance(fdef.get("files"), dict) else {},
                 "gpu": fdef.get("gpu"),
                 "vram_mb": int(fdef.get("vram_mb") or 0),
                 "memory_mb": int(fdef.get("memory_mb") or 512),
                 "timeout_s": float(fdef.get("timeout_s") or 30),
                 "keep_warm_s": int(fdef.get("keep_warm_s") or 60),
             }
+        version_sources = {}
+        for v in rec["versions"]:
+            v_fns = {}
+            for fn_id, fdef in v["functions"].items():
+                v_fns[fn_id] = {
+                    "entrypoint": fdef.get("entrypoint") or fn_id,
+                    "source_code": fdef.get("source_code") or "",
+                    "files": fdef.get("files") if isinstance(fdef.get("files"), dict) else {},
+                }
+            version_sources[v["version"]] = {
+                "created_at": v.get("created_at", ""),
+                "functions": v_fns,
+            }
         out = {
             "tenant": rec["tenant"],
             "app_name": rec["app_name"],
             "active_version": active,
             "versions": [v["version"] for v in rec["versions"]],
+            "version_sources": version_sources,
             "functions": sorted(vrec["functions"].keys()),
             "functions_detail": fn_details,
             "web_endpoints": sorted(vrec.get("web_endpoints", {}).keys()),

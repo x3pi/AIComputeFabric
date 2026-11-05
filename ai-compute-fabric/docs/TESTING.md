@@ -90,3 +90,16 @@ node tests/e2e/roles_e2e.mjs
 .venv/bin/python benchmarks/serverless/p7_scale_chaos.py
 ```
 Báo cáo JSON sinh ra tại `benchmarks/reports/p_serverless_{0..7}_*.json`.
+
+### 7.5. Kiểm thử Production Hardening, Backup/Restore `kill -9` & Trình soạn thảo Mã nguồn (Pha B–C)
+```bash
+# Kiểm thử Go: Argon2id, brute-force lockout, session TTL, rate limit, strict CSP
+(cd apps/site-gateway && go test -race ./...)
+
+# Kiểm thử Python: SIGKILL (kill -9) atomic write + fsync, aicf-admin backup/restore/verify, mã hóa Secret
+.venv/bin/pytest tests/resilience/test_backup_restore_resilience.py tests/integration/test_openapi_conformance.py -q
+
+# Kiểm thử Preflight Production
+bash deploy/production/preflight.sh
+```
+

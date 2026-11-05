@@ -115,6 +115,11 @@ def make_handler(svc: ServerlessService, secret: str):
                     return self._send(200, {"containers": svc.list_containers(tenant=tenant if role == "tenant" else q.get("tenant"))})
                 if path == "/v1/apps":
                     return self._send(200, {"apps": svc.deployments.list_apps(tenant=tenant if role == "tenant" else q.get("tenant"))})
+                if path == "/v1/secrets":
+                    t = tenant if role == "tenant" else (q.get("tenant") or tenant)
+                    if not t:
+                        return self._send(400, {"error": {"code": "bad_request", "message": "tenant required"}})
+                    return self._send(200, {"tenant": t, "secrets": svc.quotas.list_secrets_metadata(t)})
                 if path.startswith("/v1/calls/"):
                     rest = path[len("/v1/calls/"):]
                     if rest.endswith("/logs"):
@@ -194,6 +199,21 @@ def make_handler(svc: ServerlessService, secret: str):
                     if body is None:
                         return
                     return self._send(200, svc.deploy_app(t, body))
+                if path == "/v1/lint":
+                    if role not in ("tenant", "admin", "operator", "viewer"):
+                        return self._send(403, {"error": {"code": "forbidden", "message": "authentication required"}})
+                    body = self._read_json()
+                    if body is None or not isinstance(body, dict):
+                        return
+                    from serverless.deployments import lint_python_source
+                    res = lint_python_source(
+                        source_code=str(body.get("source_code") or ""),
+                        filename=str(body.get("filename") or "user_app.py"),
+                        extra_files=body.get("files") if isinstance(body.get("files"), dict) else None,
+                        timeout_s=2.0,
+                        entrypoint=str(body.get("entrypoint") or ""),
+                    )
+                    return self._send(200, res)
                 if path.startswith("/v1/apps/") and path.endswith("/rollback"):
                     t = self._require_tenant()
                     if not t:

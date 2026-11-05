@@ -1,0 +1,32 @@
+[Unit]
+Description=AICF Best-of-N Verification Sidecar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aicf
+Group=aicf
+WorkingDirectory=/opt/aicf
+EnvironmentFile=/etc/aicf/bestofn.env
+ExecStart=/opt/aicf/.venv/bin/python -m agents.service \
+  --host 127.0.0.1 \
+  --port 18095
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+
+# Systemd Hardening (Pha B2)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/var/lib/aicf /var/log/aicf
+ReadOnlyPaths=/etc/aicf
+
+[Install]
+WantedBy=multi-user.target

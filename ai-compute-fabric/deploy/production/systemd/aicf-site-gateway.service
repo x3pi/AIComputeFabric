@@ -1,0 +1,47 @@
+[Unit]
+Description=AICF Site Gateway (Data Plane & Control Plane)
+After=network-online.target aicf-serverless.service aicf-studio.service aicf-bestofn.service aicf-agents.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aicf
+Group=aicf
+WorkingDirectory=/opt/aicf/apps/site-gateway
+EnvironmentFile=/etc/aicf/site-gateway.env
+ExecStart=/opt/aicf/bin/site-gateway \
+  -http-addr=${AICF_HTTP_ADDR} \
+  -grpc-addr=${AICF_GRPC_ADDR} \
+  -admin-token=${AICF_ADMIN_TOKEN} \
+  -tls-dir=/etc/aicf/pki \
+  -http-tls-cert=/etc/aicf/tls/fullchain.pem \
+  -http-tls-key=/etc/aicf/tls/privkey.pem \
+  -tenants-file=/var/lib/aicf/tenants.json \
+  -audit-file=/var/lib/aicf/audit.jsonl \
+  -usage-file=/var/lib/aicf/usage_ledger.jsonl \
+  -topology-file=/var/lib/aicf/topology.json \
+  -serverless-upstream=http://127.0.0.1:18110 \
+  -studio-upstream=http://127.0.0.1:18090 \
+  -bestofn-upstream=http://127.0.0.1:18095 \
+  -agents-upstream=http://127.0.0.1:18100 \
+  -allow-signup=false \
+  -signup-auto-approve=false \
+  -allow-unauthenticated-admin=false
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+
+# Systemd Hardening (Pha B2)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/var/lib/aicf /var/log/aicf
+ReadOnlyPaths=/etc/aicf
+
+[Install]
+WantedBy=multi-user.target

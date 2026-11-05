@@ -1,0 +1,11 @@
+/var/log/aicf/*.log /var/log/aicf/*.jsonl /var/lib/aicf/*.jsonl {
+    daily
+    rotate 14
+    size 50M
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 aicf aicf
+}

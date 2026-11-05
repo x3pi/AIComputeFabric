@@ -1,6 +1,6 @@
 {
   "label": "[\u0110O]",
-  "map_200_two_workers_ms": 2045.4,
-  "w2_completed_calls": 105,
+  "map_200_two_workers_ms": 2013.8,
+  "w2_completed_calls": 106,
   "worker_drop_recovered_60_items": true
 }

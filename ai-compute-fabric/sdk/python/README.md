@@ -115,3 +115,19 @@ class Embedder:
 | `WorkerLost` | `200` (`status="worker_lost"`) | Worker mất kết nối giữa chừng; theo D8 (at-most-once), chỉ tự chạy lại nếu đặt `retries > 0` |
 | `RemoteError` | `200` (`status="error"`) | Ngoại lệ phát sinh trong mã người dùng kèm `remote_type` và `remote_traceback` |
 
+---
+
+## 7. Trình soạn thảo Web IDE trên `serverless.html` (ADR-004)
+
+Ngoài CLI và SDK, Developer có thể viết, kiểm tra cú pháp (Live AST Lint), quản lý đa tệp (`user_app.py`, `helpers.py`) và triển khai trực tiếp trên trình duyệt tại `/serverless.html` (gói `vendor/codemirror6.bundle.js` air-gapped 100%, không gọi CDN ngoài):
+
+- **Phím tắt:**
+  - `Ctrl+S` / `Cmd+S`: Biên dịch và triển khai phiên bản bất biến (`v-...`).
+  - `Ctrl+Enter` / `Cmd+Enter`: Triển khai nhanh và chạy thử ngay với JSON Payload.
+  - `Ctrl+F` / `Cmd+F`: Tìm kiếm & Thay thế trong trình soạn thảo.
+  - `Ctrl+Space`: Mở bảng gợi ý SDK/CUDA (`@app.function`, `@aicf.endpoint`, `aicf_gpu.*`).
+  - `Tab` / `Shift+Tab` & `Ctrl+Z` / `Ctrl+Y`: Thụt lề 4 dấu cách chuẩn PEP-8 và hoàn tác/làm lại.
+  - `Esc` rồi `Tab`: Thoát tiêu điểm bàn phím khỏi vùng soạn thảo (chuẩn WCAG 2.1.2).
+- **Giới hạn & Xử lý sự cố:** Tệp tải lên giới hạn `≤ 512 KiB`, tự động bóc UTF-8 BOM và từ chối tệp nhị phân chứa byte `NUL`. Nếu bundle JS bị chặn tải, giao diện tự động rơi về `<textarea>` thuần và vẫn cho phép triển khai bình thường.
+
+

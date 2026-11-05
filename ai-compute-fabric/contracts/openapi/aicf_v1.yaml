@@ -14,6 +14,17 @@ servers:
 security:
   - bearer: []
 paths:
+  /healthz:
+    get:
+      summary: Liveness probe (no auth required)
+      responses:
+        "200": {description: ok}
+  /readyz:
+    get:
+      summary: Readiness probe checking TenantStore and AuditLog integrity (no auth required)
+      responses:
+        "200": {description: ready}
+        "503": {description: not ready}
   /api/whoami:
     get:
       summary: Role of the caller and what the UI may offer
@@ -324,6 +335,72 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [env]}}}}
       responses:
         "200": {description: stored}
+  /api/serverless/v1/lint:
+    post:
+      summary: Syntax and pyflakes static check for Python source code in a resource-limited subprocess (<= 2s, no code execution)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [source_code], properties: {source_code: {type: string}, filename: {type: string}}}}}}
+      responses:
+        "200": {description: lint diagnostics}
+  /api/serverless/v1/signup:
+    post:
+      summary: Register a new tenant workspace (admin or when --allow-signup=true; rate-limited per IP and globally)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}, email: {type: string}, password: {type: string}}}}}}
+      responses:
+        "201": {description: created}
+        "403": {description: public signup disabled}
+        "409": {description: tenant name already exists}
+        "429": {description: signup rate limit exceeded}
+  /api/serverless/v1/auth/register:
+    post:
+      summary: Register a Cloud Developer account with email and strong password (argon2id, min 12 chars)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name, password], properties: {name: {type: string}, email: {type: string}, password: {type: string}}}}}}
+      responses:
+        "201": {description: registered}
+        "400": {description: weak password or invalid name}
+        "403": {description: public registration disabled}
+        "409": {description: account already exists}
+        "429": {description: rate limit exceeded}
+  /api/serverless/v1/auth/login:
+    post:
+      summary: Authenticate with email/username + password or API key and issue a short-lived session token (aicf_sess_*)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {identifier: {type: string}, password: {type: string}, api_key: {type: string}}}}}}
+      responses:
+        "200": {description: authenticated}
+        "401": {description: invalid credentials}
+        "403": {description: account pending approval or disabled}
+        "429": {description: account or IP temporarily locked due to failed attempts}
+  /api/serverless/v1/auth/logout:
+    post:
+      summary: Revoke the active session token immediately
+      responses:
+        "200": {description: logged out}
+  /api/serverless/v1/auth/me:
+    get:
+      summary: Inspect current authenticated tenant/session or admin role
+      responses:
+        "200": {description: authenticated identity}
+        "401": {description: unauthenticated}
+  /api/serverless/v1/auth/sessions:
+    get:
+      summary: List active session metadata for the authenticated tenant (session tokens are never returned)
+      responses:
+        "200": {description: active sessions}
+        "401": {description: unauthenticated}
+  /api/serverless/v1/auth/sessions/{session_id}:
+    delete:
+      summary: Revoke a specific session by ID (orsession_id=all to revoke all active sessions)
+      parameters: [{name: session_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: revoked}
+        "404": {description: session not found}
+  /api/serverless/v1/auth/change-password:
+    post:
+      summary: Change account password (verifies current password, enforces password strength, and revokes all active sessions)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [current_password, new_password], properties: {current_password: {type: string}, new_password: {type: string}}}}}}
+      responses:
+        "200": {description: password updated and sessions revoked}
+        "400": {description: weak new password}
+        "401": {description: invalid current password}
   /api/models/catalog:
     get:
       summary: Curated model catalogue with the architecture facts the VRAM estimator uses
@@ -772,7 +849,7 @@ components:
     Tenant:
       type: object
       required: [id, name, weight, max_inflight, disabled]
-      properties: {id: {type: string}, name: {type: string}, weight: {type: number}, max_inflight: {type: integer}, disabled: {type: boolean}}
+      properties: {id: {type: string}, name: {type: string}, email: {type: string}, weight: {type: number}, max_inflight: {type: integer}, disabled: {type: boolean}, pending: {type: boolean}, created_at: {type: string}}
     TenantCreated:
       type: object
       required: [tenant, api_key]

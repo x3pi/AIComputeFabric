@@ -156,6 +156,7 @@ def stack(nats_url, secrets, worker, tmp_path_factory):
         subprocess.run(["go", "build", "-o", str(d / out), pkg], cwd=ROOT / "apps/site-gateway", check=True)
     http_p, grpc_p, svc_p = free_port(), free_port(), free_port()
     gw = subprocess.Popen([str(d / "gw"), "-http", f"127.0.0.1:{http_p}", "-grpc", f"127.0.0.1:{grpc_p}", "-tenants-file", str(d / "tenants.json"),
+                           "-allow-signup", "-signup-auto-approve",
                            "-admin-token", ADMIN, "-serverless-url", f"http://127.0.0.1:{svc_p}", "-serverless-secret-file", str(secrets / "gw.secret")],
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     base = f"http://127.0.0.1:{http_p}"

@@ -1,0 +1,86 @@
+{
+  "phase": "C6_editor_e2e",
+  "pass": true,
+  "checks": [
+    {
+      "name": "serverless service & gateway proxy ready for editor E2E",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "AicfEditor (CodeMirror 6 bundle) mounts with line-number gutter and Python syntax highlight tokens",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Zero external CDN requests made (100% air-gapped local bundle)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Live Lint (POST /api/serverless/v1/lint) marks undefined_name in gutter and clicking diagnostic jumps to line 2 (<= 800ms)",
+      "ok": true,
+      "detail": "lintMs=89ms"
+    },
+    {
+      "name": "Tab inserts 4 spaces, Ctrl+Z undoes cleanly, and Esc+Tab escapes focus out of editor",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "SDK/CUDA Autocomplete popup opens and lists @app.function & aicf_gpu primitives",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "XSS payload in code and function name is safely escaped without execution or CSP errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "File upload strips UTF-8 BOM and rejects binary NUL byte files cleanly",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "5,000-line Python buffer keystroke latency completes within <= 50ms budget",
+      "ok": true,
+      "detail": "keystroke5kMs=34.9ms"
+    },
+    {
+      "name": "Live Lint passes on valid multi-file Python code",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Multi-file deploy + Quick Test Run executes user_app.py importing helpers.py inside sandbox",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Version Diff viewer renders unified +added and -removed lines against deployed version",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Editor automatically saves unsaved draft to localStorage with status badge",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Editor layout has zero horizontal overflow at both 2560x1440 and 375x812",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Editor E2E session had zero JS/CSP errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Graceful fallback to plain <textarea> still deploys cleanly when editor bundle is blocked",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

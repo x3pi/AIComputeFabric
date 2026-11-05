@@ -1,8 +1,7 @@
 /* ==========================================================================
    AI Compute Fabric — Google AI Studio (aistudio.google.com) Design System
+   Local/Air-gapped safe font stack (zero external CDN requests, strict CSP)
    ========================================================================== */
-
-@import url('https://fonts.googleapis.com/css2?family=Google+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Google+Sans+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap');
 
 :root {
   /* Google AI Studio Light Theme */

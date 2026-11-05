@@ -105,7 +105,7 @@
       <div class="sub">Hướng dẫn từng bước dành cho Quản trị viên Cụm (Admin), Vận hành viên Site (Operator) và Kỹ sư Phát triển Ứng dụng AI (Developer). Nhấn phím <kbd class="mono" style="padding:2px 6px;border:1px solid var(--bd);border-radius:4px;background:var(--card)">?</kbd> ở bất kỳ trang nào để mở trợ giúp nhanh.</div>
     </div>
     <div class="row">
-      <a href="/contracts/openapi" style="text-decoration:none" onclick="event.preventDefault();document.getElementById('sec-api').scrollIntoView({behavior:'smooth'})"><button type="button" class="sm">🔌 Tích hợp API OpenAI</button></a>
+      <a href="/contracts/openapi" id="link-sec-api" style="text-decoration:none"><button type="button" class="sm">🔌 Tích hợp API OpenAI</button></a>
       <a href="#sec-studio" style="text-decoration:none"><button type="button" class="sm primary">🚀 Bắt đầu nhanh</button></a>
     </div>
   </div>
@@ -236,13 +236,13 @@
 
       <div class="code-hdr">
         <span>1. Gọi trực tiếp qua cURL (hỗ trợ SSE Streaming &amp; KV Session Affinity)</span>
-        <button type="button" class="sm" onclick="copyCode('code-curl', this)">Sao chép mã</button>
+        <button type="button" class="sm" data-copy-target="code-curl">Sao chép mã</button>
       </div>
       <pre class="code-block" id="code-curl"></pre>
 
       <div class="code-hdr" style="margin-top:14px">
         <span>2. Sử dụng với thư viện Python <code class="mono">openai</code> chính thức</span>
-        <button type="button" class="sm" onclick="copyCode('code-py', this)">Sao chép mã</button>
+        <button type="button" class="sm" data-copy-target="code-py">Sao chép mã</button>
       </div>
       <pre class="code-block" id="code-py"></pre>
 
@@ -443,57 +443,6 @@
     </div>
   </section>
 </main>
-<script>
-const origin = location.origin || "http://127.0.0.1:18080";
-document.getElementById("code-curl").textContent =
-`curl -N "${origin}/v1/chat/completions" \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer aicf_YOUR_API_KEY" \\
-  -H "X-Session-ID: conv-demo-01" \\
-  -d '{
-    "stream": true,
-    "max_tokens": 256,
-    "messages": [
-      {"role": "user", "content": "Giải thích cơ chế 6-Bucket VRAM của AI Compute Fabric."}
-    ]
-  }'`;
-
-document.getElementById("code-py").textContent =
-`from openai import OpenAI
-
-client = OpenAI(
-    base_url="${origin}/v1",
-    api_key="aicf_YOUR_API_KEY",  # Khóa lấy từ trang Người dùng & Khóa API
-)
-
-stream = client.chat.completions.create(
-    model="Qwen3-4B",
-    messages=[{"role": "user", "content": "Xin chào! Hãy tóm tắt 3 ưu điểm của hệ thống."}],
-    extra_headers={"X-Session-ID": "session-user-42", "X-Priority": "interactive"},
-    stream=True,
-)
-for chunk in stream:
-    print(chunk.choices[0].delta.content or "", end="", flush=True)`;
-
-renderSixBuckets(document.getElementById("doc-demo-bar"), null, {
-  Total: 12288 * 1048576,
-  OSUser: 650 * 1048576,
-  Weights: 4950 * 1048576,
-  KVState: 1850 * 1048576,
-  Compute: 380 * 1048576,
-  Headroom: 1536 * 1048576,
-  Allocatable: 2922 * 1048576,
-});
-
-async function copyCode(id, btn) {
-  const txt = document.getElementById(id).textContent;
-  try {
-    await navigator.clipboard.writeText(txt);
-    const old = btn.textContent;
-    btn.textContent = "Đã sao chép ✓";
-    setTimeout(() => { btn.textContent = old; }, 1800);
-  } catch {}
-}
-</script>
+<script src="guide.js"></script>
 </body>
 </html>

@@ -213,6 +213,8 @@ def validate_env(env: Optional[dict]) -> dict:
 class GpuDockerSandbox(DockerSandbox):
     """argv is ALWAYS built from validated fields; no tenant-controlled value reaches a mount, a flag or the image."""
     name = "docker-gpu"
+    volumes_root: Optional[Path] = None
+    model_cache_root: Optional[Path] = None
 
     def __init__(self, image: str = "python:3.12-slim", *, volumes_root: Optional[Path] = None,
                  model_cache_root: Optional[Path] = None):     # glibc: the alpine default of DockerSandbox cannot run CUDA/manylinux wheels

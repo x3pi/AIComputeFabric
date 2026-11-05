@@ -242,3 +242,32 @@ python -m agents.serverless_worker \
 | `FunctionTimeoutError` | `200` (`status=timeout`) | Hàm chạy quá `timeout_s` | Tăng `timeout_s` (tối đa `600 s`) hoặc dùng `.spawn()` |
 | `WorkerLost` | `200` (`status=worker_lost`) | Worker bị mất kết nối sau khi đã nhận lệnh chạy (D8 at-most-once) | Kiểm tra trạng thái thực tế hoặc bật `retries=n` nếu hàm idempotent |
 | `RemoteError` | `200` (`status=error`) | Ngoại lệ Python xảy ra bên trong hàm người dùng | Xem `remote_traceback` hoặc chạy `aicf logs <call_id>` |
+
+---
+
+## 7. Vận hành Production: Sao lưu, Phục hồi, Kiểm định Chuỗi băm & Nâng cấp (Pha B)
+
+### 7.1. Kiểm tra Sức khỏe (`/healthz`, `/readyz`) và Preflight
+- `GET /healthz`: Kiểm tra tiến trình `site-gateway` còn sống (`200 OK`).
+- `GET /readyz`: Kiểm tra `TenantStore` và chuỗi băm `AuditLog` nguyên vẹn (`200 Ready` / `503 Not Ready`).
+- Trước khi khởi động lại cụm Production:
+  ```bash
+  AICF_ENV_FILE=/etc/aicf/site-gateway.env bash deploy/production/preflight.sh
+  ```
+
+### 7.2. Sao lưu & Phục hồi Trạng thái (`aicf-admin`)
+```bash
+# Kiểm tra toàn vẹn dữ liệu & chuỗi băm audit/ledger
+aicf-admin verify -data-dir /var/lib/aicf
+
+# Tạo bản sao lưu nén kèm manifest SHA-256
+aicf-admin backup -data-dir /var/lib/aicf -out /var/backups/aicf-backup.tar.gz
+
+# Phục hồi an toàn (tự động giải nén vào vùng tạm và verify trước khi áp dụng)
+aicf-admin restore -in /var/backups/aicf-backup.tar.gz -data-dir /var/lib/aicf
+```
+
+### 7.3. Xử lý Sự cố Khóa Tài khoản do Brute-force hoặc Phê duyệt Tenant Pending
+- Khi người dùng nhập sai mật khẩu quá 5 lần, tài khoản/IP bị khóa tạm thời (`HTTP 429 account_locked`). Admin có thể kiểm tra tại `tenants.html` hoặc cấp lại mật khẩu/API key.
+- Khi bật `--allow-signup=true` ở chế độ cần phê duyệt (`--signup-auto-approve=false`), tài khoản mới hiển thị nhãn **⏳ Chờ duyệt (Pending)** trên `tenants.html`. Nhấn nút **✓ Duyệt** để kích hoạt.
+

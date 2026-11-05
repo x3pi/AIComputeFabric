@@ -228,7 +228,7 @@ def test_hung_evict_endpoint_falls_back_to_docker_kill_within_two_seconds(rig, e
             assert res["engine_stops"] == 0 and "docker-kill" in res["event_evict_serverless"], res
             times.append(res["tick_ms"])
             t.join(30)
-            assert wait_for(lambda: not rig.pool.snapshot() and not rig.pool.docker_names(), 15)
+            assert wait_for(lambda: not rig.pool.snapshot() and not rig.pool.docker_names() and not rig.mon.last, 15)
         assert max(times) < 2000, times
     finally:
         hang_srv.close()

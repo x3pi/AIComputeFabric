@@ -1,0 +1,76 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "6-Bucket GPU VRAM & Serverless Leases (MiB)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sl_vram_leased_mb",
+          "legendFormat": "Serverless Leased VRAM ({{node}})"
+        },
+        {
+          "expr": "sl_warm_containers",
+          "legendFormat": "Warm Containers ({{node}})"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Serverless Reclaim Latency p99 (G-RECLAIM < 2.0s Gate)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(sl_reclaim_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "Reclaim p99 (s)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Serverless Function Invocations & Errors by Tenant",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(sl_calls_total[5m])) by (tenant, status)",
+          "legendFormat": "{{tenant}} [{{status}}]"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Orphan Containers & Capacity Rejections (503 no_capacity)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sl_orphan_containers",
+          "legendFormat": "Orphan Containers"
+        },
+        {
+          "expr": "increase(sl_no_capacity_total[5m])",
+          "legendFormat": "No Capacity 503 (5m)"
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["aicf", "serverless", "gpu", "6-bucket"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "AI Compute Fabric — GPU Fleet & Serverless Production Dashboard",
+  "uid": "aicf-prod-gpu-v1",
+  "version": 1
+}

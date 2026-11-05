@@ -80,7 +80,7 @@ def test_every_parameterless_get_matches_its_schema(gateway):
     checked = []
     for path, item in SPEC["paths"].items():
         op = item.get("get")
-        if not op or "{" in path or path.startswith(("/api/agents", "/api/studio", "/api/bestofn", "/api/serverless")) or path.endswith("/stream"):
+        if not op or "{" in path or path in ("/healthz", "/readyz") or path.startswith(("/api/agents", "/api/studio", "/api/bestofn", "/api/serverless")) or path.endswith("/stream"):
             continue
         st, raw, h = call(gateway, "GET", path)
         assert st == 200, (path, st, raw[:200])
@@ -146,3 +146,20 @@ def test_every_api_route_in_the_go_code_is_in_the_spec():
     # a trailing-slash pattern covers a subtree: it is documented when some spec path lives under it
     missing = sorted(p for p in declared if not (p in in_spec or p.rstrip("/") in in_spec or (p.endswith("/") and any(q.startswith(p) for q in full))))
     assert not missing, f"routes registered in Go but absent from aicf_v1.yaml: {missing}"
+
+
+def test_healthz_readyz_and_auth_session_lifecycle(gateway):
+    st_h, raw_h, hdr_h = call(gateway, "GET", "/healthz")
+    assert st_h == 200 and json.loads(raw_h)["status"] == "ok"
+    assert "script-src 'self'" in hdr_h.get("Content-Security-Policy", "")
+    st_r, raw_r, _ = call(gateway, "GET", "/readyz")
+    assert st_r == 200 and json.loads(raw_r)["status"] == "ready"
+
+    # By default (--allow-signup=false), public registration returns 403 signup_disabled
+    st_reg, raw_reg, _ = call(gateway, "POST", "/api/serverless/v1/auth/register", {
+        "name": "openapi-dev",
+        "email": "openapi@aicf.local",
+        "password": "StrongOpenAPIPass!2026",
+    })
+    assert st_reg == 403 and json.loads(raw_reg)["error"]["code"] == "signup_disabled"
+

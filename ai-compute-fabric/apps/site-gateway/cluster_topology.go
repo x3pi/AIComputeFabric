@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -263,14 +262,7 @@ func (tc *TopologyCoordinator) saveStateLocked() {
 	if err != nil {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(tc.stateFile), 0o755); err != nil {
-		return
-	}
-	tmp := tc.stateFile + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return
-	}
-	_ = os.Rename(tmp, tc.stateFile)
+	_ = writeFileAtomic(tc.stateFile, data, 0o600)
 }
 
 // GetStatus returns the current topology state merged with live worker status.

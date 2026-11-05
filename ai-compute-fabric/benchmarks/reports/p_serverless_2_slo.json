@@ -1,22 +1,22 @@
 {
   "label": "[\u0110O]",
   "bus_queue_wait_ms_publish_to_worker_start": {
-    "p50": 43.22,
-    "p95": 91.62
+    "p50": 68.12,
+    "p95": 111.71
   },
   "warm_call_via_gateway_ms": {
     "n": 150,
-    "p50": 2.19,
-    "p95": 4.06,
-    "p99": 6.37,
-    "max": 9.44
+    "p50": 2.57,
+    "p95": 6.27,
+    "p99": 8.83,
+    "max": 9.55
   },
   "warm_call_service_direct_keepalive_ms": {
     "n": 150,
-    "p50": 2.33,
-    "p95": 3.69,
-    "p99": 4.31,
-    "max": 5.56
+    "p50": 2.31,
+    "p95": 4.24,
+    "p99": 5.34,
+    "max": 5.39
   },
   "payload": "~1 KiB request (bundle ~0.5 KiB), result 1 int; includes HTTP + auth + sign + NATS + worker verify + pipe to a warm container",
   "slo_target": {

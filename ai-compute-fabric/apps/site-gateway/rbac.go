@@ -6,10 +6,74 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
 )
+
+var knownDefaultAdminTokens = map[string]bool{
+	"demo-admin-token":    true,
+	"default-admin-token": true,
+	"admin":               true,
+	"admin-token":         true,
+	"changeme":            true,
+	"secret":              true,
+	"password":            true,
+	"aicf-demo-token":     true,
+}
+
+// IsKnownDefaultToken reports whether tok is a well-known demo or placeholder token.
+func IsKnownDefaultToken(tok string) bool {
+	t := strings.ToLower(strings.TrimSpace(tok))
+	return knownDefaultAdminTokens[t]
+}
+
+func isLoopbackHost(host string) bool {
+	return host == "127.0.0.1" || host == "localhost" || host == "::1"
+}
+
+// ValidateListenAuth refuses to expose the admin API beyond loopback when auth is open or uses a known default/weak token (B1.6).
+func ValidateListenAuth(httpAddr string, auth *Auth) error {
+	h, _, err := net.SplitHostPort(httpAddr)
+	if err != nil {
+		h = httpAddr
+	}
+	if isLoopbackHost(h) {
+		return nil
+	}
+	if auth.Open() {
+		return fmt.Errorf("refusing to expose the admin API on %s without --admin-token (or AICF_ADMIN_TOKEN) or --roles-file", httpAddr)
+	}
+	if auth.adminToken != "" && (IsKnownDefaultToken(auth.adminToken) || len(auth.adminToken) < 16) {
+		return fmt.Errorf("refusing to expose the admin API on %s with a known default or short (<16 chars) --admin-token", httpAddr)
+	}
+	return nil
+}
+
+// WrapRequireViewer protects a read-only handler (such as /metrics) behind RoleViewer/RoleOperator/RoleAdmin when auth is configured (B4b).
+func WrapRequireViewer(auth *Auth, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		if auth != nil && !auth.Open() {
+			tok := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			p, ok := auth.Identify(tok)
+			if !ok {
+				w.Header().Set("WWW-Authenticate", `Bearer realm="aicf-admin"`)
+				http.Error(w, "viewer token required", http.StatusUnauthorized)
+				return
+			}
+			if !Allowed(p, r, func(string) string { return p.Site }) {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+		}
+		next(w, r)
+	}
+}
 
 // Roles for the admin API (plan P2.4): viewer reads, operator also pauses/resumes workers
 // (optionally only in one site), admin does everything including tenants and keys.
