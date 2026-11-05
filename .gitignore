@@ -20,3 +20,6 @@ dist/
 /ai-compute-fabric/worker-guard.exe
 /ai-compute-fabric/apps/site-gateway/site-gateway
 /ai-compute-fabric/apps/worker-guard/worker-guard
+
+# agent session state
+.gjc/
