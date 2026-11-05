@@ -24,7 +24,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -152,6 +152,10 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 ENV_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,63}$")
 ENV_DENY_PREFIXES = ("NVIDIA_", "AICF_", "LD_", "PYTHON", "DOCKER_", "HOME", "PATH", "TMP", "CUDA_VISIBLE")
 RUNNER_PATH = Path(__file__).with_name("_warm_runner.py")
+
+
+class CallRefused(SandboxError):
+    """The before_run hook refused the call (e.g. an earlier delivery already started it). Nothing ran."""
 
 
 class SandboxBusy(SandboxError):
@@ -345,13 +349,15 @@ class WarmDockerPool:
         self.sb, self.max_containers, self.max_per_key, self.worker_id, self.clock = sandbox, max_containers, max_per_key, worker_id, clock
         self._mu = threading.Lock()
         self._by_key: dict = {}
+        self.evicted_for_capacity = 0
         self._reaper: Optional[threading.Thread] = None
         self._stop = threading.Event()
 
     # -- call path
     def call(self, key: WarmKey, env_dir: Path, limits: ServerlessLimits, req: dict, bundle_b64: Optional[str] = None,
-             env: Optional[dict] = None) -> tuple:
-        """Returns (response, cold_start). `req` is the runner "call" frame without bundle_b64 (added only when the container lacks it)."""
+             env: Optional[dict] = None, before_run=None) -> tuple:
+        """Returns (response, cold_start). `req` is the runner "call" frame without bundle_b64 (added only when the container lacks it).
+        `before_run()` runs after a container is ready and immediately before user code is sent; False => CallRefused (nothing ran)."""
         key.validate()
         c, cold = self._acquire(key, env_dir, limits, env)
         try:
@@ -360,6 +366,8 @@ class WarmDockerPool:
                 if bundle_b64 is None:
                     raise SandboxError("bundle is not loaded in the container and was not supplied")
                 frame["bundle_b64"] = bundle_b64
+            if before_run is not None and not before_run():
+                raise CallRefused("call refused before execution")
             resp = c.call(frame)
             if resp.get("loaded") or resp.get("ok"):
                 c.loaded.add(frame["sha"])
@@ -373,18 +381,33 @@ class WarmDockerPool:
                 self._forget(c)
 
     def _acquire(self, key: WarmKey, env_dir: Path, limits: ServerlessLimits, env: Optional[dict]) -> tuple:
+        victim: Optional[WarmContainer] = None
         with self._mu:
             lst = self._by_key.setdefault(key, [])
             for c in lst:
                 if not c.dead and c.limits.shape() == limits.shape() and c.lock.acquire(blocking=False):
                     return c, False
             total = sum(len(v) for v in self._by_key.values())
-            if sum(1 for c in lst if c.limits.shape() == limits.shape()) >= self.max_per_key or total >= self.max_containers:
-                raise SandboxBusy(f"warm pool is full ({total}/{self.max_containers} containers, {len(lst)}/{self.max_per_key} for this function)")
+            if sum(1 for c in lst if c.limits.shape() == limits.shape()) >= self.max_per_key:
+                raise SandboxBusy(f"function already runs {self.max_per_key} concurrent calls on this worker")
+            if total >= self.max_containers:
+                # make room: evict the least-recently-used IDLE container (any tenant); busy containers are never evicted for capacity
+                idle = [c for v in self._by_key.values() for c in v if not c.lock.locked()]
+                for cand in sorted(idle, key=lambda c: c.last_used):
+                    if cand.lock.acquire(blocking=False):
+                        victim = cand
+                        break
+                if victim is None:
+                    raise SandboxBusy(f"warm pool is full ({total}/{self.max_containers} containers, all busy)")
             name = "aicf-sl-" + uuid.uuid4().hex[:12]
             c = WarmContainer(name, key, limits)
             c.lock.acquire()
             lst.append(c)
+        if victim is not None:
+            victim.kill()
+            victim.lock.release()
+            self._forget(victim)
+            self.evicted_for_capacity += 1
         try:
             c.start(self.sb.warm_command(name, key, env_dir, limits, env, self.worker_id))
         except BaseException:
@@ -392,6 +415,10 @@ class WarmDockerPool:
             self._forget(c)
             raise
         return c, True
+
+    def has_loaded(self, key: WarmKey, limits: ServerlessLimits, sha: str) -> bool:
+        with self._mu:
+            return any(not c.dead and c.limits.shape() == limits.shape() and sha in c.loaded for c in self._by_key.get(key, []))
 
     def _forget(self, c: WarmContainer) -> None:
         with self._mu:

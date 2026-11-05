@@ -381,7 +381,7 @@ def test_prometheus_metrics_and_propose_only_supervisor(isolated_nats):
                 with urllib.request.urlopen(base + "/supervisor/recommendations", timeout=5) as r:
                     assert r.status == 200
                     recs = json.loads(r.read().decode())
-                    assert isinstance(recs, list) and len(recs) == 15
+                    assert isinstance(recs, list) and len(recs) == len(TaskType)
                     assert all(item["requires_human_approval"] is True and item["applied"] is False for item in recs)
             finally:
                 srv.shutdown()

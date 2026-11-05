@@ -36,6 +36,8 @@ func main() {
 	rolesFile := flag.String("roles-file", "", "JSON roles file (viewer/operator/admin, SHA-256 token hashes) for the admin API")
 	studioURL := flag.String("studio-url", "", "AI Studio service (python -m studio), served at /api/studio/")
 	agentsURL := flag.String("agents-url", "", "agent workflow view service (agents/dag_api.py), served read-only at /api/agents/")
+	serverlessURL := flag.String("serverless-url", "", "serverless GPU/Python service (python -m serverless), served at /api/serverless/ (off when empty)")
+	serverlessSecretFile := flag.String("serverless-secret-file", "", "file with the secret shared with the serverless service (X-Aicf-Proxy-Secret); required with --serverless-url")
 	bestofnURL := flag.String("bestofn-url", "", "Best-of-N code generation service (python -m bestofn.service), served at /api/bestofn/")
 	flag.IntVar(&WorkerControlPort, "worker-control-port", 8099, "port of the worker-guard control API (worker-guard --listen) used by POST /api/cluster/topology; 0 = same as the worker engine_url")
 	topologyFile := flag.String("topology-file", "", "JSON file to persist cluster topology state across restarts (default: <dir-of-tenants-file>/topology.json when -tenants-file is set)")
@@ -135,6 +137,16 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	mux.Handle("/", NewAPIBestOfN(fleet, store, auth, audit, agents, studio, bestofn, router))
+	var serverless http.Handler
+	if *serverlessURL != "" {
+		secret, serr := ReadSecretFile(*serverlessSecretFile)
+		if serr != nil {
+			log.Fatalf("--serverless-secret-file: %v", serr)
+		}
+		if serverless, err = ServerlessProxy(*serverlessURL, secret, MaxServerlessBody); err != nil {
+			log.Fatal(err)
+		}
+	}
+	mux.Handle("/", NewAPIServerless(fleet, store, auth, audit, agents, studio, bestofn, serverless, router))
 	log.Fatal(newHTTPServer(*httpAddr, mux, defaultTimeouts).ListenAndServe())
 }

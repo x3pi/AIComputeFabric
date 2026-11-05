@@ -1,4 +1,4 @@
-"""The 15 typed tasks (plan P5.1, [KT] section 6.2).
+"""The 16 typed tasks (plan P5.1, [KT] section 6.2; SERVERLESS_EXEC added by ADR-003).
 
 Every task has a strict input model and a strict output model (pydantic, extra fields forbidden),
 so a worker's answer is either well-formed or rejected before anything else consumes it."""
@@ -30,6 +30,7 @@ class TaskType(str, Enum):
     RESULT_VALIDATE = "RESULT_VALIDATE"
     TRAIN_STEP = "TRAIN_STEP"
     MODEL_EVALUATE = "MODEL_EVALUATE"
+    SERVERLESS_EXEC = "SERVERLESS_EXEC"     # opt-in only: generic workers never pull it (own subject root aicf.sl, ADR-003)
 
 
 class Source(Strict):
@@ -195,6 +196,74 @@ class ModelEvaluateOut(Strict):
     value: float
 
 
+# ---- serverless (ADR-003) -----------------------------------------------------------------
+class ServerlessEnvSpec(Strict):
+    python_version: str = "3.12"
+    packages: list[str] = Field(default=[], max_length=64)
+    cuda_tag: str = ""
+    local_source_hash: str = ""
+
+
+class ServerlessSig(Strict):
+    nonce: str = Field(min_length=8, max_length=64)
+    exp: float                      # unix seconds; the worker refuses the call after this
+    mac: str = Field(min_length=64, max_length=64)    # HMAC-SHA256 hex over the canonical call fields (agents/sl_security.py)
+
+
+class ServerlessExecIn(Strict):
+    schema_version: Literal[1] = 1
+    tenant_id: str = Field(min_length=1, max_length=64)
+    call_id: str = Field(min_length=8, max_length=64)
+    app_name: str = Field(min_length=1, max_length=64)
+    fn_id: str = Field(min_length=1, max_length=64)
+    kind: Literal["function", "cls"] = "function"
+    method: Optional[str] = Field(default=None, max_length=64)
+    env: ServerlessEnvSpec = ServerlessEnvSpec()
+    env_hash: str = Field(min_length=64, max_length=64)
+    bundle_sha256: str = Field(min_length=64, max_length=64)
+    bundle_b64: Optional[str] = None            # inline (<= 64 KiB)
+    bundle_ref: Optional[str] = None            # sha256 of a blob in the blob store (<= 8 MiB)
+    args_b64: Optional[str] = None
+    args_ref: Optional[str] = None
+    args_format: Literal["cloudpickle", "json"] = "cloudpickle"
+    result_format: Literal["cloudpickle", "json"] = "cloudpickle"
+    gpu: Optional[str] = None                   # None = CPU only; "any" | "rtx3060" | ...
+    vram_mb: int = Field(default=0, ge=0, le=24576)
+    memory_mb: int = Field(default=512, ge=64, le=16384)
+    cpus: float = Field(default=1.0, ge=0.1, le=16.0)
+    timeout_s: float = Field(default=30.0, gt=0, le=600.0)
+    keep_warm_s: int = Field(default=60, ge=0, le=3600)
+    retries: int = Field(default=0, ge=0, le=5)
+    lease_id: Optional[str] = None
+    env_vars: dict[str, str] = {}
+    sig: ServerlessSig
+
+
+class ServerlessError(Strict):
+    type: str
+    message: str
+    traceback: str = ""
+
+
+class ServerlessExecOut(Strict):
+    status: Literal["ok", "error", "timeout", "oom", "worker_lost", "env_failed", "bundle_missing", "bad_request", "duplicate"]
+    result_b64: Optional[str] = None
+    result_ref: Optional[str] = None
+    result_format: Optional[str] = None
+    stdout: str = ""
+    stderr: str = ""
+    truncated: bool = False
+    error: Optional[ServerlessError] = None
+    cold_start: bool = False
+    env_built: bool = False
+    exec_ms: float = 0.0
+    total_ms: float = 0.0
+    enter_ms: float = 0.0
+    vram_peak_mb: int = 0
+    container: str = ""
+    worker_id: str = ""
+
+
 SCHEMAS: dict[TaskType, tuple[type[Strict], type[Strict]]] = {
     TaskType.TEXT_GENERATE: (TextGenerateIn, TextGenerateOut),
     TaskType.OCR: (OcrIn, OcrOut),
@@ -211,8 +280,9 @@ SCHEMAS: dict[TaskType, tuple[type[Strict], type[Strict]]] = {
     TaskType.RESULT_VALIDATE: (ResultValidateIn, ResultValidateOut),
     TaskType.TRAIN_STEP: (TrainStepIn, TrainStepOut),
     TaskType.MODEL_EVALUATE: (ModelEvaluateIn, ModelEvaluateOut),
+    TaskType.SERVERLESS_EXEC: (ServerlessExecIn, ServerlessExecOut),
 }
-assert len(SCHEMAS) == 15 and set(SCHEMAS) == set(TaskType)
+assert len(SCHEMAS) == 16 and set(SCHEMAS) == set(TaskType)
 
 # Types whose outputs make claims about source material and therefore must cite it.
 CITATION_REQUIRED = {TaskType.RAG_RETRIEVE, TaskType.STRUCTURED_EXTRACTION}

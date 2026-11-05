@@ -9,7 +9,7 @@ SRC = {"source_id": "d1", "text": "Doanh thu quý 3 là 1.250 triệu đồng, t
 CITE = {"source_id": "d1", "quote": "Doanh thu quý 3 là 1.250 triệu đồng"}
 SCHEMA = {"type": "object", "properties": {"revenue": {"type": "number"}}, "required": ["revenue"]}
 
-# (input, output) known to be valid for every one of the 15 types
+# (input, output) known to be valid for every one of the 16 types (15 original + SERVERLESS_EXEC)
 OK = {
     TaskType.TEXT_GENERATE: ({"messages": [{"role": "user", "content": "Doanh thu?"}], "sources": [SRC]},
                              {"text": "Doanh thu quý 3 là 1.250 triệu đồng.", "citations": [CITE]}),
@@ -27,6 +27,9 @@ OK = {
     TaskType.RESULT_VALIDATE: ({"target_task_id": "x"}, {"ok": True}),
     TaskType.TRAIN_STEP: ({"run_id": "r", "step": 3, "base_model_sha256": "ab" * 32}, {"run_id": "r", "step": 3, "loss": 1.2, "update_ref": "u://1"}),
     TaskType.MODEL_EVALUATE: ({"model_ref": "m", "dataset_ref": "d", "metric": "wer"}, {"metric": "wer", "value": 0.21}),
+    TaskType.SERVERLESS_EXEC: ({"tenant_id": "ten", "call_id": "c" * 12, "app_name": "app", "fn_id": "fn", "env_hash": "a" * 64, "bundle_sha256": "b" * 64,
+                                "bundle_b64": "AA==", "args_b64": "AA==", "sig": {"nonce": "n" * 16, "exp": 4102444800.0, "mac": "c" * 64}},
+                               {"status": "ok", "result_b64": "AA==", "result_format": "cloudpickle"}),
 }
 
 
@@ -37,8 +40,8 @@ def mk(tp, inp=None, out=None):
     return task, res
 
 
-def test_there_are_exactly_15_types_each_with_input_and_output_schema():
-    assert len(TaskType) == 15 and set(OK) == set(TaskType) == set(SCHEMAS)
+def test_there_are_exactly_16_types_each_with_input_and_output_schema():
+    assert len(TaskType) == 16 and set(OK) == set(TaskType) == set(SCHEMAS)
     for tp, (i, o) in SCHEMAS.items():
         assert i.model_json_schema()["type"] == "object" and o.model_json_schema()["type"] == "object"
 

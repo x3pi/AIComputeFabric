@@ -100,6 +100,11 @@ func NewAPIStudio(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents
 
 // NewAPIBestOfN is NewAPIStudio plus an optional handler mounted at /api/bestofn/.
 func NewAPIBestOfN(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents, studio, bestofn http.Handler, routers ...*Router) http.Handler {
+	return NewAPIServerless(f, ts, auth, audit, agents, studio, bestofn, nil, routers...)
+}
+
+// NewAPIServerless is NewAPIBestOfN plus an optional handler mounted at /api/serverless/ (nil = answers 503: disabled).
+func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents, studio, bestofn, serverless http.Handler, routers ...*Router) http.Handler {
 	inner := HTTPHandler(f)
 	mux := http.NewServeMux()
 	var rt *Router
@@ -164,6 +169,10 @@ func NewAPIBestOfN(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agent
 	if bestofn != nil {
 		mux.Handle("/api/bestofn/", bestofn)
 	}
+	if serverless == nil {
+		serverless = serverlessDisabled
+	}
+	mux.Handle(serverlessPrefix, serverless)
 	mux.HandleFunc("/api/tenants", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -251,10 +260,11 @@ func NewAPIBestOfN(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agent
 		r.Header.Del("X-Aicf-User") // identity headers are set below from the credential, never taken from the client
 		r.Header.Del("X-Aicf-Role")
 		r.Header.Del("X-Aicf-Tenant")
+		r.Header.Del("X-Aicf-Proxy-Secret")
 		bearer := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 
-		// /api/bestofn/* always requires a valid tenant API key (or admin/operator token when configured).
-		if strings.HasPrefix(r.URL.Path, "/api/bestofn/") {
+		// /api/bestofn/* and /api/serverless/* always require a valid tenant API key (or admin/operator token when configured).
+		if strings.HasPrefix(r.URL.Path, "/api/bestofn/") || strings.HasPrefix(r.URL.Path, serverlessPrefix) {
 			if ts != nil {
 				if t, ok := ts.Authenticate(bearer); ok {
 					r.Header.Set("X-Aicf-Tenant", t.ID)

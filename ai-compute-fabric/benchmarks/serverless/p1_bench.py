@@ -1,7 +1,6 @@
 """Phase 1 bench: cold vs warm call through WarmDockerPool (CPU and GPU shape) vs the pre-existing one-shot DockerSandbox.
 Writes benchmarks/reports/p_serverless_1_core.json. Run: .venv/bin/python benchmarks/serverless/p1_bench.py"""
 import json
-import statistics
 import sys
 import time
 from pathlib import Path

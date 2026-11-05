@@ -51,6 +51,10 @@ from agents.tasks import Strict, Task, TaskResult, TaskType
 
 STREAM = "AICF_TASKS"
 SUBJECT = "aicf.task"
+# Core NATS request/reply to ONE worker for warm calls (no JetStream polling). Subject aicf.sld.<worker_id>. It must stay OUTSIDE
+# `aicf.sl.>`: any subject matched by the AICF_TASKS stream would be captured by JetStream, which also answers the reply inbox with a PubAck.
+SERVERLESS_DIRECT = "aicf.sld"
+SERVERLESS_SUBJECT = "aicf.sl"      # SERVERLESS_EXEC lives under its own root so the legacy `aicf.task.>` wildcard worker can never consume (and nak) it
 AGENT_BUCKET = "AICF_AGENTS"
 CONTROL_SUBJECT = "aicf.agent.control"
 
@@ -96,6 +100,14 @@ def _norm_type(tp: TaskType | str) -> str:
     return tp.value if isinstance(tp, TaskType) else str(tp)
 
 
+# Generic workers/grants ("*", types=None) get every task type EXCEPT serverless: that one is explicit opt-in only.
+DEFAULT_TASK_TYPES = [t for t in TaskType if t != TaskType.SERVERLESS_EXEC]
+
+
+def subject_root(task_type: TaskType | str) -> str:
+    return SERVERLESS_SUBJECT if _norm_type(task_type) == TaskType.SERVERLESS_EXEC.value else SUBJECT
+
+
 def task_primary_label(task: Task) -> Optional[str]:
     if task.label:
         return task.label
@@ -125,7 +137,7 @@ def task_subject(
         lbl = label
         dc = data_class if data_class is not None else "INTERNAL"
 
-    parts = [SUBJECT, tp]
+    parts = [subject_root(tp), tp]
     if lbl:
         parts.append(lbl)
     if dc and dc != "INTERNAL":
@@ -180,7 +192,7 @@ async def ensure_stream(
 ):
     cfg = StreamConfig(
         name=STREAM,
-        subjects=[SUBJECT + ".>"],
+        subjects=[SUBJECT + ".>", SERVERLESS_SUBJECT + ".>"],
         retention=RetentionPolicy.WORK_QUEUE,
         duplicate_window=120,
         max_msgs=max_msgs,
@@ -196,6 +208,7 @@ async def ensure_stream(
             or info.config.max_bytes != max_bytes
             or info.config.max_msg_size != max_msg_size
             or info.config.discard != DiscardPolicy.NEW
+            or sorted(info.config.subjects or []) != sorted(cfg.subjects)
         ):
             await js.update_stream(cfg)
     except NotFoundError:
@@ -258,7 +271,7 @@ async def list_live_agents(
             continue
         if not include_draining and prof.state != "active":
             continue
-        if tp_str and prof.task_types and tp_str not in prof.task_types and "*" not in prof.task_types:
+        if tp_str and prof.task_types and tp_str not in prof.task_types and ("*" not in prof.task_types or tp_str == TaskType.SERVERLESS_EXEC.value):
             continue
         if label and label not in prof.labels:
             continue
@@ -445,7 +458,7 @@ class BusSecurityPolicy:
                     f'    {{ user: "CN={aid}", permissions: {{ publish: {{ allow: ["$JS.API.STREAM.INFO.>", "$JS.API.CONSUMER.INFO.>", "$JS.API.CONSUMER.NAMES.>", "$JS.API.DIRECT.GET.KV_{AGENT_BUCKET}.>"] }}, subscribe: {{ allow: ["_INBOX.>"] }} }} }}'
                 )
             else:
-                types = list(TaskType) if "*" in g.allowed_types else [TaskType(t) for t in g.allowed_types]
+                types = list(DEFAULT_TASK_TYPES) if "*" in g.allowed_types else [TaskType(t) for t in g.allowed_types]
                 dcs = list(ALL_DATA_CLASSES) if "*" in g.allowed_data_classes else list(g.allowed_data_classes)
                 pub_allow = [
                     '"_INBOX.>"',
@@ -460,6 +473,8 @@ class BusSecurityPolicy:
                     f'"{CONTROL_SUBJECT}.{aid}"',
                     f'"$KV.{AGENT_BUCKET}.>"',
                 ]
+                if TaskType.SERVERLESS_EXEC in types:
+                    sub_allow.append(f'"{SERVERLESS_DIRECT}.{aid}"')
                 for tp in types:
                     for dc in dcs:
                         dur = consumer_durable_name(tp.value, None, dc)
@@ -475,7 +490,7 @@ class BusSecurityPolicy:
                             pub_allow.append(f'"$JS.API.CONSUMER.INFO.{STREAM}.workers-{tp.value}-lbl-*"')
                             pub_allow.append(f'"$JS.API.CONSUMER.MSG.NEXT.{STREAM}.workers-{tp.value}-lbl-*"')
                             pub_allow.append(f'"$JS.ACK.{STREAM}.workers-{tp.value}-lbl-*.>"')
-                            sub_allow.append(f'"{SUBJECT}.{tp.value}.*"')
+                            sub_allow.append(f'"{subject_root(tp)}.{tp.value}.*"')
                         else:
                             for lbl in g.allowed_labels:
                                 ldur = consumer_durable_name(tp.value, lbl, dc)
@@ -806,6 +821,8 @@ class BusExecutor:
                     with self._mu:
                         self.rejected_counts["expired"] += 1
                     raise TaskExpiredError(f"{task.task_id}: {err_str}")
+                if err_str.startswith("WorkerLost:"):
+                    raise WorkerLost(f"{task.task_id}: {err_str}")
                 raise RemoteError(f"{task.task_id}: {err_str}")
             return TaskResult.model_validate(reply["result"])
         finally:
@@ -881,7 +898,7 @@ class BusWorker:
         self.allowed_types = (
             {_norm_type(t) for t in types}
             if types is not None
-            else {t.value for t in TaskType}
+            else {t.value for t in DEFAULT_TASK_TYPES}
         )
 
         self.executed = 0
@@ -961,7 +978,7 @@ class BusWorker:
             subs.append(await _pull_sub_with_conflict_cleanup(f"{SUBJECT}.>", "workers"))
             return subs
 
-        target_types = [_norm_type(t) for t in self.types] if self.types is not None else [t.value for t in TaskType]
+        target_types = [_norm_type(t) for t in self.types] if self.types is not None else [t.value for t in DEFAULT_TASK_TYPES]
         label_choices: list[Optional[str]] = []
         if not self.labeled_only:
             label_choices.append(None)
@@ -1215,9 +1232,18 @@ class BusWorker:
                 ).encode(),
             )
             await m.ack()
-        except WorkerLost:  # this machine lost its GPU: let another one take it
-            await m.nak(delay=0.5)
-            await asyncio.sleep(0.6)
+        except WorkerLost as e:  # this machine lost its GPU: let another one take it
+            try:
+                last_try = m.metadata.num_delivered >= self.max_deliver
+            except Exception:
+                last_try = False
+            if last_try:  # no delivery left: say so instead of dropping the message silently (the caller would wait until its timeout)
+                await nc.publish(req["reply"], json.dumps({"ok": False, "error": f"WorkerLost: gave up after {self.max_deliver} deliveries: {e}"[:300],
+                                                           "wait_s": wait_s}).encode())
+                await m.term()
+            else:
+                await m.nak(delay=0.5)
+                await asyncio.sleep(0.6)
         except Exception as e:  # a retry would fail the same way: tell the caller and stop redelivery
             await nc.publish(
                 req["reply"],

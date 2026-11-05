@@ -123,6 +123,47 @@ paths:
         "400": {description: invalid parameters or n > 16}
         "401": {description: missing or invalid API key}
         "503": {description: no compute agent or sandbox available}
+  /api/serverless/v1/invoke:
+    post:
+      summary: Run one Python function in an isolated sandbox (serverless; proxied via --serverless-url; tenant API key only). The SDK (sdk/python) builds this body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [app_name, fn_id, bundle_b64, args_b64]
+              additionalProperties: false
+              properties:
+                app_name: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"}
+                fn_id: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"}
+                kind: {type: string, enum: [function, cls]}
+                method: {type: string}
+                bundle_b64: {type: string, description: "cloudpickle bundle (base64), <= 8 MiB; never unpickled by the gateway or the service"}
+                args_b64: {type: string, description: "cloudpickle (args, kwargs) or JSON, <= 8 MiB"}
+                args_format: {type: string, enum: [cloudpickle, json]}
+                result_format: {type: string, enum: [cloudpickle, json]}
+                env: {type: object, description: "python_version, packages (wheels only, name==version), cuda_tag, local_source_hash"}
+                env_vars: {type: object, additionalProperties: {type: string}}
+                gpu: {type: string}
+                vram_mb: {type: integer, minimum: 0, maximum: 24576}
+                memory_mb: {type: integer, minimum: 64, maximum: 16384}
+                cpus: {type: number, minimum: 0.1, maximum: 16}
+                timeout_s: {type: number, minimum: 0.1, maximum: 600}
+                keep_warm_s: {type: integer, minimum: 0, maximum: 3600}
+                retries: {type: integer, minimum: 0, maximum: 5, description: "retried only after infrastructure loss, never after a user exception or timeout"}
+                data_class: {type: string, enum: [PUBLIC, INTERNAL, RESTRICTED], description: "RESTRICTED is always refused (shared GPU)"}
+      responses:
+        "200":
+          description: "the call finished; `status` tells how (ok, error, timeout, oom, worker_lost, env_failed, duplicate)"
+          content: {application/json: {schema: {$ref: "#/components/schemas/ServerlessResult"}}}
+        "400": {description: invalid request or environment spec}
+        "401": {description: missing or invalid API key}
+        "403": {description: "serverless/GPU/data class not enabled for this tenant, or not a tenant key"}
+        "413": {description: payload too large}
+        "429": {description: "quota or concurrency exceeded (Retry-After)"}
+        "503": {description: "no serverless worker online (Retry-After)"}
+        "504": {description: expired before a worker answered}
   /api/models/catalog:
     get:
       summary: Curated model catalogue with the architecture facts the VRAM estimator uses
@@ -439,6 +480,26 @@ components:
   securitySchemes:
     bearer: {type: http, scheme: bearer}
   schemas:
+    ServerlessResult:
+      type: object
+      required: [status, call_id]
+      properties:
+        status: {type: string, enum: [ok, error, timeout, oom, worker_lost, env_failed, bundle_missing, bad_request, duplicate]}
+        call_id: {type: string}
+        attempts: {type: integer}
+        result_b64: {type: string}
+        result_format: {type: string}
+        stdout: {type: string}
+        stderr: {type: string}
+        truncated: {type: boolean}
+        error: {type: object, properties: {type: {type: string}, message: {type: string}, traceback: {type: string}}}
+        cold_start: {type: boolean}
+        env_built: {type: boolean}
+        exec_ms: {type: number}
+        total_ms: {type: number}
+        service_ms: {type: number}
+        worker_id: {type: string}
+        container: {type: string}
     Whoami:
       type: object
       required: [role, name, open, can]

@@ -253,11 +253,11 @@ def test_class_enter_once_across_calls(pool, env):
     assert seen == [1] * 10
 
 
-def test_pool_capacity_and_per_key_limit(env):
+def test_per_key_concurrency_limit(env):
     h, path = env
     p = WarmDockerPool(GpuDockerSandbox(), max_containers=2, max_per_key=1, worker_id=WORKER)
     try:
-        started, errs = threading.Event(), []
+        started = threading.Event()
         sha, b = bundle_of(sleeper)
 
         def long():
@@ -270,6 +270,49 @@ def test_pool_capacity_and_per_key_limit(env):
         with pytest.raises(SandboxBusy):
             p.call(WarmKey("t1", h, "f"), path, L(), frame(sha, 0), b)
         t.join()
+    finally:
+        p.close()
+
+
+def test_full_pool_evicts_the_least_recently_used_idle_container(env):
+    h, path = env
+    p = WarmDockerPool(GpuDockerSandbox(), max_containers=2, max_per_key=2, worker_id=WORKER)
+    try:
+        sha, b = bundle_of(square)
+        for t in ("a", "b"):
+            p.call(WarmKey(t, h, "f"), path, L(), frame(sha, 2), b)
+        names = {c["tenant_id"]: c["name"] for c in p.snapshot()}
+        p.call(WarmKey("a", h, "f"), path, L(), frame(sha, 2), b)          # touch a: b is now least recently used
+        r, cold = p.call(WarmKey("c", h, "f"), path, L(), frame(sha, 2), b)
+        assert cold and value(r) == 4 and p.evicted_for_capacity == 1
+        left = {c["tenant_id"] for c in p.snapshot()}
+        assert left == {"a", "c"} and len(p.snapshot()) == 2
+        deadline = time.time() + 10
+        while names["b"] in p.docker_names() and time.time() < deadline:
+            time.sleep(0.1)
+        assert names["b"] not in p.docker_names()
+    finally:
+        p.close()
+
+
+def test_full_pool_with_only_busy_containers_refuses_instead_of_evicting(env):
+    h, path = env
+    p = WarmDockerPool(GpuDockerSandbox(), max_containers=1, max_per_key=2, worker_id=WORKER)
+    try:
+        sha, b = bundle_of(sleeper)
+        started = threading.Event()
+
+        def long():
+            started.set()
+            p.call(WarmKey("a", h, "f"), path, L(), frame(sha, 3), b)
+        t = threading.Thread(target=long)
+        t.start()
+        started.wait()
+        time.sleep(0.8)
+        with pytest.raises(SandboxBusy):
+            p.call(WarmKey("b", h, "f"), path, L(), frame(sha, 0), b)
+        t.join()
+        assert p.evicted_for_capacity == 0
     finally:
         p.close()
 

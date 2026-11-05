@@ -1,0 +1,26 @@
+{
+  "label": "[\u0110O]",
+  "bus_queue_wait_ms_publish_to_worker_start": {
+    "p50": 2.06,
+    "p95": 47.71
+  },
+  "warm_call_via_gateway_ms": {
+    "n": 150,
+    "p50": 4.5,
+    "p95": 8.38,
+    "p99": 13.63,
+    "max": 16.48
+  },
+  "warm_call_service_direct_keepalive_ms": {
+    "n": 150,
+    "p50": 3.87,
+    "p95": 6.41,
+    "p99": 7.12,
+    "max": 12.97
+  },
+  "payload": "~1 KiB request (bundle ~0.5 KiB), result 1 int; includes HTTP + auth + sign + NATS + worker verify + pipe to a warm container",
+  "slo_target": {
+    "p50_ms": 20,
+    "p95_ms": 60
+  }
+}

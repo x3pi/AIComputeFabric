@@ -34,3 +34,23 @@
 - Giới hạn payload bus `max_payload_bytes = 256 KiB` ⇒ inline ≤ 64 KiB, lớn hơn dùng `object_ref` ≤ 8 MiB, lớn hơn nữa dùng Volume.
 - Dung lượng đĩa là ràng buộc cứng: cần hạn mức env cache + dọn LRU, và cảnh báo khi < 5 GB trống.
 - Thư mục scratch của test phải nằm trên đĩa thật (`.aicf-work/`), không phải `/tmp` của tiến trình chạy lệnh: daemon Docker không thấy `/tmp` đó `[ĐO]`.
+
+
+## Phase 2 additions (implemented, measured)
+
+- **D-SIGN** - every `SERVERLESS_EXEC` is HMAC-SHA256 signed by the service over all execution-relevant fields (identity, function, env,
+  resources, limits, args hash, attempt, nonce, expiry). The worker verifies signature, expiry, nonce (replay), envelope tenant == signed
+  tenant, and `env_hash` recomputed from the signed spec BEFORE touching anything else. The key file is 0600 and may hold several keys
+  (first signs, all verify = rotation). Bundle bytes are bound through the signed `bundle_sha256`. Mutation tests M01-M13 cover each rule.
+- **D-SUBJECT** - `SERVERLESS_EXEC` lives under `aicf.sl.*`, outside `aicf.task.>`, and is excluded from `DEFAULT_TASK_TYPES`: the legacy
+  wildcard worker and `types=None` workers can never pull it (test: a spy legacy worker receives 0 messages). It is opt-in per grant.
+- **D-DIRECT** - warm calls are pinned to the worker holding the warm container and sent by core-NATS request/reply on
+  `aicf.sld.<worker_id>` (outside the JetStream stream subjects, otherwise JetStream answers the reply inbox with a PubAck). Measured: JetStream
+  pull-polling put 50-60 ms on the warm path; direct path p50 3.9 ms. Fallback to the queue happens ONLY when nothing ran (NoResponders, `busy`);
+  a timeout becomes `WorkerLost` and is never silently re-run (D8).
+- **D-NAGLE** - the HTTP service sets `TCP_NODELAY` and writes headers+body in one segment; without it a keep-alive response costs ~40 ms.
+- **Failure surfaced, not swallowed** - `BusWorker` now answers `WorkerLost: gave up after N deliveries` on the last delivery instead of
+  dropping the message (the caller used to wait for its full timeout).
+- **Eviction** - the warm pool evicts the least-recently-used idle container when full; busy containers are never evicted (`SandboxBusy`).
+- GPU functions are refused at three layers (tenant policy `gpu_allowed`, service worker selection `gpu-sl` label, worker `--gpu-enabled`). None
+  is on by default. Phase 3 owns the lease/VRAM gate that must pass before any of them is turned on.

@@ -165,3 +165,24 @@ def test_builder_refuses_unsafe_characters_even_if_validation_were_bypassed(tmp_
     c = EnvCache(tmp_path / "store", uv="/bin/true")
     with pytest.raises(EnvError):
         c._build("python:3.12-slim", ("numpy'; rm -rf /; '",), "x.tmp")
+
+
+def _acl(grant):
+    from agents.task_bus import BusSecurityPolicy
+    conf = BusSecurityPolicy(grants={grant.agent_id: grant}, require_auth=True).generate_nats_conf(4222, "/tmp/s", "/tmp/p")
+    return [ln for ln in conf.splitlines() if f"CN={grant.agent_id}" in ln][0]
+
+
+def test_wildcard_worker_grant_gets_no_serverless_permissions():
+    from agents.task_bus import AgentGrant
+    line = _acl(AgentGrant("generic", "worker", allowed_types=("*",)))
+    assert "aicf.sl" not in line and "SERVERLESS_EXEC" not in line and "aicf.sld" not in line
+
+
+def test_explicit_serverless_grant_gets_queue_and_its_own_direct_subject_only():
+    from agents.task_bus import AgentGrant
+    line = _acl(AgentGrant("wk1", "worker", allowed_types=("SERVERLESS_EXEC",)))
+    assert '"aicf.sld.wk1"' in line and '"aicf.sl.SERVERLESS_EXEC' in line
+    assert "aicf.sld.>" not in line and "aicf.sld.*" not in line and "aicf.task." not in line
+    assert "aicf.sld.wk1" not in _acl(AgentGrant("wk2", "worker", allowed_types=("SERVERLESS_EXEC",)))
+    assert "aicf.sld" not in _acl(AgentGrant("ocr", "worker", allowed_types=("OCR",)))

@@ -1,0 +1,16 @@
+[project]
+name = "aicf"
+version = "0.1.0"
+description = "AI Compute Fabric serverless Python SDK (Modal-style: @app.function, .remote())"
+requires-python = ">=3.12,<3.13"
+dependencies = ["cloudpickle==3.1.2"]
+
+[project.scripts]
+aicf = "aicf.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["aicf"]
