@@ -119,10 +119,19 @@ class VolumeStore:
                            f"volume quota exceeded: {used - old_size + len(raw)} bytes > max_volume_bytes={max_volume_bytes}",
                            413, "volume_quota_exceeded")
             target.parent.mkdir(parents=True, exist_ok=True)
+            for anc in (self.root / tenant, self._resolve_vol_dir(tenant, vol), target.parent):
+                try:
+                    anc.chmod(0o777)
+                except OSError:
+                    pass
             self._check_no_symlinks(tenant, vol, rel_path, self._resolve_vol_dir(tenant, vol), target)
             tmp = target.with_name(f".{target.name}.{os.getpid()}.tmp")
             try:
                 tmp.write_bytes(raw)
+                try:
+                    tmp.chmod(0o666)
+                except OSError:
+                    pass
                 os.replace(tmp, target)
             except BaseException:
                 tmp.unlink(missing_ok=True)

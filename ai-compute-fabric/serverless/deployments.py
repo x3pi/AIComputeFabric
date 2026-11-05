@@ -55,28 +55,91 @@ TEMPLATE_SOURCES: dict[str, tuple[str, str]] = {
     }
 ''',
     ),
+    "gpu_matmul": (
+        "classify",
+        '''import aicf_gpu
+
+def classify(payload: dict) -> dict:
+    """Thực thi Kernel CUDA PTX nhân ma trận 2D trực tiếp trên GPU NVIDIA RTX."""
+    p = payload or {}
+    a = p.get("matrix_a") or p.get("A") or [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    b = p.get("matrix_b") or p.get("B") or [[7.0, 8.0], [9.0, 1.0], [2.0, 3.0]]
+    gpu_info = aicf_gpu.device_info()
+    mm = aicf_gpu.matmul(a, b)
+    sx = aicf_gpu.saxpy(float(p.get("alpha", 2.5)), [1.0, 2.0, 3.0, 4.0], [10.0, 20.0, 30.0, 40.0])
+    print(f"[gpu_matmul] device={gpu_info['device_name']} backend={mm['backend']} kernel={mm['gpu_kernel_ms']}ms")
+    return {
+        "release": "cuda-matmul-v1",
+        "gpu": gpu_info,
+        "gpu_device": gpu_info["device_name"],
+        "cuda_available": gpu_info["cuda_available"],
+        "vram_free_mib": gpu_info["free_vram_mib"],
+        "vram_total_mib": gpu_info["total_vram_mib"],
+        "lease_vram_cap_mib": gpu_info["lease_vram_cap_mib"],
+        "matmul": mm,
+        "saxpy": sx,
+        "matmul_result": mm["matrix"],
+        "shape": mm["shape"],
+        "gpu_kernel_ms": mm["gpu_kernel_ms"],
+        "backend": mm["backend"],
+    }
+''',
+    ),
+    "gpu_vector_search": (
+        "classify",
+        '''import aicf_gpu
+
+def classify(payload: dict) -> dict:
+    """Tìm kiếm tương đồng Vector (Cosine Similarity) tăng tốc bằng GPU CUDA."""
+    p = payload or {}
+    query = p.get("query_vector") or p.get("query_vec") or [0.9, 0.2, 0.1, 0.8]
+    docs = p.get("doc_vectors") or p.get("doc_vecs") or [
+        [0.88, 0.25, 0.12, 0.79],
+        [0.10, 0.95, 0.80, 0.05],
+        [0.50, 0.50, 0.50, 0.50],
+    ]
+    labels = p.get("doc_labels") or p.get("labels") or ["doc-gpu-serverless-cuda", "doc-network-routing", "doc-vram-lease-reclaim"]
+    gpu_info = aicf_gpu.device_info()
+    res = aicf_gpu.cosine_search(query, docs, labels)
+    print(f"[gpu_vector_search] device={gpu_info['device_name']} top={res['matches'][0] if res['matches'] else None}")
+    return {
+        "release": "cuda-vecsearch-v1",
+        "gpu": gpu_info,
+        "gpu_device": gpu_info["device_name"],
+        "cuda_available": gpu_info["cuda_available"],
+        "vram_free_mib": gpu_info["free_vram_mib"],
+        "search": res,
+        "matches": res["matches"],
+        "gpu_kernel_ms": res["gpu_kernel_ms"],
+        "backend": res["backend"],
+    }
+''',
+    ),
     "gpu_bench": (
         "gpu_compute",
-        '''import math
-import os
-import time
+        '''import os
+import aicf_gpu
 
 def gpu_compute(payload: dict) -> dict:
-    """Kiểm tra môi trường GPU container & đo tốc độ tính toán."""
-    n = min(int((payload or {}).get("size", 2000)), 10000)
-    t0 = time.perf_counter()
-    acc = sum(math.sin(i * 0.001) * math.cos(i * 0.001) for i in range(n * 100))
-    elapsed_ms = round((time.perf_counter() - t0) * 1000, 3)
-    gpu_env = os.environ.get("NVIDIA_VISIBLE_DEVICES", "cpu")
-    vram_cap = os.environ.get("AICF_VRAM_MB", "0")
-    print(f"[gpu_bench] n={n} elapsed={elapsed_ms}ms gpu={gpu_env} vram_cap={vram_cap}MiB")
+    """Cấp phát bộ nhớ VRAM thực trên GPU NVIDIA & chạy Kernel PTX SAXPY (y = a*x + y)."""
+    alloc_mib = int((payload or {}).get("alloc_mib", 64))
+    n_floats = int((payload or {}).get("size", 262144))
+    bench = aicf_gpu.vram_stress(alloc_mib=alloc_mib, n_floats=n_floats)
+    gpu = bench["gpu"]
+    print(f"[gpu_bench] device={gpu['device_name']} alloc={bench['allocated_vram_mib']}MiB kernel={bench['saxpy_kernel_ms']}ms")
     return {
-        "release": "gpu-bench-v1",
-        "iterations": n * 100,
-        "checksum": round(acc, 6),
-        "compute_ms": elapsed_ms,
-        "nvidia_visible_devices": gpu_env,
-        "vram_cap_mb": int(vram_cap or 0),
+        "release": "gpu-cuda-v1",
+        "gpu_device": gpu["device_name"],
+        "cuda_available": gpu["cuda_available"],
+        "driver_version": gpu["driver_version"],
+        "vram_free_mib": gpu["free_vram_mib"],
+        "vram_total_mib": gpu["total_vram_mib"],
+        "allocated_vram_mib": bench["allocated_vram_mib"],
+        "vram_alloc_memset_ms": bench["vram_alloc_memset_ms"],
+        "saxpy_elements": bench["saxpy_elements"],
+        "saxpy_kernel_ms": bench["saxpy_kernel_ms"],
+        "sample_result": bench["sample_result"],
+        "backend": bench["backend"],
         "sandbox_pid": os.getpid(),
     }
 ''',
@@ -86,21 +149,31 @@ def gpu_compute(payload: dict) -> dict:
         '''import json
 import os
 import time
+import aicf_gpu
 
 def scratch_note(payload: dict) -> dict:
-    """Đọc/ghi dữ liệu tạm trong sandbox /tmp và trả về thống kê."""
-    note = str((payload or {}).get("text", "Hello from AICF Serverless Sandbox"))
-    path = "/tmp/aicf_user_note.json"
-    record = {"saved_at": time.time(), "length": len(note), "note": note}
+    """Đọc/ghi dữ liệu trực tiếp vào Volume bền vững (/mnt/volumes/shared-artifacts) trong GPU Container."""
+    note = str((payload or {}).get("text", "Hello from AICF GPU Container"))
+    vol_dir = "/mnt/volumes/shared-artifacts" if os.path.isdir("/mnt/volumes") else "/tmp"
+    os.makedirs(vol_dir, exist_ok=True)
+    path = os.path.join(vol_dir, "gpu_run_artifact.json")
+    gpu_info = aicf_gpu.device_info()
+    record = {
+        "saved_at": time.time(),
+        "gpu_device": gpu_info["device_name"],
+        "length": len(note),
+        "note": note,
+    }
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(record, f, ensure_ascii=False)
+        json.dump(record, f, ensure_ascii=False, indent=2)
     with open(path, "r", encoding="utf-8") as f:
         loaded = json.load(f)
-    print(f"[volume_io] wrote {len(note)} chars to {path}")
+    print(f"[volume_io] persisted {len(note)} chars to {path} on {gpu_info['device_name']}")
     return {
         "release": "storage-v1",
         "file": path,
         "size_bytes": os.path.getsize(path),
+        "gpu_device": gpu_info["device_name"],
         "data": loaded,
     }
 ''',
@@ -108,6 +181,7 @@ def scratch_note(payload: dict) -> dict:
     "beta9_style": (
         "classify",
         '''from aicf import endpoint, Image, Volume
+import aicf_gpu
 
 @endpoint(
     name="text-analyzer",
@@ -119,14 +193,21 @@ def scratch_note(payload: dict) -> dict:
     volumes=[Volume("shared-artifacts", mount_path="/mnt/volumes/shared-artifacts")],
 )
 def classify(**inputs) -> dict:
-    """Phong cách Beam/Beta9 (@endpoint + **inputs): nhận trực tiếp các trường JSON."""
+    """Phong cách Beam/Beta9 (@endpoint + **inputs): chạy trên GPU NVIDIA RTX."""
     text = str(inputs.get("text", ""))
     words = text.split()
-    print(f"[beta9_endpoint] words={len(words)} keys={list(inputs.keys())}")
+    gpu = aicf_gpu.device_info()
+    sx = aicf_gpu.saxpy(2.0, [float(len(w)) for w in words[:16]] or [1.0], [1.0] * max(1, min(len(words), 16)))
+    print(f"[beta9_endpoint] gpu={gpu['device_name']} words={len(words)} backend={sx['backend']}")
     return {
         "sdk_style": "beam-beta9-compatible",
+        "gpu_device": gpu["device_name"],
+        "cuda_available": gpu["cuda_available"],
+        "vram_free_mib": gpu["free_vram_mib"],
         "word_count": len(words),
         "top_words": words[:5],
+        "gpu_token_scores": sx["output"][:5],
+        "gpu_kernel_ms": sx["gpu_kernel_ms"],
         "preview": text[:80],
     }
 ''',

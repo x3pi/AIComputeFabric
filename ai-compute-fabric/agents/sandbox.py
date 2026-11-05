@@ -214,8 +214,11 @@ class GpuDockerSandbox(DockerSandbox):
     """argv is ALWAYS built from validated fields; no tenant-controlled value reaches a mount, a flag or the image."""
     name = "docker-gpu"
 
-    def __init__(self, image: str = "python:3.12-slim"):     # glibc: the alpine default of DockerSandbox cannot run CUDA/manylinux wheels
+    def __init__(self, image: str = "python:3.12-slim", *, volumes_root: Optional[Path] = None,
+                 model_cache_root: Optional[Path] = None):     # glibc: the alpine default of DockerSandbox cannot run CUDA/manylinux wheels
         super().__init__(image)
+        self.volumes_root = Path(volumes_root).resolve() if volumes_root else None
+        self.model_cache_root = Path(model_cache_root).resolve() if model_cache_root else None
 
     def _check_env_image(self, env_dir: Path) -> None:
         spec = Path(env_dir) / "spec.json"
@@ -231,6 +234,19 @@ class GpuDockerSandbox(DockerSandbox):
         gpu = []
         if limits.gpu_index is not None:
             gpu = ["--runtime=nvidia", "-e", f"NVIDIA_VISIBLE_DEVICES={int(limits.gpu_index)}", "-e", "NVIDIA_DRIVER_CAPABILITIES=compute,utility"]
+        extra_mounts: list[str] = []
+        if self.volumes_root is not None:
+            tvol = self.volumes_root / key.tenant_id
+            default_shared = tvol / "shared-artifacts"
+            default_shared.mkdir(parents=True, exist_ok=True)
+            for p in (tvol, default_shared):
+                try:
+                    p.chmod(0o777)
+                except OSError:
+                    pass
+            extra_mounts.extend(["-v", f"{tvol.resolve()}:/mnt/volumes:rw"])
+        if self.model_cache_root is not None and self.model_cache_root.exists():
+            extra_mounts.extend(["-v", f"{self.model_cache_root.resolve()}:/mnt/models:ro"])
         user_env = [x for k, v in validate_env(env).items() for x in ("-e", f"{k}={v}")]
         mem = f"{int(limits.memory_mb)}m"
         return ["docker", "run", "--rm", "-i", "--name", name,
@@ -242,6 +258,7 @@ class GpuDockerSandbox(DockerSandbox):
                 *(["--security-opt", "no-new-privileges"] if self.no_new_privileges else []),
                 "--tmpfs", f"/tmp:size={int(limits.tmpfs_mb)}m,nosuid", "-w", "/tmp",
                 "-v", f"{Path(env_dir).resolve()}:/env:ro", "-v", f"{RUNNER_PATH}:/aicf/runner.py:ro",
+                *extra_mounts,
                 *user_env,
                 "-e", "HOME=/tmp", "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "PYTHONUNBUFFERED=1",
                 "-e", f"AICF_MAX_FRAME={int(limits.max_frame_bytes)}", "-e", f"AICF_VRAM_MB={int(limits.vram_mb)}",

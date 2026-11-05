@@ -366,16 +366,34 @@ while True:
     check("serverless.html deploys v1 -> v2 and rolls back to v1 cleanly",
       ver1.startsWith("v-") && ver2.startsWith("v-") && ver1 !== ver2 && verAfterRb === ver1, `${ver1} -> ${ver2} -> ${verAfterRb}`);
 
-    // Call Web Endpoint from UI
+    // Call Web Endpoint from UI (Sync /web and Async /spawn)
     await page.click("#sl-btn-call-web");
     await page.waitForFunction(() => /e2e-ok/.test(document.getElementById("sl-web-output")?.textContent || ""), null, { timeout: 10000 });
-    check("serverless.html Web Endpoint tester executes deployed function and renders JSON output + cURL", true);
+    await page.click("#sl-btn-spawn-web");
+    await page.waitForFunction(() => /Task Queue Bất đồng bộ/.test(document.getElementById("sl-web-output")?.textContent || ""), null, { timeout: 10000 });
+    check("serverless.html Web Endpoint & Async Task Queue (/spawn) execute deployed function and render JSON + cURL", true);
 
     // Test Cloud Code Editor: custom Python source deploy & syntax check
     await page.fill("#sl-code-editor", "def classify(payload: dict) -> dict:\n    return {'custom_editor': True, 'len': len(str(payload))}\n");
     await page.click("#sl-btn-deploy-code");
     await page.waitForFunction(() => /triển khai thành công/i.test(document.getElementById("sl-deploy-msg")?.textContent || ""), null, { timeout: 10000 });
     check("serverless.html Cloud Python Code Editor compiles and deploys custom source code", true);
+
+    // Test Cloud Logout -> locks workspace -> Register Account -> Logout -> Login with Email+Password
+    await page.click("#sl-btn-logout");
+    await page.waitForFunction(() => getComputedStyle(document.getElementById("sl-workspace-content")).display === "none", null, { timeout: 5000 });
+    await page.fill("#sl-signup-name-input", "e2e-cloud-acct");
+    await page.fill("#sl-signup-email-input", "e2e@aicf.local");
+    await page.fill("#sl-signup-pw-input", "e2e-password-2026");
+    await page.click("#sl-btn-register-account");
+    await page.waitForFunction(() => getComputedStyle(document.getElementById("sl-workspace-content")).display !== "none", null, { timeout: 10000 });
+    await page.click("#sl-btn-logout");
+    await page.waitForFunction(() => getComputedStyle(document.getElementById("sl-workspace-content")).display === "none", null, { timeout: 5000 });
+    await page.fill("#sl-login-id-input", "e2e@aicf.local");
+    await page.fill("#sl-login-pw-input", "e2e-password-2026");
+    await page.click("#sl-btn-login-account");
+    await page.waitForFunction(() => getComputedStyle(document.getElementById("sl-workspace-content")).display !== "none", null, { timeout: 10000 });
+    check("serverless.html Cloud Auth (Register -> Logout locks workspace -> Login with Email+Password) works end-to-end", true);
 
     // Test User vs Admin UI mode switcher
     const userModeHidesAdmin = await page.evaluate(() => {

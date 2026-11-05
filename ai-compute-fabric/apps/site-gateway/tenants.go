@@ -10,24 +10,29 @@ import (
 	"errors"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 )
 
 // Tenant is one organisational user of the inference service (a department, an app).
-// Only the SHA-256 of its API key is stored: a lost tenants.json does not leak keys.
+// Only the SHA-256 of its API key and salted password hash are stored: a lost tenants.json does not leak keys or passwords.
 type Tenant struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
+	Email       string  `json:"email,omitempty"`
+	PassSalt    string  `json:"pass_salt,omitempty"`
+	PassHash    string  `json:"pass_hash,omitempty"`
 	KeyHash     string  `json:"key_hash"`
 	Weight      float64 `json:"weight"`       // share of the GPUs when contended (default 1)
 	MaxInflight int     `json:"max_inflight"` // concurrent requests, 0 = gateway default
 	Disabled    bool    `json:"disabled"`
 }
 
-// TenantView is the API shape: never contains the key hash.
+// TenantView is the API shape: never contains the key hash or password hash.
 type TenantView struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
+	Email       string  `json:"email,omitempty"`
 	Weight      float64 `json:"weight"`
 	MaxInflight int     `json:"max_inflight"`
 	Disabled    bool    `json:"disabled"`
@@ -37,19 +42,26 @@ var (
 	ErrNoTenant   = errors.New("unknown tenant")
 	ErrBadTenant  = errors.New("invalid tenant")
 	ErrDuplicated = errors.New("tenant name already exists")
+	ErrBadCreds   = errors.New("invalid email/username or password")
 )
 
 // TenantStore keeps tenants in memory and, when Path is set, in a JSON file written atomically.
 type TenantStore struct {
 	Path string
 
-	mu     sync.RWMutex
-	byID   map[string]*Tenant
-	byHash map[string]*Tenant
+	mu        sync.RWMutex
+	byID      map[string]*Tenant
+	byHash    map[string]*Tenant
+	bySession map[string]*Tenant // revocable web session tokens (aicf_sess_...)
 }
 
 func NewTenantStore(path string) (*TenantStore, error) {
-	s := &TenantStore{Path: path, byID: map[string]*Tenant{}, byHash: map[string]*Tenant{}}
+	s := &TenantStore{
+		Path:      path,
+		byID:      map[string]*Tenant{},
+		byHash:    map[string]*Tenant{},
+		bySession: map[string]*Tenant{},
+	}
 	if path == "" {
 		return s, nil
 	}
@@ -129,10 +141,99 @@ func (s *TenantStore) Create(name string, weight float64, maxInflight int) (Tena
 }
 
 func view(t *Tenant) TenantView {
-	return TenantView{ID: t.ID, Name: t.Name, Weight: t.Weight, MaxInflight: t.MaxInflight, Disabled: t.Disabled}
+	return TenantView{ID: t.ID, Name: t.Name, Email: t.Email, Weight: t.Weight, MaxInflight: t.MaxInflight, Disabled: t.Disabled}
 }
 
-// Authenticate maps an API key to its tenant; disabled tenants and unknown keys fail.
+func hashPassword(salt, password string) string {
+	h := sha256.Sum256([]byte("aicf-pw-v1:" + salt + ":" + password))
+	for i := 0; i < 4096; i++ {
+		h = sha256.Sum256(append(h[:], []byte(salt)...))
+	}
+	return hex.EncodeToString(h[:])
+}
+
+// RegisterAccount creates a Cloud Developer account with Email + Password and issues its initial API key.
+func (s *TenantStore) RegisterAccount(name, email, password string) (TenantView, string, error) {
+	name = strings.TrimSpace(name)
+	email = strings.ToLower(strings.TrimSpace(email))
+	if name == "" && email != "" {
+		name = strings.Split(email, "@")[0]
+	}
+	if name == "" || len(name) > 64 || len(password) < 6 {
+		return TenantView{}, "", ErrBadTenant
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range s.byID {
+		if strings.EqualFold(t.Name, name) || (email != "" && strings.EqualFold(t.Email, email)) {
+			return TenantView{}, "", ErrDuplicated
+		}
+	}
+	salt := newSecret(12)
+	pwHash := hashPassword(salt, password)
+	key := "aicf_" + newSecret(24)
+	t := &Tenant{
+		ID:          "t_" + newSecret(6),
+		Name:        name,
+		Email:       email,
+		PassSalt:    salt,
+		PassHash:    pwHash,
+		KeyHash:     hashKey(key),
+		Weight:      1,
+		MaxInflight: 8,
+	}
+	s.byID[t.ID], s.byHash[t.KeyHash] = t, t
+	if err := s.saveLocked(); err != nil {
+		delete(s.byID, t.ID)
+		delete(s.byHash, t.KeyHash)
+		return TenantView{}, "", err
+	}
+	return view(t), key, nil
+}
+
+// LoginAccount verifies Email/Username + Password and returns a revocable session token (`aicf_sess_...`) without invalidating the CLI API key.
+func (s *TenantStore) LoginAccount(identifier, password string) (TenantView, string, error) {
+	ident := strings.TrimSpace(identifier)
+	if ident == "" || password == "" {
+		return TenantView{}, "", ErrBadCreds
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var found *Tenant
+	for _, t := range s.byID {
+		if strings.EqualFold(t.Email, ident) || strings.EqualFold(t.Name, ident) || t.ID == ident {
+			found = t
+			break
+		}
+	}
+	if found == nil || found.Disabled || found.PassHash == "" {
+		return TenantView{}, "", ErrBadCreds
+	}
+	expected := hashPassword(found.PassSalt, password)
+	if subtle.ConstantTimeCompare([]byte(found.PassHash), []byte(expected)) != 1 {
+		return TenantView{}, "", ErrBadCreds
+	}
+	sessToken := "aicf_sess_" + newSecret(24)
+	s.bySession[hashKey(sessToken)] = found
+	return view(found), sessToken, nil
+}
+
+// LogoutSession revokes a web session token (`aicf_sess_...`) immediately.
+func (s *TenantStore) LogoutSession(token string) bool {
+	if token == "" {
+		return false
+	}
+	h := hashKey(token)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.bySession[h]; ok {
+		delete(s.bySession, h)
+		return true
+	}
+	return false
+}
+
+// Authenticate maps an API key or web session token to its tenant; disabled tenants and unknown keys fail.
 func (s *TenantStore) Authenticate(key string) (TenantView, bool) {
 	if key == "" {
 		return TenantView{}, false
@@ -140,11 +241,15 @@ func (s *TenantStore) Authenticate(key string) (TenantView, bool) {
 	h := hashKey(key)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	t, ok := s.byHash[h]
-	if !ok || t.Disabled || subtle.ConstantTimeCompare([]byte(t.KeyHash), []byte(h)) != 1 {
-		return TenantView{}, false
+	if t, ok := s.byHash[h]; ok {
+		if !t.Disabled && subtle.ConstantTimeCompare([]byte(t.KeyHash), []byte(h)) == 1 {
+			return view(t), true
+		}
 	}
-	return view(t), true
+	if t, ok := s.bySession[h]; ok && !t.Disabled {
+		return view(t), true
+	}
+	return TenantView{}, false
 }
 
 func (s *TenantStore) List() []TenantView {

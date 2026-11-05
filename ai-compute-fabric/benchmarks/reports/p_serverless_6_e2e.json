@@ -6,8 +6,8 @@
     "375x812"
   ],
   "pass": true,
-  "total_checks": 23,
-  "passed_checks": 23,
+  "total_checks": 24,
+  "passed_checks": 24,
   "checks": [
     {
       "name": "serverless service & gateway proxy ready with 2 warm containers",
@@ -67,7 +67,7 @@
     {
       "name": "tenants.html displays measured GPU-seconds (4.500 s) and VRAM MiB·s (including idle lease on evict) for alpha",
       "ok": true,
-      "detail": "4.500 s (4500 ms) | 51556 MiB·s"
+      "detail": "4.500 s (4500 ms) | 50978 MiB·s"
     },
     {
       "name": "saving tenant Serverless quota updates policy on server",
@@ -82,20 +82,25 @@
     {
       "name": "serverless.html 1-Click Demo creates/rotates tenant key and enables Serverless",
       "ok": true,
-      "detail": "aicf_q6y6q…"
+      "detail": "aicf_oYezC…"
     },
     {
       "name": "serverless.html deploys v1 -> v2 and rolls back to v1 cleanly",
       "ok": true,
-      "detail": "v-881537edf9266bc3 -> v-d34301e134d36433 -> v-881537edf9266bc3"
+      "detail": "v-0e450754d056ea58 -> v-990369b31701953b -> v-0e450754d056ea58"
     },
     {
-      "name": "serverless.html Web Endpoint tester executes deployed function and renders JSON output + cURL",
+      "name": "serverless.html Web Endpoint & Async Task Queue (/spawn) execute deployed function and render JSON + cURL",
       "ok": true,
       "detail": ""
     },
     {
       "name": "serverless.html Cloud Python Code Editor compiles and deploys custom source code",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "serverless.html Cloud Auth (Register -> Logout locks workspace -> Login with Email+Password) works end-to-end",
       "ok": true,
       "detail": ""
     },

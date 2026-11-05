@@ -372,3 +372,89 @@ def test_beta9_compatible_dx_endpoint_task_queue_sandbox_and_web_source_deploy(s
     st_call, call_doc = stack.http("POST", f"/api/serverless/v1/web/{alpha_id}/ide-beta9/classify", stack.keys["alpha"], {"text": "one two three"}, headers={"Content-Type": "application/json"})
     assert st_call == 200 and call_doc["result"]["sdk_style"] == "beam-beta9-compatible" and call_doc["result"]["word_count"] == 3
 
+
+def test_cloud_auth_register_login_logout_rotate_and_gpu_templates(stack):
+    """Verify Cloud Account Register/Login/Logout/Rotate-Key & GPU CUDA templates (`aicf_gpu` + JSON `/spawn`)."""
+    # 1. Register new Cloud Account (no existing token required)
+    st_reg, reg_doc = stack.http("POST", "/api/serverless/v1/auth/register", "", {
+        "name": "cloud-gpu-team",
+        "email": "gpu-lead@aicf.local",
+        "password": "super-secret-password-2026",
+    }, headers={"Content-Type": "application/json"})
+    assert st_reg == 201, reg_doc
+    tid = reg_doc["tenant"]["id"]
+    cli_key = reg_doc["api_key"]
+    sess_tok = reg_doc["session_token"]
+    assert cli_key.startswith("aicf_") and sess_tok.startswith("aicf_sess_")
+
+    # 2. Wrong password must return 401
+    st_bad, _ = stack.http("POST", "/api/serverless/v1/auth/login", "", {
+        "identifier": "gpu-lead@aicf.local",
+        "password": "wrong-password",
+    }, headers={"Content-Type": "application/json"})
+    assert st_bad == 401
+
+    # 3. Login with email + password issues a fresh session token
+    st_log, log_doc = stack.http("POST", "/api/serverless/v1/auth/login", "", {
+        "identifier": "gpu-lead@aicf.local",
+        "password": "super-secret-password-2026",
+    }, headers={"Content-Type": "application/json"})
+    assert st_log == 200 and log_doc["tenant"]["id"] == tid
+    web_sess = log_doc["session_token"]
+
+    # 4. Web session token can call /api/serverless/v1/status
+    st_stat, stat_doc = stack.http("GET", "/api/serverless/v1/status", web_sess)
+    assert st_stat == 200 and stat_doc["whoami"]["tenant_id"] == tid
+
+    # 5. Logout revokes web_sess immediately, while permanent cli_key remains valid!
+    st_out, out_doc = stack.http("POST", "/api/serverless/v1/auth/logout", web_sess, {"session_token": web_sess}, headers={"Content-Type": "application/json"})
+    assert st_out == 200 and out_doc["logged_out"] is True
+    st_revoked, _ = stack.http("GET", "/api/serverless/v1/status", web_sess)
+    assert st_revoked == 401
+    st_cli_ok, _ = stack.http("GET", "/api/serverless/v1/status", cli_key)
+    assert st_cli_ok == 200
+
+    # 6. Deploy & execute `gpu_matmul` and `gpu_vector_search` via both sync `/web` and async JSON `/spawn`
+    st_dep, dep_doc = stack.http("POST", "/api/serverless/v1/deploy", cli_key, {
+        "app_name": "gpu-suite",
+        "functions": [
+            {"fn_id": "matmul", "builtin_template": "gpu_matmul", "gpu": None, "vram_mb": 0},
+            {"fn_id": "rag", "builtin_template": "gpu_vector_search", "gpu": None, "vram_mb": 0},
+            {"fn_id": "bench", "builtin_template": "gpu_bench", "gpu": None, "vram_mb": 0},
+        ],
+        "web_endpoints": {
+            "matmul": {"requires_auth": True},
+            "rag": {"requires_auth": True},
+            "bench": {"requires_auth": True},
+        },
+    }, headers={"Content-Type": "application/json"})
+    assert st_dep == 200, dep_doc
+
+    st_mm, mm_doc = stack.http("POST", f"/api/serverless/v1/web/{tid}/gpu-suite/matmul", cli_key, {
+        "alpha": 2.0,
+        "A": [[1.0, 2.0], [3.0, 4.0]],
+        "B": [[2.0, 0.0], [1.0, 2.0]],
+    }, headers={"Content-Type": "application/json"})
+    assert st_mm == 200 and mm_doc["result"]["matmul"]["C"] == [[4.0, 4.0], [10.0, 8.0]]
+
+    # Async JSON `/spawn` without cloudpickle (browser Task Queue path)
+    st_sp, sp_doc = stack.http("POST", "/api/serverless/v1/spawn", cli_key, {
+        "app_name": "gpu-suite",
+        "fn_id": "rag",
+        "payload": {"query_vec": [0.9, 0.2, 0.1, 0.8]},
+    }, headers={"Content-Type": "application/json"})
+    assert st_sp == 202 and sp_doc["call_id"]
+    st_res, res_doc = stack.http("GET", f"/api/serverless/v1/calls/{sp_doc['call_id']}?wait_s=5", cli_key)
+    assert st_res == 200 and res_doc["status"] == "ok"
+    assert res_doc["result"]["search"]["ranked"][0]["label"] == "doc-gpu-serverless-cuda"
+
+    # 7. Rotate permanent API key -> old cli_key is revoked, new key works
+    st_rot, rot_doc = stack.http("POST", "/api/serverless/v1/auth/rotate-key", cli_key)
+    assert st_rot == 200 and rot_doc["api_key"].startswith("aicf_") and rot_doc["api_key"] != cli_key
+    new_key = rot_doc["api_key"]
+    st_old, _ = stack.http("GET", "/api/serverless/v1/status", cli_key)
+    assert st_old == 401
+    st_new, _ = stack.http("GET", "/api/serverless/v1/status", new_key)
+    assert st_new == 200
+
+

@@ -131,6 +131,14 @@ class ServerlessService:
         merged = {k: v for k, v in fndef.items() if k in ALLOWED_REQ}
         merged.update(body)
         merged.pop("version", None)
+        if "args_b64" not in merged:
+            payload = merged.pop("payload", None)
+            args_json = json.dumps({"args": [payload] if payload is not None else [], "kwargs": {}}).encode("utf-8")
+            merged["args_b64"] = base64.b64encode(args_json).decode()
+            merged.setdefault("args_format", "json")
+            merged.setdefault("result_format", "json")
+        else:
+            merged.pop("payload", None)
         return merged
 
     @staticmethod
@@ -475,6 +483,11 @@ class ServerlessService:
             out = {k: v for k, v in rec.items() if not k.startswith("_")}
             if role != "tenant":
                 out.pop("result_b64", None)
+            elif out.get("result_b64") and "result" not in out:
+                try:
+                    out["result"] = json.loads(base64.b64decode(out["result_b64"]).decode("utf-8"))
+                except Exception:
+                    pass
             return out
 
     def cancel_call(self, tenant: str, role: str, call_id: str) -> dict:
@@ -579,9 +592,21 @@ class ServerlessService:
         }
         out = self.invoke(target_tenant, inv_body)
         if out.get("status") != "ok":
-            raise ServiceError(502, "web_endpoint_failed", "web endpoint execution failed")
+            err_info = out.get("error") or {}
+            err_msg = err_info.get("message") or "web endpoint execution failed"
+            raise ServiceError(502, "web_endpoint_failed", f"web endpoint execution failed: {err_msg}")
         result_val = json.loads(base64.b64decode(out["result_b64"])) if out.get("result_b64") else None
-        return {"status": "ok", "version": ver, "call_id": out["call_id"], "result": result_val}
+        return {
+            "status": "ok",
+            "version": ver,
+            "call_id": out["call_id"],
+            "result": result_val,
+            "exec_ms": out.get("exec_ms"),
+            "cold_start": out.get("cold_start"),
+            "worker_id": out.get("worker_id"),
+            "stdout": out.get("stdout", ""),
+            "stderr": out.get("stderr", ""),
+        }
 
     # ---- main entry -----------------------------------------------------------------------------------------
     def invoke(self, tenant: str, body: dict, *, _call_id: Optional[str] = None) -> dict:

@@ -130,7 +130,7 @@ def make_handler(svc: ServerlessService, secret: str):
                         chunks.append("event: done\ndata: " + json.dumps({"call_id": call_id, "status": call["status"]}) + "\n\n")
                         return self._send(200, "".join(chunks), "text/event-stream; charset=utf-8", extra={"Cache-Control": "no-cache"})
                     call_id = rest.strip("/")
-                    wait_s = float(q.get("wait", "0"))
+                    wait_s = float(q.get("wait") or q.get("wait_s") or "0")
                     return self._send(200, svc.get_call(tenant, role, call_id, wait_s=wait_s))
                 if path.startswith("/v1/volumes/"):
                     t = self._require_tenant()
@@ -420,7 +420,11 @@ def main() -> int:
 
     blob_store = MemoryBlobStore()
     started_ledger = MemoryStartedLedger()
-    pool = WarmDockerPool(GpuDockerSandbox(), max_containers=args.max_containers, worker_id=args.worker_id)
+    pool = WarmDockerPool(
+        GpuDockerSandbox(volumes_root=data_dir / "volumes", model_cache_root=data_dir / "model_cache"),
+        max_containers=args.max_containers,
+        worker_id=args.worker_id,
+    )
     control = monitor = None
     if args.gpu_enabled:
         from agents.sl_gpu import ControlServer, GpuAdmission, GpuMonitor, GpuProbe

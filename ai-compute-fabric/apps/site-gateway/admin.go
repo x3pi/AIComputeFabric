@@ -28,6 +28,29 @@ type statusWriter struct {
 
 func (s *statusWriter) WriteHeader(c int) { s.code = c; s.ResponseWriter.WriteHeader(c) }
 
+type discardWriter struct{ h http.Header }
+
+func (d *discardWriter) Header() http.Header {
+	if d.h == nil {
+		d.h = make(http.Header)
+	}
+	return d.h
+}
+func (d *discardWriter) Write(b []byte) (int, error) { return len(b), nil }
+func (d *discardWriter) WriteHeader(int)             {}
+
+func provisionServerlessPolicy(mux http.Handler, tid string) {
+	body := `{"serverless_enabled":true,"gpu_allowed":true,"max_vram_mb":8192,"max_concurrency":8}`
+	req, err := http.NewRequest(http.MethodPut, "/api/serverless/v1/policies/"+tid, strings.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Aicf-User", "cloud-iam")
+	req.Header.Set("X-Aicf-Role", RoleAdmin)
+	mux.ServeHTTP(&discardWriter{}, req)
+}
+
 // NewAPIWith is NewAPI with role-based access and an optional audit log. With no credential
 // configured the API is open (loopback development only; main refuses that beyond loopback).
 func NewAPIWith(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, routers ...*Router) http.Handler {
@@ -303,8 +326,112 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			provisionServerlessPolicy(mux, t.ID)
 			note(Principal{Name: "signup:" + t.Name, Role: "tenant"}, r, http.StatusCreated)
 			writeJSON(w, http.StatusCreated, map[string]any{"tenant": t, "api_key": key})
+			return
+		}
+		if r.URL.Path == "/api/serverless/v1/auth/register" && r.Method == http.MethodPost {
+			if ts == nil {
+				http.Error(w, "tenant store not configured", http.StatusServiceUnavailable)
+				return
+			}
+			var in struct {
+				Name     string `json:"name"`
+				Email    string `json:"email"`
+				Password string `json:"password"`
+			}
+			if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&in) != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "bad_request", "message": "Dữ liệu JSON không hợp lệ"}})
+				return
+			}
+			if len(strings.TrimSpace(in.Password)) < 6 {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "weak_password", "message": "Mật khẩu phải có ít nhất 6 ký tự"}})
+				return
+			}
+			t, key, err := ts.RegisterAccount(in.Name, in.Email, in.Password)
+			if errors.Is(err, ErrDuplicated) {
+				writeJSON(w, http.StatusConflict, map[string]any{"error": map[string]any{"code": "account_exists", "message": "Tên Workspace hoặc Email đã tồn tại. Hãy chuyển sang tab Đăng nhập."}})
+				return
+			}
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "bad_request", "message": err.Error()}})
+				return
+			}
+			provisionServerlessPolicy(mux, t.ID)
+			_, sessTok, _ := ts.LoginAccount(t.ID, in.Password)
+			note(Principal{Name: "register:" + t.Name, Role: "tenant"}, r, http.StatusCreated)
+			writeJSON(w, http.StatusCreated, map[string]any{"tenant": t, "api_key": key, "session_token": sessTok})
+			return
+		}
+		if r.URL.Path == "/api/serverless/v1/auth/login" && r.Method == http.MethodPost {
+			if ts == nil {
+				http.Error(w, "tenant store not configured", http.StatusServiceUnavailable)
+				return
+			}
+			var in struct {
+				Identifier string `json:"identifier"`
+				Password   string `json:"password"`
+				APIKey     string `json:"api_key"`
+			}
+			if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&in) != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "bad_request", "message": "Dữ liệu JSON không hợp lệ"}})
+				return
+			}
+			if k := strings.TrimSpace(in.APIKey); k != "" {
+				if t, ok := ts.Authenticate(k); ok {
+					note(Principal{Name: "login-key:" + t.Name, Role: "tenant"}, r, http.StatusOK)
+					writeJSON(w, http.StatusOK, map[string]any{"tenant": t, "api_key": k, "session_token": k})
+					return
+				}
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "invalid_key", "message": "Khóa API không hợp lệ hoặc đã bị thu hồi"}})
+				return
+			}
+			t, sessTok, err := ts.LoginAccount(in.Identifier, in.Password)
+			if err != nil {
+				note(Principal{Name: "login-failed:" + in.Identifier, Role: "-"}, r, http.StatusUnauthorized)
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "invalid_credentials", "message": "Email/Tên tài khoản hoặc mật khẩu không đúng"}})
+				return
+			}
+			note(Principal{Name: "login:" + t.Name, Role: "tenant"}, r, http.StatusOK)
+			writeJSON(w, http.StatusOK, map[string]any{"tenant": t, "api_key": sessTok, "session_token": sessTok})
+			return
+		}
+		if r.URL.Path == "/api/serverless/v1/auth/logout" && r.Method == http.MethodPost {
+			bearerTok := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			var in struct {
+				SessionToken string `json:"session_token"`
+			}
+			_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&in)
+			if bearerTok == "" {
+				bearerTok = strings.TrimSpace(in.SessionToken)
+			}
+			revoked := false
+			if ts != nil && bearerTok != "" {
+				revoked = ts.LogoutSession(bearerTok)
+			}
+			note(Principal{Name: "logout", Role: "tenant"}, r, http.StatusOK)
+			writeJSON(w, http.StatusOK, map[string]any{"logged_out": true, "session_revoked": revoked})
+			return
+		}
+		if r.URL.Path == "/api/serverless/v1/auth/rotate-key" && r.Method == http.MethodPost {
+			bearerTok := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			if ts == nil {
+				http.Error(w, "tenant store not configured", http.StatusServiceUnavailable)
+				return
+			}
+			t, ok := ts.Authenticate(bearerTok)
+			if !ok {
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "unauthorized", "message": "Cần đăng nhập trước khi cấp lại Khóa API"}})
+				return
+			}
+			newKey, err := ts.RotateKey(t.ID)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "rotate_failed", "message": err.Error()}})
+				return
+			}
+			note(Principal{Name: "rotate-key:" + t.Name, Role: "tenant"}, r, http.StatusOK)
+			writeJSON(w, http.StatusOK, map[string]any{"tenant": t, "api_key": newKey})
 			return
 		}
 		r.Header.Del("X-Aicf-User") // identity headers are set below from the credential, never taken from the client

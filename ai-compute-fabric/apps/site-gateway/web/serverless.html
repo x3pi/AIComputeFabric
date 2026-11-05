@@ -219,77 +219,116 @@
     </div>
   </div>
       <!-- =====================================================================
-           1. GIAO DIỆN ĐĂNG NHẬP / ĐĂNG KÝ WORKSPACE CHO NGƯỜI DÙNG (DEVELOPER)
+           1. GIAO DIỆN ĐĂNG NHẬP / ĐĂNG KÝ TÀI KHOẢN CLOUD CHO NGƯỜI DÙNG (DEVELOPER)
            ===================================================================== -->
       <div id="sl-login-gate" class="login-gate">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
           <div>
-            <h2 style="margin:0 0 4px 0;font-size:18px">🔐 Đăng nhập hoặc Khởi tạo Không gian Làm việc (Developer Workspace)</h2>
+            <h2 style="margin:0 0 4px 0;font-size:18px">🔐 Cổng Xác thực Tài khoản AICF Serverless Cloud (Sign In / Sign Up)</h2>
             <p class="mut" style="margin:0;font-size:13px">
-              Mỗi Workspace được cô lập hoàn toàn về Container, Volume (`/mnt/volumes`) và Hạn mức GPU VRAM. Người dùng sử dụng <strong>Tenant API Key (<code>aicf_...</code>)</strong> — không cần quyền Admin hệ thống.
+              Đăng nhập bằng <strong>Email / Tên tài khoản + Mật khẩu</strong> hoặc <strong>Tenant API Key (<code>aicf_...</code>)</strong>. Khi đăng xuất, phiên làm việc (<code>aicf_sess_...</code>) được thu hồi ngay trên máy chủ mà không làm mất hiệu lực Khóa API CLI của bạn.
             </p>
           </div>
-          <span class="pill">Chuẩn Cloud Đa-Tenant</span>
+          <span class="pill ok">Chuẩn Cloud IAM &amp; Session</span>
         </div>
 
         <div class="login-cols">
-          <!-- Cột A: Đăng nhập bằng API Key đã có -->
+          <!-- Cột A: Đăng nhập Tài khoản Cloud (Email/Username + Password) -->
           <div class="login-box">
-            <div style="font-weight:700;font-size:14px">🔑 Đã có Khóa API Tenant (<code>aicf_...</code>)</div>
-            <div class="mut" style="font-size:12.5px">Nhập khóa API của bạn để kết nối vào Workspace hiện có và quản lý ứng dụng, code, volume.</div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <strong style="font-size:14px">🔑 Đăng nhập Tài khoản Cloud</strong>
+              <span class="pill">Email / Password</span>
+            </div>
+            <div class="mut" style="font-size:12.5px">Đăng nhập vào Workspace hiện có bằng Email, Tên tài khoản hoặc Tenant ID kèm mật khẩu.</div>
+            <div>
+              <label for="sl-login-id-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Email hoặc Tên Tài khoản / Tenant ID</label>
+              <input id="sl-login-id-input" class="mono" placeholder="dev@aicf.local hoặc dev-workspace" style="width:100%" autocomplete="username">
+            </div>
+            <div>
+              <label for="sl-login-pw-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Mật khẩu Cloud</label>
+              <input id="sl-login-pw-input" type="password" placeholder="••••••••" style="width:100%" autocomplete="current-password">
+            </div>
+            <div class="row" style="gap:8px;margin-top:auto;flex-wrap:wrap">
+              <button type="button" id="sl-btn-login-account" class="pri">🔑 Đăng nhập Tài khoản →</button>
+            </div>
+          </div>
+
+          <!-- Cột B: Đăng ký Tài khoản Cloud Mới + 1-Click Demo -->
+          <div class="login-box highlight">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <strong style="font-size:14px">✨ Đăng ký Tài khoản Cloud Mới</strong>
+              <span class="pill ok">Cấp sẵn 8192 MiB GPU</span>
+            </div>
+            <div class="mut" style="font-size:12.5px">
+              Tạo tài khoản Cloud riêng (tự động cấp phát Workspace, Volume <code>/mnt/volumes</code> và Khóa API CLI <code>aicf_...</code>).
+            </div>
+            <div class="row" style="gap:8px;flex-wrap:wrap">
+              <div style="flex:1;min-width:130px">
+                <label for="sl-signup-name-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Tên Workspace</label>
+                <input id="sl-signup-name-input" class="mono" value="dev-workspace" placeholder="vd: team-nlp" style="width:100%">
+              </div>
+              <div style="flex:1;min-width:150px">
+                <label for="sl-signup-email-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Email Tài khoản</label>
+                <input id="sl-signup-email-input" class="mono" value="dev@aicf.local" placeholder="ban@congty.vn" style="width:100%" autocomplete="email">
+              </div>
+            </div>
+            <div>
+              <label for="sl-signup-pw-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Mật khẩu (tối thiểu 6 ký tự)</label>
+              <input id="sl-signup-pw-input" type="password" value="aicf-cloud-2026" placeholder="Mật khẩu tối thiểu 6 ký tự" style="width:100%" autocomplete="new-password">
+            </div>
+            <div class="row" style="gap:8px;margin-top:auto;flex-wrap:wrap">
+              <button type="button" id="sl-btn-register-account" class="pri">✨ Đăng ký &amp; Đăng nhập</button>
+              <button type="button" id="sl-btn-quick-demo" class="sm" title="Khởi tạo nhanh Workspace dùng thử 1-Click">⚡ Dùng thử 1-Click (Demo)</button>
+            </div>
+          </div>
+
+          <!-- Cột C: Đăng nhập bằng Khóa API (Bearer Token aicf_...) -->
+          <div class="login-box">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <strong style="font-size:14px">🔐 Đăng nhập bằng Khóa API</strong>
+              <span class="pill mono">aicf_...</span>
+            </div>
+            <div class="mut" style="font-size:12.5px">Dành cho Lập trình viên đã có sẵn <strong>Tenant API Key (<code>aicf_...</code>)</strong> từ CLI hoặc biến môi trường.</div>
             <div>
               <label for="sl-login-key-input" class="mut" style="font-size:12px;display:block;margin-bottom:4px">Khóa API Tenant (Bearer Token)</label>
               <input id="sl-login-key-input" type="password" class="mono" placeholder="aicf_..." style="width:100%" autocomplete="off">
             </div>
-            <div class="row" style="gap:8px;margin-top:auto">
-              <button type="button" id="sl-btn-login-key" class="pri">Đăng nhập Workspace →</button>
-              <button type="button" id="sl-btn-login-show" class="sm">Hiện khóa</button>
-            </div>
-          </div>
-
-          <!-- Cột B: Đăng ký / Tạo nhanh Workspace mới (1-Click Self-Serve) -->
-          <div class="login-box highlight">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <strong style="font-size:14px">🚀 Tạo Workspace Mới / Dùng thử 1-Click</strong>
-              <span class="pill ok">Miễn phí GPU Quota</span>
-            </div>
-            <div class="mut" style="font-size:12.5px">
-              Chưa có tài khoản? Nhập tên dự án/nhóm của bạn để hệ thống tự động cấp phát Workspace kèm hạn mức GPU RTX (8192 MiB VRAM).
-            </div>
-            <div>
-              <label for="sl-signup-name-input" class="mut" style="font-size:12px;display:block;margin-bottom:4px">Tên Workspace / Dự án</label>
-              <input id="sl-signup-name-input" class="mono" value="dev-workspace" placeholder="vd: team-nlp, vision-lab, demo" style="width:100%">
-            </div>
             <div class="row" style="gap:8px;margin-top:auto;flex-wrap:wrap">
-              <button type="button" id="sl-btn-quick-demo" class="pri">⚡ Khởi tạo nhanh Tenant Demo (1-Click)</button>
+              <button type="button" id="sl-btn-login-key" class="pri">Đăng nhập bằng API Key →</button>
+              <button type="button" id="sl-btn-login-show" class="sm">Hiện khóa</button>
             </div>
           </div>
         </div>
         <div id="sl-auth-msg" class="mut" style="margin-top:12px;font-size:13px;font-weight:500"></div>
       </div>
 
+      <!-- Khung nội dung Workspace (Tự động khóa/ẩn khi người dùng Đăng xuất ở chế độ Developer) -->
+      <div id="sl-workspace-content">
+
       <!-- =====================================================================
            2. THANH ĐỊNH DANH TÀI KHOẢN NGƯỜI DÙNG (WORKSPACE IDENTITY BAR)
            ===================================================================== -->
       <div id="sl-workspace-bar" class="ws-bar">
-        <div class="row" style="gap:14px;flex-wrap:wrap">
+        <div class="row" style="gap:12px;flex-wrap:wrap">
           <span id="sl-ws-role-badge" class="pill ok" style="font-weight:700">👤 DEVELOPER WORKSPACE</span>
+          <span id="sl-account-email-badge" class="pill mono" style="font-size:12px">Chưa đăng nhập</span>
           <div>
             <span class="mut" style="font-size:12px">Tenant ID:</span>
-            <input id="sl-tenant-id" class="mono" value="demo" style="width:130px;padding:3px 8px;font-weight:700;margin-left:4px" title="Mã định danh Tenant của bạn">
+            <input id="sl-tenant-id" class="mono" value="demo" style="width:125px;padding:3px 8px;font-weight:700;margin-left:4px" title="Mã định danh Tenant của bạn">
           </div>
           <div>
-            <span class="mut" style="font-size:12px">API Key:</span>
-            <input id="sl-api-key" type="password" class="mono" placeholder="aicf_..." style="width:190px;padding:3px 8px;margin-left:4px" autocomplete="off">
+            <span class="mut" style="font-size:12px">Token / API Key:</span>
+            <input id="sl-api-key" type="password" class="mono" placeholder="aicf_..." style="width:185px;padding:3px 8px;margin-left:4px" autocomplete="off">
             <button type="button" id="sl-btn-toggle-key" class="sm" style="margin-left:4px">Hiện</button>
             <button type="button" id="sl-btn-copy-key" class="sm" style="margin-left:2px" title="Sao chép API Key">📋 Copy Key</button>
+            <button type="button" id="sl-btn-rotate-key" class="sm" style="margin-left:2px" title="Cấp lại Khóa API mới và thu hồi khóa cũ">🔄 Đổi Key</button>
           </div>
           <div id="sl-ws-quota-pill" class="pill" style="font-size:12px">GPU: Đang kiểm tra hạn mức…</div>
         </div>
-        <div class="row" style="gap:8px">
+        <div class="row" style="gap:8px;flex-wrap:wrap">
           <button type="button" id="sl-btn-download-env" class="sm" title="Tải tệp cấu hình aicf.env cho SDK/CLI">⬇ Tải aicf.env</button>
-          <button type="button" id="sl-btn-switch-account" class="sm">🔑 Đổi Tài khoản / Tạo Workspace</button>
-          <button type="button" id="sl-btn-logout" class="sm">Đăng xuất</button>
+          <button type="button" id="sl-btn-switch-account" class="sm">🔑 Đổi Tài khoản</button>
+          <button type="button" id="sl-btn-logout" class="sm" style="border-color:rgba(220,38,38,0.4);color:#dc2626;font-weight:600">🚪 Đăng xuất</button>
         </div>
       </div>
 
@@ -395,10 +434,10 @@
               <div style="flex:1;min-width:150px">
                 <label for="sl-ide-hw" class="mut" style="font-size:11.5px;display:block;margin-bottom:2px">Tài nguyên Sandbox</label>
                 <select id="sl-ide-hw" style="width:100%">
+                  <option value="gpu-1024" selected>⚡ GPU RTX · 1024 MiB VRAM (CUDA/PTX)</option>
+                  <option value="gpu-2048">⚡ GPU RTX · 2048 MiB VRAM (CUDA/PTX)</option>
+                  <option value="gpu-4096">⚡ GPU RTX · 4096 MiB VRAM (CUDA/PTX)</option>
                   <option value="cpu">CPU Sandbox (512 MiB RAM)</option>
-                  <option value="gpu-1024">⚡ GPU RTX · 1024 MiB VRAM</option>
-                  <option value="gpu-2048">⚡ GPU RTX · 2048 MiB VRAM</option>
-                  <option value="gpu-4096">⚡ GPU RTX · 4096 MiB VRAM</option>
                 </select>
               </div>
             </div>
@@ -406,13 +445,15 @@
             <!-- Thanh công cụ IDE: Chọn mẫu, Upload .py, Tải về .py -->
             <div class="ide-toolbar">
               <div class="row" style="gap:6px;flex-wrap:wrap">
-                <span>Mẫu:</span>
+                <span>Mẫu GPU / Python:</span>
                 <select id="sl-template-select" style="background:#0f172a;color:#e2e8f0;border:1px solid #334155;padding:3px 8px;border-radius:5px;font-size:12px">
-                  <option value="demo_v1">1. Phân tích văn bản cơ bản (v1)</option>
-                  <option value="demo_v2">2. Trích xuất Top Token &amp; Thống kê (v2)</option>
-                  <option value="gpu_bench">3. Benchmark GPU &amp; Kiểm tra CUDA</option>
-                  <option value="volume_io">4. Đọc/Ghi tệp JSON trong Sandbox</option>
-                  <option value="beta9_style">5. Phong cách Beam / Beta9 (@endpoint + **inputs)</option>
+                  <option value="gpu_matmul" selected>⚡ 1. Nhân Ma trận 2D &amp; SAXPY trên GPU CUDA (aicf_gpu)</option>
+                  <option value="gpu_vector_search">🧠 2. Tìm kiếm Vector Cosine Similarity trên GPU (RAG)</option>
+                  <option value="gpu_bench">🔥 3. Cấp phát VRAM thật &amp; Benchmark GPU (cuMemAlloc)</option>
+                  <option value="volume_io">💾 4. GPU + Đọc/Ghi Lưu trữ Bền vững (/mnt/volumes)</option>
+                  <option value="beta9_style">⚡ 5. Phong cách Beam / Beta9 (@endpoint + GPU CUDA)</option>
+                  <option value="demo_v1">📦 6. Phân tích văn bản cơ bản (v1)</option>
+                  <option value="demo_v2">🚀 7. Trích xuất Top Token &amp; Thống kê (v2)</option>
                 </select>
               </div>
               <div class="row" style="gap:6px">
@@ -422,21 +463,27 @@
               </div>
             </div>
 
-            <textarea id="sl-code-editor" class="code-editor" spellcheck="false" aria-label="Trình soạn thảo mã nguồn Python">def classify(payload: dict) -> dict:
-    """Phân tích văn bản cơ bản (v1) — chạy trong container cô lập."""
-    text = str((payload or {}).get("text", ""))
-    words = text.split()
-    print(f"[demo_v1] classified {len(words)} words")
+            <textarea id="sl-code-editor" class="code-editor" spellcheck="false" aria-label="Trình soạn thảo mã nguồn Python">import aicf_gpu
+
+def classify(payload: dict) -> dict:
+    """Thực thi nhân ma trận 2D (SGEMM) & SAXPY trực tiếp trên GPU CUDA (PTX Kernel)."""
+    p = payload or {}
+    A = p.get("A") or [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+    B = p.get("B") or [[1.0, 0.0, 2.0], [0.0, 1.0, 1.0], [2.0, 1.0, 0.0]]
+    mm = aicf_gpu.matmul(A, B)
+    sx = aicf_gpu.saxpy(float(p.get("alpha", 2.5)), [1.0, 2.0, 3.0, 4.0], [10.0, 20.0, 30.0, 40.0])
+    dev = aicf_gpu.device_info()
+    print(f"[gpu_matmul] backend={mm['backend']} device={dev.get('device_name')} kernel_ms={mm['kernel_ms']}")
     return {
-        "release": "v1",
-        "word_count": len(words),
-        "char_count": len(text),
-        "preview": text[:80],
+        "release": "gpu-matmul-v1",
+        "gpu": dev,
+        "matmul": mm,
+        "saxpy": sx,
     }
 </textarea>
 
             <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
-              <button type="button" id="sl-btn-deploy-code" class="pri">🚀 Biên dịch &amp; Triển khai Code (Deploy)</button>
+              <button type="button" id="sl-btn-deploy-code" class="pri">🚀 Biên dịch &amp; Triển khai lên GPU (Deploy)</button>
               <button type="button" id="sl-btn-deploy-v1" class="sm" title="Triển khai nhanh bản mẫu v1">✨ Triển khai App Mẫu (v1)</button>
               <button type="button" id="sl-btn-deploy-v2" class="sm" title="Triển khai nhanh bản mẫu v2">🚀 Nâng cấp lên v2</button>
             </div>
@@ -455,20 +502,20 @@
                   </tr>
                 </thead>
                 <tbody id="sl-apps-rows">
-                  <tr><td colspan="5" class="mut">Chưa có ứng dụng nào. Bấm "🚀 Biên dịch &amp; Triển khai Code" để bắt đầu.</td></tr>
+                  <tr><td colspan="5" class="mut">Chưa có ứng dụng nào. Bấm "🚀 Biên dịch &amp; Triển khai lên GPU" để bắt đầu.</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          <!-- Khung Phải: Web Endpoint Playground -->
+          <!-- Khung Phải: Web Endpoint & GPU Task Queue Playground -->
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-              <h2 style="margin:0">🌐 Thử nghiệm Trực tiếp Web Endpoint (REST JSON)</h2>
+              <h2 style="margin:0">⚡ Gọi Thực thi GPU Trực tiếp (Sync /web &amp; Async /spawn)</h2>
               <span class="pill" id="sl-web-latency">Sẵn sàng</span>
             </div>
             <p class="mut" style="margin-top:0;font-size:12.5px">
-              Gọi trực tiếp <code>POST /api/serverless/v1/web/{tenant}/{app}/{fn}</code> tới hàm bạn vừa triển khai. Hiển thị kết quả trả về, log <code>stdout</code> và lệnh <code>curl</code> chuẩn.
+              Gọi đồng bộ qua <code>POST /api/serverless/v1/web/{tenant}/{app}/{fn}</code> hoặc đẩy vào hàng đợi bất đồng bộ <code>POST /api/serverless/v1/spawn</code> trên GPU container thực tế.
             </p>
             <div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap">
               <div style="flex:1;min-width:130px">
@@ -476,21 +523,27 @@
                 <input id="sl-web-app" class="mono" value="text-analyzer" style="width:100%">
               </div>
               <div style="flex:1;min-width:130px">
-                <label for="sl-web-fn" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Tên Hàm (Web Endpoint)</label>
+                <label for="sl-web-fn" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Tên Hàm (Endpoint / Task)</label>
                 <input id="sl-web-fn" class="mono" value="classify" style="width:100%">
               </div>
             </div>
-            <label for="sl-web-payload" class="mut" style="font-size:12px;display:block;margin-bottom:4px">Payload đầu vào (JSON)</label>
+            <label for="sl-web-payload" class="mut" style="font-size:12px;display:block;margin-bottom:4px">Payload đầu vào (JSON — Ma trận GPU, Vector, hoặc Văn bản)</label>
             <textarea id="sl-web-payload" class="mono" rows="5" style="width:100%;margin-bottom:10px">{
   "text": "AI Compute Fabric Serverless GPU thực thi hàm Python tốc độ cao với bảo vệ G-RECLAIM dưới 2 giây",
-  "size": 2000
+  "alpha": 2.5,
+  "alloc_mib": 64,
+  "size": 262144,
+  "A": [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+  "B": [[1.0, 0.0, 2.0], [0.0, 1.0, 1.0], [2.0, 1.0, 0.0]]
 }</textarea>
-            <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
-              <button type="button" id="sl-btn-call-web" class="pri">🚀 Gửi Request (POST)</button>
+            <div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap">
+              <button type="button" id="sl-btn-call-web" class="pri">🚀 Gọi Đồng bộ trên GPU (POST /web)</button>
+              <button type="button" id="sl-btn-spawn-web" class="sm" style="border-color:rgba(37,99,235,0.45);color:var(--acc);font-weight:600">⏳ Đẩy Job Bất đồng bộ (Task Queue /spawn)</button>
               <button type="button" id="sl-btn-fill-sample-web" class="sm">Điền Payload mẫu</button>
             </div>
-            <div class="lbl" style="margin-bottom:4px">Phản hồi từ Container &amp; Lệnh cURL Tương đương</div>
-            <div id="sl-web-output" class="code-box" style="min-height:190px;max-height:360px;overflow-y:auto">// Bấm "🚀 Gửi Request (POST)" để thực thi hàm và xem kết quả JSON + stdout + cURL tại đây…</div>
+            <div id="sl-gpu-telemetry-bar" class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap;display:none"></div>
+            <div class="lbl" style="margin-bottom:4px">Phản hồi từ GPU Container, Log <code>stdout</code> &amp; Lệnh cURL Tương đương</div>
+            <div id="sl-web-output" class="code-box" style="min-height:190px;max-height:360px;overflow-y:auto">// Bấm "🚀 Gọi Đồng bộ trên GPU (POST /web)" hoặc "⏳ Đẩy Job Bất đồng bộ (/spawn)" để thực thi hàm trên GPU và xem kết quả JSON + stdout + cURL tại đây…</div>
           </div>
         </div>
       </section>
@@ -721,7 +774,12 @@ aicf app list</div>
                   <tr>
                     <td class="mono"><strong>aicf.Volume.from_name(name)</strong></td>
                     <td class="mono" style="font-size:12px">.put(path, bytes), .get(path), .ls(), .rm(path)</td>
-                    <td>Lưu trữ tệp bền vững theo từng Tenant; khi gắn vào hàm qua <code>volumes={"/data": vol}</code>, container có thể đọc/ghi tại <code>/mnt/volumes/{name}</code>.</td>
+                    <td>Lưu trữ tệp bền vững theo từng Tenant; khi gắn vào hàm qua <code>volumes={"/data": vol}</code>, container có thể đọc/ghi trực tiếp tại <code>/mnt/volumes/{name}</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="mono"><strong>import aicf_gpu</strong><br><span class="mut" style="font-size:11px">(CUDA / PTX Runtime)</span></td>
+                    <td class="mono" style="font-size:12px">.device_info(), .matmul(A, B), .saxpy(a, x, y), .cosine_search(q, docs), .vram_stress(alloc_mib)</td>
+                    <td>Mô-đun GPU tích hợp sẵn trong mọi container: gọi trực tiếp <code>libcuda.so.1</code> (CUDA Driver API) để cấp phát VRAM (<code>cuMemAlloc_v2</code>) và chạy PTX Kernel trên GPU NVIDIA mà không cần tải image nặng.</td>
                   </tr>
                 </tbody>
               </table>
@@ -731,7 +789,7 @@ aicf app list</div>
           <!-- DOC 3: REST API & ERROR CODES -->
           <div id="doc-rest-api" class="doc-section">
             <h3 style="margin-top:0">Bảng Tham chiếu HTTP REST API (Qua Cổng <code>site-gateway :18080</code>)</h3>
-            <p class="mut" style="font-size:12.5px">Mọi request từ người dùng đều gửi kèm Header: <code>Authorization: Bearer &lt;AICF_API_KEY&gt;</code>.</p>
+            <p class="mut" style="font-size:12.5px">Mọi request từ người dùng đều gửi kèm Header: <code>Authorization: Bearer &lt;AICF_API_KEY_OR_SESSION&gt;</code>.</p>
             <div class="table-wrap" style="margin-bottom:14px">
               <table>
                 <thead>
@@ -743,9 +801,29 @@ aicf app list</div>
                 </thead>
                 <tbody>
                   <tr>
+                    <td class="mono">POST /api/serverless/v1/auth/register</td>
+                    <td>Công khai / Cloud IAM</td>
+                    <td>Đăng ký Tài khoản Cloud mới: <code>{"name": "team-ai", "email": "dev@aicf.local", "password": "..."}</code> → trả về <code>api_key</code> (CLI) và <code>session_token</code> (Web).</td>
+                  </tr>
+                  <tr>
+                    <td class="mono">POST /api/serverless/v1/auth/login</td>
+                    <td>Công khai / Cloud IAM</td>
+                    <td>Đăng nhập bằng <code>{"identifier": "dev@aicf.local", "password": "..."}</code> hoặc <code>{"api_key": "aicf_..."}</code> → cấp phiên <code>aicf_sess_...</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="mono">POST /api/serverless/v1/auth/logout</td>
+                    <td>Session / Tenant Key</td>
+                    <td>Đăng xuất và thu hồi ngay phiên <code>aicf_sess_...</code> trên máy chủ mà không làm mất hiệu lực Khóa API CLI của Tenant.</td>
+                  </tr>
+                  <tr>
+                    <td class="mono">POST /api/serverless/v1/auth/rotate-key</td>
+                    <td>Session / Tenant Key</td>
+                    <td>Cấp lại Khóa API <code>aicf_...</code> mới cho Workspace và vô hiệu hóa khóa cũ ngay lập tức.</td>
+                  </tr>
+                  <tr>
                     <td class="mono">POST /api/serverless/v1/signup</td>
                     <td>Công khai / Self-Serve</td>
-                    <td>Đăng ký nhanh Workspace Developer mới: <code>{"name": "my-team"}</code> → trả về <code>{"tenant": {...}, "api_key": "aicf_..."}</code>.</td>
+                    <td>Đăng ký nhanh Workspace Developer 1-Click: <code>{"name": "my-team"}</code> → trả về <code>{"tenant": {...}, "api_key": "aicf_..."}</code>.</td>
                   </tr>
                   <tr>
                     <td class="mono">POST /api/serverless/v1/deploy</td>
@@ -856,14 +934,161 @@ aicf secret set my-openai-secret OPENAI_API_KEY=sk-... # Lưu biến bí mật c
           </div>
         </div>
       </section>
+      </div>
 </main>
 
 <script>
 const SL_KEY_STORE = "aicf_sl_api_key";
 const SL_TENANT_STORE = "aicf_sl_tenant_id";
+const SL_EMAIL_STORE = "aicf_sl_account_email";
 const SL_MODE_STORE = "aicf_sl_ui_mode";
 
 const CODE_TEMPLATES = {
+  gpu_matmul: {
+    fn: "classify",
+    hw: "gpu-1024",
+    code: `import aicf_gpu
+
+def classify(payload: dict) -> dict:
+    """Thực thi nhân ma trận 2D (SGEMM) & SAXPY trực tiếp trên GPU CUDA (PTX Kernel)."""
+    p = payload or {}
+    A = p.get("A") or [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+    B = p.get("B") or [[1.0, 0.0, 2.0], [0.0, 1.0, 1.0], [2.0, 1.0, 0.0]]
+    mm = aicf_gpu.matmul(A, B)
+    sx = aicf_gpu.saxpy(float(p.get("alpha", 2.5)), [1.0, 2.0, 3.0, 4.0], [10.0, 20.0, 30.0, 40.0])
+    dev = aicf_gpu.device_info()
+    print(f"[gpu_matmul] backend={mm['backend']} device={dev.get('device_name')} kernel_ms={mm['kernel_ms']}")
+    return {
+        "release": "gpu-matmul-v1",
+        "gpu": dev,
+        "matmul": mm,
+        "saxpy": sx,
+    }
+`
+  },
+  gpu_vector_search: {
+    fn: "classify",
+    hw: "gpu-1024",
+    code: `import aicf_gpu
+
+def classify(payload: dict) -> dict:
+    """Tìm kiếm tương đồng Vector Cosine (RAG / Embedding Search) bằng nhân ma trận GPU."""
+    p = payload or {}
+    query = p.get("query_vec") or [0.9, 0.2, 0.1, 0.8]
+    docs = p.get("doc_vecs") or [
+        [0.88, 0.25, 0.12, 0.79],
+        [0.10, 0.95, 0.80, 0.05],
+        [0.75, 0.15, 0.20, 0.85],
+        [0.05, 0.10, 0.92, 0.12],
+    ]
+    labels = p.get("labels") or [
+        "doc-gpu-serverless-cuda",
+        "doc-network-routing",
+        "doc-vram-lease-reclaim",
+        "doc-storage-volume-sha256",
+    ]
+    res = aicf_gpu.cosine_search(query, docs, labels)
+    dev = aicf_gpu.device_info()
+    print(f"[gpu_vector_search] backend={res['backend']} top={res['ranked'][0]['label']}")
+    return {
+        "release": "gpu-rag-v1",
+        "gpu": dev,
+        "search": res,
+    }
+`
+  },
+  gpu_bench: {
+    fn: "classify",
+    hw: "gpu-1024",
+    code: `import os
+import aicf_gpu
+
+def classify(payload: dict) -> dict:
+    """Cấp phát bộ nhớ VRAM thực tế trên GPU (cuMemAlloc_v2) & chạy PTX Kernel Benchmark."""
+    p = payload or {}
+    alloc_mib = int(p.get("alloc_mib", 64))
+    n_floats = int(p.get("size", 262144))
+    stress = aicf_gpu.vram_stress(alloc_mib=alloc_mib, n_floats=n_floats)
+    dev = aicf_gpu.device_info()
+    print(f"[gpu_bench] backend={stress['backend']} alloc={stress['allocated_mib']}MiB kernel_ms={stress['kernel_ms']}")
+    return {
+        "release": "gpu-bench-v2",
+        "gpu": dev,
+        "benchmark": stress,
+        "vram_cap_mb": int(os.environ.get("AICF_VRAM_MB", "0") or 0),
+        "sandbox_pid": os.getpid(),
+    }
+`
+  },
+  volume_io: {
+    fn: "classify",
+    hw: "gpu-1024",
+    code: `import json
+import os
+import time
+import aicf_gpu
+
+def classify(payload: dict) -> dict:
+    """Thực thi trên GPU & lưu kết quả bền vững vào Volume của Tenant (/mnt/volumes)."""
+    p = payload or {}
+    note = str(p.get("text", "Hello from AICF GPU Volume Container"))
+    vol_dir = "/mnt/volumes/shared-artifacts"
+    if not os.path.isdir("/mnt/volumes"):
+        vol_dir = "/tmp/shared-artifacts"
+    os.makedirs(vol_dir, exist_ok=True)
+    path = os.path.join(vol_dir, "gpu_run_artifact.json")
+    sx = aicf_gpu.saxpy(2.0, [10.0, 20.0, 30.0, 40.0], [1.0, 2.0, 3.0, 4.0])
+    record = {
+        "saved_at": time.time(),
+        "note": note,
+        "gpu_saxpy": sx,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(record, f, ensure_ascii=False)
+    with open(path, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+    print(f"[volume_io] persisted GPU artifact to {path}")
+    return {
+        "release": "storage-gpu-v2",
+        "file": path,
+        "persisted_in_volume": path.startswith("/mnt/volumes/"),
+        "size_bytes": os.path.getsize(path),
+        "data": loaded,
+    }
+`
+  },
+  beta9_style: {
+    fn: "classify",
+    hw: "gpu-1024",
+    code: `from aicf import endpoint, Image, Volume
+import aicf_gpu
+
+@endpoint(
+    name="text-analyzer",
+    gpu="any",
+    vram_mb=1024,
+    memory=512,
+    keep_warm_seconds=120,
+    image=Image.debian_slim(python_version="3.12"),
+    volumes=[Volume("shared-artifacts", mount_path="/mnt/volumes/shared-artifacts")],
+)
+def classify(**inputs) -> dict:
+    """Phong cách Beam/Beta9 (@endpoint + **inputs) kết hợp thực thi GPU CUDA."""
+    text = str(inputs.get("text", ""))
+    words = text.split()
+    sx = aicf_gpu.saxpy(float(inputs.get("alpha", 3.0)), [1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0])
+    dev = aicf_gpu.device_info()
+    print(f"[beta9_endpoint] words={len(words)} gpu={dev.get('device_name')} backend={sx['backend']}")
+    return {
+        "sdk_style": "beam-beta9-compatible",
+        "word_count": len(words),
+        "top_words": words[:5],
+        "gpu_device": dev.get("device_name"),
+        "gpu_saxpy": sx,
+        "preview": text[:80],
+    }
+`
+  },
   demo_v1: {
     fn: "classify",
     hw: "cpu",
@@ -897,99 +1122,27 @@ const CODE_TEMPLATES = {
         "preview": text[:80],
     }
 `
-  },
-  gpu_bench: {
-    fn: "classify",
-    hw: "gpu-1024",
-    code: `import math
-import os
-import time
-
-def classify(payload: dict) -> dict:
-    """Kiểm tra môi trường GPU container & đo tốc độ tính toán."""
-    n = min(int((payload or {}).get("size", 2000)), 10000)
-    t0 = time.perf_counter()
-    acc = sum(math.sin(i * 0.001) * math.cos(i * 0.001) for i in range(n * 100))
-    elapsed_ms = round((time.perf_counter() - t0) * 1000, 3)
-    gpu_env = os.environ.get("NVIDIA_VISIBLE_DEVICES", "cpu")
-    vram_cap = os.environ.get("AICF_VRAM_MB", "0")
-    print(f"[gpu_bench] n={n} elapsed={elapsed_ms}ms gpu={gpu_env} vram_cap={vram_cap}MiB")
-    return {
-        "release": "gpu-bench-v1",
-        "iterations": n * 100,
-        "checksum": round(acc, 6),
-        "compute_ms": elapsed_ms,
-        "nvidia_visible_devices": gpu_env,
-        "vram_cap_mb": int(vram_cap or 0),
-        "sandbox_pid": os.getpid(),
-    }
-`
-  },
-  volume_io: {
-    fn: "classify",
-    hw: "cpu",
-    code: `import json
-import os
-import time
-
-def classify(payload: dict) -> dict:
-    """Đọc/ghi dữ liệu JSON trong sandbox /tmp và trả về thống kê."""
-    note = str((payload or {}).get("text", "Hello from AICF Serverless Sandbox"))
-    path = "/tmp/aicf_user_note.json"
-    record = {"saved_at": time.time(), "length": len(note), "note": note}
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(record, f, ensure_ascii=False)
-    with open(path, "r", encoding="utf-8") as f:
-        loaded = json.load(f)
-    print(f"[volume_io] wrote {len(note)} chars to {path}")
-    return {
-        "release": "storage-v1",
-        "file": path,
-        "size_bytes": os.path.getsize(path),
-        "data": loaded,
-    }
-`
-  },
-  beta9_style: {
-    fn: "classify",
-    hw: "gpu-1024",
-    code: `from aicf import endpoint, Image, Volume
-
-@endpoint(
-    name="text-analyzer",
-    gpu="any",
-    vram_mb=1024,
-    memory=512,
-    keep_warm_seconds=120,
-    image=Image.debian_slim(python_version="3.12"),
-    volumes=[Volume("shared-artifacts", mount_path="/mnt/volumes/shared-artifacts")],
-)
-def classify(**inputs) -> dict:
-    """Phong cách Beam/Beta9 (@endpoint + **inputs): nhận trực tiếp các trường JSON."""
-    text = str(inputs.get("text", ""))
-    words = text.split()
-    print(f"[beta9_endpoint] words={len(words)} keys={list(inputs.keys())}")
-    return {
-        "sdk_style": "beam-beta9-compatible",
-        "word_count": len(words),
-        "top_words": words[:5],
-        "preview": text[:80],
-    }
-`
   }
 };
 
 const keyInput = document.getElementById("sl-api-key");
 const tenantInput = document.getElementById("sl-tenant-id");
+const emailBadge = document.getElementById("sl-account-email-badge");
 const loginGate = document.getElementById("sl-login-gate");
+const workspaceContent = document.getElementById("sl-workspace-content");
 const loginKeyInput = document.getElementById("sl-login-key-input");
+const loginIdInput = document.getElementById("sl-login-id-input");
+const loginPwInput = document.getElementById("sl-login-pw-input");
 const signupNameInput = document.getElementById("sl-signup-name-input");
+const signupEmailInput = document.getElementById("sl-signup-email-input");
+const signupPwInput = document.getElementById("sl-signup-pw-input");
 const codeEditor = document.getElementById("sl-code-editor");
 
 let uiMode = "user"; // "user" (Developer Workspace) or "admin" (Cluster Operations)
 try {
   const savedKey = sessionStorage.getItem(SL_KEY_STORE);
   const savedTenant = sessionStorage.getItem(SL_TENANT_STORE);
+  const savedEmail = sessionStorage.getItem(SL_EMAIL_STORE);
   const savedMode = sessionStorage.getItem(SL_MODE_STORE);
   if (savedKey) {
     keyInput.value = savedKey;
@@ -999,13 +1152,37 @@ try {
     tenantInput.value = savedTenant;
     signupNameInput.value = savedTenant;
   }
+  if (savedEmail && emailBadge) {
+    emailBadge.textContent = savedEmail;
+  }
   if (savedMode === "admin") uiMode = "admin";
 } catch {}
 
 function updateLoginGateVisibility() {
   const hasTenantKey = !!keyInput.value.trim();
-  // Keep login gate visible if no tenant key is active yet and user is in Developer mode
-  loginGate.style.display = (!hasTenantKey && uiMode === "user") ? "block" : "none";
+  if (!hasTenantKey && uiMode === "user") {
+    loginGate.style.display = "block";
+    if (workspaceContent) workspaceContent.style.display = "none";
+  } else {
+    loginGate.style.display = "none";
+    if (workspaceContent) workspaceContent.style.display = "block";
+  }
+}
+
+function applyAuthenticatedSession({ token, tenantId, email, name }) {
+  keyInput.value = token;
+  loginKeyInput.value = token;
+  if (tenantId) tenantInput.value = tenantId;
+  const label = email || name || tenantId || "active-session";
+  if (emailBadge) emailBadge.textContent = `👤 ${label}`;
+  try {
+    sessionStorage.setItem(SL_KEY_STORE, token);
+    if (tenantId) sessionStorage.setItem(SL_TENANT_STORE, tenantId);
+    sessionStorage.setItem(SL_EMAIL_STORE, `👤 ${label}`);
+  } catch {}
+  updateLoginGateVisibility();
+  renderSdkSnippet();
+  loadOverview();
 }
 
 function setUiMode(mode) {
@@ -1039,15 +1216,56 @@ document.getElementById("sl-btn-switch-account").onclick = () => {
   loginGate.style.display = loginGate.style.display === "none" ? "block" : "none";
 };
 
-document.getElementById("sl-btn-logout").onclick = () => {
+// Cloud Logout: revokes session token on server and locks Developer Workspace
+document.getElementById("sl-btn-logout").onclick = async () => {
+  const curTok = keyInput.value.trim();
+  if (curTok) {
+    try {
+      await fetch("/api/serverless/v1/auth/logout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + curTok,
+        },
+        body: JSON.stringify({ session_token: curTok }),
+      });
+    } catch {}
+  }
   keyInput.value = "";
   loginKeyInput.value = "";
+  if (loginPwInput) loginPwInput.value = "";
+  if (emailBadge) emailBadge.textContent = "Đã đăng xuất";
   try {
     sessionStorage.removeItem(SL_KEY_STORE);
+    sessionStorage.removeItem(SL_EMAIL_STORE);
   } catch {}
-  document.getElementById("sl-auth-msg").textContent = "Đã đăng xuất khỏi Workspace. Hãy nhập Khóa API hoặc tạo Workspace mới.";
+  document.getElementById("sl-auth-msg").textContent =
+    "✓ Đã đăng xuất an toàn và thu hồi phiên làm việc trên máy chủ. Hãy đăng nhập lại để tiếp tục.";
   setUiMode("user");
-  loginGate.style.display = "block";
+  updateLoginGateVisibility();
+};
+
+// Rotate API Key for current logged-in Workspace
+document.getElementById("sl-btn-rotate-key").onclick = async () => {
+  const curTok = keyInput.value.trim();
+  if (!curTok) return;
+  const r = await fetch("/api/serverless/v1/auth/rotate-key", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + curTok },
+  });
+  if (!r || !r.ok) {
+    document.getElementById("sl-deploy-msg").textContent = "❌ Không thể cấp lại Khóa API (HTTP " + (r ? r.status : "err") + ").";
+    return;
+  }
+  const d = await r.json();
+  if (d.api_key) {
+    keyInput.value = d.api_key;
+    loginKeyInput.value = d.api_key;
+    try { sessionStorage.setItem(SL_KEY_STORE, d.api_key); } catch {}
+    renderSdkSnippet();
+    document.getElementById("sl-deploy-msg").textContent =
+      `🔑 Đã cấp lại Khóa API mới cho Workspace '${d.tenant?.id || tenantInput.value}': ${d.api_key.slice(0, 14)}… (khóa cũ đã bị vô hiệu hóa).`;
+  }
 };
 
 keyInput.addEventListener("input", () => {
@@ -1100,7 +1318,7 @@ for (const btn of document.querySelectorAll(".doc-tab")) {
   };
 }
 
-// Helper for calling /api/serverless/* using the Tenant API key (aicf_...)
+// Helper for calling /api/serverless/* using the Tenant API key or Session token
 async function slTenantFetch(path, init = {}) {
   const k = keyInput.value.trim();
   if (!k) return api(path, init);
@@ -1108,7 +1326,64 @@ async function slTenantFetch(path, init = {}) {
   return fetch(path, { ...init, headers });
 }
 
-// Login with existing Tenant API Key
+// 1. Cloud Account Login (Email / Username + Password)
+document.getElementById("sl-btn-login-account").onclick = async () => {
+  const authMsg = document.getElementById("sl-auth-msg");
+  const identifier = (loginIdInput?.value || "").trim();
+  const password = loginPwInput?.value || "";
+  if (!identifier || !password) {
+    authMsg.textContent = "⚠️ Vui lòng nhập cả Email/Tên tài khoản và Mật khẩu.";
+    return;
+  }
+  authMsg.textContent = "Đang xác thực tài khoản Cloud…";
+  const r = await fetch("/api/serverless/v1/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier, password }),
+  });
+  if (!r.ok) {
+    const errTxt = await r.text();
+    authMsg.textContent = `❌ Đăng nhập thất bại (${r.status}): sai tài khoản hoặc mật khẩu (${errTxt})`;
+    return;
+  }
+  const d = await r.json();
+  const tok = d.session_token || d.api_key;
+  const tid = d.tenant?.id || identifier;
+  authMsg.textContent = `✓ Đăng nhập thành công vào tài khoản '${d.tenant?.email || d.tenant?.name || tid}'!`;
+  applyAuthenticatedSession({ token: tok, tenantId: tid, email: d.tenant?.email, name: d.tenant?.name });
+};
+
+// 2. Cloud Account Registration (Workspace Name + Email + Password)
+document.getElementById("sl-btn-register-account").onclick = async () => {
+  const authMsg = document.getElementById("sl-auth-msg");
+  const name = (signupNameInput?.value || "dev-workspace").trim().replace(/[^A-Za-z0-9_.-]/g, "-");
+  const email = (signupEmailInput?.value || "").trim();
+  const password = signupPwInput?.value || "";
+  if (!name || !email || password.length < 6) {
+    authMsg.textContent = "⚠️ Vui lòng nhập Tên Workspace, Email hợp lệ và Mật khẩu tối thiểu 6 ký tự.";
+    return;
+  }
+  authMsg.textContent = "Đang khởi tạo Tài khoản Cloud & cấp phát hạn mức GPU…";
+  const r = await fetch("/api/serverless/v1/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email, password }),
+  });
+  if (!r.ok) {
+    const errTxt = await r.text();
+    authMsg.textContent = `❌ Đăng ký thất bại (${r.status}): ${errTxt}`;
+    return;
+  }
+  const d = await r.json();
+  const tid = d.tenant?.id || name;
+  // Prefer permanent api_key in the bar right after registration so user can copy it for CLI, or session_token
+  const tok = d.api_key || d.session_token;
+  if (loginIdInput) loginIdInput.value = d.tenant?.email || name;
+  authMsg.textContent = `✓ Đã tạo tài khoản '${d.tenant?.email}' (Tenant '${tid}') và cấp Khóa API ${tok.slice(0, 12)}…!`;
+  applyAuthenticatedSession({ token: tok, tenantId: tid, email: d.tenant?.email, name: d.tenant?.name });
+};
+
+// 3. Login with existing Tenant API Key
 document.getElementById("sl-btn-login-key").onclick = async () => {
   const authMsg = document.getElementById("sl-auth-msg");
   const k = loginKeyInput.value.trim();
@@ -1117,28 +1392,22 @@ document.getElementById("sl-btn-login-key").onclick = async () => {
     return;
   }
   authMsg.textContent = "Đang xác thực Khóa API với cổng Serverless…";
-  const r = await fetch("/api/serverless/v1/status", {
-    headers: { Authorization: "Bearer " + k },
+  const r = await fetch("/api/serverless/v1/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key: k }),
   });
   if (!r.ok) {
     authMsg.textContent = "❌ Khóa API không hợp lệ hoặc đã bị thu hồi (HTTP " + r.status + ").";
     return;
   }
-  const st = await r.json();
-  const resolvedTid = st.whoami?.tenant_id || Object.keys(st.policies || {})[0] || tenantInput.value.trim() || "demo";
-  keyInput.value = k;
-  tenantInput.value = resolvedTid;
-  try {
-    sessionStorage.setItem(SL_KEY_STORE, k);
-    sessionStorage.setItem(SL_TENANT_STORE, resolvedTid);
-  } catch {}
+  const d = await r.json();
+  const resolvedTid = d.tenant?.id || tenantInput.value.trim() || "demo";
   authMsg.textContent = `✓ Đăng nhập thành công vào Workspace '${resolvedTid}'!`;
-  loginGate.style.display = "none";
-  renderSdkSnippet();
-  loadOverview();
+  applyAuthenticatedSession({ token: k, tenantId: resolvedTid, email: d.tenant?.email, name: d.tenant?.name });
 };
 
-// 1-Click Self-Serve Workspace Signup / Quick Demo Setup
+// 4. 1-Click Self-Serve Workspace Signup / Quick Demo Setup
 document.getElementById("sl-btn-quick-demo").onclick = async () => {
   const authMsg = document.getElementById("sl-auth-msg");
   const rawName = (signupNameInput.value.trim() || tenantInput.value.trim() || "demo").replace(/[^A-Za-z0-9_.-]/g, "-");
@@ -1146,8 +1415,8 @@ document.getElementById("sl-btn-quick-demo").onclick = async () => {
   try {
     let tid = rawName;
     let apiKey = "";
+    let email = "";
 
-    // 1. Try self-serve signup endpoint (works even without Admin Token!)
     const adminTok = sessionStorage.getItem("aicf_admin") || "";
     const signupHeaders = { "Content-Type": "application/json" };
     if (adminTok) signupHeaders["Authorization"] = "Bearer " + adminTok;
@@ -1160,9 +1429,9 @@ document.getElementById("sl-btn-quick-demo").onclick = async () => {
       const d = await sr.json();
       tid = d.tenant.id;
       apiKey = d.api_key;
+      email = d.tenant.email || `${rawName}@aicf.local`;
     }
 
-    // 2. Fallback to /api/tenants if admin session is active
     if (!apiKey) {
       const listRes = await api("/api/tenants");
       if (listRes && listRes.ok) {
@@ -1181,7 +1450,6 @@ document.getElementById("sl-btn-quick-demo").onclick = async () => {
       return;
     }
 
-    // If admin session is present, also ensure high quota (8192 MiB GPU) is set
     if (adminTok) {
       await fetch(`/api/serverless/v1/policies/${encodeURIComponent(tid)}`, {
         method: "PUT",
@@ -1190,17 +1458,8 @@ document.getElementById("sl-btn-quick-demo").onclick = async () => {
       }).catch(() => {});
     }
 
-    tenantInput.value = tid;
-    keyInput.value = apiKey;
-    loginKeyInput.value = apiKey;
-    try {
-      sessionStorage.setItem(SL_KEY_STORE, apiKey);
-      sessionStorage.setItem(SL_TENANT_STORE, tid);
-    } catch {}
     authMsg.textContent = `✓ Đã cấp khóa cho tenant '${tid}' (${apiKey.slice(0, 12)}…) và kích hoạt Developer Workspace!`;
-    loginGate.style.display = "none";
-    renderSdkSnippet();
-    loadOverview();
+    applyAuthenticatedSession({ token: apiKey, tenantId: tid, email, name: rawName });
   } catch (e) {
     authMsg.textContent = "Lỗi khởi tạo: " + e;
   }
@@ -1683,9 +1942,43 @@ document.getElementById("sl-btn-fill-sample-web").onclick = () => {
   document.getElementById("sl-web-fn").value = document.getElementById("sl-ide-fn").value.trim() || "classify";
   document.getElementById("sl-web-payload").value = JSON.stringify({
     text: "AI Compute Fabric Serverless GPU thực thi hàm Python tốc độ cao với bảo vệ G-RECLAIM dưới 2 giây",
-    size: 2000
+    alpha: 2.5,
+    alloc_mib: 64,
+    size: 262144,
+    A: [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+    B: [[1.0, 0.0, 2.0], [0.0, 1.0, 1.0], [2.0, 1.0, 0.0]]
   }, null, 2);
 };
+
+function renderGpuTelemetryBar(doc) {
+  const bar = document.getElementById("sl-gpu-telemetry-bar");
+  if (!bar) return;
+  bar.replaceChildren();
+  if (!doc || typeof doc !== "object") {
+    bar.style.display = "none";
+    return;
+  }
+  const pills = [];
+  if (doc.worker_id) {
+    pills.push(el("span", { class: "pill mono" }, `🖥️ Worker: ${doc.worker_id}`));
+  }
+  if (typeof doc.cold_start === "boolean") {
+    pills.push(el("span", { class: doc.cold_start ? "pill warn" : "pill ok" }, doc.cold_start ? "❄️ Cold Start" : "🔥 Warm Container"));
+  }
+  if (doc.exec_ms !== undefined && doc.exec_ms !== null) {
+    pills.push(el("span", { class: "pill mono" }, `⏱️ Kernel/Exec: ${Number(doc.exec_ms).toFixed(2)} ms`));
+  }
+  const gpuInfo = doc.result?.gpu;
+  if (gpuInfo && gpuInfo.device_name) {
+    pills.push(el("span", { class: "pill ok mono" }, `⚡ ${gpuInfo.device_name} (${gpuInfo.vram_free_mb || 0}/${gpuInfo.vram_total_mb || 0} MiB free)`));
+  }
+  if (pills.length) {
+    bar.append(...pills);
+    bar.style.display = "flex";
+  } else {
+    bar.style.display = "none";
+  }
+}
 
 document.getElementById("sl-btn-call-web").onclick = async () => {
   const outBox = document.getElementById("sl-web-output");
@@ -1710,7 +2003,7 @@ document.getElementById("sl-btn-call-web").onclick = async () => {
     return;
   }
   const urlPath = `/api/serverless/v1/web/${encodeURIComponent(tid)}/${encodeURIComponent(appName)}/${encodeURIComponent(fnName)}`;
-  outBox.textContent = `Đang gọi POST ${urlPath}…`;
+  outBox.textContent = `Đang gọi đồng bộ POST ${urlPath} trên GPU…`;
   const t0 = performance.now();
   const r = await slTenantFetch(urlPath, {
     method: "POST",
@@ -1725,10 +2018,59 @@ document.getElementById("sl-btn-call-web").onclick = async () => {
   try {
     const parsedOut = JSON.parse(bodyTxt);
     pretty = JSON.stringify(parsedOut, null, 2);
-    if (parsedOut.stdout) stdoutTxt = `\n// Log stdout từ Container:\n${parsedOut.stdout.trim()}\n`;
+    if (parsedOut.stdout) stdoutTxt = `\n// Log stdout từ GPU Container:\n${parsedOut.stdout.trim()}\n`;
+    renderGpuTelemetryBar(parsedOut);
   } catch {}
   const curlCmd = `curl -s -X POST "${location.origin}${urlPath}" \\\n  -H "Authorization: Bearer ${keyInput.value.trim() || "<AICF_API_KEY>"}" \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(parsed)}'`;
-  outBox.textContent = `// Phản hồi (${elapsed} ms):\n${pretty}\n${stdoutTxt}\n// Lệnh cURL tương đương:\n${curlCmd}`;
+  outBox.textContent = `// Phản hồi Đồng bộ (${elapsed} ms):\n${pretty}\n${stdoutTxt}\n// Lệnh cURL tương đương:\n${curlCmd}`;
+  loadOverview();
+};
+
+// Async Task Queue Spawn (/api/serverless/v1/spawn) + Polling (/api/serverless/v1/calls/{id})
+document.getElementById("sl-btn-spawn-web").onclick = async () => {
+  const outBox = document.getElementById("sl-web-output");
+  const latEl = document.getElementById("sl-web-latency");
+  const appName = document.getElementById("sl-web-app").value.trim() || "text-analyzer";
+  const fnName = document.getElementById("sl-web-fn").value.trim() || "classify";
+  const rawPayload = document.getElementById("sl-web-payload").value;
+  let parsed;
+  try {
+    parsed = JSON.parse(rawPayload);
+  } catch (e) {
+    outBox.textContent = "Lỗi JSON payload không hợp lệ: " + e.message;
+    return;
+  }
+  outBox.textContent = `Đang đẩy Job bất đồng bộ vào Hàng đợi GPU (POST /api/serverless/v1/spawn → ${appName}/${fnName})…`;
+  const t0 = performance.now();
+  const sr = await slTenantFetch("/api/serverless/v1/spawn", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ app_name: appName, fn_id: fnName, payload: parsed }),
+  });
+  if (!sr || (!sr.ok && sr.status !== 202)) {
+    const errTxt = sr ? await sr.text() : "error";
+    outBox.textContent = `❌ Lỗi đẩy Task Queue (${sr ? sr.status : "err"}): ${errTxt}`;
+    return;
+  }
+  const sd = await sr.json();
+  const callId = sd.call_id;
+  latEl.textContent = `QUEUED · ${callId.slice(0, 10)}…`;
+  outBox.textContent = `✓ Đã xếp hàng Job '${callId}' (status=${sd.status}). Đang chờ GPU thực thi…`;
+
+  let finalDoc = sd;
+  for (let i = 0; i < 15; i++) {
+    const cr = await slTenantFetch(`/api/serverless/v1/calls/${encodeURIComponent(callId)}?wait_s=2`);
+    if (cr && cr.ok) {
+      finalDoc = await cr.json();
+      if (finalDoc.status !== "pending" && finalDoc.status !== "running") break;
+    }
+  }
+  const elapsed = (performance.now() - t0).toFixed(1);
+  latEl.textContent = `ASYNC ${finalDoc.status?.toUpperCase() || "DONE"} · ${elapsed} ms`;
+  renderGpuTelemetryBar(finalDoc);
+  const stdoutTxt = finalDoc.stdout ? `\n// Log stdout từ GPU Container:\n${finalDoc.stdout.trim()}\n` : "";
+  const curlCmd = `curl -s -X POST "${location.origin}/api/serverless/v1/spawn" \\\n  -H "Authorization: Bearer ${keyInput.value.trim() || "<AICF_API_KEY>"}" \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify({ app_name: appName, fn_id: fnName, payload: parsed })}'`;
+  outBox.textContent = `// Kết quả Task Queue Bất đồng bộ (call_id=${callId}, tổng ${elapsed} ms):\n${JSON.stringify(finalDoc, null, 2)}\n${stdoutTxt}\n// Lệnh cURL đẩy Task Queue:\n${curlCmd}`;
   loadOverview();
 };
 
