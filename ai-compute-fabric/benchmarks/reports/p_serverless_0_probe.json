@@ -1,0 +1,138 @@
+{
+  "meta": {
+    "host": "pi-System-Product-Name",
+    "image": "python:3.12-slim",
+    "label": "[ĐO]"
+  },
+  "gpu": {
+    "flags": "hardening()+GPU+TORCH",
+    "gpus_flag_works": false,
+    "gpus_flag_error": "Run 'docker run --help' for more information",
+    "no_new_privileges_works": false,
+    "container_python_only_ms": {
+      "n": 30,
+      "min": 281.596,
+      "p50": 339.81,
+      "p95": 358.431,
+      "p99": 360.291,
+      "max": 360.291,
+      "mean": 338.945
+    },
+    "torch_cuda_first_run_ms": 1989.2,
+    "torch_cuda_output": "True 2.11.0+cu130 NVIDIA GeForce RTX 3060 1048576.0",
+    "torch_cuda_cold_start_ms": {
+      "n": 30,
+      "min": 1849.498,
+      "p50": 1956.766,
+      "p95": 2036.65,
+      "p99": 2075.102,
+      "max": 2075.102,
+      "mean": 1954.096
+    },
+    "torch_arch_list_note": "torch 2.11.0+cu130 arch list sm_75..sm_120 incl. sm_86 (RTX3060) and sm_120 (RTX5070): one wheel covers both GPUs [ĐO: torch.cuda.get_arch_list()]"
+  },
+  "warm": {
+    "container_ready_ms_incl_import_torch_and_cuda_init": 1505.1,
+    "warm_noop_roundtrip_ms": {
+      "n": 300,
+      "min": 0.035,
+      "p50": 0.059,
+      "p95": 0.257,
+      "p99": 0.491,
+      "max": 0.763,
+      "mean": 0.084
+    },
+    "warm_gpu_matmul1024_roundtrip_ms": {
+      "n": 300,
+      "min": 0.348,
+      "p50": 0.653,
+      "p95": 1.274,
+      "p99": 1.677,
+      "max": 55.404,
+      "mean": 0.874
+    },
+    "note": "pipe round-trip only (no NATS, no HTTP, no cloudpickle). Add NATS 1.17ms p50 [ĐO ADR-002] + proxy for end-to-end."
+  },
+  "vram": {
+    "baseline_used_mib": 15,
+    "used_mib_while_holding_1GiB": 1187,
+    "pid_to_container_attribution_ok_all": true,
+    "attribution_ok_count": "10/10",
+    "attribution_found_after_ms_excl_nvidia_smi_spawn": {
+      "n": 10,
+      "min": 17.855,
+      "p50": 22.157,
+      "p95": 24.833,
+      "p99": 24.833,
+      "max": 24.833,
+      "mean": 21.875
+    },
+    "docker_kill_to_vram_freed_ms_single": {
+      "n": 10,
+      "min": 238.971,
+      "p50": 266.073,
+      "p95": 295.522,
+      "p99": 295.522,
+      "max": 295.522,
+      "mean": 271.034
+    },
+    "docker_kill_3containers_3GiB_to_vram_freed_ms": 383.7,
+    "note": "vram sampling uses nvidia-smi spawn (~30ms/call [ĐỌC MÃ gpu.go]); freed-threshold = baseline+64MiB; pid->container via /proc/<pid>/cgroup on the HOST. Windows/WSL2 not covered here."
+  },
+  "uvbuild": {
+    "uv_version": "uv 0.9.2",
+    "build_cold_uv_cache_ms": 1757.4,
+    "build_cold_ok": true,
+    "build_warm_uv_cache_ms": 576.2,
+    "build_warm_ok": true,
+    "packages": [
+      "numpy",
+      "pillow",
+      "cloudpickle"
+    ],
+    "sdist_only_package_refused": true,
+    "sdist_refusal_msg": "× No solution found when resolving dependencies: ╰─▶ Because only sgmllib3k==1.0.0 is available and sgmllib3k==1.0.0 has no usable wheels, we can conclude that all versions of sgmllib3k cannot be used. And because you require sgmllib3k, we can conclude that your requirements are unsatisfiable. hint:",
+    "venv_mounted_ro_in_runtime_container_ok": true,
+    "venv_mounted_ro_output": "2.5.4 3.1.2",
+    "runtime_start_with_mounted_venv_ms": 342.0,
+    "env_size_mb": 76.9,
+    "alpine_note": "python:3.12-alpine is musl: manylinux torch/numpy wheels do not load there (see sandbox.py default image)"
+  },
+  "objstore": {
+    "results": {
+      "1MiB": {
+        "put_MBps_p50": 143.7,
+        "get_MBps_p50": 280.9,
+        "get_writeinto_MBps_p50": 257.9,
+        "reps": 20,
+        "put_s_p50": 0.007,
+        "get_s_p50": 0.004
+      },
+      "8MiB": {
+        "put_MBps_p50": 208.3,
+        "get_MBps_p50": 15.8,
+        "get_writeinto_MBps_p50": 15.9,
+        "reps": 5,
+        "put_s_p50": 0.04,
+        "get_s_p50": 0.531
+      },
+      "32MiB": {
+        "put_MBps_p50": 230.1,
+        "get_MBps_p50": 20.4,
+        "get_writeinto_MBps_p50": 32.1,
+        "reps": 2,
+        "put_s_p50": 0.146,
+        "get_s_p50": 1.642
+      },
+      "64MiB": {
+        "put_MBps_p50": 312.2,
+        "get_MBps_p50": 12.2,
+        "get_writeinto_MBps_p50": 44.0,
+        "reps": 1,
+        "put_s_p50": 0.215,
+        "get_s_p50": 5.512
+      }
+    },
+    "note": "loopback to dockerised nats (tmpfs store), python nats-py 2.16 client; NOT the 2.5GbE LAN path"
+  }
+}

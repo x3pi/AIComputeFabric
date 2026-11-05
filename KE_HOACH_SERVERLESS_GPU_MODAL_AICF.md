@@ -12,6 +12,17 @@
 
 ---
 
+## TRẠNG THÁI TRIỂN KHAI (cập nhật liên tục)
+
+| Pha | Trạng thái | Bằng chứng |
+|---|---|---|
+| 0 | **XONG (Linux)**; Windows hoãn (D-WIN) | `benchmarks/reports/p_serverless_0_probe.json`, `benchmarks/serverless/p0_probe.py`, `docs/adr/ADR-003-serverless-gpu.md` |
+| 1–8 | Chưa bắt đầu | — |
+
+**Kết quả Pha 0 làm thay đổi kế hoạch:** (1) `--gpus` hỏng trên host, dùng `--runtime=nvidia`; (2) Object Store chỉ ≤ 8 MiB (get 512 MiB mất 389 s); (3) env phải dưới cùng mount cha + hardlink để tiết kiệm đĩa (host còn ~7 GB); (4) Lease truy cập qua cầu nối HTTP trong gateway, không dùng grpcio; (5) `OSUser` đã chứa VRAM Serverless ⇒ cần bucket riêng ở worker-guard; (6) một wheel torch cu130 phủ sm_86 và sm_120.
+
+---
+
 ## PHẦN 0: BRIEF BÀN GIAO & QUY TẮC BẮT BUỘC (ĐỌC TRƯỚC KHI CHẠM VÀO CODE)
 
 ### 0.1. Mục tiêu và ngoài phạm vi
@@ -157,7 +168,7 @@ sequenceDiagram
 | Chỉ số | Mục tiêu đề xuất | Cơ sở |
 |---|---|---|
 | Overhead đường nóng (HTTP→kết quả trừ thời gian hàm), payload ≤ 4 KiB | p50 ≤ 20 ms, p95 ≤ 60 ms | `[SUY LUẬN]` từ NATS `1,17 ms` `[ĐO]` + proxy + pipe; **chưa đo** |
-| Cold-start có GPU, env đã cache | p95 ≤ 8 s | `[CHƯA XÁC MINH]`: chốt bằng 1,25 × số đo Pha 0 |
+| Cold-start có GPU, env đã cache (container + `import torch` + tensor GPU, chưa gồm dispatch) | p95 ≤ 3,0 s | `[ĐO]` Pha 0: p50 1,96 s / p95 2,04 s (n=30); mục tiêu = 1,5 × p95 đo được |
 | Dựng env mới (`EnvBuild`) | Không SLO cứng; phải bất đồng bộ, có tiến độ, không chặn LLM | — |
 | Evict Serverless khi G-RECLAIM (từ lúc phát hiện đến VRAM giải phóng) | **< 2,0 s p99 (cứng)** | Yêu cầu dự án |
 | Ảnh hưởng tới LLM khi Serverless CPU hoạt động | p95 TTFT và tok/s của `/v1/chat/completions` không xấu hơn 5 % so với baseline | `[CHƯA XÁC MINH]` — đo A/B |
@@ -216,7 +227,7 @@ if __name__ == "__main__":
 **Mục tiêu:** đóng mọi `[CHƯA XÁC MINH]` trước khi viết code hệ thống.
 
 **Công việc:**
-1. **GPU trong Docker trên `pc-001`:** xác nhận `docker run --rm --gpus all --network none --read-only --cap-drop ALL --user 65534:65534 <image glibc> python -c "import torch;print(torch.cuda.is_available())"` chạy được (kể cả `no-new-privileges`, tmpfs `/tmp` đủ lớn và cho phép thực thi nếu Triton/compile cần). Đo thời gian khởi động (≥ 30 lần, p50/p95).
+1. **GPU trong Docker trên `pc-001`:** xác nhận `docker run --rm --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 --network none --read-only --cap-drop ALL --user 65534:65534 <image glibc> python -c "import torch;print(torch.cuda.is_available())"` chạy được (kể cả `no-new-privileges`, tmpfs `/tmp` đủ lớn và cho phép thực thi nếu Triton/compile cần). Đo thời gian khởi động (≥ 30 lần, p50/p95).
 2. **Chọn base image (D5):** so `python:3.12-slim`+wheel gói CUDA với `nvidia/cuda-runtime`: kích thước, pull, cold-start. Xác nhận cùng wheel PyTorch chạy cả sm_86 và sm_120 `[CHƯA XÁC MINH]`.
 3. **Dựng env bằng `uv` trong builder cô lập (D4):** đo thời gian cold/warm cache, kiểm `--only-binary`, băm khóa; chứng minh builder không đọc được thư mục host ngoài cache.
 4. **Cold vs warm:** đo lượt 1 (container + `import torch` + cấp phát tensor GPU) và lượt 2..100 qua pipe length-prefixed; đo overhead đường nóng đầy đủ để chốt SLO 2.6.
@@ -241,7 +252,7 @@ if __name__ == "__main__":
 
 **Công việc:**
 1. **`agents/env_cache.py`** (D4/D5): nhận `ServerlessEnvSpec`, validate chặt (regex tên gói/phiên bản, cấm URL/đường dẫn/`--index-url`/VCS), sinh `env_hash`, dựng venv trong container builder, lưu `<cache_dir>/<env_hash>` bất biến (chỉ ghi lúc dựng, sau đó `:ro`), khóa tệp chống dựng trùng, dọn LRU theo dung lượng.
-2. **`agents/sandbox.py`:** thêm `GpuDockerSandbox` (tái dùng `command()`, thêm `--gpus device=<idx>`, tmpfs cấu hình được, `--cpus`, `HOME`/cache dirs trỏ vào tmpfs) và `WarmDockerPool`: mỗi container là tiến trình `docker run -i` bền, đồng bộ theo **khung length-prefixed** (4 byte độ dài + payload, giới hạn tối đa), khóa `(tenant_id, env_hash, fn_id)`, một lượt/lần (concurrency=1 mặc định), reaper nền (`keep_warm_s`, đổi tenant, chết bất thường), `kill_all()` có hạn thời gian cho G-RECLAIM, đếm container mồ côi theo nhãn Docker `aicf.sl=1`.
+2. **`agents/sandbox.py`:** thêm `GpuDockerSandbox` (tái dùng `command()`, thêm `--runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=<idx> -e NVIDIA_DRIVER_CAPABILITIES=compute,utility` (KHÔNG `--gpus`: lỗi CDI trên host này `[ĐO]`), tmpfs cấu hình được, `--cpus`, `HOME`/cache dirs trỏ vào tmpfs) và `WarmDockerPool`: mỗi container là tiến trình `docker run -i` bền, đồng bộ theo **khung length-prefixed** (4 byte độ dài + payload, giới hạn tối đa), khóa `(tenant_id, env_hash, fn_id)`, một lượt/lần (concurrency=1 mặc định), reaper nền (`keep_warm_s`, đổi tenant, chết bất thường), `kill_all()` có hạn thời gian cho G-RECLAIM, đếm container mồ côi theo nhãn Docker `aicf.sl=1`.
 3. **`agents/_warm_runner.py`** (chạy trong container): vòng lặp đọc khung → `cloudpickle.loads` → chạy → ghi khung kết quả (JSON/msgpack) + stdout/stderr cắt giới hạn; `@aicf.enter()` gọi 1 lần; bắt ngoại lệ và trả traceback; `set_per_process_memory_fraction` (lớp mềm); không `eval` thứ gì ngoài bundle đã xác minh.
 4. **Nhãn & dọn dẹp:** mọi container gắn `--label aicf.sl=1 --label aicf.tenant=… --label aicf.worker=…`; `docker ps -f label=aicf.sl=1` là nguồn sự thật cho test "không còn mồ côi".
 
