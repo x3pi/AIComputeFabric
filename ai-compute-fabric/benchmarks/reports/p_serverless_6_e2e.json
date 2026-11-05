@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "label": "[ĐO]",
+  "viewports_tested": [
+    "2560x1440",
+    "375x812"
+  ],
+  "pass": true,
+  "total_checks": 20,
+  "passed_checks": 20,
+  "checks": [
+    {
+      "name": "serverless service & gateway proxy ready with 2 warm containers",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "viewer sees warm containers in #sl-rows but NO Force Evict button",
+      "ok": true,
+      "detail": "evictBtns=0"
+    },
+    {
+      "name": "viewer sees Serverless tenant GPU-seconds table with all quota controls disabled",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "viewer session had zero JS errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "index.html at 2560x1440 has no overflow and shows Serverless lease VRAM summary",
+      "ok": true,
+      "detail": "mainW=2304px, vram=⚡ Serverless GPU Leases: 3072 MiB (2 container ấm) · Phân biệt với LLM Weights/KV & OSUser trên thanh 6-Bucket"
+    },
+    {
+      "name": "index.html at 375x812 mobile adapts cleanly without horizontal overflow",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Force Evict removes c-e2e-warm-01 from UI table",
+      "ok": true,
+      "detail": "remaining=c-e2e-warm-02"
+    },
+    {
+      "name": "Force Evict releases the GPU lease on site-gateway",
+      "ok": true,
+      "detail": "{\"leases\":[]}"
+    },
+    {
+      "name": "Force Evict writes an audit record with reason=admin",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Drain button toggles serverless draining=true",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Disable Serverless button toggles enabled=false",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tenants.html displays measured GPU-seconds (4.500 s) and VRAM MiB·s (including idle lease on evict) for alpha",
+      "ok": true,
+      "detail": "4.500 s (4500 ms) | 51295 MiB·s"
+    },
+    {
+      "name": "saving tenant Serverless quota updates policy on server",
+      "ok": true,
+      "detail": "{\"serverless_enabled\":true,\"max_concurrency\":12,\"max_memory_mb\":2048,\"max_timeout_s\":120,\"max_keep_warm_s\":300,\"max_bundle_bytes\":8388608,\"max_volume_bytes\":268435456,\"allowed_data_classes\":[\"PUBLIC\",\"INTERNAL\"],\"gpu_allowed\":true,\"max_vram_mb\":4096,\"max_retries\":0}"
+    },
+    {
+      "name": "tenants.html has zero horizontal overflow at both 2560x1440 and 375x812",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "serverless.html 1-Click Demo creates/rotates tenant key and enables Serverless",
+      "ok": true,
+      "detail": "aicf_K6_oA…"
+    },
+    {
+      "name": "serverless.html deploys v1 -> v2 and rolls back to v1 cleanly",
+      "ok": true,
+      "detail": "v-e42185f5d1f074fe -> v-539fda4fc6f28210 -> v-e42185f5d1f074fe"
+    },
+    {
+      "name": "serverless.html Web Endpoint tester executes deployed function and renders JSON output + cURL",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "serverless.html Volume manager uploads and lists tenant volume file with SHA-256",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "serverless.html has zero horizontal overflow at both 2560x1440 and 375x812",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "admin session had zero JS errors",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

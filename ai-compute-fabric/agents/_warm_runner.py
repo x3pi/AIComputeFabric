@@ -13,8 +13,10 @@ import hashlib
 import io
 import json
 import os
+import select
 import struct
 import sys
+import threading
 import time
 import traceback
 
@@ -81,7 +83,7 @@ class _Capped(io.TextIOBase):
         return "".join(self.parts)
 
 
-_LOADED = {}
+_LOADED: dict[str, object] = {}
 _VRAM_CAPPED = False
 
 
@@ -104,6 +106,32 @@ def _err(e):
     return {"type": type(e).__name__, "message": str(e)[:2000], "traceback": traceback.format_exc()[-8000:]}
 
 
+def _materialize_files(files: dict) -> None:
+    if not files or not isinstance(files, dict):
+        return
+    import posixpath
+    root = "/tmp/aicf_files"
+    os.makedirs(root, exist_ok=True)
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    for rel, content in files.items():
+        if not isinstance(rel, str):
+            continue
+        raw = base64.b64decode(content) if isinstance(content, str) else bytes(content)
+        clean = posixpath.normpath(rel.lstrip("/"))
+        if not clean or clean == "." or clean.startswith("..") or "/../" in f"/{clean}/":
+            raise ValueError(f"invalid bundled file path: {rel!r}")
+        targets = [os.path.join(root, clean)]
+        if rel.startswith("/tmp/"):
+            sub = posixpath.normpath(rel[5:].lstrip("/"))
+            if sub and sub != "." and not sub.startswith(".."):
+                targets.append(os.path.join("/tmp", sub))
+        for dst in targets:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with open(dst, "wb") as f:
+                f.write(raw)
+
+
 def _load(req):
     import cloudpickle
 
@@ -118,6 +146,7 @@ def _load(req):
         raise ValueError("bundle sha256 mismatch")
     bundle = cloudpickle.loads(raw)
     t = time.perf_counter()
+    _materialize_files(bundle.get("files") or {})
     entry = {"kind": bundle["kind"], "obj": bundle["obj"], "inst": None, "exit": list(bundle.get("exit", []))}
     if entry["kind"] == "cls":
         inst = entry["obj"]()
@@ -174,7 +203,43 @@ def _shutdown():
                 pass
 
 
+_IN_CALL = False
+_CALL_SEQ = 0
+
+
+def _watch_stdin():
+    """If the worker process on the host dies (even SIGKILL), its pipe to `docker run -i` closes and our _in hits EOF/POLLHUP.
+    While a call is running on the main thread, nothing reads _in — without this watcher a long GPU call would outlive its dead
+    worker and hold VRAM until the function returned on its own."""
+    import fcntl
+    import termios
+    fd = _in.fileno()
+    p = select.poll()
+    p.register(fd, select.POLLHUP | select.POLLERR | select.POLLIN)
+    while True:
+        if not _IN_CALL:
+            for _, ev in p.poll(100):
+                if ev & (select.POLLHUP | select.POLLERR):
+                    os._exit(0)
+            time.sleep(0.1)
+            continue
+        seq0 = _CALL_SEQ
+        for _, ev in p.poll(100):
+            if ev & (select.POLLHUP | select.POLLERR):
+                os._exit(0)
+            if _IN_CALL and _CALL_SEQ == seq0 and (ev & select.POLLIN):
+                try:
+                    nbytes = struct.unpack("i", fcntl.ioctl(fd, termios.FIONREAD, b"\x00\x00\x00\x00"))[0]
+                    if nbytes == 0 and _IN_CALL and _CALL_SEQ == seq0:
+                        os._exit(0)
+                except OSError:
+                    os._exit(0)
+        time.sleep(0.05)
+
+
 def main():
+    global _IN_CALL, _CALL_SEQ
+    threading.Thread(target=_watch_stdin, daemon=True).start()
     _send({"ready": True, "pid": os.getpid(), "python": sys.version.split()[0]})
     while True:
         try:
@@ -188,7 +253,13 @@ def main():
         if op == "ping":
             _send({"ok": True})
         elif op == "call":
-            _send(_call(req))
+            _CALL_SEQ += 1
+            _IN_CALL = True
+            try:
+                resp = _call(req)
+            finally:
+                _IN_CALL = False
+            _send(resp)
         else:
             _send({"ok": False, "error": {"type": "BadOp", "message": f"unknown op {op!r}", "traceback": ""}})
     _shutdown()

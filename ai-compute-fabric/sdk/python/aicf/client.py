@@ -4,7 +4,9 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
+from typing import Any
 
 from aicf import errors as E
 
@@ -19,12 +21,25 @@ class Client:
         if not self.api_key:
             raise E.ConfigError("AICF_API_KEY is not set (ask your administrator for a tenant API key: it starts with 'aicf_')")
 
-    def post(self, path: str, body: dict) -> dict:
-        req = urllib.request.Request(self.url + "/api/serverless/v1" + path, data=json.dumps(body).encode(), method="POST",
-                                     headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"})
+    def request(self, method: str, path: str, body: Any = None, *, headers: dict | None = None, raw_response: bool = False) -> Any:
+        data: bytes | None = None
+        req_headers = {"Authorization": f"Bearer {self.api_key}"}
+        if body is not None:
+            if isinstance(body, (bytes, bytearray)):
+                data = bytes(body)
+                req_headers["Content-Type"] = "application/octet-stream"
+            else:
+                data = json.dumps(body).encode()
+                req_headers["Content-Type"] = "application/json"
+        if headers:
+            req_headers.update(headers)
+        req = urllib.request.Request(self.url + "/api/serverless/v1" + path, data=data, method=method, headers=req_headers)
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                return json.loads(r.read())
+                raw = r.read()
+                if raw_response:
+                    return raw, dict(r.headers)
+                return json.loads(raw) if raw else {}
         except urllib.error.HTTPError as e:
             raw = e.read()
             try:
@@ -38,18 +53,36 @@ class Client:
             raise E.ConnectionFailed(f"cannot reach {self.url}: {getattr(e, 'reason', e)}. Check AICF_GATEWAY_URL and that the gateway is running "
                                      f"(`aicf doctor`).") from None
 
+    def post(self, path: str, body: dict) -> dict:
+        return self.request("POST", path, body)
+
+    def get(self, path: str, params: dict | None = None, *, raw_response: bool = False) -> Any:
+        if params:
+            path = f"{path}?{urllib.parse.urlencode(params)}"
+        return self.request("GET", path, raw_response=raw_response)
+
+    def put(self, path: str, body: Any, *, headers: dict | None = None) -> dict:
+        return self.request("PUT", path, body, headers=headers)
+
+    def delete(self, path: str) -> dict:
+        return self.request("DELETE", path)
+
     @staticmethod
     def _map(status: int, code: str, msg: str, retry: int) -> Exception:
         if status == 401:
             return E.AuthError("the gateway rejected your API key (missing, wrong, rotated or the tenant is disabled). Check AICF_API_KEY.")
         if code == "serverless_disabled":
             return E.AuthError("serverless is not enabled for your tenant: ask your administrator to enable it.")
-        if code in ("gpu_denied", "data_class_denied"):
+        if code in ("gpu_denied", "data_class_denied", "volume_path_denied", "volume_quota_exceeded", "model_cache_readonly"):
             return E.QuotaExceeded(code, msg)
+        if status == 403:
+            return E.AuthError(msg or "forbidden")
+        if status == 404:
+            return E.InvalidRequest(msg or "not found")
         if status == 429:
             return E.QuotaExceeded(code, f"{msg} (retry after {retry}s)" if retry else msg, retry)
         if status == 503:
             return E.NoCapacity(f"{msg}. Retry in {retry or 5}s; if it persists run `aicf doctor`.", retry or 5)
-        if status in (400, 413):
+        if status in (400, 413, 415):
             return E.InvalidRequest(msg)
         return E.ServerError(f"gateway returned {status}: {msg}")

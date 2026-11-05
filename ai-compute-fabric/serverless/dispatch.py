@@ -34,6 +34,7 @@ class BusDispatcher:
         if len(data) > MAX_DIRECT_BYTES:
             return None
         timeout = (task.ttl_s or 60.0) + 2.0
+        assert task.label is not None
         subj = f"{SERVERLESS_DIRECT}.{task.label[2:]}"
         try:
             msg = self.bx._run(self.bx.nc.request(subj, data, timeout=timeout), timeout + 5)

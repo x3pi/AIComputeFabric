@@ -3,6 +3,7 @@
 const NAV = [
   ["index.html", "Cụm GPU & VRAM", "🖥️"],
   ["tenants.html", "Tenants & Khóa API", "🔑"],
+  ["serverless.html", "Serverless GPU", "⚡"],
   ["chat.html", "Playground & Tải", "💬"],
   ["agents.html", "AI Agent (DAG)", "🕸️"],
   ["studio.html", "AI Studio", "🧪"],
@@ -91,6 +92,18 @@ const PAGE_GUIDES = {
     tips: [
       "Energy VAD dùng ngưỡng tương đối -30 dB so với đỉnh tín hiệu thay vì ngưỡng cứng -40 dB, giúp không bỏ sót các bản thu âm nhỏ tiếng.",
       "Hệ thống tuân thủ chính sách Đạo đức AI: mọi yêu cầu nhân bản giọng nói (Voice Cloning) hoặc giọng tùy chỉnh không có Consent đều bị từ chối ở tầng thực thi."
+    ]
+  },
+  "serverless.html": {
+    title: "Hướng dẫn nhanh — Nền tảng Serverless GPU / Python (Kiểu Modal.com)",
+    steps: [
+      ["Cấp khóa Tenant & Bật quyền 1-Click", "Bấm nút '⚡ Khởi tạo nhanh Tenant Demo & Bật quyền Serverless' (hoặc dán khóa aicf_... đã cấp ở trang Tenants) để tự động kích hoạt serverless_enabled và gpu_allowed."],
+      ["Triển khai App Bất biến (v1 → v2) & Gọi Web Endpoint", "Ở Tab 1, bấm '✨ Triển khai App Mẫu (v1)' rồi bấm '▶ Gọi Web Endpoint ngay' để thực thi hàm Python trong container ấm. Thử nâng cấp lên v2 và bấm '⏪ Rollback' mà không làm gián đoạn lượt gọi."],
+      ["Quản lý Container Ấm, Volume & Mã nguồn SDK", "Chuyển sang Tab 2 để xem container ấm, lease GPU và log stdout/stderr; Tab 3 để kéo-thả tệp vào aicf.Volume; Tab 4 để sao chép mã nguồn Python SDK (@app.function, @app.cls, .map) và xem Audit Log."]
+    ],
+    tips: [
+      "Quy tắc D10 (G-RECLAIM < 2s): Khi chủ máy trạm cần GPU, worker-guard ưu tiên thu hồi container Serverless trước để không bao giờ làm dừng mô hình LLM đang phục vụ.",
+      "Mỗi lệnh SERVERLESS_EXEC đều được ký HMAC-SHA256 kèm nonce/exp chống phát lại (T3), và cloudpickle.loads chỉ chạy duy nhất bên trong container không mạng (--network none, T1/T2)."
     ]
   }
 };

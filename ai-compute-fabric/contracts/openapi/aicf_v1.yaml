@@ -153,6 +153,9 @@ paths:
                 keep_warm_s: {type: integer, minimum: 0, maximum: 3600}
                 retries: {type: integer, minimum: 0, maximum: 5, description: "retried only after infrastructure loss, never after a user exception or timeout"}
                 data_class: {type: string, enum: [PUBLIC, INTERNAL, RESTRICTED], description: "RESTRICTED is always refused (shared GPU)"}
+                secrets: {type: array, items: {type: string}}
+                volumes: {type: object, additionalProperties: {type: string}}
+                version: {type: string}
       responses:
         "200":
           description: "the call finished; `status` tells how (ok, error, timeout, oom, worker_lost, env_failed, duplicate)"
@@ -164,6 +167,163 @@ paths:
         "429": {description: "quota or concurrency exceeded (Retry-After)"}
         "503": {description: "no serverless worker online (Retry-After)"}
         "504": {description: expired before a worker answered}
+  /api/serverless/v1/spawn:
+    post:
+      summary: Spawn an asynchronous serverless function call returning a call_id (tenant API key only)
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "202": {description: accepted, content: {application/json: {schema: {type: object, required: [call_id, status], properties: {call_id: {type: string}, status: {type: string}}}}}}
+  /api/serverless/v1/calls/{call_id}:
+    get:
+      summary: Poll or wait for a spawned FunctionCall result (tenant or viewer/operator/admin)
+      parameters:
+        - {name: call_id, in: path, required: true, schema: {type: string}}
+        - {name: wait, in: query, schema: {type: number}}
+      responses:
+        "200": {description: ok}
+        "404": {description: unknown call_id}
+  /api/serverless/v1/calls/{call_id}/logs:
+    get:
+      summary: Retrieve stdout/stderr logs for a serverless call (tenant or viewer/operator/admin)
+      parameters: [{name: call_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok}
+        "404": {description: unknown call_id}
+  /api/serverless/v1/calls/{call_id}/cancel:
+    post:
+      summary: Cancel a running or queued spawned call (tenant or operator/admin)
+      parameters: [{name: call_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: cancelled}
+        "404": {description: unknown call_id}
+  /api/serverless/v1/containers:
+    get:
+      summary: List warm serverless containers and active VRAM leases (tenant scoped or fleet-wide for viewer/operator/admin)
+      responses:
+        "200": {description: ok}
+  /api/serverless/v1/containers/{container_id}:
+    delete:
+      summary: Force evict a warm serverless container and release its VRAM lease (tenant own container, or operator/admin)
+      parameters: [{name: container_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: evicted}
+        "403": {description: role not allowed}
+        "404": {description: container not found}
+  /api/serverless/v1/deploy:
+    post:
+      summary: Deploy a versioned Serverless App with functions and web endpoints (tenant API key)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [app_name, functions]}}}}
+      responses:
+        "200": {description: deployed}
+  /api/serverless/v1/apps:
+    get:
+      summary: List deployed Serverless Apps and version history
+      responses:
+        "200": {description: ok}
+  /api/serverless/v1/apps/{app}/rollback:
+    post:
+      summary: Atomically roll back a deployed Serverless App to the previous or specified version
+      parameters: [{name: app, in: path, required: true, schema: {type: string}}]
+      requestBody: {content: {application/json: {schema: {type: object, properties: {version: {type: string}}}}}}
+      responses:
+        "200": {description: rolled back}
+        "404": {description: app or version not found}
+  /api/serverless/v1/apps/{app}:
+    delete:
+      summary: Stop a deployed Serverless App and evict its warm containers
+      parameters: [{name: app, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: stopped}
+  /api/serverless/v1/volumes:
+    get:
+      summary: List tenant-partitioned Volumes and usage bytes
+      responses:
+        "200": {description: ok}
+  /api/serverless/v1/volumes/{volume}/{path}:
+    get:
+      summary: Download a file from a tenant Volume (path traversal and symlinks rejected)
+      parameters: [{name: volume, in: path, required: true, schema: {type: string}}, {name: path, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: file bytes}
+        "400": {description: invalid path or symlink}
+        "404": {description: file not found}
+    put:
+      summary: Upload a file to a tenant Volume (enforces per-tenant max_volume_bytes quota)
+      parameters: [{name: volume, in: path, required: true, schema: {type: string}}, {name: path, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: stored}
+        "413": {description: volume quota exceeded}
+    delete:
+      summary: Delete a file from a tenant Volume
+      parameters: [{name: volume, in: path, required: true, schema: {type: string}}, {name: path, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: deleted}
+  /api/serverless/v1/model-cache:
+    get:
+      summary: List read-only shared model cache entries
+      responses:
+        "200": {description: ok}
+  /api/serverless/v1/model-cache/{model}/{path}:
+    put:
+      summary: Populate a file in the shared read-only model cache (admin only; 403 for tenants)
+      parameters: [{name: model, in: path, required: true, schema: {type: string}}, {name: path, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: cached}
+        "403": {description: model cache is read-only for tenants}
+  /api/serverless/v1/web/{tenant}/{app}/{fn}:
+    post:
+      summary: Invoke a deployed @app.web_endpoint function with JSON-only payload (never cloudpickle)
+      parameters:
+        - {name: tenant, in: path, required: true, schema: {type: string}}
+        - {name: app, in: path, required: true, schema: {type: string}}
+        - {name: fn, in: path, required: true, schema: {type: string}}
+      requestBody: {content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: ok}
+        "403": {description: requires matching tenant API key}
+        "404": {description: web endpoint not found}
+  /api/serverless/v1/status:
+    get:
+      summary: Serverless fleet overview (warm containers, apps, usage, policies, audit)
+      responses:
+        "200": {description: ok}
+  /api/serverless/v1/usage:
+    get:
+      summary: Hash-chained GPU-seconds and VRAM MiB-seconds usage ledger summary
+      responses:
+        "200": {description: ok}
+  /api/serverless/v1/admin/state:
+    post:
+      summary: Toggle global serverless enabled or drain mode (operator/admin)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {enabled: {type: boolean}, draining: {type: boolean}}}}}}
+      responses:
+        "200": {description: updated}
+        "403": {description: role not allowed}
+  /api/serverless/v1/policies:
+    get:
+      summary: List per-tenant serverless policies and quotas
+      responses:
+        "200": {description: ok}
+  /api/serverless/v1/policies/{tenant}:
+    put:
+      summary: Update per-tenant serverless quota and GPU policy (admin only)
+      parameters: [{name: tenant, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: updated}
+        "403": {description: admin role required}
+  /api/serverless/v1/secrets:
+    get:
+      summary: List secret names configured for the caller tenant (values are never returned)
+      responses:
+        "200": {description: ok}
+  /api/serverless/v1/secrets/{name}:
+    put:
+      summary: Create or update a named secret for a tenant
+      parameters: [{name: name, in: path, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [env]}}}}
+      responses:
+        "200": {description: stored}
   /api/models/catalog:
     get:
       summary: Curated model catalogue with the architecture facts the VRAM estimator uses
@@ -511,7 +671,7 @@ components:
         can:
           type: object
           required: [view, pause, tenants]
-          properties: {view: {type: boolean}, pause: {type: boolean}, tenants: {type: boolean}, studio: {type: boolean}, studio_delete: {type: boolean}}
+          properties: {view: {type: boolean}, pause: {type: boolean}, tenants: {type: boolean}, studio: {type: boolean}, studio_delete: {type: boolean}, serverless_evict: {type: boolean}}
     Buckets:
       type: object
       required: [Total, OSUser, Weights, KVState, Compute, Headroom, Allocatable]

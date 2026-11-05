@@ -72,7 +72,9 @@ func main() {
 	}
 	s := grpc.NewServer(opts...)
 	pb.RegisterFleetGatewayServer(s, &GRPC{Reg: reg})
-	pb.RegisterLeaseServiceServer(s, NewLeaseManager(reg, *maxLease))
+	leases := NewLeaseManager(reg, *maxLease)
+	leases.StartSweeper(time.Second, nil)
+	pb.RegisterLeaseServiceServer(s, leases)
 	go func() { log.Fatal(s.Serve(lis)) }()
 	log.Printf("site-gateway gRPC %s, http://%s", *grpcAddr, *httpAddr)
 	fleet := NewFleet(reg)
@@ -143,7 +145,7 @@ func main() {
 		if serr != nil {
 			log.Fatalf("--serverless-secret-file: %v", serr)
 		}
-		if serverless, err = ServerlessProxy(*serverlessURL, secret, MaxServerlessBody); err != nil {
+		if serverless, err = ServerlessProxy(*serverlessURL, secret, MaxServerlessBody, leases); err != nil {
 			log.Fatal(err)
 		}
 	}

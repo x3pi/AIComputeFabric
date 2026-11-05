@@ -33,6 +33,11 @@ type Config struct {
 	FreedFraction float64 // fraction of the engine's VRAM that must disappear to call it "freed"
 	FreedTimeout  time.Duration
 	StateFile     string // optional JSON file where runtime mode/model/pause state is saved across restarts
+
+	// Serverless co-tenancy (ADR-003 D10). nil Evictor = feature off = behaviour identical to before.
+	Evictor      Evictor
+	EvictTimeout time.Duration // how long the cooperating worker gets to stop its containers (default 1.5 s)
+	EvictWait    time.Duration // how long to wait for the memory to come back after evicting (default 2 s)
 }
 
 type persistedGuardState struct {
@@ -52,22 +57,23 @@ type Event struct {
 
 // Snapshot is what the API and dashboard read.
 type Snapshot struct {
-	State       State       `json:"state"`
-	Sample      GPUSample   `json:"gpu"`
-	EngineMiB   uint64      `json:"engine_mib"`
-	EnginePID   int         `json:"engine_pid"`
-	External    uint64      `json:"external_mib"`
-	Buckets     est.Buckets `json:"buckets_bytes"`
-	Events      []Event     `json:"events"`
-	Headroom    uint64      `json:"headroom_mib"`
-	Model       string      `json:"model"`
-	Lora        string      `json:"lora"`
-	Mode        string      `json:"mode,omitempty"`
-	RPCServers  string      `json:"rpc_servers,omitempty"`
-	TensorSplit string      `json:"tensor_split,omitempty"`
-	RPCPort     int         `json:"rpc_port,omitempty"`
-	Switching   bool        `json:"switching"`
-	Updated     time.Time   `json:"updated"`
+	State         State       `json:"state"`
+	Sample        GPUSample   `json:"gpu"`
+	EngineMiB     uint64      `json:"engine_mib"`
+	EnginePID     int         `json:"engine_pid"`
+	External      uint64      `json:"external_mib"`
+	Buckets       est.Buckets `json:"buckets_bytes"`
+	Events        []Event     `json:"events"`
+	Headroom      uint64      `json:"headroom_mib"`
+	Model         string      `json:"model"`
+	Lora          string      `json:"lora"`
+	Mode          string      `json:"mode,omitempty"`
+	RPCServers    string      `json:"rpc_servers,omitempty"`
+	TensorSplit   string      `json:"tensor_split,omitempty"`
+	RPCPort       int         `json:"rpc_port,omitempty"`
+	Switching     bool        `json:"switching"`
+	ServerlessMiB uint64      `json:"serverless_mib,omitempty"` // VRAM held by Serverless guests on this GPU (omitted when the feature is off)
+	Updated       time.Time   `json:"updated"`
 }
 
 type Guard struct {
@@ -85,6 +91,8 @@ type Guard struct {
 	procsAt   time.Time
 	events    []Event
 	switching bool // a model/adapter change was requested and the engine has not started with it yet
+
+	serverlessMiB uint64 // VRAM held by Serverless guests (reported by the Evictor); not "another user"
 }
 
 func NewGuard(cfg Config, s Sampler, e Engine) *Guard {
@@ -210,6 +218,9 @@ func (g *Guard) Switch(model, lora string) {
 
 // Pause stops the engine on operator request; Resume allows it to start again.
 func (g *Guard) Pause() {
+	if g.cfg.Evictor != nil {
+		g.evictServerless("operator pause", g.last) // guests leave first; the engine's own stop below is unchanged
+	}
 	if g.eng.Running() {
 		info, _ := g.eng.Stop()
 		g.emit(Event{Kind: "pause", Detail: "operator pause", StopMS: ms(info.Elapsed), Signal: info.Signal})
@@ -272,6 +283,9 @@ func (g *Guard) Tick() error {
 		}
 		g.mu.Unlock()
 		if s.FreeMiB() < g.cfg.HeadroomMiB {
+			if g.evictServerless("free VRAM below headroom", s) { // D10: guests first, the engine only if that was not enough
+				return nil
+			}
 			g.reclaim(s, own)
 		}
 	case StStopped, StYielded:
@@ -418,7 +432,9 @@ func (g *Guard) Snapshot() Snapshot {
 		tensorSplit = opts.TensorSplit
 		rpcPort = opts.RPCPort
 	}
-	osUser := est.OSUserFromEngine(g.last.UsedMiB*mib, w, kv, c)
+	used := g.last.UsedMiB
+	used -= min64(used, g.serverlessMiB) // Serverless guests are accounted for on their own, not as "OS / other users"
+	osUser := est.OSUserFromEngine(used*mib, w, kv, c)
 	ev := make([]Event, len(g.events))
 	copy(ev, g.events)
 	return Snapshot{
@@ -426,7 +442,7 @@ func (g *Guard) Snapshot() Snapshot {
 		Buckets: est.NewBuckets(g.last.TotalMiB*mib, osUser, w, kv, c, g.cfg.HeadroomMiB*mib),
 		Events:  ev, Headroom: g.cfg.HeadroomMiB, Updated: g.now(), Model: baseName(model), Lora: baseName(lora),
 		Mode: mode, RPCServers: rpcServers, TensorSplit: tensorSplit, RPCPort: rpcPort,
-		Switching: g.switching,
+		Switching: g.switching, ServerlessMiB: g.serverlessMiB,
 	}
 }
 
@@ -440,6 +456,7 @@ func min64(a, b uint64) uint64 {
 // Run ticks until stop is closed, adapting the cadence to how close the user is
 // to the headroom (see NextInterval).
 func (g *Guard) Run(stop <-chan struct{}) {
+	go g.pollServerless(stop)
 	failing := false
 	for {
 		// A failed GPU sample is logged when it starts and when it ends, not once per tick.

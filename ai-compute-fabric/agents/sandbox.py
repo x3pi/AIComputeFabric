@@ -26,7 +26,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 class SandboxError(RuntimeError):
@@ -158,6 +158,10 @@ class CallRefused(SandboxError):
     """The before_run hook refused the call (e.g. an earlier delivery already started it). Nothing ran."""
 
 
+class NoCapacity(SandboxError):
+    """Admission refused: starting this container would leave less than the headroom (or lack the requested VRAM). Nothing ran."""
+
+
 class SandboxBusy(SandboxError):
     """No warm container is free and the pool is at capacity (caller should queue or evict)."""
 
@@ -232,6 +236,7 @@ class GpuDockerSandbox(DockerSandbox):
         return ["docker", "run", "--rm", "-i", "--name", name,
                 "--label", "aicf.sl=1", "--label", f"aicf.worker={worker_id}", "--label", f"aicf.tenant={key.tenant_id}",
                 "--label", f"aicf.env={key.env_hash[:16]}", "--label", f"aicf.fn={key.fn_id}",
+                "--label", f"aicf.gpu={limits.gpu_index if limits.gpu_index is not None else 'none'}",
                 "--network", "none", "--read-only", "--cap-drop", "ALL", "--pids-limit", str(int(limits.pids)),
                 "--memory", mem, "--memory-swap", mem, "--cpus", str(float(limits.cpus)), "--user", "65534:65534",
                 *(["--security-opt", "no-new-privileges"] if self.no_new_privileges else []),
@@ -254,8 +259,10 @@ class WarmContainer:
         self.loaded: set = set()
         self.dead = False
         self.killed_by_us = False
+        self.cid: Optional[str] = None
+        self.kill_reason: Optional[str] = None      # why WE stopped it (evicted / vram_limit): reported to the caller instead of 'exited with 137'
         self.proc: Optional[subprocess.Popen] = None
-        self._err = deque(maxlen=64)
+        self._err: deque[str] = deque(maxlen=64)
 
     # -- lifecycle
     def start(self, cmd: list) -> None:
@@ -271,16 +278,19 @@ class WarmContainer:
             raise SandboxError("runner did not announce readiness")
 
     def _drain(self) -> None:
+        if self.proc is None or self.proc.stderr is None:
+            return
         for line in iter(self.proc.stderr.readline, b""):
             self._err.append(line.decode(errors="replace").rstrip()[-300:])
 
     def stderr_tail(self) -> str:
         return "\n".join(list(self._err)[-8:])[-1000:]
 
-    def kill(self) -> None:
+    def kill(self, reason: Optional[str] = None) -> None:
         if not self.dead:
             self.dead = True
             self.killed_by_us = True
+            self.kill_reason = reason
         subprocess.run(["docker", "kill", self.name], capture_output=True)
         if self.proc is not None:
             try:
@@ -292,6 +302,7 @@ class WarmContainer:
     # -- framing
     def _read_exact(self, n: int, deadline: float) -> bytes:
         buf = bytearray()
+        assert self.proc is not None and self.proc.stdout is not None
         fd = self.proc.stdout.fileno()
         while len(buf) < n:
             left = deadline - time.monotonic()
@@ -318,9 +329,12 @@ class WarmContainer:
             self.kill()
             raise SandboxError(f"timed out after {self.limits.timeout_s}s") from None
         except EOFError:
-            rc = self.proc.poll()
+            rc = self.proc.poll() if self.proc is not None else None
             self.dead = True
-            why = "killed, most likely out of memory (exit 137)" if rc == 137 and not self.killed_by_us else f"exited with {rc}"
+            if self.kill_reason:
+                why = f"stopped by the worker: {self.kill_reason}"
+            else:
+                why = "killed, most likely out of memory (exit 137)" if rc == 137 and not self.killed_by_us else f"exited with {rc}"
             raise SandboxError(f"container {why}: {self.stderr_tail()}") from None
 
     def call(self, req: dict) -> dict:
@@ -329,11 +343,16 @@ class WarmContainer:
         if len(body) > self.limits.max_frame_bytes:
             raise SandboxError(f"request of {len(body)} bytes exceeds {self.limits.max_frame_bytes}")
         if self.dead:
+            if self.killed_by_us:
+                raise SandboxError(f"container stopped by the worker: {self.kill_reason or 'evicted'}")
             raise SandboxError("container is not running")
         try:
+            assert self.proc is not None and self.proc.stdin is not None
             self.proc.stdin.write(struct.pack(">I", len(body)) + body)
         except (BrokenPipeError, OSError):
             self.dead = True
+            if self.killed_by_us:
+                raise SandboxError(f"container stopped by the worker: {self.kill_reason or 'evicted'}") from None
             raise SandboxError(f"container exited: {self.stderr_tail()}") from None
         resp = self._recv(time.monotonic() + self.limits.timeout_s)
         self.calls += 1
@@ -349,6 +368,7 @@ class WarmDockerPool:
         self.sb, self.max_containers, self.max_per_key, self.worker_id, self.clock = sandbox, max_containers, max_per_key, worker_id, clock
         self._mu = threading.Lock()
         self._by_key: dict = {}
+        self.admission: Any = None            # agents.sl_gpu.GpuAdmission; None = GPU functions cannot start at all (see GpuDockerSandbox.warm_command guard)
         self.evicted_for_capacity = 0
         self._reaper: Optional[threading.Thread] = None
         self._stop = threading.Event()
@@ -400,6 +420,15 @@ class WarmDockerPool:
                 if victim is None:
                     raise SandboxBusy(f"warm pool is full ({total}/{self.max_containers} containers, all busy)")
             name = "aicf-sl-" + uuid.uuid4().hex[:12]
+            if limits.gpu_index is not None:
+                if self.admission is None:
+                    raise SandboxBusy("GPU admission is not configured on this worker")
+                try:
+                    self.admission.reserve(name, limits.gpu_index, limits.vram_mb)  # raises NoCapacity BEFORE any container exists
+                except BaseException:
+                    if victim is not None:
+                        victim.lock.release()                                       # we never got to evict it
+                    raise
             c = WarmContainer(name, key, limits)
             c.lock.acquire()
             lst.append(c)
@@ -420,7 +449,28 @@ class WarmDockerPool:
         with self._mu:
             return any(not c.dead and c.limits.shape() == limits.shape() and sha in c.loaded for c in self._by_key.get(key, []))
 
+    def container_id(self, name: str) -> Optional[str]:
+        """Full 64-hex Docker id (what /proc/<pid>/cgroup shows). Looked up once per container."""
+        with self._mu:
+            c = next((c for lst in self._by_key.values() for c in lst if c.name == name), None)
+        if c is None or c.dead:
+            return None
+        if c.cid is None:
+            r = subprocess.run(["docker", "inspect", "--format", "{{.Id}}", name], capture_output=True, text=True, timeout=5)
+            cid = r.stdout.strip()
+            c.cid = cid if re.fullmatch(r"[0-9a-f]{64}", cid) else None
+        return c.cid
+
+    def kill_container(self, name: str, reason: str) -> bool:
+        with self._mu:
+            cs = [c for lst in self._by_key.values() for c in lst if c.name == name]
+        for c in cs:
+            c.kill(reason)
+        return bool(cs)
+
     def _forget(self, c: WarmContainer) -> None:
+        if self.admission is not None:
+            self.admission.release(c.name)
         with self._mu:
             lst = self._by_key.get(c.key, [])
             if c in lst:
@@ -451,21 +501,30 @@ class WarmDockerPool:
         self._reaper = threading.Thread(target=loop, daemon=True)
         self._reaper.start()
 
-    def kill_all(self, tenant_id: Optional[str] = None) -> list:
-        """Evict (G-RECLAIM path): one `docker kill` for every container so the whole set dies together."""
+    def kill_all(self, tenant_id: Optional[str] = None, reason: Optional[str] = None, gpu_only: bool = False, wait: bool = True) -> list:
+        """Evict (G-RECLAIM path): one `docker kill` for every container so the whole set dies together.
+        wait=False returns right after `docker kill` (the action that frees VRAM); reaping the client processes continues in the background."""
         with self._mu:
-            cs = [c for lst in self._by_key.values() for c in lst if tenant_id is None or c.key.tenant_id == tenant_id]
+            cs = [c for lst in self._by_key.values() for c in lst
+                  if (tenant_id is None or c.key.tenant_id == tenant_id) and (not gpu_only or c.limits.gpu_index is not None)]
         for c in cs:
             c.dead = c.killed_by_us = True
+            c.kill_reason = reason
         if cs:
             subprocess.run(["docker", "kill", *[c.name for c in cs]], capture_output=True, timeout=30)
-        for c in cs:
-            if c.proc is not None:
-                try:
-                    c.proc.wait(timeout=10)
-                except Exception:
-                    c.proc.kill()
-            self._forget(c)
+
+        def reap():
+            for c in cs:
+                if c.proc is not None:
+                    try:
+                        c.proc.wait(timeout=10)
+                    except Exception:
+                        c.proc.kill()
+                self._forget(c)
+        if wait:
+            reap()
+        elif cs:
+            threading.Thread(target=reap, daemon=True, name="sl-reap").start()
         return [c.name for c in cs]
 
     def snapshot(self) -> list:

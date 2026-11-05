@@ -106,6 +106,11 @@ func Allowed(p Principal, r *http.Request, siteOf func(string) string) bool {
 	if p.Role == RoleOperator && (r.Method == http.MethodPost || r.Method == http.MethodPut) && strings.HasPrefix(r.URL.Path, "/api/studio/") {
 		return true
 	}
+	// Serverless: an operator may force-evict warm containers and toggle drain/enable; policy changes remain admin-only.
+	if p.Role == RoleOperator && ((r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/serverless/v1/containers/")) ||
+		(r.Method == http.MethodPost && r.URL.Path == "/api/serverless/v1/admin/state")) {
+		return true
+	}
 	if p.Role == RoleOperator && r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/workers/") {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/workers/"), "/")
 		if len(parts) == 2 && (parts[1] == "pause" || parts[1] == "resume") {

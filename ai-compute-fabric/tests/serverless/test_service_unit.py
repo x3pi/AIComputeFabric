@@ -261,3 +261,51 @@ def test_metrics_count_outcomes_and_rejections():
     err(r.svc.invoke, "stranger", req())
     text = r.svc.metrics.render()
     assert 'sl_calls_total{gpu="false",status="ok"} 1' in text and 'sl_quota_rejections_total{reason="serverless_disabled"} 1' in text
+
+
+class FakeLeases:
+    def __init__(self, granted=True, worker_id="w1"):
+        self.granted, self.worker_id = granted, worker_id
+        self.requests, self.extends, self.releases = [], [], []
+        self._n = 0
+
+    def request(self, *, idempotency_key, tenant_id, vram_bytes, ttl_ms=30000, constraint=""):
+        self._n += 1
+        self.requests.append((idempotency_key, tenant_id, vram_bytes, ttl_ms, constraint))
+        if not self.granted:
+            return {"granted": False, "reason": "no_capacity"}
+        return {"granted": True, "lease": {"lease_id": f"lease-{self._n}", "worker_id": self.worker_id}}
+
+    def extend(self, lease_id, ttl_ms=30000):
+        self.extends.append((lease_id, ttl_ms))
+        return True
+
+    def release(self, lease_id):
+        self.releases.append(lease_id)
+        return True
+
+
+def test_lease_requested_on_cold_gpu_call_not_on_warm_hit_and_renewed_only_while_alive():
+    from types import SimpleNamespace
+    r = Rig(policies={"t1": TenantPolicy(serverless_enabled=True, gpu_allowed=True, max_vram_mb=8192)}, workers=(), gpu_workers=("w1",))
+    fl = FakeLeases(granted=True, worker_id="w1")
+    r.svc.leases = fl
+    # Cold call requests 1 lease
+    r.svc.invoke("t1", req(gpu="rtx3060", vram_mb=4096, keep_warm_s=60))
+    assert len(fl.requests) == 1 and fl.requests[0][2] == 4096 * 1024 * 1024 and fl.requests[0][4] == "gpu:rtx3060"
+    assert r.inp().lease_id == "lease-1"
+    # Warm call does NOT request or extend a lease on the hot path (D3)
+    r.svc.invoke("t1", req(gpu="rtx3060", vram_mb=4096, keep_warm_s=60))
+    assert len(fl.requests) == 1 and fl.extends == []
+    # Background tick renews while worker is alive
+    assert r.svc.tick_leases() == 1 and fl.extends == [("lease-1", 30000)]
+    # Worker disappears -> tick releases the lease
+    r.workers = []
+    assert r.svc.tick_leases() == 0 and fl.releases == ["lease-1"]
+
+    # Refusal from LeaseManager maps to 503 no_capacity before dispatching to NATS
+    r.workers = [SimpleNamespace(agent_id="w1", labels=["w-w1", "gpu-sl"])]
+    fl.granted = False
+    before_tasks = len(r.tasks)
+    e = err(r.svc.invoke, "t1", req(gpu="any", vram_mb=4096))
+    assert e.status == 503 and e.code == "no_capacity" and len(r.tasks) == before_tasks

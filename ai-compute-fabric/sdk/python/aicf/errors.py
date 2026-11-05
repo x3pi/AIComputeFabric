@@ -23,7 +23,7 @@ class PythonVersionMismatch(AicfError):
 
 class QuotaExceeded(AicfError):
     def __init__(self, code: str, message: str, retry_after: int = 0):
-        super().__init__(message)
+        super().__init__(f"{code}: {message}" if code and code not in message else message)
         self.code, self.retry_after = code, retry_after
 
 
@@ -55,6 +55,10 @@ class FunctionOOM(AicfError):
 
 
 class WorkerLost(AicfError):
+    pass
+
+
+class Preempted(WorkerLost):
     pass
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import re
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -12,13 +11,12 @@ from typing import Any
 import pytest
 
 from agents.sandbox import SandboxUnavailable
-from bestofn.agents_client import ComputeAgentInfo, ComputeAgentsClient
+from bestofn.agents_client import ComputeAgentInfo
 from bestofn.planner import build_plan
-from bestofn.runner import CandidateEval, SandboxPool
-from bestofn.sampler import allocate_samples_to_agents, sample_candidates
+from bestofn.runner import SandboxPool
+from bestofn.sampler import allocate_samples_to_agents
 from bestofn.selector import select_best_candidate
 from bestofn.service import BestOfNOrchestrator
-from bestofn.test_gen import filter_executable_generated_tests
 
 BESTOFN_DIR = Path(__file__).resolve().parents[2] / "bestofn"
 

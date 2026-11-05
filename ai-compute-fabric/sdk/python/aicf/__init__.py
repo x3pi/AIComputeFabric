@@ -8,12 +8,25 @@
 
     print(square.remote(7))          # runs in an isolated sandbox on the fabric
 """
-from aicf.app import App, Function
+from pathlib import Path
+from pkgutil import extend_path
+
+__path__ = extend_path(__path__, __name__)
+_gen_aicf = Path(__file__).resolve().parents[3] / "contracts" / "gen" / "python" / "aicf"
+if _gen_aicf.is_dir() and str(_gen_aicf) not in __path__:
+    __path__.append(str(_gen_aicf))
+
+from aicf.app import App, ClsHandle, Function, FunctionCall, ModelCache, Secret, Volume, enter, exit, method
 from aicf.client import Client
 from aicf.errors import (AicfError, AuthError, ConfigError, ConnectionFailed, EnvBuildFailed, FunctionOOM, FunctionTimeout, InvalidRequest,
-                         NoCapacity, PythonVersionMismatch, QuotaExceeded, RemoteError, ServerError, WorkerLost)
+                         NoCapacity, Preempted, PythonVersionMismatch, QuotaExceeded, RemoteError, ServerError, WorkerLost)
 from aicf.image import Image
 
-__version__ = "0.1.0"
-__all__ = ["App", "Function", "Image", "Client", "AicfError", "AuthError", "ConfigError", "ConnectionFailed", "EnvBuildFailed", "FunctionOOM",
-           "FunctionTimeout", "InvalidRequest", "NoCapacity", "PythonVersionMismatch", "QuotaExceeded", "RemoteError", "ServerError", "WorkerLost"]
+__version__ = "0.2.0"
+__all__ = [
+    "App", "ClsHandle", "Function", "FunctionCall", "Image", "Client", "Volume", "ModelCache", "Secret",
+    "enter", "exit", "method",
+    "AicfError", "AuthError", "ConfigError", "ConnectionFailed", "EnvBuildFailed", "FunctionOOM",
+    "FunctionTimeout", "InvalidRequest", "NoCapacity", "Preempted", "PythonVersionMismatch",
+    "QuotaExceeded", "RemoteError", "ServerError", "WorkerLost",
+]

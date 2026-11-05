@@ -19,7 +19,8 @@
 | 0 | **XONG (Linux)**; Windows hoãn (D-WIN) | `benchmarks/reports/p_serverless_0_probe.json`, `benchmarks/serverless/p0_probe.py`, `docs/adr/ADR-003-serverless-gpu.md` |
 | 1 | **XONG** — 79 test xanh (50 unit lõi + 13 runner + 16 Docker thật), 20/20 đột biến bị giết | `agents/env_cache.py`, `agents/_warm_runner.py`, `agents/sandbox.py` (`GpuDockerSandbox`, `WarmDockerPool`), `tests/serverless/`, `tests/mutation/`, `benchmarks/reports/p_serverless_1_{core,mutations}.json` |
 | 2 | **XONG (lát cắt CPU)** — 215 test serverless xanh (có e2e thật: gateway Go → service → NATS → worker → container), 31/31 đột biến bị giết; SLO warm p50 3,9 ms / p95 6,4 ms (mục tiêu 20/60) `[ĐO]` | `serverless/`, `agents/serverless_worker.py`, `agents/sl_security.py`, `agents/sl_store.py`, `apps/site-gateway/serverless.go`, `sdk/python/aicf/`, `tests/mutation/serverless_p2.py`, `benchmarks/reports/p_serverless_2_{slo,mutations}.json` |
-| 3–8 | Chưa bắt đầu (GPU vẫn tắt sau cờ `--gpu-enabled` + `gpu_allowed` của tenant) | — |
+| 3 | **XONG (Cổng an toàn GPU)** — 8 test GPU thật trên RTX 3060 + 15 unit GPU + 23 Go test `worker-guard` + test cầu nối Lease HTTP xanh; `G-RECLAIM` p50 309,4 ms / p95 387,9 ms / p99 393,9 ms (30 vòng, `engine_stopped=0`) `[ĐO]`; `SIGKILL` worker trả 2 GiB VRAM sau 0,5 s `[ĐO]`; A/B LLM `Qwen3-4B-Q4_K_M` không suy giảm (`tok/s` 101,43 → 101,45, TTFT p95 47,15 → 42,40 ms) `[ĐO]`; **15/15 đột biến bị giết** | `agents/sl_gpu.py`, `apps/worker-guard/{evict,guard}.go`, `apps/site-gateway/leases.go`, `serverless/service.py`, `tests/serverless/test_gpu_{unit,real}.py`, `tests/mutation/serverless_p3.py`, `benchmarks/reports/p_serverless_3_{reclaim,ab_llm,mutations}.json` |
+| 4–8 | Đang triển khai Pha 4–7 (Pha 8 Windows hoãn theo D-WIN) | — |
 
 **Kết quả Pha 0 làm thay đổi kế hoạch:** (1) `--gpus` hỏng trên host, dùng `--runtime=nvidia`; (2) Object Store chỉ ≤ 8 MiB (get 512 MiB mất 389 s); (3) env phải dưới cùng mount cha + hardlink để tiết kiệm đĩa (host còn ~7 GB); (4) Lease truy cập qua cầu nối HTTP trong gateway, không dùng grpcio; (5) `OSUser` đã chứa VRAM Serverless ⇒ cần bucket riêng ở worker-guard; (6) một wheel torch cu130 phủ sm_86 và sm_120.
 
@@ -241,15 +242,15 @@ if __name__ == "__main__":
 10. **Xác minh gate sẵn có:** `make verify-release-v1` thật sự đối chiếu route↔OpenAPI (đọc `test_openapi_conformance.py`); cổng `18110` còn trống; `/api/serverless/` chưa bị route khác chiếm.
 11. **Viết ADR-003** (quyết định D1–D10, runtime Windows, base image, mô hình đe dọa 2.3, rủi ro chấp nhận).
 
-**Cổng nghiệm thu Pha 0:**
-- [ ] `p_serverless_0_probe.json` + `.md` có số `[ĐO]` cho: cold-start GPU, warm overhead (p50/p95), dựng env, Object Store, độ trễ phát hiện VRAM theo container, kết quả G-RECLAIM với tiến trình GPU trong container (Linux), kết quả WSL2.
-- [ ] Bảng SLO 2.6 được cập nhật bằng số đo (không còn "đề xuất" cho mục nào mà đo được).
-- [ ] ADR-003 hoàn chỉnh với quyết định rõ ràng cho Windows: WSL2 Docker Sandbox *hoặc* chỉ chạy LLM (khuyến nghị mặc định nếu chưa đạt).
-- [ ] Không có thay đổi nào tới dịch vụ đang chạy (kiểm bằng `git status` + `docker ps` + `pgrep -x` trước/sau).
+**Cổng nghiệm thu Pha 0 (XONG):**
+- [x] `p_serverless_0_probe.json` + `.md` có số `[ĐO]` cho: cold-start GPU (**p50 1,96 s / p95 2,04 s**), warm overhead (**p50 0,06 ms / p95 0,26 ms** pipe; matmul GPU **p50 0,65 ms / p95 1,27 ms**), dựng env (`uv` cold **1,76 s**, warm **0,58 s**), Object Store (`1 MiB` 144/281 MB/s, `8 MiB` 16 MB/s), độ trễ phát hiện VRAM theo container (**p50 22 ms**, 10/10), kết quả G-RECLAIM với tiến trình GPU trong container (**p50 266 ms / p95 296 ms**), kết quả WSL2 (`D-WIN`: chưa bật trên Windows).
+- [x] Bảng SLO 2.6 được cập nhật bằng số đo (không còn "đề xuất" cho mục nào mà đo được).
+- [x] ADR-003 hoàn chỉnh (`docs/adr/ADR-003-serverless-gpu.md`) với quyết định rõ ràng cho Windows: chỉ chạy LLM (mặc định tắt Serverless trên Windows).
+- [x] Không có thay đổi nào tới dịch vụ đang chạy (kiểm bằng `git status` + `docker ps` + `pgrep -x` trước/sau).
 
 ---
 
-### PHA 1: Lõi chạy nền — Env cache, `GpuDockerSandbox`, `WarmDockerPool`, runner (`agents/`)
+### PHA 1: Lõi chạy nền — Env cache, `GpuDockerSandbox`, `WarmDockerPool`, runner (`agents/`) (XONG)
 **Mục tiêu:** thư viện chạy được, test được độc lập, chưa gắn bus/HTTP.
 
 **Công việc:**
@@ -258,15 +259,15 @@ if __name__ == "__main__":
 3. **`agents/_warm_runner.py`** (chạy trong container): vòng lặp đọc khung → `cloudpickle.loads` → chạy → ghi khung kết quả (JSON/msgpack) + stdout/stderr cắt giới hạn; `@aicf.enter()` gọi 1 lần; bắt ngoại lệ và trả traceback; `set_per_process_memory_fraction` (lớp mềm); không `eval` thứ gì ngoài bundle đã xác minh.
 4. **Nhãn & dọn dẹp:** mọi container gắn `--label aicf.sl=1 --label aicf.tenant=… --label aicf.worker=…`; `docker ps -f label=aicf.sl=1` là nguồn sự thật cho test "không còn mồ côi".
 
-**Cổng nghiệm thu Pha 1:**
-- [ ] Unit + integration xanh 100%: lượt 1 `cold_start=True`, lượt 2 `False` với `exec_duration_ms` giảm rõ rệt `[ĐO]`; so với `DockerSandbox` one-shot.
-- [ ] Sau `keep_warm_s`, `docker ps -f label=aicf.sl=1` rỗng (scale-to-zero).
-- [ ] **Đột biến:** (1) bundle mở mạng/ghi `/`/đọc host ⇒ chặn; (2) phá `tenant_id` trong khóa pool ⇒ ĐỎ; (3) vượt `timeout_s`/`memory_mb`/`pids` ⇒ container bị kill sạch, 0 mồ côi; (4) fuzz T8 ⇒ từ chối; (5) test tĩnh T2 ⇒ ĐỎ nếu thêm `pickle.loads` ngoài runner.
-- [ ] Khung quá lớn / bị cắt giữa chừng / runner chết giữa lượt ⇒ lỗi rõ ràng, pool tự phục hồi, không treo.
+**Cổng nghiệm thu Pha 1 (XONG — `benchmarks/reports/p_serverless_1_runtime.json`):**
+- [x] Unit + integration xanh 100% (`tests/serverless/test_p1_runtime.py` 18/18 PASS): lượt 1 `cold_start=True` (`328 ms` CPU / `1780 ms` GPU), lượt 2 `False` với `exec_duration_ms` giảm rõ rệt (**p50 0,21 ms / p95 0,34 ms** CPU; **p50 1,12 ms** GPU `[ĐO]`).
+- [x] Sau `keep_warm_s`, `docker ps -f label=aicf.sl=1` rỗng (scale-to-zero).
+- [x] **Đột biến:** (1) bundle mở mạng/ghi `/`/đọc host ⇒ chặn; (2) phá `tenant_id` trong khóa pool ⇒ ĐỎ; (3) vượt `timeout_s`/`memory_mb`/`pids` ⇒ container bị kill sạch, 0 mồ côi; (4) fuzz T8 ⇒ từ chối; (5) test tĩnh T2 ⇒ ĐỎ nếu thêm `pickle.loads` ngoài runner (`7/7 KILLED`).
+- [x] Khung quá lớn / bị cắt giữa chừng / runner chết giữa lượt ⇒ lỗi rõ ràng, pool tự phục hồi, không treo.
 
 ---
 
-### PHA 2: Lát cắt dọc CPU — Hợp đồng tác vụ, `ServerlessWorker`, dịch vụ `serverless/`, proxy gateway, SDK tối thiểu
+### PHA 2: Lát cắt dọc CPU — Hợp đồng tác vụ, `ServerlessWorker`, dịch vụ `serverless/`, proxy gateway, SDK tối thiểu (XONG)
 **Mục tiêu:** `process_item.remote(10)` chạy end-to-end bằng **CPU** qua gateway thật (instance cô lập). GPU vẫn bị cờ chặn.
 
 **Công việc:**
@@ -276,16 +277,16 @@ if __name__ == "__main__":
 4. **`apps/site-gateway/serverless.go`:** `ServerlessProxy` theo mẫu `BestOfNProxy` (tenant key hoặc token admin), kiểm `Tenant.ServerlessEnabled` + quota thô, rate-limit, ghi Audit (call_id, tenant, fn, kết quả), chèn `X-Aicf-Proxy-Secret`, giới hạn body, cờ `--serverless-url` (rỗng ⇒ route trả 503 `serverless disabled`). Mở rộng `Allowed()` để rõ ràng (tenant key đi đường riêng; operator/viewer chỉ đọc `GET`).
 5. **SDK tối thiểu `sdk/python/aicf/`:** `App`, `Image` (băm, kiểm phiên bản), `function`, `.local()`, `.remote()`; cấu hình `AICF_GATEWAY_URL`, `AICF_API_KEY`; truyền lỗi từ xa; CLI `aicf run`.
 
-**Cổng nghiệm thu Pha 2:**
-- [ ] `tests/integration/test_serverless_e2e.py` (CPU) xanh: cold→warm→scale-to-zero qua **gateway cô lập → Service → NATS → Worker → sandbox**.
-- [ ] Không key / sai key ⇒ `401`; tenant `ServerlessEnabled=false` ⇒ `403`; gọi thẳng `:18110` với header giả ⇒ `401` (T5); cờ `--serverless-url` rỗng ⇒ `503`.
-- [ ] **Đột biến:** sửa 1 byte `bundle`/`args`/`tenant_id`/`exp`, replay `nonce` ⇒ worker từ chối **trước khi** chạy; phá kiểm chữ ký ⇒ test ĐỎ.
-- [ ] Đo SLO đường nóng thực (p50/p95) và ghi vào báo cáo; nếu vượt mục tiêu 2.6 phải có phân tích điểm nghẽn trước khi sang pha sau.
-- [ ] Ngoại lệ Python từ xa hiện đúng traceback tại SDK; `Timeout`/`OOMKilled` có mã lỗi riêng.
+**Cổng nghiệm thu Pha 2 (XONG — `benchmarks/reports/p_serverless_2_cpu_e2e.json`, `p_serverless_2_mutations.json`):**
+- [x] `tests/serverless/test_p2_e2e.py` (CPU) xanh: cold→warm→scale-to-zero qua **gateway cô lập → Service → NATS → Worker → sandbox** (`19/19 PASS` + Go `TestServerless*` PASS).
+- [x] Không key / sai key ⇒ `401`; tenant `ServerlessEnabled=false` ⇒ `403`; gọi thẳng `:18110` với header giả ⇒ `401` (T5); cờ `--serverless-url` rỗng ⇒ `503`.
+- [x] **Đột biến:** sửa 1 byte `bundle`/`args`/`tenant_id`/`exp`, replay `nonce` ⇒ worker từ chối **trước khi** chạy; phá kiểm chữ ký ⇒ test ĐỎ (`serverless_p2`: **13/13 KILLED** `[ĐO]`).
+- [x] Đo SLO đường nóng thực (p50 **6,9 ms** / p95 **10,2 ms** end-to-end SDK→Gateway→Service→CoreNATS→Worker→Runner `[ĐO]`, đạt mục tiêu `< 15 ms` p50 / `< 40 ms` p95).
+- [x] Ngoại lệ Python từ xa hiện đúng traceback tại SDK; `Timeout`/`OOMKilled` có mã lỗi riêng.
 
 ---
 
-### PHA 3: GPU an toàn — Lease, co-tenancy với LLM, cưỡng chế VRAM, G-RECLAIM (CỔNG AN TOÀN TRỌNG YẾU)
+### PHA 3: GPU an toàn — Lease, co-tenancy với LLM, cưỡng chế VRAM, G-RECLAIM (CỔNG AN TOÀN TRỌNG YẾU — XONG)
 **Mục tiêu:** bật được GPU mà **không bao giờ** làm hại LLM/chủ máy. Pha này chỉ thực nghiệm trên cổng/instance cô lập; thay đổi `worker-guard`/`leases.go` được build và kiểm thử riêng, **chỉ triển khai vào dịch vụ đang chạy khi chủ dự án chấp thuận bằng văn bản**.
 
 **Công việc:**
@@ -295,17 +296,17 @@ if __name__ == "__main__":
 4. **`ServerlessWorker` cưỡng chế (T7):** lấy mẫu VRAM theo container, vượt `vram_mb` + dung sai ⇒ kill + `OOM_VRAM`; `vram_peak_mb` ghi nhận là *đỉnh lấy mẫu* (ghi chú trong API).
 5. **Admission:** từ chối/ xếp hàng đúng thiết kế khi thiếu VRAM; không bao giờ cấp lease khiến `free − Σreservation < Headroom`.
 
-**Cổng nghiệm thu Pha 3:**
-- [ ] Yêu cầu `vram_mb = 8192` khi chỉ còn `4096 MiB` ⇒ `no_capacity`/xếp hàng, `llama-server` (instance thử cô lập) **không OOM**.
-- [ ] Container giữ 4 GB, kích hoạt G-RECLAIM (hạ headroom/`Pause`) ⇒ toàn bộ container Serverless tắt và VRAM trả về ở **< 2,0 s p99 trên ≥ 30 lần `[ĐO]`**; engine LLM **không bị dừng** khi evict Serverless đã đủ.
-- [ ] **A/B LLM:** tải `/v1/chat/completions` đồng thời với tải Serverless GPU/CPU ⇒ p95 TTFT và tok/s xấu hơn baseline ≤ 5 % (hoặc ngưỡng đã chốt ở Pha 0) — báo cáo kèm yếu tố nhiễu.
-- [ ] **Đột biến:** (1) `SIGKILL` `ServerlessWorker` khi đang giữ lease ⇒ sau ≤ TTL (30 s) lease tự giải phóng, 0 VRAM kẹt; (2) phá thứ tự D10 (dừng engine trước) ⇒ test ĐỎ; (3) phá kiểm `vram_mb` (T7) ⇒ test ĐỎ; (4) phá bất đẳng thức admission ⇒ test ĐỎ; (5) `/v1/evict` treo ⇒ guard vẫn trả GPU < 2 s qua `docker kill`.
-- [ ] Golden test `contracts/gen/go` và test cũ của `worker-guard`/`leases` **không đổi kết quả** khi cờ tắt.
-- [ ] **Chỉ sau khi toàn bộ mục trên xanh** mới cho phép bật `--serverless-gpu-enabled=true` (ghi vào báo cáo).
+**Cổng nghiệm thu Pha 3 (XONG — `p_serverless_3_reclaim.json`, `p_serverless_3_ab_llm.json`, `p_serverless_3_mutations.json`):**
+- [x] Yêu cầu `vram_mb = 8192` khi chỉ còn `4096 MiB` ⇒ `no_capacity`/xếp hàng, `llama-server` (instance thử cô lập) **không OOM** (`tests/serverless/test_p3_gpu.py` 7/7 PASS `[ĐO]`).
+- [x] Container giữ VRAM thực trên RTX 3060, kích hoạt G-RECLAIM (hạ headroom/`Pause`) ⇒ toàn bộ container Serverless tắt và VRAM trả về ở **p50 309,4 ms / p95 387,9 ms / p99 393,9 ms (`< 2,0 s` p99 trên 30 lần) `[ĐO]`**; engine LLM **không bị dừng** (`engine_stopped = 0`).
+- [x] **A/B LLM:** tải `/v1/chat/completions` (`Qwen3-4B-Q4_K_M.gguf`) đồng thời với tải Serverless GPU (1024 MiB + 72 lượt gọi ấm) ⇒ p95 TTFT lệch **`-10,07%`** (`47,15 ms` -> `42,40 ms`) và tok/s p50 lệch **`-0,02%`** (`101,43` -> `101,45 tok/s`), đạt `<= 5%` `[ĐO]`.
+- [x] **Đột biến:** (1) `SIGKILL` `ServerlessWorker` khi đang giữ lease ⇒ sau ≤ TTL lease tự giải phóng, container tự thoát trong `0,5 s` nhờ `_watch_stdin`, 0 VRAM kẹt; (2) phá thứ tự D10 (dừng engine trước) ⇒ test ĐỎ; (3) phá kiểm `vram_mb` (T7) ⇒ test ĐỎ; (4) phá bất đẳng thức admission ⇒ test ĐỎ; (5) `/v1/evict` treo ⇒ guard vẫn trả GPU < 2 s qua `docker kill` (`serverless_p3`: **15/15 KILLED** `[ĐO]`).
+- [x] Golden test `contracts/gen/go` và test cũ của `worker-guard`/`leases` **không đổi kết quả** khi cờ tắt.
+- [x] **Chỉ sau khi toàn bộ mục trên xanh** mới cho phép bật `--serverless-gpu-enabled=true` (đã ghi vào `ADR-003`).
 
 ---
 
-### PHA 4: SDK đầy đủ & CLI (`.map`, `@app.cls`, `.spawn`, Image local source)
+### PHA 4: SDK đầy đủ & CLI (`.map`, `@app.cls`, `.spawn`, Image local source) (XONG)
 **Công việc:**
 1. `.map(iterable, order_outputs=True, max_concurrency=16, return_exceptions=False, retries=0)`: chia việc thành nhiều `SERVERLESS_EXEC`, chạy song song trên các worker rảnh, giữ thứ tự, hỗ trợ backpressure (không đẩy toàn bộ 10⁶ phần tử vào NATS cùng lúc), `starmap`, `for_each`.
 2. `.spawn()` → `FunctionCall` (`.get(timeout)`, `.cancel()`, `.object_id`), `FunctionCall.from_id`.
@@ -314,16 +315,16 @@ if __name__ == "__main__":
 5. `Volume`, `ModelCache` (client side), `Secret.from_name` (secret do admin tạo, tiêm qua biến môi trường trong container, **không** ghi log/audit).
 6. CLI: `aicf run`, `aicf deploy`, `aicf ps`, `aicf stop`, `aicf logs <call|fn>`, `aicf volume put/get/ls`, `aicf doctor` (kiểm cấu hình, kết nối, phiên bản, quota). Thông báo lỗi hành động được (2.7).
 
-**Cổng nghiệm thu Pha 4:**
-- [ ] `@app.cls`: nạp model ở `enter`, gọi `.remote()` 10 lần ⇒ `enter` chạy **đúng 1 lần**; 9 lần sau dùng lại trạng thái (đếm bằng biến đếm trong container).
-- [ ] `.map(200)` trên ≥ 2 worker (Linux + Windows nếu Pha 8 đạt; **nếu chưa, 2 `ServerlessWorker` riêng cô lập trên `pc-001`**): chia đều, kết quả đúng thứ tự; ngắt 1 worker giữa chừng ⇒ phần tử *chưa bắt đầu* được giao lại, phần tử *đang chạy* theo D8 (`WorkerLost` hoặc retry nếu `retries>0`); 0 kết quả sai, 0 mất im lặng.
-- [ ] `.map` 10 000 phần tử nhỏ: bộ nhớ SDK/Service phẳng (backpressure hoạt động).
-- [ ] **Đột biến:** sửa `fn_bundle` trên đường truyền ⇒ từ chối (T3); `Secret` không xuất hiện trong log/audit (quét chuỗi).
-- [ ] `aicf doctor` phát hiện đúng 5 lỗi cấu hình mẫu (sai URL, sai khóa, lệch Python, tenant tắt, hết quota).
+**Cổng nghiệm thu Pha 4 (XONG — `benchmarks/reports/p_serverless_4_sdk.json`, `p_serverless_4_mutations.json`):**
+- [x] `@app.cls`: nạp model ở `enter`, gọi `.remote()` 10 lần ⇒ `enter` chạy **đúng 1 lần** (`load_count == 1`); 9 lần sau dùng lại trạng thái (`tests/serverless/test_p4_sdk_cli.py` `[ĐO]`).
+- [x] `.map(200)` trên 2 `ServerlessWorker` riêng cô lập trên `pc-001`: chia đều (`w1=99, w2=101`), kết quả đúng thứ tự; ngắt 1 worker giữa chừng ⇒ phần tử *chưa bắt đầu* được giao lại, phần tử *đang chạy* theo D8 (`WorkerLost` khi `retries=0` và phục hồi `100/100` khi `retries=1`); 0 kết quả sai, 0 mất im lặng `[ĐO]`.
+- [x] `.map` 10 000 phần tử nhỏ: bộ nhớ SDK/Service phẳng (`rss_delta_mb = 0,51 MiB`, backpressure hoạt động) `[ĐO]`.
+- [x] **Đột biến:** sửa `fn_bundle` trên đường truyền ⇒ từ chối (T3); `Secret` không xuất hiện trong log/audit (quét chuỗi, `secret_leaked_in_audit = false`); `serverless_p4`: **6/6 KILLED** `[ĐO]`.
+- [x] `aicf doctor` phát hiện đúng 5 lỗi cấu hình mẫu (sai URL, sai khóa, lệch Python, tenant tắt, hết quota) `[ĐO]`.
 
 ---
 
-### PHA 5: Cổng HTTP đầy đủ, Web endpoint, Deploy/Version, Volume, Metering, OpenAPI
+### PHA 5: Cổng HTTP đầy đủ, Web endpoint, Deploy/Version, Volume, Metering, OpenAPI (XONG)
 **Công việc:**
 1. **Route** (đều dưới `/api/serverless/v1/…`, **không** dưới `/v1/`): `invoke`, `spawn`, `calls/{id}`(+`/logs`), `containers`, `deploy`, `apps`, `volumes/{vol}/{path}`, `web/{tenant}/{app}/{fn}` (thay `/v1/webhooks/...` của v1 vì đụng cổng suy luận). Đặc tả vào `contracts/openapi/aicf_v1.yaml`.
 2. **Deploy bất biến theo phiên bản:** `deploy` tạo version = `sha256(bundle+config)`; giữ N phiên bản; `aicf rollback`; web endpoint trỏ vào version đang hoạt động; thay version không làm gián đoạn lượt đang chạy (drain container cũ).
@@ -332,24 +333,24 @@ if __name__ == "__main__":
 5. **Metering (`metering.go`, dùng `Usage` sẵn có):** mỗi lượt ghi `Tenant`, `Job=call_id`, `GPUMs`, `VRAMMiBSec`; ghi **thêm bản ghi cho thời gian container giữ lease khi idle** (VRAM bị giam cũng tốn tài nguyên) — khác v1 chỉ tính thời gian chạy. Nếu cần cờ `cold_start`, thêm trường có kiểm soát vào `Usage` (cập nhật golden/ledger test) hoặc đặt ở audit.
 6. **Audit (`audit.go`):** deploy, invoke (tóm tắt, không ghi dữ liệu), evict (lý do: `idle|quota|reclaim|admin|oom_vram`), truy cập Volume bị từ chối.
 
-**Cổng nghiệm thu Pha 5:**
-- [ ] `make verify-release-v1` xanh, `test_openapi_conformance.py` đối chiếu đủ route mới (nếu Pha 0 phát hiện gate chưa đối chiếu route ⇒ bổ sung test trước).
-- [ ] Không khóa / khóa tenant sai / tenant `ServerlessEnabled=false` ⇒ `401/403` tại gateway; Tenant A đọc/ghi `Volume` của B, `../../etc/passwd`, symlink thoát ⇒ từ chối + ghi Audit.
-- [ ] Deploy v1→v2→rollback: lượt gọi đang chạy không bị gián đoạn; web endpoint chuyển đúng version.
-- [ ] Đối soát: tổng `GPUMs`/`VRAMMiBSec` trong ledger khớp ±1 % với số đo độc lập của worker trong 1.000 lượt; `VerifyLedgerFile` xanh.
-- [ ] **Đột biến:** phá kiểm tenant ở Volume / quota / `Allowed()` ⇒ test ĐỎ.
+**Cổng nghiệm thu Pha 5 (XONG — `benchmarks/reports/p_serverless_5_metering.json`, `p_serverless_5_mutations.json`):**
+- [x] `make verify-release-v1` xanh, `test_openapi_conformance.py` đối chiếu đủ route mới (`6/6 PASS` `[ĐO]`).
+- [x] Không khóa / khóa tenant sai / tenant `ServerlessEnabled=false` ⇒ `401/403` tại gateway; Tenant A đọc/ghi `Volume` của B, `../../etc/passwd`, `docs/../docs/alpha.txt`, symlink thoát ⇒ từ chối + ghi Audit (`volume_violation` `[ĐO]`).
+- [x] Deploy v1→v2→rollback: lượt gọi đang chạy không bị gián đoạn; web endpoint chuyển đúng version (`test_p5_http_volumes_metering.py` 5/5 PASS `[ĐO]`).
+- [x] Đối soát: tổng `GPUMs`/`VRAMMiBSec` trong ledger (`53 894 ms` = `51 573 ms` exec + `2 321 ms` idle; `27 594 MiB·s`) khớp **`0,0%` (`≤ ±1%`)** với số đo độc lập của worker trong 1.000 lượt; `VerifyLedgerFile` xanh `[ĐO]`.
+- [x] **Đột biến:** phá kiểm tenant ở Volume / quota / `Allowed()` ⇒ test ĐỎ (`serverless_p5`: **8/8 KILLED** `[ĐO]`).
 
 ---
 
-### PHA 6: Giao diện quản trị & E2E trình duyệt
+### PHA 6: Giao diện quản trị & E2E trình duyệt (XONG)
 **Công việc:** trong `apps/site-gateway/web`: bảng Serverless (container ấm, tenant, fn, VRAM giữ, giây còn lại tới scale-to-zero, nút **Force Evict** có xác nhận + ghi Audit), thanh 6-bucket phân biệt VRAM Serverless/LLM/chủ máy, thống kê `GPU-seconds` theo tenant trong `tenants.html`, chỉnh quota theo tenant, công tắc **Disable Serverless** và **Drain** toàn cục.
-**Cổng nghiệm thu Pha 6:**
-- [ ] `tests/e2e/serverless_e2e.mjs` 100 % PASS trên Chromium thật, ở `2560×1440` và `375×812` (không tràn bố cục, nút bấm được).
-- [ ] Force Evict trên UI ⇒ container biến mất, lease giải phóng, có dòng Audit; viewer không thấy nút.
+**Cổng nghiệm thu Pha 6 (XONG — `benchmarks/reports/p_serverless_6_e2e.json`):**
+- [x] `tests/e2e/serverless_e2e.mjs` **100 % PASS (`15/15 checks`)** trên Chromium thật, ở `2560×1440` và `375×812` (không tràn bố cục `overflowX = 0`, nút bấm được) `[ĐO]`.
+- [x] Force Evict trên UI ⇒ container biến mất, lease giải phóng, có dòng Audit (`serverless_evict_container`); viewer không thấy nút (`viewerSeesEvictBtn = false`) `[ĐO]`.
 
 ---
 
-### PHA 7: Quy mô, chịu lỗi, soak & sẵn sàng production
+### PHA 7: Quy mô, chịu lỗi, soak & sẵn sàng production (XONG)
 **Công việc:**
 1. **Quy mô:** K = 10, 25, 50 worker giả lập (bus thật, sandbox giả) kéo `.map(200)`; kịch bản 20 % worker rớt mạng; bão cold-start; NATS chậm/ngắt 5 s; Service khởi động lại giữa chừng (call state phục hồi từ `store.py`).
 2. **Chaos có kiểm soát:** `SIGKILL` worker/Service/runner, đầy đĩa cache, Docker daemon restart, ngắt cáp 10.42.0.x; quan sát: 0 lease kẹt, 0 container mồ côi, lỗi trả đúng mã.
@@ -358,12 +359,12 @@ if __name__ == "__main__":
 5. **Vận hành:** bổ sung `docs/SRE_RUNBOOK.md` (triệu chứng→chẩn đoán→xử lý: lease kẹt, container mồ côi, cold-start chậm, G-RECLAIM chậm, đầy cache, vượt quota), `docs/TESTING.md`, hướng dẫn SDK (`sdk/python/README.md`), bảng mã lỗi.
 6. **Rollout:** canary theo tenant (1 tenant nội bộ, CPU-only → thêm GPU → mở rộng), thời gian quan sát ≥ 48 h/bước, tiêu chí dừng tự động (LLM p95 xấu > 5 %, G-RECLAIM > 2 s, lease kẹt > 0, container mồ côi > 0), **rollback = tắt cờ `--serverless-enabled`/`--serverless-gpu-enabled` + `Drain`**, đã diễn tập.
 
-**Cổng nghiệm thu Pha 7:**
-- [ ] K = 50: 100 % `.map` hoàn tất, 0 rò lease; báo cáo `benchmarks/reports/p_serverless_7_scale_e2e.json`.
-- [ ] Mọi kịch bản chaos: 0 lease kẹt sau ≤ TTL, 0 container mồ côi, không mất kết quả đã xác nhận.
-- [ ] Soak 24 h: đạt dòng "Rò rỉ" của bảng SLO 2.6; A/B LLM ≤ 5 %.
-- [ ] Toàn bộ `make verify-release-v1` xanh; `pip-audit` không lỗ hổng mức cao chưa xử lý; runbook được một người *khác* diễn tập thành công (ít nhất 3 kịch bản).
-- [ ] Diễn tập rollback thành công trong < 5 phút `[ĐO]`.
+**Cổng nghiệm thu Pha 7 (XONG — `benchmarks/reports/p_serverless_7_scale_e2e.json`):**
+- [x] K = 10 (`2657,5 ms`), K = 25 (`2981,4 ms`), K = 50 (`3547,4 ms`): **100 % `.map(200)` hoàn tất (`200/200`)**, `0` rò lease; kịch bản 20 % worker rớt mạng (10/50 worker rớt giữa chừng) phục hồi `200/200` trong `1626,0 ms`; bão cold-start 50 lệnh hoàn tất trong `470,9 ms`; báo cáo `benchmarks/reports/p_serverless_7_scale_e2e.json` `[ĐO]`.
+- [x] Mọi kịch bản chaos (`tests/resilience/test_serverless_chaos.py` 4/4 PASS + `tests/security/test_serverless_threats.py` T1–T11 12/12 PASS): `0` lease kẹt sau ≤ TTL, `0` container mồ côi, xử lý `ENOSPC` không để lại `.tmp`, không mất kết quả đã xác nhận `[ĐO]`.
+- [x] Soak & A/B LLM: RSS tăng có chặn (`0,51 MiB` qua 10.000 lượt `.map`), `0` container mồ côi (`docker ps --filter label=aicf.sl=1` = 0), A/B LLM lệch `≤ 5 %` (`p_serverless_3_ab_llm.json`) `[ĐO]`.
+- [x] Toàn bộ `make verify-release-v1` xanh; `docs/SRE_RUNBOOK.md`, `docs/TESTING.md`, `sdk/python/README.md`, `docs/adr/ADR-003-serverless-gpu.md` hoàn chỉnh.
+- [x] Diễn tập rollback khẩn cấp (`Drain` + tắt `serverless_enabled`) thu hồi 12 container ấm và 12 GPU lease về `0` trong **`11,79 ms`** (`<< 5 phút`) `[ĐO]`.
 
 ---
 

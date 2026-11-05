@@ -257,6 +257,11 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 			who(w, r, auth)
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, "/api/serverless/v1/_lease/") {
+			// Internal lease bridge (ADR-003 D-LEASE-HTTP): LeaseHTTPHandler verifies X-Aicf-Proxy-Secret with constant-time HMAC equality.
+			mux.ServeHTTP(w, r)
+			return
+		}
 		r.Header.Del("X-Aicf-User") // identity headers are set below from the credential, never taken from the client
 		r.Header.Del("X-Aicf-Role")
 		r.Header.Del("X-Aicf-Tenant")
@@ -278,6 +283,11 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 			}
 			if !auth.Open() {
 				if p, ok := auth.Identify(bearer); ok {
+					if !Allowed(p, r, siteOf) {
+						http.Error(w, "role "+p.Role+" may not "+r.Method+" "+r.URL.Path, http.StatusForbidden)
+						note(p, r, http.StatusForbidden)
+						return
+					}
 					r.Header.Set("X-Aicf-User", p.Name)
 					r.Header.Set("X-Aicf-Role", p.Role)
 					sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
@@ -373,6 +383,7 @@ func who(w http.ResponseWriter, r *http.Request, auth *Auth) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name": p.Name, "role": p.Role, "site": p.Site, "open": open,
 		"can": map[string]bool{"view": probe("GET", "/api/stats"), "pause": probe("POST", "/api/workers/x/pause"), "tenants": probe("POST", "/api/tenants"),
-			"studio": probe("POST", "/api/studio/x"), "studio_delete": probe("DELETE", "/api/studio/x")},
+			"studio": probe("POST", "/api/studio/x"), "studio_delete": probe("DELETE", "/api/studio/x"),
+			"serverless_evict": probe("DELETE", "/api/serverless/v1/containers/x")},
 	})
 }

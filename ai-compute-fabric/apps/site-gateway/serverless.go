@@ -33,13 +33,17 @@ func ReadSecretFile(path string) (string, error) {
 }
 
 // ServerlessProxy forwards /api/serverless/* to the Python service.
-func ServerlessProxy(target, secret string, maxBody int64) (http.Handler, error) {
+func ServerlessProxy(target, secret string, maxBody int64, leases ...*LeaseManager) (http.Handler, error) {
 	u, err := url.Parse(target)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("--serverless-url must be an http(s) URL, got %q", target)
 	}
 	if len(secret) < 16 {
 		return nil, fmt.Errorf("--serverless-secret-file is required with --serverless-url (shared secret, >= 16 chars)")
+	}
+	var leaseHandler http.Handler
+	if len(leases) > 0 && leases[0] != nil {
+		leaseHandler = LeaseHTTPHandler(leases[0], secret)
 	}
 	rp := &httputil.ReverseProxy{
 		FlushInterval: -1, // log streams (SSE) must not be buffered
@@ -63,6 +67,14 @@ func ServerlessProxy(target, secret string, maxBody int64) (http.Handler, error)
 		},
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/serverless/v1/_lease/") {
+			if leaseHandler == nil {
+				http.Error(w, "lease bridge not configured", http.StatusServiceUnavailable)
+				return
+			}
+			leaseHandler.ServeHTTP(w, r)
+			return
+		}
 		if r.ContentLength > maxBody {
 			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 			return

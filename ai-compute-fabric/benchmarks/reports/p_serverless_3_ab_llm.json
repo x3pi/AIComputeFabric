@@ -1,0 +1,65 @@
+{
+  "label": "[ĐO]",
+  "host": "pc-001",
+  "gpu": "NVIDIA GeForce RTX 3060 (12288 MiB)",
+  "model": "Qwen3-4B-Q4_K_M.gguf",
+  "n_requests_per_arm": 15,
+  "max_tokens": 48,
+  "admission_8192mb_when_insufficient_headroom": {
+    "free_mb_with_llm": 9018,
+    "headroom_mb": 4922,
+    "requested_vram_mb": 8192,
+    "refused": true,
+    "message": "8192 MiB requested but only 4096 MiB can be given without taking the 4922 MiB headroom (free 9018, already promised to starting containers 0)",
+    "llama_server_healthy_after_rejection": true
+  },
+  "baseline_llm_only": {
+    "ttft_ms_p50": 45.72,
+    "ttft_ms_p95": 47.15,
+    "tok_per_s_p50": 101.43,
+    "tok_per_s_p95": 102.25,
+    "telemetry_start": {
+      "temp_c": 52.0,
+      "clock_mhz": 1957.0,
+      "power_w": 137.0,
+      "used_mb": 2893,
+      "free_mb": 9018
+    },
+    "telemetry_end": {
+      "temp_c": 57.0,
+      "clock_mhz": 1972.0,
+      "power_w": 167.81,
+      "used_mb": 2893,
+      "free_mb": 9018
+    }
+  },
+  "cotenant_with_serverless_gpu_1024mb": {
+    "ttft_ms_p50": 41.4,
+    "ttft_ms_p95": 42.4,
+    "tok_per_s_p50": 101.45,
+    "tok_per_s_p95": 102.49,
+    "concurrent_serverless_warm_calls": 72,
+    "concurrent_serverless_errors": 0,
+    "telemetry_start": {
+      "temp_c": 49.0,
+      "clock_mhz": 1957.0,
+      "power_w": 42.57,
+      "used_mb": 4026,
+      "free_mb": 7885
+    },
+    "telemetry_end": {
+      "temp_c": 59.0,
+      "clock_mhz": 1942.0,
+      "power_w": 166.57,
+      "used_mb": 4026,
+      "free_mb": 7885
+    }
+  },
+  "comparison": {
+    "ttft_p95_degradation_pct": -10.07,
+    "tok_per_s_p50_degradation_pct": -0.02,
+    "threshold_pct": 5.0,
+    "pass": true,
+    "noise_factors": "Dynamic GPU boost clock (P2 state), thermal drift across runs, Xorg background (~15 MiB)."
+  }
+}

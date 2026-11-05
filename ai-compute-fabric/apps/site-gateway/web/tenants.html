@@ -119,6 +119,33 @@
       <tbody id="rows"></tbody>
     </table>
   </div>
+
+  <div class="card table-wrap" id="sl-tenants-card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <h2>⚡ Thống kê GPU-seconds &amp; Hạn mức Serverless theo Tenant</h2>
+        <span class="mut" id="sl-tenant-msg" style="font-size:12.5px"></span>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Tenant</th>
+          <th class="num">Lượt gọi / Idle Lease</th>
+          <th class="num">GPU-seconds</th>
+          <th class="num">VRAM MiB·s</th>
+          <th>Bật Serverless</th>
+          <th>Cho phép GPU</th>
+          <th class="num">VRAM Tối đa (MiB)</th>
+          <th class="num">Đồng thời Tối đa</th>
+          <th>Thao tác</th>
+        </tr>
+      </thead>
+      <tbody id="sl-tenant-rows">
+        <tr><td colspan="9" class="mut">Đang tải thống kê và chính sách Serverless…</td></tr>
+      </tbody>
+    </table>
+  </div>
 </main>
 <script>
 const msg = t => { document.getElementById("msg").textContent = t; };
@@ -261,6 +288,106 @@ async function load() {
       )
     );
   }
+  loadServerlessTenants(list);
+  applyReadonlyIfNotAdmin();
+}
+
+function applyReadonlyIfNotAdmin() {
+  if (!window.AICF || window.AICF.can.tenants) return;
+  document.querySelectorAll("main button, main input, main select, .card button, .card input, .card select").forEach(e => { e.disabled = true; });
+}
+
+async function loadServerlessTenants(gatewayList) {
+  const slTb = document.getElementById("sl-tenant-rows");
+  if (!slTb) return;
+  let slData = {};
+  try {
+    const r = await api("/api/serverless/v1/status");
+    if (r && r.ok) slData = await r.json();
+  } catch {}
+  const usageMap = slData.usage || {};
+  const polMap = slData.policies || {};
+  const idSet = new Set();
+  const rows = [];
+  for (const t of (gatewayList || [])) {
+    idSet.add(t.id);
+    rows.push({ id: t.id, name: t.name });
+  }
+  for (const tid of Object.keys({ ...polMap, ...usageMap })) {
+    if (!idSet.has(tid)) {
+      idSet.add(tid);
+      rows.push({ id: tid, name: tid });
+    }
+  }
+  slTb.replaceChildren();
+  if (!rows.length) {
+    slTb.append(el("tr", {}, el("td", { colspan: 9, class: "mut" }, "Chưa có dữ liệu tenant Serverless.")));
+    return;
+  }
+  const canEdit = Boolean(window.AICF && window.AICF.can.tenants);
+  for (const item of rows) {
+    const tid = item.id;
+    const u = usageMap[tid] || { calls: 0, idle_records: 0, gpu_ms: 0, gpu_seconds: 0, vram_mib_s: 0 };
+    const p = polMap[tid] || { serverless_enabled: false, gpu_allowed: false, max_vram_mb: 8192, max_concurrency: 4 };
+
+    const cbEn = el("input", { type: "checkbox", class: "sl-pol-enabled", "aria-label": "Bật Serverless " + tid });
+    cbEn.checked = !!p.serverless_enabled;
+    const cbGpu = el("input", { type: "checkbox", class: "sl-pol-gpu", "aria-label": "Cho phép GPU " + tid });
+    cbGpu.checked = !!p.gpu_allowed;
+    const inVram = el("input", {
+      type: "number", min: "0", step: "256", value: String(p.max_vram_mb ?? 8192),
+      class: "sl-pol-vram", style: "width:92px", "aria-label": "VRAM tối đa " + tid
+    });
+    const inConc = el("input", {
+      type: "number", min: "0", step: "1", value: String(p.max_concurrency ?? 4),
+      class: "sl-pol-conc", style: "width:76px", "aria-label": "Đồng thời Serverless " + tid
+    });
+    const btnSave = el("button", {
+      type: "button",
+      class: "sm primary sl-pol-save",
+      "data-tenant": tid,
+      onclick: async () => {
+        const res = await api(`/api/serverless/v1/policies/${encodeURIComponent(tid)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            serverless_enabled: cbEn.checked,
+            gpu_allowed: cbGpu.checked,
+            max_vram_mb: +inVram.value,
+            max_concurrency: +inConc.value,
+          }),
+        });
+        const m = document.getElementById("sl-tenant-msg");
+        if (res && res.ok) {
+          m.textContent = `Đã lưu hạn mức Serverless cho ${tid}.`;
+          m.className = "pill ok";
+        } else {
+          m.textContent = `Lỗi lưu hạn mức Serverless (${res ? res.status : "err"}).`;
+          m.className = "pill err";
+        }
+        loadServerlessTenants(gatewayList);
+      }
+    }, "Lưu hạn mức");
+
+    if (!canEdit) {
+      cbEn.disabled = true; cbGpu.disabled = true; inVram.disabled = true; inConc.disabled = true; btnSave.disabled = true;
+    }
+
+    slTb.append(
+      el("tr", { "data-tenant": tid },
+        el("td", {}, el("strong", {}, item.name), item.name !== tid ? el("span", { class: "mut mono", style: "margin-left:6px" }, `(${tid})`) : null),
+        el("td", { class: "num mono" }, `${u.calls || 0} lượt · ${u.idle_records || 0} idle`),
+        el("td", { class: "num mono sl-gpu-sec" }, `${Number(u.gpu_seconds || 0).toFixed(3)} s (${u.gpu_ms || 0} ms)`),
+        el("td", { class: "num mono sl-vram-mibs" }, `${u.vram_mib_s || 0} MiB·s`),
+        el("td", {}, cbEn),
+        el("td", {}, cbGpu),
+        el("td", { class: "num" }, inVram),
+        el("td", { class: "num" }, inConc),
+        el("td", {}, btnSave)
+      )
+    );
+  }
+  applyReadonlyIfNotAdmin();
 }
 
 document.getElementById("add").onsubmit = async e => {
@@ -286,10 +413,13 @@ document.getElementById("add").onsubmit = async e => {
 
 load();
 window.AICF_READY.then(() => {
+  load();
   if (window.AICF.can.tenants) return;
-  document.querySelectorAll("main button, main input, main select, .card button, .card input, .card select").forEach(e => { e.disabled = true; });
-  const b = el("div", { class: "readonly-banner", role: "status" }, "Chế độ chỉ xem: vai trò " + (window.AICF.role || "chưa xác thực") + " không được tạo/sửa/xóa người dùng hoặc đổi khóa API. Cần vai trò admin.");
-  document.body.insertBefore(b, document.body.children[1] || null);
+  applyReadonlyIfNotAdmin();
+  if (!document.querySelector(".readonly-banner")) {
+    const b = el("div", { class: "readonly-banner", role: "status" }, "Chế độ chỉ xem: vai trò " + (window.AICF.role || "chưa xác thực") + " không được tạo/sửa/xóa người dùng hoặc đổi khóa API. Cần vai trò admin.");
+    document.body.insertBefore(b, document.body.children[1] || null);
+  }
 });
 </script>
 </body>

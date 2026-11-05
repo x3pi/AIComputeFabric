@@ -2,6 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -170,4 +174,78 @@ func TestLeaseIDsAreCryptographicallyRandomCapabilities(t *testing.T) {
 	if len(a.LeaseId) < len("lease-")+22 || len(b.LeaseId) < len("lease-")+22 || a.LeaseId == b.LeaseId {
 		t.Fatalf("lease IDs must be distinct 128-bit capability tokens: %q, %q", a.LeaseId, b.LeaseId)
 	}
+}
+
+func TestLeaseHTTPBridgeRequiresSecretAndManagesLifecycle(t *testing.T) {
+	m, reg, clock := leaseRig(t, map[string]uint64{"pc-001": 8 * gib, "pc-002": 8 * gib})
+	reg.Register(&pb.RegisterRequest{WorkerId: "pc-001", GpuName: "NVIDIA GeForce RTX 3060", EngineUrl: "http://x", ParallelSlots: 1})
+	beat(reg, "pc-001", "running", 8*gib)
+	reg.Register(&pb.RegisterRequest{WorkerId: "pc-002", GpuName: "NVIDIA GeForce RTX 5070", EngineUrl: "http://x", ParallelSlots: 1})
+	beat(reg, "pc-002", "running", 8*gib)
+
+	h := LeaseHTTPHandler(m, slSecret)
+	call := func(method, path, secret, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		if secret != "" {
+			req.Header.Set("X-Aicf-Proxy-Secret", secret)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+
+	// Missing or wrong secret -> 401
+	if w := call("POST", "/api/serverless/v1/_lease/request", "", `{}`); w.Code != http.StatusUnauthorized {
+		t.Fatalf("missing secret: want 401 got %d", w.Code)
+	}
+	if w := call("POST", "/api/serverless/v1/_lease/request", "wrong-secret-0123456789", `{}`); w.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong secret: want 401 got %d", w.Code)
+	}
+
+	// Unknown GPU constraint -> no_capacity
+	wNo := call("POST", "/api/serverless/v1/_lease/request", slSecret,
+		`{"idempotency_key":"k-none","tenant_id":"acme","workload_kind":"serverless","constraint":"gpu:rtx4090","vram_required_bytes":4294967296,"ttl_ms":30000}`)
+	if wNo.Code != http.StatusOK || !strings.Contains(wNo.Body.String(), `"granted":false`) {
+		t.Fatalf("expected granted=false for unmatched gpu constraint: %d %s", wNo.Code, wNo.Body)
+	}
+
+	// Request lease with GPU constraint "gpu:rtx3060" and tenant "acme"
+	w := call("POST", "/api/serverless/v1/_lease/request", slSecret,
+		`{"idempotency_key":"k1","tenant_id":"acme","workload_kind":"serverless","constraint":"gpu:rtx3060","vram_required_bytes":4294967296,"ttl_ms":30000}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("request: %d %s", w.Code, w.Body)
+	}
+	var rep struct {
+		Granted bool         `json:"granted"`
+		Lease   *LeaseRecord `json:"lease"`
+		Reason  string       `json:"reason"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &rep); err != nil || !rep.Granted || rep.Lease == nil || rep.Lease.WorkerID != "pc-001" {
+		t.Fatalf("unexpected reply: %+v err=%v", rep, err)
+	}
+	if len(m.ActiveByTenant("acme")) != 1 || len(m.ActiveByTenant("other")) != 0 {
+		t.Fatalf("ActiveByTenant filtering broken")
+	}
+
+	// Extend lease
+	w = call("POST", "/api/serverless/v1/_lease/extend", slSecret, `{"lease_id":"`+rep.Lease.LeaseID+`","ttl_ms":30000}`)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"ok":true`) {
+		t.Fatalf("extend: %d %s", w.Code, w.Body)
+	}
+
+	// Active leases filtered by tenant
+	w = call("GET", "/api/serverless/v1/_lease/active?tenant=acme", slSecret, "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), rep.Lease.LeaseID) {
+		t.Fatalf("active: %d %s", w.Code, w.Body)
+	}
+
+	// Release lease
+	w = call("POST", "/api/serverless/v1/_lease/release", slSecret, `{"lease_id":"`+rep.Lease.LeaseID+`"}`)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"released":true`) {
+		t.Fatalf("release: %d %s", w.Code, w.Body)
+	}
+	if len(m.Active()) != 0 {
+		t.Fatalf("expected 0 active leases after release, got %d", len(m.Active()))
+	}
+	_ = clock
 }

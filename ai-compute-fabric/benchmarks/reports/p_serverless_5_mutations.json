@@ -1,0 +1,106 @@
+{
+  "phase": "serverless_p5",
+  "baseline_rc": 0,
+  "total": 8,
+  "killed": 8,
+  "failed": 0,
+  "results": [
+    {
+      "id": "P5-M01 VolumeStore path traversal (..) check disabled",
+      "file": "serverless/volumes.py",
+      "why": "VolumeStore must reject relative parent traversal (D7)",
+      "mutation": "'if rel_path.startswith(\"/\") or \"..\" in raw_parts:\\n            self._deny(tenant,' -> 'if False:\\n            self._deny(tenant, vol, rel_path, \"relative path without \\''",
+      "red_rc": 1,
+      "red_seconds": 3.2,
+      "red_tail": "================== short test summary info ============================\nFAILED tests/serverless/test_p5_http_volumes_metering.py::test_volume_tenant_isolation_traversal_symlink_and_quota\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 4 deselected in 2.73s\n",
+      "green_rc": 0,
+      "green_seconds": 3.3,
+      "status": "KILLED"
+    },
+    {
+      "id": "P5-M02 VolumeStore symlink escape check disabled",
+      "file": "serverless/volumes.py",
+      "why": "VolumeStore must reject symlinks on every path component (D7)",
+      "mutation": "'def _check_no_symlinks(self, tenant: str, vol: str, rel_path: str, base: Path, t' -> 'def _check_no_symlinks(self, tenant: str, vol: str, rel_path: str, base: Path, t'",
+      "red_rc": 1,
+      "red_seconds": 3.2,
+      "red_tail": "================== short test summary info ============================\nFAILED tests/serverless/test_p5_http_volumes_metering.py::test_volume_tenant_isolation_traversal_symlink_and_quota\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 4 deselected in 2.77s\n",
+      "green_rc": 0,
+      "green_seconds": 3.3,
+      "status": "KILLED"
+    },
+    {
+      "id": "P5-M03 VolumeStore per-tenant max_volume_bytes quota disabled",
+      "file": "serverless/volumes.py",
+      "why": "VolumeStore must enforce max_volume_bytes per tenant",
+      "mutation": "'if used - old_size + len(raw) > max_volume_bytes:' -> 'if False:'",
+      "red_rc": 1,
+      "red_seconds": 3.3,
+      "red_tail": "================== short test summary info ============================\nFAILED tests/serverless/test_p5_http_volumes_metering.py::test_volume_tenant_isolation_traversal_symlink_and_quota\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 4 deselected in 2.86s\n",
+      "green_rc": 0,
+      "green_seconds": 3.3,
+      "status": "KILLED"
+    },
+    {
+      "id": "P5-M04 ModelCacheStore allows non-admin tenants to write",
+      "file": "serverless/volumes.py",
+      "why": "ModelCache must be read-only for tenants and writable only by admin (D7)",
+      "mutation": "'if role != \"admin\":' -> 'if False:'",
+      "red_rc": 1,
+      "red_seconds": 3.3,
+      "red_tail": "=============== short test summary info ============================\nFAILED tests/serverless/test_p5_http_volumes_metering.py::test_model_cache_readonly_for_tenants_and_writable_by_admin\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 4 deselected in 2.80s\n",
+      "green_rc": 0,
+      "green_seconds": 3.1,
+      "status": "KILLED"
+    },
+    {
+      "id": "P5-M05 Web endpoint tenant authentication check disabled",
+      "file": "serverless/service.py",
+      "why": "web endpoints with requires_auth=True must enforce matching tenant API key",
+      "mutation": "'if caller_role != \"tenant\" or caller_tenant != target_tenant:' -> 'if False:'",
+      "red_rc": 1,
+      "red_seconds": 3.3,
+      "red_tail": "====== short test summary info ============================\nFAILED tests/serverless/test_p5_http_volumes_metering.py::test_deploy_v1_v2_rollback_web_endpoint_and_inflight_not_interrupted\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 4 deselected in 2.80s\n",
+      "green_rc": 0,
+      "green_seconds": 3.9,
+      "status": "KILLED"
+    },
+    {
+      "id": "P5-M06 Web endpoint JSON-only media type check disabled (T10)",
+      "file": "serverless/app.py",
+      "why": "web endpoints must reject non-JSON payloads with 415 (T10)",
+      "mutation": "'if \"application/json\" not in ctype.lower():' -> 'if False:'",
+      "red_rc": 1,
+      "red_seconds": 3.2,
+      "red_tail": "====== short test summary info ============================\nFAILED tests/serverless/test_p5_http_volumes_metering.py::test_deploy_v1_v2_rollback_web_endpoint_and_inflight_not_interrupted\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 4 deselected in 2.75s\n",
+      "green_rc": 0,
+      "green_seconds": 3.9,
+      "status": "KILLED"
+    },
+    {
+      "id": "P5-M07 Gateway RBAC allows viewer/operator arbitrary writes on /api/serverless/",
+      "file": "apps/site-gateway/rbac.go",
+      "why": "viewer must remain GET-only and operator may only evict containers or toggle drain",
+      "mutation": "'if p.Role == RoleOperator && ((r.Method == http.MethodDelete && strings.HasPrefi' -> 'if strings.HasPrefix(r.URL.Path, \"/api/serverless/\") {\\n\\t\\treturn true\\n\\t}\\n\\tif fals'",
+      "red_rc": 1,
+      "red_seconds": 0.3,
+      "red_tail": "--- FAIL: TestServerlessRBACViewerCannotEvictOrModifyState (0.00s)\n    serverless_test.go:214: viewer DELETE /api/serverless/v1/containers/c1: want 403 got 200\nFAIL\nFAIL\tgithub.com/aicf/ai-compute-fabric/apps/site-gateway\t0.012s\nFAIL\n",
+      "green_rc": 0,
+      "green_seconds": 0.3,
+      "status": "KILLED"
+    },
+    {
+      "id": "P5-M08 UsageLedger SHA-256 hash chain broken",
+      "file": "serverless/ledger.py",
+      "why": "UsageLedger hash chain must be verified by Go gcp.VerifyLedgerFile",
+      "mutation": "'return hashlib.sha256(raw).hexdigest()' -> 'return \"0\" * 64'",
+      "red_rc": 1,
+      "red_seconds": 1.2,
+      "red_tail": "ort test summary info ============================\nFAILED tests/serverless/test_p5_http_volumes_metering.py::test_metering_1000_calls_plus_idle_leases_reconciliation_and_go_verify_ledger\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 4 deselected in 0.74s\n",
+      "green_rc": 0,
+      "green_seconds": 1.2,
+      "status": "KILLED"
+    }
+  ],
+  "label": "[ĐO]"
+}

@@ -22,6 +22,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import AbstractSet
 
 DEFAULT_IMAGE = "python:3.12-slim"
 ALLOWED_PYTHON = {"3.12": DEFAULT_IMAGE}
@@ -45,6 +46,7 @@ def normalize_requirement(req: str) -> str:
     if not isinstance(req, str) or not _REQ.match(req):
         raise EnvError(f"invalid package requirement {req!r}: only 'name[extras]==version' style specifiers are allowed")
     m = re.match(rf"^({_NAME})({_EXTRAS})(.*)$", req)
+    assert m is not None
     name = re.sub(r"[-_.]+", "-", m.group(1)).lower()
     return f"{name}{m.group(2).lower()}{m.group(3)}"
 
@@ -190,7 +192,7 @@ class EnvCache:
                     total += st.st_size
         return total
 
-    def gc(self, in_use: set = frozenset()) -> list:
+    def gc(self, in_use: AbstractSet[str] = frozenset()) -> list:
         """Remove least-recently-used envs until the store is under max_bytes; never touches envs in `in_use`."""
         removed = []
         envs = sorted((p for p in (self.store / "envs").iterdir() if (p / ".ready").exists() and p.name not in in_use),

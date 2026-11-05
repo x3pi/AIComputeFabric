@@ -288,23 +288,26 @@ func TestLlamaEngineCPUAffinityAndMutationChecks(t *testing.T) {
 	}
 	validRange := fmt.Sprintf("0-%d", maxCore)
 
-	eng := &LlamaEngine{
-		Bin:           "/bin/llama-server",
-		Model:         "/models/Qwen3-30B-A3B-Q4_K_M.gguf",
-		Mode:          "smart_1gpu",
-		NCpuMoe:       24,
-		KVType:        "q8_0",
-		Ctx:           32768,
-		Parallel:      1,
-		NGL:           99,
-		Port:          18090,
-		Threads:       8,
-		ThreadsBatch:  20,
-		CPURange:      validRange,
-		CPURangeBatch: validRange,
-		CPUStrict:     true,
-		LoadMode:      "none",
+	newEng := func() *LlamaEngine {
+		return &LlamaEngine{
+			Bin:           "/bin/llama-server",
+			Model:         "/models/Qwen3-30B-A3B-Q4_K_M.gguf",
+			Mode:          "smart_1gpu",
+			NCpuMoe:       24,
+			KVType:        "q8_0",
+			Ctx:           32768,
+			Parallel:      1,
+			NGL:           99,
+			Port:          18090,
+			Threads:       8,
+			ThreadsBatch:  20,
+			CPURange:      validRange,
+			CPURangeBatch: validRange,
+			CPUStrict:     true,
+			LoadMode:      "none",
+		}
 	}
+	eng := newEng()
 	args, err := eng.Args()
 	if err != nil {
 		t.Fatalf("valid CPU affinity flags rejected: %v", err)
@@ -348,8 +351,8 @@ func TestLlamaEngineCPUAffinityAndMutationChecks(t *testing.T) {
 		func(e *LlamaEngine) { e.LoadMode = "bogus" },
 	}
 	for idx, mut := range mutations {
-		cp := *eng
-		mut(&cp)
+		cp := newEng()
+		mut(cp)
 		if _, err := cp.Args(); err == nil {
 			t.Errorf("mutation #%d should have been rejected, but Args() succeeded", idx)
 		}

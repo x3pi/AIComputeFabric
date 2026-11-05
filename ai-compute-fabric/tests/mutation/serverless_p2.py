@@ -36,7 +36,7 @@ MUTATIONS = [
     Mutation("P2-M17 concurrency limit off", Q, "if n >= p.max_concurrency:", "if False:", UNIT, "per-tenant concurrency"),
     Mutation("P2-M18 resource limits off", Q, "if req.get(field_, 0) > limit:", "if False:", UNIT, "per-tenant resource ceilings"),
     Mutation("P2-M19 warm key ignores tenant", SVC, "return (tenant, env_hash, fn_id,", 'return ("", env_hash, fn_id,', UNIT, "no cross-tenant warm reuse (T4)"),
-    Mutation("P2-M20 user errors retried", SVC, 'INFRA_FAILURES = {"worker_lost", "duplicate"}', 'INFRA_FAILURES = {"worker_lost", "duplicate", "error", "timeout"}', UNIT,
+    Mutation("P2-M20 user errors retried", SVC, 'INFRA_FAILURES = {"worker_lost", "duplicate", "evicted"}', 'INFRA_FAILURES = {"worker_lost", "duplicate", "evicted", "error", "timeout"}', UNIT,
              "only infrastructure loss is retried (D8)"),
     Mutation("P2-M21 gateway secret not checked", APP, "return hmac.compare_digest(got, secret_b)", "return True", E2E, "service trusts only the gateway (D2)"),
     Mutation("P2-M22 role check dropped", APP, 'if self.headers.get("X-Aicf-Role") != "tenant" or not tenant:', "if not tenant:", E2E, "admin token cannot invoke"),

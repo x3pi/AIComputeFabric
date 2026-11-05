@@ -119,6 +119,7 @@
     <a href="#sec-rbac">5. Phân quyền RBAC &amp; Bảo mật</a>
     <a href="#sec-reclaim">6. Bảo vệ Máy trạm &amp; Thu hồi GPU</a>
     <a href="#sec-audio">7. Audio AI (ASR · TTS · VAD · WER/CER)</a>
+    <a href="#sec-serverless">8. Serverless GPU / Python (Modal-style)</a>
   </nav>
 
   <!-- Section 1: 4-Step Quickstart -->
@@ -396,6 +397,47 @@
           <span class="workflow-step-badge">EVALUATION · vn_normalizer</span>
           <h3>Chuẩn hóa Tiếng Việt &amp; WER / CER</h3>
           <p>Tự động bung số đếm (<code class="mono">482 → bốn trăm tám mươi hai</code>), ngày tháng (<code class="mono">15/03/2026</code>) và chuẩn hóa vị trí dấu thanh (<code class="mono">hoà → hòa</code>) trước khi chấm điểm sai số từ/ký tự.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 8: Serverless GPU / Python -->
+  <section class="card" id="sec-serverless">
+    <div class="card-header">
+      <div class="card-title-group">
+        <h2>8. Nền tảng Serverless GPU / Python (Kiểu Modal.com — ADR-003)</h2>
+        <span class="pill ok">Phase 0–7 Verified</span>
+      </div>
+      <a href="serverless.html" style="text-decoration:none"><button type="button" class="sm primary">⚡ Mở trang Serverless GPU →</button></a>
+    </div>
+    <div class="workflow-grid">
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">SDK &amp; RUNTIME · WarmDockerPool</span>
+          <h3>@app.function, @app.cls &amp; .map()</h3>
+          <p>Đóng gói hàm Python bằng <code class="mono">cloudpickle</code> kèm chữ ký <code class="mono">HMAC-SHA256</code> (T3). Đường nóng qua Core NATS trực tiếp đạt độ trễ trung vị <strong>p50 6,9 ms</strong>; <code class="mono">@aicf.enter()</code> nạp model đúng 1 lần trên mỗi container ấm.</p>
+        </div>
+      </div>
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">GPU SAFETY · G-RECLAIM D10</span>
+          <h3>Ưu tiên Chủ máy &amp; Đồng thuê với LLM</h3>
+          <p>Khi máy trạm thiếu VRAM (<code class="mono">free &lt; Headroom</code>), <code class="mono">worker-guard</code> thu hồi container Serverless trước trong <strong>p95 387,9 ms</strong> (<code class="mono">&lt; 2s</code> SLO) mà không làm dừng <code class="mono">llama-server</code> (<code class="mono">engine_stopped = 0</code>).</p>
+        </div>
+      </div>
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">DEPLOY &amp; WEB ENDPOINT · T10</span>
+          <h3>Phiên bản Bất biến &amp; Rollback</h3>
+          <p>Triển khai ứng dụng theo mã băm <code class="mono">v-sha256</code>, hỗ trợ <code class="mono">POST /api/serverless/v1/web/{tenant}/{app}/{fn}</code> (JSON-only) và chuyển đổi phiên bản <code class="mono">Rollback</code> tức thì không gián đoạn lượt gọi đang chạy.</p>
+        </div>
+      </div>
+      <div class="workflow-card">
+        <div>
+          <span class="workflow-step-badge">STORAGE &amp; METERING · D7</span>
+          <h3>aicf.Volume &amp; Sổ cái GPU-seconds</h3>
+          <p>Lưu trữ <code class="mono">Volume</code> phân vùng chặt theo Tenant (chặn <code class="mono">..</code> và symlink thoát T11), đối soát cước <code class="mono">GPUMs</code> &amp; <code class="mono">VRAMMiBSec</code> cho cả thời gian chạy lẫn thời gian giữ lease ấm (<code class="mono">idle lease</code>).</p>
         </div>
       </div>
     </div>

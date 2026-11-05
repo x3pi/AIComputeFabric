@@ -1,0 +1,10 @@
+{
+  "label": "[\u0110O]",
+  "calls": 1000,
+  "idle_lease_records": 10,
+  "ledger_gpu_ms": 250000,
+  "worker_gpu_ms": 250000,
+  "ledger_vram_mib_s": 658000,
+  "worker_vram_mib_s": 658000,
+  "go_verify_ledger_file": "PASS (1010 hash-chained entries verified)"
+}

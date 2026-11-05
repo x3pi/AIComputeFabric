@@ -73,7 +73,9 @@ def sign(keys: list, inp_without_sig: dict, attempt: int = 1, ttl_s: float = 120
 
 class NonceCache:
     def __init__(self, max_entries: int = 100_000):
-        self.max, self._d, self._mu = max_entries, OrderedDict(), threading.Lock()
+        self.max = max_entries
+        self._d: OrderedDict[str, float] = OrderedDict()
+        self._mu = threading.Lock()
 
     def discard(self, nonce: str) -> None:
         with self._mu:

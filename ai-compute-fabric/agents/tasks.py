@@ -246,7 +246,7 @@ class ServerlessError(Strict):
 
 
 class ServerlessExecOut(Strict):
-    status: Literal["ok", "error", "timeout", "oom", "worker_lost", "env_failed", "bundle_missing", "bad_request", "duplicate"]
+    status: Literal["ok", "error", "timeout", "oom", "worker_lost", "env_failed", "bundle_missing", "bad_request", "duplicate", "no_capacity", "evicted"]
     result_b64: Optional[str] = None
     result_ref: Optional[str] = None
     result_format: Optional[str] = None

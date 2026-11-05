@@ -1,0 +1,949 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AICF Serverless GPU/Python — Nền tảng Thực thi Hàm & Container Ấm (Modal-style)</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="common.css">
+<style>
+.sl-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: clamp(12px, 1.3vw, 18px);
+  margin-bottom: clamp(16px, 1.8vw, 22px);
+}
+.sl-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--bd);
+  padding-bottom: 10px;
+}
+.sl-tab-btn {
+  border-radius: var(--radius-pill);
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--bd);
+  background: var(--bg-elevated);
+  color: var(--fg-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.sl-tab-btn.active {
+  background: var(--acc);
+  color: #fff;
+  border-color: var(--acc);
+}
+.sl-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  gap: 18px;
+}
+.sl-auth-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-md);
+}
+.code-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow-y: auto;
+}
+@media (max-width: 640px) {
+  .sl-auth-bar > div, .sl-auth-bar > button {
+    width: 100% !important;
+    flex: 1 1 100%;
+  }
+}
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>⚡ Serverless GPU / Python (Kiểu Modal.com)</h1>
+      <div class="sub">Thực thi hàm Python và lớp trạng thái (<code class="mono">@app.function</code>, <code class="mono">@app.cls</code>, <code class="mono">.map()</code>, <code class="mono">@app.web_endpoint</code>) trong container cô lập có GPU Lease 30s, ưu tiên thu hồi <code class="mono">G-RECLAIM &lt; 2s</code> (D10) bảo vệ chủ máy và LLM.</div>
+    </div>
+    <div class="row" id="sl-top-admin-actions">
+      <span class="pill ok" id="sl-console-state-pill">Sẵn sàng</span>
+      <button type="button" class="sm" id="sl-console-btn-drain">Bật Drain</button>
+      <button type="button" class="sm" id="sl-console-btn-enable">Tắt Serverless</button>
+      <button type="button" class="sm" id="sl-console-btn-refresh">↻ Làm mới</button>
+    </div>
+  </div>
+
+  <!-- 4 KPI Cards -->
+  <section class="sl-kpi-grid" aria-label="Chỉ số Serverless GPU">
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Trạng thái &amp; Worker</span><span>⚡</span></div>
+      <div class="kpi-val" id="sl-kpi-status">ONLINE</div>
+      <div class="kpi-foot" id="sl-kpi-workers">0 worker Serverless trực tuyến</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Container Ấm &amp; Lease VRAM</span><span>🐳</span></div>
+      <div class="kpi-val" id="sl-kpi-warm">0 container</div>
+      <div class="kpi-foot" id="sl-kpi-vram">0 MiB VRAM đang giữ</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>App Đã Triển khai</span><span>🚀</span></div>
+      <div class="kpi-val" id="sl-kpi-apps">0 app</div>
+      <div class="kpi-foot" id="sl-kpi-endpoints">0 web endpoint đang hoạt động</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><span>Tiêu thụ GPU-seconds</span><span>⏱️</span></div>
+      <div class="kpi-val" id="sl-kpi-gpusec">0.000 s</div>
+      <div class="kpi-foot" id="sl-kpi-mibs">0 MiB·s (gồm cả thực thi + giữ ấm)</div>
+    </div>
+  </section>
+
+  <!-- Tenant API Key & 1-Click Demo Setup Bar -->
+  <section class="sl-auth-bar" aria-label="Xác thực Tenant Serverless">
+    <div class="grow" style="min-width:240px">
+      <label for="sl-api-key">🔑 Khóa API Tenant (<code class="mono">aicf_...</code>) để gọi Deploy / Web Endpoint / Volume</label>
+      <input id="sl-api-key" type="password" placeholder="Dán khóa aicf_... hoặc bấm nút '⚡ Khởi tạo nhanh Tenant Demo' bên cạnh" style="width:100%">
+    </div>
+    <div style="min-width:170px">
+      <label for="sl-tenant-id">Mã Tenant hiện hành</label>
+      <input id="sl-tenant-id" placeholder="VD: demo" value="demo" style="width:100%">
+    </div>
+    <button type="button" class="sm" id="sl-btn-toggle-key">👁️ Hiện khóa</button>
+    <button type="button" class="sm primary" id="sl-btn-quick-demo">⚡ Khởi tạo nhanh Tenant Demo &amp; Bật quyền Serverless</button>
+    <span id="sl-auth-msg" class="mut" role="status" style="font-size:12.5px"></span>
+  </section>
+
+  <!-- Navigation Tabs -->
+  <div class="sl-tabs" role="tablist" aria-label="Các phân hệ Serverless">
+    <button type="button" class="sl-tab-btn active" data-tab="apps" id="tab-btn-apps">🚀 1. Ứng dụng, Deploy &amp; Web Endpoint</button>
+    <button type="button" class="sl-tab-btn" data-tab="containers" id="tab-btn-containers">🐳 2. Container Ấm, Lượt gọi &amp; Logs</button>
+    <button type="button" class="sl-tab-btn" data-tab="volumes" id="tab-btn-volumes">💾 3. Lưu trữ aicf.Volume &amp; ModelCache</button>
+    <button type="button" class="sl-tab-btn" data-tab="sdk" id="tab-btn-sdk">💻 4. Python SDK, CLI &amp; Nhật ký Kiểm toán</button>
+  </div>
+
+  <!-- TAB 1: Apps, Versioned Deploy/Rollback & Live Web Endpoint Playground -->
+  <section id="panel-apps" class="sl-tab-panel">
+    <div class="sl-split">
+      <div class="card table-wrap">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>Ứng dụng Đã Triển khai &amp; Phiên bản Bất biến</h2>
+            <span class="pill" id="sl-apps-badge">0 app</span>
+          </div>
+          <div class="row">
+            <button type="button" class="sm primary" id="sl-btn-deploy-v1">✨ Triển khai App Mẫu (v1)</button>
+            <button type="button" class="sm" id="sl-btn-deploy-v2">🚀 Nâng cấp lên (v2)</button>
+          </div>
+        </div>
+        <div id="sl-deploy-msg" class="mut" style="margin-bottom:8px;font-size:12.5px"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Tenant / App</th>
+              <th>Version Đang chạy</th>
+              <th>Lịch sử Version</th>
+              <th>Hàm &amp; Web Endpoint</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="sl-apps-rows">
+            <tr><td colspan="5" class="mut">Chưa có ứng dụng nào được triển khai. Bấm "✨ Triển khai App Mẫu (v1)" để thử ngay.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>🌐 Gọi thử Web Endpoint Trực tiếp (JSON-only T10)</h2>
+            <span class="pill ok">POST /api/serverless/v1/web/…</span>
+          </div>
+          <button type="button" class="sm" id="sl-btn-fill-sample-web">Điền mẫu thử</button>
+        </div>
+        <div class="row" style="gap:10px;margin-bottom:10px">
+          <div class="grow">
+            <label for="sl-web-app">Tên App</label>
+            <input id="sl-web-app" value="text-analyzer" style="width:100%">
+          </div>
+          <div class="grow">
+            <label for="sl-web-fn">Tên Hàm Web Endpoint</label>
+            <input id="sl-web-fn" value="classify" style="width:100%">
+          </div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label for="sl-web-payload">JSON Payload gửi vào hàm</label>
+          <textarea id="sl-web-payload" rows="4" class="mono" style="width:100%">{"text": "AI Compute Fabric Serverless GPU thực thi hàm Python tốc độ cao với bảo vệ G-RECLAIM dưới 2 giây"}</textarea>
+        </div>
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <button type="button" class="primary" id="sl-btn-call-web">▶ Gọi Web Endpoint ngay</button>
+          <span id="sl-web-latency" class="mut mono" style="font-size:12.5px"></span>
+        </div>
+        <div>
+          <label>Kết quả trả về &amp; Lệnh cURL tương ứng</label>
+          <pre class="code-box" id="sl-web-output">Chưa gọi thử. Hãy triển khai App Mẫu (v1) rồi bấm "▶ Gọi Web Endpoint ngay".</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 2: Warm Containers, Call History & Live Logs -->
+  <section id="panel-containers" class="sl-tab-panel" hidden>
+    <div class="card table-wrap" style="margin-bottom:18px">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2>Container Ấm Đang Giữ (`WarmDockerPool`) &amp; GPU Lease</h2>
+          <span class="mut" style="font-size:12.5px">Tự động thu hồi khi hết `keep_warm_s` hoặc khi chủ máy cần GPU (D10)</span>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Container ID</th>
+            <th>Tenant</th>
+            <th>Ứng dụng / Hàm</th>
+            <th>Worker</th>
+            <th class="num">VRAM Giữ</th>
+            <th class="num">Scale-to-zero sau</th>
+            <th>Lease ID</th>
+            <th>Thao tác</th>
+          </tr>
+        </thead>
+        <tbody id="sl-console-container-rows">
+          <tr><td colspan="8" class="mut">Không có container ấm nào đang giữ tài nguyên.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="sl-split">
+      <div class="card table-wrap">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>Lịch sử Lượt gọi Hàm Gần đây (`Calls`)</h2>
+            <span class="mut" style="font-size:12px">Nhấp vào một lượt gọi để xem `stdout` / `stderr`</span>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Call ID</th>
+              <th>Tenant</th>
+              <th>App / Hàm</th>
+              <th>Trạng thái</th>
+              <th>Khởi động</th>
+              <th class="num">Thời gian</th>
+              <th>Worker</th>
+            </tr>
+          </thead>
+          <tbody id="sl-calls-rows">
+            <tr><td colspan="7" class="mut">Chưa có lượt gọi nào được ghi nhận.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>📜 Chi tiết Lượt gọi &amp; Luồng Nhật ký (`stdout` / `stderr`)</h2>
+          </div>
+          <div class="row">
+            <input id="sl-call-lookup-id" placeholder="Nhập call_id..." class="mono" style="width:180px">
+            <button type="button" class="sm" id="sl-btn-lookup-call">Tra cứu</button>
+          </div>
+        </div>
+        <pre class="code-box" id="sl-call-detail-box">Chọn một lượt gọi ở bảng bên trái hoặc nhập call_id để xem chi tiết kết quả và stdout/stderr.</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 3: Tenant Volumes & ModelCache -->
+  <section id="panel-volumes" class="sl-tab-panel" hidden>
+    <div class="sl-split">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>💾 Tải tệp lên `aicf.Volume` (Cô lập theo Tenant)</h2>
+            <span class="pill">Chuẩn hóa đường dẫn &amp; Chống Symlink</span>
+          </div>
+          <button type="button" class="sm primary" id="sl-btn-sample-vol">✨ Tạo tệp mẫu vào Volume</button>
+        </div>
+        <div class="row" style="gap:10px;margin-bottom:10px">
+          <div class="grow">
+            <label for="sl-vol-name">Tên Volume</label>
+            <input id="sl-vol-name" value="shared-artifacts" style="width:100%">
+          </div>
+          <div class="grow">
+            <label for="sl-vol-path">Đường dẫn tệp trong Volume (tương đối)</label>
+            <input id="sl-vol-path" value="configs/prompt_template.json" style="width:100%">
+          </div>
+        </div>
+        <div id="sl-vol-dropzone-mount" style="margin-bottom:10px"></div>
+        <div style="margin-bottom:10px">
+          <label for="sl-vol-content">Hoặc nhập nội dung văn bản / JSON trực tiếp</label>
+          <textarea id="sl-vol-content" rows="4" class="mono" style="width:100%">{"model": "Qwen3-8B", "temperature": 0.2, "system_prompt": "Trợ lý kỹ thuật AI Compute Fabric"}</textarea>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <button type="button" class="primary" id="sl-btn-vol-upload">⬆️ Lưu vào Volume</button>
+          <button type="button" class="sm" id="sl-btn-vol-list">📂 Liệt kê tệp trong Volume này</button>
+        </div>
+        <div id="sl-vol-msg" class="mut" style="margin-top:8px;font-size:12.5px"></div>
+      </div>
+
+      <div class="card table-wrap">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>Danh sách Tệp trong Volume</h2>
+            <span class="pill" id="sl-vol-count-pill">0 tệp</span>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Đường dẫn</th>
+              <th class="num">Kích thước</th>
+              <th>Băm SHA-256</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="sl-vol-rows">
+            <tr><td colspan="4" class="mut">Bấm "✨ Tạo tệp mẫu vào Volume" hoặc "📂 Liệt kê tệp" để xem các tệp đã lưu.</td></tr>
+          </tbody>
+        </table>
+        <div style="margin-top:12px">
+          <label>Nội dung tệp đang chọn</label>
+          <pre class="code-box" id="sl-vol-preview">Chưa chọn tệp nào.</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 4: Python SDK Snippets & Audit Trail -->
+  <section id="panel-sdk" class="sl-tab-panel" hidden>
+    <div class="sl-split">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>🐍 Mẫu mã nguồn Python SDK (`aicf`) &amp; CLI</h2>
+            <span class="pill ok">Tự động điền Gateway URL &amp; API Key</span>
+          </div>
+          <button type="button" class="sm primary" id="sl-btn-copy-sdk">Sao chép mã SDK</button>
+        </div>
+        <pre class="code-box" id="sl-sdk-snippet" style="max-height:420px"></pre>
+      </div>
+
+      <div class="card table-wrap">
+        <div class="card-header">
+          <div class="card-title-group">
+            <h2>🛡️ Nhật ký Kiểm toán Serverless (`Audit Log` băm dây chuyền)</h2>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Thời gian</th>
+              <th>Sự kiện</th>
+              <th>Tenant / Tác nhân</th>
+              <th>Chi tiết</th>
+              <th>Băm SHA-256</th>
+            </tr>
+          </thead>
+          <tbody id="sl-audit-rows">
+            <tr><td colspan="5" class="mut">Chưa có bản ghi kiểm toán.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const SL_KEY_STORE = "aicf_sl_tenant_key";
+const SL_TENANT_STORE = "aicf_sl_tenant_id";
+
+const keyInput = document.getElementById("sl-api-key");
+const tenantInput = document.getElementById("sl-tenant-id");
+try {
+  const savedKey = sessionStorage.getItem(SL_KEY_STORE);
+  const savedTen = sessionStorage.getItem(SL_TENANT_STORE);
+  if (savedKey) keyInput.value = savedKey;
+  if (savedTen) tenantInput.value = savedTen;
+} catch {}
+
+keyInput.addEventListener("input", () => {
+  try { sessionStorage.setItem(SL_KEY_STORE, keyInput.value.trim()); } catch {}
+  renderSdkSnippet();
+});
+tenantInput.addEventListener("input", () => {
+  try { sessionStorage.setItem(SL_TENANT_STORE, tenantInput.value.trim()); } catch {}
+  renderSdkSnippet();
+});
+
+document.getElementById("sl-btn-toggle-key").onclick = () => {
+  const isPwd = keyInput.type === "password";
+  keyInput.type = isPwd ? "text" : "password";
+  document.getElementById("sl-btn-toggle-key").textContent = isPwd ? "🙈 Ẩn khóa" : "👁️ Hiện khóa";
+};
+
+// Tabs switching
+document.querySelectorAll(".sl-tab-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".sl-tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const target = btn.dataset.tab;
+    ["apps", "containers", "volumes", "sdk"].forEach(t => {
+      document.getElementById("panel-" + t).hidden = (t !== target);
+    });
+  };
+});
+
+// Helper: call with Tenant API Key (falls back to admin api() if no tenant key)
+async function slTenantFetch(path, opts = {}) {
+  const tKey = keyInput.value.trim();
+  if (!tKey) {
+    return api(path, opts);
+  }
+  const headers = Object.assign({}, opts.headers || {}, { Authorization: "Bearer " + tKey });
+  return fetch(path, Object.assign({}, opts, { headers }));
+}
+
+// 1-Click Quick Tenant Demo Setup
+document.getElementById("sl-btn-quick-demo").onclick = async () => {
+  const authMsg = document.getElementById("sl-auth-msg");
+  const wantName = (tenantInput.value.trim() || "demo").replace(/[^A-Za-z0-9_.-]/g, "-");
+  authMsg.textContent = "Đang khởi tạo/cấp khóa Tenant và bật quyền Serverless…";
+  try {
+    let tid = wantName;
+    let apiKey = "";
+    const listRes = await api("/api/tenants");
+    if (listRes && listRes.ok) {
+      const list = await listRes.json();
+      const found = list.find(t => t.name === wantName || t.id === wantName);
+      if (found) {
+        tid = found.id;
+        const rot = await api(`/api/tenants/${encodeURIComponent(tid)}/rotate-key`, { method: "POST" });
+        if (rot && rot.ok) apiKey = (await rot.json()).api_key;
+      }
+    }
+    if (!apiKey) {
+      const cr = await api("/api/tenants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: wantName, weight: 2, max_inflight: 8 }),
+      });
+      if (cr && (cr.status === 201 || cr.ok)) {
+        const d = await cr.json();
+        tid = d.tenant.id;
+        apiKey = d.api_key;
+      }
+    }
+    if (!apiKey) {
+      authMsg.textContent = "Cần đăng nhập Admin Token (bấm nút 🔑 Token trên thanh công cụ) để tạo nhanh Tenant.";
+      return;
+    }
+    await api(`/api/tenants/${encodeURIComponent(tid)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverless_enabled: true }),
+    });
+    await api(`/api/serverless/v1/policies/${encodeURIComponent(tid)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverless_enabled: true, gpu_allowed: true, max_vram_mb: 8192, max_concurrency: 8 }),
+    });
+    tenantInput.value = tid;
+    keyInput.value = apiKey;
+    try {
+      sessionStorage.setItem(SL_KEY_STORE, apiKey);
+      sessionStorage.setItem(SL_TENANT_STORE, tid);
+    } catch {}
+    authMsg.textContent = `✓ Đã cấp khóa cho tenant '${tid}' và bật Serverless + GPU (8192 MiB)!`;
+    renderSdkSnippet();
+    loadOverview();
+  } catch (e) {
+    authMsg.textContent = "Lỗi khởi tạo: " + e;
+  }
+};
+
+let currentOverview = { enabled: true, draining: false };
+
+async function loadOverview() {
+  let r = await api("/api/serverless/v1/status");
+  if ((!r || !r.ok) && keyInput.value.trim()) {
+    r = await slTenantFetch("/api/serverless/v1/status");
+  }
+  if (!r || !r.ok) return;
+  const st = await r.json();
+  currentOverview = st;
+
+  const statePill = document.getElementById("sl-console-state-pill");
+  const kpiStatus = document.getElementById("sl-kpi-status");
+  if (!st.enabled) {
+    statePill.textContent = "ĐÃ TẮT TOÀN CỤC";
+    statePill.className = "pill err";
+    kpiStatus.textContent = "DISABLED";
+  } else if (st.draining) {
+    statePill.textContent = "ĐANG DRAIN";
+    statePill.className = "pill warn";
+    kpiStatus.textContent = "DRAINING";
+  } else {
+    statePill.textContent = "SẴN SÀNG";
+    statePill.className = "pill ok";
+    kpiStatus.textContent = "ONLINE";
+  }
+
+  document.getElementById("sl-console-btn-drain").textContent = st.draining ? "Tắt Drain" : "Bật Drain";
+  document.getElementById("sl-console-btn-enable").textContent = st.enabled ? "Tắt Serverless" : "Bật Serverless";
+
+  const canManage = window.AICF && (window.AICF.role === "admin" || window.AICF.role === "operator");
+  document.getElementById("sl-console-btn-drain").hidden = !canManage;
+  document.getElementById("sl-console-btn-enable").hidden = !canManage;
+
+  const workers = st.workers || [];
+  document.getElementById("sl-kpi-workers").textContent = `${workers.length} worker Serverless trực tuyến`;
+
+  const containers = st.containers || [];
+  const vramSum = containers.reduce((acc, c) => acc + (+c.vram_mb || 0), 0);
+  document.getElementById("sl-kpi-warm").textContent = `${containers.length} container`;
+  document.getElementById("sl-kpi-vram").textContent = `${vramSum} MiB VRAM đang giữ`;
+
+  const apps = st.apps || [];
+  const webCount = apps.reduce((acc, a) => acc + ((a.web_endpoints || []).length), 0);
+  document.getElementById("sl-kpi-apps").textContent = `${apps.length} app`;
+  document.getElementById("sl-kpi-endpoints").textContent = `${webCount} web endpoint đang hoạt động`;
+  document.getElementById("sl-apps-badge").textContent = `${apps.length} app`;
+
+  const usageMap = st.usage || {};
+  let totalGpuSec = 0, totalMibS = 0;
+  for (const u of Object.values(usageMap)) {
+    totalGpuSec += (+u.gpu_seconds || 0);
+    totalMibS += (+u.vram_mib_s || 0);
+  }
+  document.getElementById("sl-kpi-gpusec").textContent = `${totalGpuSec.toFixed(3)} s`;
+  document.getElementById("sl-kpi-mibs").textContent = `${totalMibS} MiB·s (gồm cả thực thi + giữ ấm)`;
+
+  renderAppsTable(apps);
+  renderContainersTable(containers, canManage);
+  renderCallsTable(st.calls || []);
+  renderAuditTable(st.audit || []);
+}
+
+function renderAppsTable(apps) {
+  const tb = document.getElementById("sl-apps-rows");
+  tb.replaceChildren();
+  if (!apps.length) {
+    tb.append(el("tr", {}, el("td", { colspan: 5, class: "mut" }, "Chưa có ứng dụng nào được triển khai. Bấm '✨ Triển khai App Mẫu (v1)' để thử ngay.")));
+    return;
+  }
+  for (const a of apps) {
+    const vers = (a.versions || []).join(" → ");
+    const fns = (a.functions || []).map(fn => {
+      const isWeb = (a.web_endpoints || []).includes(fn);
+      return isWeb ? `${fn} 🌐` : fn;
+    }).join(", ");
+    const rbBtn = el("button", {
+      type: "button",
+      class: "sm sl-btn-rollback",
+      disabled: (a.versions || []).length < 2,
+      title: (a.versions || []).length < 2 ? "Cần ít nhất 2 phiên bản để Rollback" : "Quay về phiên bản liền trước",
+      onclick: async () => {
+        const r = await slTenantFetch(`/api/serverless/v1/apps/${encodeURIComponent(a.app_name)}/rollback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const msgEl = document.getElementById("sl-deploy-msg");
+        if (r && r.ok) {
+          const d = await r.json();
+          msgEl.textContent = `✓ Đã rollback '${a.app_name}' từ ${d.previous_version} về ${d.active_version}.`;
+        } else {
+          msgEl.textContent = `Lỗi rollback: HTTP ${r ? r.status : "err"}`;
+        }
+        loadOverview();
+      }
+    }, "⏪ Rollback");
+
+    tb.append(
+      el("tr", { "data-app": a.app_name },
+        el("td", {}, el("strong", {}, a.app_name), el("div", { class: "mut mono", style: "font-size:11.5px" }, a.tenant)),
+        el("td", {}, el("span", { class: "pill ok mono sl-active-ver" }, a.active_version)),
+        el("td", { class: "mono mut", style: "font-size:12px" }, vers),
+        el("td", { class: "mono" }, fns),
+        el("td", {}, rbBtn)
+      )
+    );
+  }
+}
+
+function renderContainersTable(containers, canManage) {
+  const tb = document.getElementById("sl-console-container-rows");
+  tb.replaceChildren();
+  if (!containers.length) {
+    tb.append(el("tr", {}, el("td", { colspan: 8, class: "mut" }, "Không có container ấm nào đang giữ tài nguyên.")));
+    return;
+  }
+  for (const c of containers) {
+    const actTd = document.createElement("td");
+    if (canManage || keyInput.value.trim()) {
+      const btn = el("button", {
+        type: "button",
+        class: "sm sl-console-evict-btn",
+        onclick: async () => {
+          if (!confirm(`Cưỡng bức thu hồi container ${c.container_id}?`)) return;
+          await api(`/api/serverless/v1/containers/${encodeURIComponent(c.container_id)}?reason=admin`, { method: "DELETE" });
+          loadOverview();
+        }
+      }, "Force Evict");
+      actTd.append(btn);
+    } else {
+      actTd.textContent = "-";
+    }
+    tb.append(
+      el("tr", {},
+        el("td", { class: "mono" }, c.container_id || "-"),
+        el("td", {}, c.tenant_id || "-"),
+        el("td", { class: "mono" }, `${c.app_name || "app"} / ${c.fn_id || "fn"}`),
+        el("td", { class: "mono" }, c.worker_id || "-"),
+        el("td", { class: "num mono" }, `${c.vram_mb || 0} MiB`),
+        el("td", { class: "num mono" }, `${Math.round(c.ttl_remaining_s || 0)} s`),
+        el("td", { class: "mono mut" }, c.lease_id || "-"),
+        actTd
+      )
+    );
+  }
+}
+
+function renderCallsTable(calls) {
+  const tb = document.getElementById("sl-calls-rows");
+  tb.replaceChildren();
+  if (!calls.length) {
+    tb.append(el("tr", {}, el("td", { colspan: 7, class: "mut" }, "Chưa có lượt gọi nào được ghi nhận.")));
+    return;
+  }
+  for (const c of calls) {
+    const stClass = c.status === "ok" ? "ok" : (c.status === "pending" || c.status === "running") ? "warn" : "err";
+    const tr = el("tr", { style: "cursor:pointer", onclick: () => inspectCall(c.call_id) },
+      el("td", { class: "mono", style: "color:var(--acc);font-weight:600" }, (c.call_id || "").slice(0, 14)),
+      el("td", {}, c.tenant_id || "-"),
+      el("td", { class: "mono" }, `${c.app_name || "-"} / ${c.fn_id || "-"}`),
+      el("td", {}, el("span", { class: "pill " + stClass }, c.status || "-")),
+      el("td", {}, c.cold_start ? "❄️ Cold" : "🔥 Warm"),
+      el("td", { class: "num mono" }, `${Number(c.exec_ms || c.service_ms || 0).toFixed(1)} ms`),
+      el("td", { class: "mono" }, c.worker_id || "-")
+    );
+    tb.append(tr);
+  }
+}
+
+async function inspectCall(callId) {
+  if (!callId) return;
+  document.getElementById("sl-call-lookup-id").value = callId;
+  const box = document.getElementById("sl-call-detail-box");
+  box.textContent = `Đang tải thông tin lượt gọi ${callId}…`;
+  const r = await slTenantFetch(`/api/serverless/v1/calls/${encodeURIComponent(callId)}`);
+  if (!r || !r.ok) {
+    box.textContent = `Không tìm thấy hoặc không có quyền xem lượt gọi ${callId} (HTTP ${r ? r.status : "err"}).`;
+    return;
+  }
+  const d = await r.json();
+  box.textContent = JSON.stringify(d, null, 2);
+}
+
+document.getElementById("sl-btn-lookup-call").onclick = () => {
+  inspectCall(document.getElementById("sl-call-lookup-id").value.trim());
+};
+
+function renderAuditTable(events) {
+  const tb = document.getElementById("sl-audit-rows");
+  tb.replaceChildren();
+  if (!events.length) {
+    tb.append(el("tr", {}, el("td", { colspan: 5, class: "mut" }, "Chưa có bản ghi kiểm toán.")));
+    return;
+  }
+  for (const ev of events.slice().reverse().slice(0, 25)) {
+    const ts = ev.ts ? new Date(ev.ts * 1000).toLocaleTimeString("vi-VN") : "-";
+    tb.append(
+      el("tr", {},
+        el("td", { class: "mono mut" }, ts),
+        el("td", {}, el("span", { class: "pill" }, ev.action || "-")),
+        el("td", { class: "mono" }, `${ev.tenant || "-"} (${ev.actor || "-"})`),
+        el("td", { class: "mono", style: "font-size:11.5px" }, JSON.stringify(ev.detail || {})),
+        el("td", { class: "mono mut", style: "font-size:11px" }, (ev.hash || "").slice(0, 12) + "…")
+      )
+    );
+  }
+}
+
+// Deploy Sample App v1 / v2
+async function deploySample(templateName, label) {
+  const msgEl = document.getElementById("sl-deploy-msg");
+  if (!keyInput.value.trim()) {
+    msgEl.textContent = "⚠️ Hãy dán Khóa API Tenant (aicf_...) hoặc bấm nút '⚡ Khởi tạo nhanh Tenant Demo' phía trên trước khi Deploy.";
+    return;
+  }
+  const appName = document.getElementById("sl-web-app").value.trim() || "text-analyzer";
+  const fnName = document.getElementById("sl-web-fn").value.trim() || "classify";
+  msgEl.textContent = `Đang triển khai ${appName}@${label}…`;
+  const r = await slTenantFetch("/api/serverless/v1/deploy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      app_name: appName,
+      functions: [{
+        fn_id: fnName,
+        kind: "function",
+        builtin_template: templateName,
+        memory_mb: 512,
+        cpus: 1.0,
+        timeout_s: 30,
+        keep_warm_s: 120,
+      }],
+      web_endpoints: {
+        [fnName]: { requires_auth: true }
+      }
+    }),
+  });
+  if (r && r.ok) {
+    const d = await r.json();
+    msgEl.textContent = `✓ Đã triển khai thành công '${d.app_name}' phiên bản ${d.active_version} (${label})!`;
+    loadOverview();
+  } else {
+    const txt = r ? await r.text() : "error";
+    msgEl.textContent = `Lỗi triển khai (${r ? r.status : "err"}): ${txt}`;
+  }
+}
+
+document.getElementById("sl-btn-deploy-v1").onclick = () => deploySample("demo_v1", "v1");
+document.getElementById("sl-btn-deploy-v2").onclick = () => deploySample("demo_v2", "v2");
+
+document.getElementById("sl-btn-fill-sample-web").onclick = () => {
+  document.getElementById("sl-web-app").value = "text-analyzer";
+  document.getElementById("sl-web-fn").value = "classify";
+  document.getElementById("sl-web-payload").value = JSON.stringify({
+    text: "AI Compute Fabric Serverless GPU thực thi hàm Python tốc độ cao với bảo vệ G-RECLAIM dưới 2 giây"
+  }, null, 2);
+};
+
+document.getElementById("sl-btn-call-web").onclick = async () => {
+  const outBox = document.getElementById("sl-web-output");
+  const latEl = document.getElementById("sl-web-latency");
+  const tid = tenantInput.value.trim() || "demo";
+  const appName = document.getElementById("sl-web-app").value.trim() || "text-analyzer";
+  const fnName = document.getElementById("sl-web-fn").value.trim() || "classify";
+  const rawPayload = document.getElementById("sl-web-payload").value;
+  let parsed;
+  try {
+    parsed = JSON.parse(rawPayload);
+  } catch (e) {
+    outBox.textContent = "Lỗi JSON payload không hợp lệ: " + e.message;
+    return;
+  }
+  const urlPath = `/api/serverless/v1/web/${encodeURIComponent(tid)}/${encodeURIComponent(appName)}/${encodeURIComponent(fnName)}`;
+  outBox.textContent = `Đang gọi POST ${urlPath}…`;
+  const t0 = performance.now();
+  const r = await slTenantFetch(urlPath, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(parsed),
+  });
+  const elapsed = (performance.now() - t0).toFixed(1);
+  latEl.textContent = `HTTP ${r ? r.status : "err"} · ${elapsed} ms`;
+  const bodyTxt = r ? await r.text() : "";
+  let pretty = bodyTxt;
+  try { pretty = JSON.stringify(JSON.parse(bodyTxt), null, 2); } catch {}
+  const curlCmd = `curl -s -X POST "${location.origin}${urlPath}" \\\n  -H "Authorization: Bearer ${keyInput.value.trim() || "<AICF_API_KEY>"}" \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(parsed)}'`;
+  outBox.textContent = `// Phản hồi (${elapsed} ms):\n${pretty}\n\n// Lệnh cURL tương đương:\n${curlCmd}`;
+  loadOverview();
+};
+
+// Volume management + File Dropzone
+const dz = createFileDropzone({
+  id: "sl-vol-file-input",
+  label: "Kéo thả tệp vào đây để nạp lên Volume",
+  hint: "Mọi tệp được kiểm tra SHA-256 và cô lập theo thư mục riêng của Tenant",
+  compact: true,
+  onchange: async (file) => {
+    if (!file) return;
+    document.getElementById("sl-vol-path").value = "uploads/" + file.name.replace(/[^A-Za-z0-9_.-]/g, "_");
+    try {
+      const text = await file.text();
+      document.getElementById("sl-vol-content").value = text.slice(0, 65536);
+    } catch {}
+  }
+});
+document.getElementById("sl-vol-dropzone-mount").append(dz);
+
+async function listVolumeFiles() {
+  const vol = document.getElementById("sl-vol-name").value.trim() || "shared-artifacts";
+  const r = await slTenantFetch(`/api/serverless/v1/volumes/${encodeURIComponent(vol)}`);
+  const tb = document.getElementById("sl-vol-rows");
+  tb.replaceChildren();
+  if (!r || !r.ok) {
+    tb.append(el("tr", {}, el("td", { colspan: 4, class: "mut" }, `Hãy nhập Khóa API Tenant (aicf_...) để liệt kê Volume '${vol}'.`)));
+    return;
+  }
+  const d = await r.json();
+  const files = d.files || [];
+  document.getElementById("sl-vol-count-pill").textContent = `${files.length} tệp`;
+  if (!files.length) {
+    tb.append(el("tr", {}, el("td", { colspan: 4, class: "mut" }, `Volume '${vol}' hiện đang trống.`)));
+    return;
+  }
+  for (const f of files) {
+    const viewBtn = el("button", {
+      type: "button",
+      class: "sm",
+      onclick: async () => {
+        const res = await slTenantFetch(`/api/serverless/v1/volumes/${encodeURIComponent(vol)}/${f.path}`);
+        if (res && res.ok) {
+          document.getElementById("sl-vol-preview").textContent = await res.text();
+        }
+      }
+    }, "👁️ Xem");
+    const delBtn = el("button", {
+      type: "button",
+      class: "sm ghost err",
+      onclick: async () => {
+        await slTenantFetch(`/api/serverless/v1/volumes/${encodeURIComponent(vol)}/${f.path}`, { method: "DELETE" });
+        listVolumeFiles();
+      }
+    }, "🗑️ Xóa");
+    tb.append(
+      el("tr", {},
+        el("td", { class: "mono" }, f.path),
+        el("td", { class: "num mono" }, formatFileSize(f.size)),
+        el("td", { class: "mono mut", style: "font-size:11.5px" }, (f.sha256 || "").slice(0, 16) + "…"),
+        el("td", { class: "row" }, viewBtn, delBtn)
+      )
+    );
+  }
+}
+
+async function uploadToVolume() {
+  const vol = document.getElementById("sl-vol-name").value.trim() || "shared-artifacts";
+  const relPath = document.getElementById("sl-vol-path").value.trim().replace(/^\/+/, "") || "configs/sample.json";
+  const content = document.getElementById("sl-vol-content").value;
+  const msgEl = document.getElementById("sl-vol-msg");
+  const r = await slTenantFetch(`/api/serverless/v1/volumes/${encodeURIComponent(vol)}/${relPath}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: content,
+  });
+  if (r && r.ok) {
+    const d = await r.json();
+    msgEl.textContent = `✓ Đã lưu '${vol}/${d.path}' (${d.size} bytes, sha256=${(d.sha256 || "").slice(0, 12)}…).`;
+    listVolumeFiles();
+  } else {
+    const txt = r ? await r.text() : "err";
+    msgEl.textContent = `Lỗi lưu Volume (${r ? r.status : "err"}): ${txt}`;
+  }
+}
+
+document.getElementById("sl-btn-vol-upload").onclick = uploadToVolume;
+document.getElementById("sl-btn-vol-list").onclick = listVolumeFiles;
+document.getElementById("sl-btn-sample-vol").onclick = async () => {
+  document.getElementById("sl-vol-name").value = "shared-artifacts";
+  document.getElementById("sl-vol-path").value = "configs/prompt_template.json";
+  document.getElementById("sl-vol-content").value = JSON.stringify({
+    model: "Qwen3-8B-Q4_K_M",
+    system_prompt: "Trợ lý kỹ thuật AI Compute Fabric",
+    updated_at: new Date().toISOString()
+  }, null, 2);
+  await uploadToVolume();
+};
+
+// Admin state buttons
+document.getElementById("sl-console-btn-drain").onclick = async () => {
+  await api("/api/serverless/v1/admin/state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ draining: !currentOverview.draining }),
+  });
+  loadOverview();
+};
+document.getElementById("sl-console-btn-enable").onclick = async () => {
+  await api("/api/serverless/v1/admin/state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled: !currentOverview.enabled }),
+  });
+  loadOverview();
+};
+document.getElementById("sl-console-btn-refresh").onclick = loadOverview;
+
+function renderSdkSnippet() {
+  const gw = location.origin;
+  const k = keyInput.value.trim() || "aicf_<KHOA_TENANT_CUA_BAN>";
+  document.getElementById("sl-sdk-snippet").textContent = `# 1. Cấu hình môi trường kết nối AI Compute Fabric
+export AICF_GATEWAY_URL="${gw}"
+export AICF_API_KEY="${k}"
+
+# Kiểm tra kết nối, phiên bản Python & hạn mức Tenant
+aicf doctor
+
+# 2. Định nghĩa hàm Serverless GPU & Lớp trạng thái (app.py)
+import aicf
+
+app = aicf.App("vision-pipeline")
+image = (
+    aicf.Image.debian_slim(python_version="3.12")
+    .uv_pip_install("numpy==2.2.3", "pillow==11.1.0")
+)
+vol = aicf.Volume.from_name("shared-artifacts", create_if_missing=True)
+
+@app.function(image=image, gpu="any", vram_mb=2048, keep_warm_s=120, volumes={"/mnt/vol": vol})
+def compute_square(x: int) -> dict:
+    return {"x": x, "x_sq": x * x}
+
+@app.cls(image=image, gpu="any", vram_mb=4096, keep_warm_s=300)
+class Embedder:
+    @aicf.enter()
+    def load_weights(self):
+        # Chạy đúng 1 lần duy nhất khi khởi tạo container ấm
+        self.ready = True
+
+    @aicf.method()
+    def encode(self, text: str) -> dict:
+        return {"ready": self.ready, "tokens": len(text.split())}
+
+@app.web_endpoint(method="POST", requires_auth=True)
+def classify(payload: dict) -> dict:
+    return {"word_count": len(str(payload.get("text", "")).split())}
+
+if __name__ == "__main__":
+    with app.run():
+        print("Single call:", compute_square.remote(12))
+        print("Parallel .map(50):", list(compute_square.map(range(50), max_concurrency=8))[:3])`;
+}
+
+document.getElementById("sl-btn-copy-sdk").onclick = async () => {
+  const txt = document.getElementById("sl-sdk-snippet").textContent;
+  try { await navigator.clipboard.writeText(txt); } catch {}
+  document.getElementById("sl-btn-copy-sdk").textContent = "Đã sao chép ✓";
+  setTimeout(() => { document.getElementById("sl-btn-copy-sdk").textContent = "Sao chép mã SDK"; }, 1800);
+};
+
+renderSdkSnippet();
+window.AICF_READY.then(() => {
+  loadOverview();
+});
+setInterval(loadOverview, 4000);
+</script>
+</body>
+</html>
+

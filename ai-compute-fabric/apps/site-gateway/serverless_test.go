@@ -179,6 +179,53 @@ func TestServerlessProxyConfigValidation(t *testing.T) {
 	}
 }
 
+func TestServerlessRBACViewerCannotEvictOrModifyState(t *testing.T) {
+	seen := &slSeen{}
+	be := httptest.NewServer(seen.handler())
+	t.Cleanup(be.Close)
+	ts, _ := NewTenantStore(filepath.Join(t.TempDir(), "tenants.json"))
+	h, err := ServerlessProxy(be.URL, slSecret, 1<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := NewAuth("adm")
+	rolesFile := filepath.Join(t.TempDir(), "roles.json")
+	os.WriteFile(rolesFile, []byte(`[
+		{"name":"v1","role":"viewer","token_sha256":"`+HashToken("view-tok")+`"},
+		{"name":"op1","role":"operator","token_sha256":"`+HashToken("op-tok")+`"}
+	]`), 0o600)
+	if err := auth.LoadRoles(rolesFile); err != nil {
+		t.Fatal(err)
+	}
+	api := NewAPIServerless(NewFleet(NewRegistry(time.Hour)), ts, auth, nil, nil, nil, nil, h)
+	r := &slRig{api: api, seen: seen}
+
+	// Viewer can GET containers/status
+	if w := r.do("GET", "/api/serverless/v1/containers", "view-tok", ""); w.Code != http.StatusOK {
+		t.Fatalf("viewer GET containers: want 200 got %d", w.Code)
+	}
+	// Viewer CANNOT DELETE container or POST admin/state or PUT policies
+	for _, tc := range [][2]string{
+		{"DELETE", "/api/serverless/v1/containers/c1"},
+		{"POST", "/api/serverless/v1/admin/state"},
+		{"PUT", "/api/serverless/v1/policies/t1"},
+	} {
+		if w := r.do(tc[0], tc[1], "view-tok", `{}`); w.Code != http.StatusForbidden {
+			t.Fatalf("viewer %s %s: want 403 got %d", tc[0], tc[1], w.Code)
+		}
+	}
+	// Operator CAN DELETE container and POST admin/state, but CANNOT PUT policies
+	if w := r.do("DELETE", "/api/serverless/v1/containers/c1", "op-tok", ""); w.Code != http.StatusOK {
+		t.Fatalf("operator DELETE container: want 200 got %d", w.Code)
+	}
+	if w := r.do("POST", "/api/serverless/v1/admin/state", "op-tok", `{"draining":true}`); w.Code != http.StatusOK {
+		t.Fatalf("operator POST admin/state: want 200 got %d", w.Code)
+	}
+	if w := r.do("PUT", "/api/serverless/v1/policies/t1", "op-tok", `{}`); w.Code != http.StatusForbidden {
+		t.Fatalf("operator PUT policies: want 403 got %d", w.Code)
+	}
+}
+
 func between(s, a, b string) string {
 	i := strings.Index(s, a)
 	if i < 0 {

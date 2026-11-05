@@ -8,13 +8,13 @@ import (
 
 // Admission errors map to HTTP statuses in the proxy.
 var (
-	ErrQueueFull       = errors.New("queue full")                               // 429
-	ErrTenantQueueFull = errors.New("tenant queue share full")                  // 429
-	ErrWaitTimeout     = errors.New("queue wait expired")                       // 503 with Retry-After
-	ErrNoWorker        = errors.New("no worker serves this model")              // 503
-	ErrNoAgent         = errors.New("pinned agent is offline or not routable")  // 503
-	ErrPinnedAgentBusy = errors.New("pinned agent is busy")                     // 503 with Retry-After
-	ErrWouldMiss       = errors.New("estimated wait exceeds the deadline")      // 429 with the estimate as Retry-After
+	ErrQueueFull       = errors.New("queue full")                              // 429
+	ErrTenantQueueFull = errors.New("tenant queue share full")                 // 429
+	ErrWaitTimeout     = errors.New("queue wait expired")                      // 503 with Retry-After
+	ErrNoWorker        = errors.New("no worker serves this model")             // 503
+	ErrNoAgent         = errors.New("pinned agent is offline or not routable") // 503
+	ErrPinnedAgentBusy = errors.New("pinned agent is busy")                    // 503 with Retry-After
+	ErrWouldMiss       = errors.New("estimated wait exceeds the deadline")     // 429 with the estimate as Retry-After
 )
 
 // Priorities: interactive requests are always dispatched before batch ones.

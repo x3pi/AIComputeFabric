@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,37 +39,37 @@ func main() {
 // left holding the user's GPU.
 func serve(stop <-chan struct{}) {
 	var (
-		bin          = flag.String("llama-server", "", "path to llama-server")
-		model        = flag.String("model", "", "GGUF model path")
-		modelsDir    = flag.String("models-dir", "", "enable POST /api/engine: models may be switched to a .gguf file in this directory")
-		adaptersDir  = flag.String("adapters-dir", "", "directory of LoRA adapters (.gguf) that /api/engine may attach")
-		lora         = flag.String("lora", "", "LoRA adapter (.gguf) to load on top of --model; trained from the same base model (see deploy/demo/worker.sh)")
-		port         = flag.Int("engine-port", 18090, "llama-server port")
-		ctx          = flag.Int("ctx", 4096, "context per slot")
-		par          = flag.Int("parallel", 1, "slots")
-		ngl          = flag.Int("ngl", 99, "GPU layers")
-		headroom     = flag.Uint64("headroom-mib", 1536, "free VRAM that must stay available to the user (D07)")
-		stable       = flag.Duration("resume-stable", 10*time.Second, "GPU must stay free this long before restart")
-		poll         = flag.Duration("poll", 500*time.Millisecond, "normal control-loop period")
-		fastPoll     = flag.Duration("fast-poll", 100*time.Millisecond, "period when free VRAM is near the headroom")
-		near         = flag.Uint64("near-margin-mib", 2048, "\"near\" = free VRAM below headroom + this")
-		fa           = flag.String("flash-attn", "on", "flash attention: on, off or auto")
-		kvType       = flag.String("kv-cache-type", "f16", "KV cache type: f16 or q8_0 (q8_0 halves KV memory, needs --flash-attn on)")
-		listen       = flag.String("listen", "127.0.0.1:8099", "dashboard/API address (loopback by default)")
-		startTimeout = flag.Duration("engine-start-timeout", 180*time.Second, "how long to wait for the engine to become healthy after (re)start; raise it for big models over GGML RPC")
-		logPath      = flag.String("engine-log", "", "write engine log here")
-		gpu          = flag.Int("gpu", 0, "GPU index")
-		gateway      = flag.String("gateway", "", "site-gateway gRPC address (empty = standalone)")
-		advert       = flag.String("advertise-host", "127.0.0.1", "address the gateway uses to reach this engine")
-		engineHost   = flag.String("engine-host", "127.0.0.1", "host llama-server binds to (e.g. 0.0.0.0 or 127.0.0.1)")
-		tlsCA        = flag.String("tls-ca", "", "CA that signed the gateway certificate (enables mTLS)")
-		tlsCert      = flag.String("tls-cert", "", "this worker's client certificate")
-		tlsKey       = flag.String("tls-key", "", "this worker's private key")
-		tlsName      = flag.String("tls-server-name", "", "expected gateway certificate name (default: host of --gateway)")
-		workerID     = flag.String("worker-id", "", "worker id (default: hostname)")
-		rpcServerBin = flag.String("rpc-server-bin", "", "path to ggml-rpc-server executable (default: search next to --llama-server)")
-		rpcPort      = flag.Int("rpc-port", 50052, "port for ggml-rpc-server when in rpc-worker mode")
-		rpcServers   = flag.String("rpc-servers", "", "default --rpc server address(es) for llama-server")
+		bin           = flag.String("llama-server", "", "path to llama-server")
+		model         = flag.String("model", "", "GGUF model path")
+		modelsDir     = flag.String("models-dir", "", "enable POST /api/engine: models may be switched to a .gguf file in this directory")
+		adaptersDir   = flag.String("adapters-dir", "", "directory of LoRA adapters (.gguf) that /api/engine may attach")
+		lora          = flag.String("lora", "", "LoRA adapter (.gguf) to load on top of --model; trained from the same base model (see deploy/demo/worker.sh)")
+		port          = flag.Int("engine-port", 18090, "llama-server port")
+		ctx           = flag.Int("ctx", 4096, "context per slot")
+		par           = flag.Int("parallel", 1, "slots")
+		ngl           = flag.Int("ngl", 99, "GPU layers")
+		headroom      = flag.Uint64("headroom-mib", 1536, "free VRAM that must stay available to the user (D07)")
+		stable        = flag.Duration("resume-stable", 10*time.Second, "GPU must stay free this long before restart")
+		poll          = flag.Duration("poll", 500*time.Millisecond, "normal control-loop period")
+		fastPoll      = flag.Duration("fast-poll", 100*time.Millisecond, "period when free VRAM is near the headroom")
+		near          = flag.Uint64("near-margin-mib", 2048, "\"near\" = free VRAM below headroom + this")
+		fa            = flag.String("flash-attn", "on", "flash attention: on, off or auto")
+		kvType        = flag.String("kv-cache-type", "f16", "KV cache type: f16 or q8_0 (q8_0 halves KV memory, needs --flash-attn on)")
+		listen        = flag.String("listen", "127.0.0.1:8099", "dashboard/API address (loopback by default)")
+		startTimeout  = flag.Duration("engine-start-timeout", 180*time.Second, "how long to wait for the engine to become healthy after (re)start; raise it for big models over GGML RPC")
+		logPath       = flag.String("engine-log", "", "write engine log here")
+		gpu           = flag.Int("gpu", 0, "GPU index")
+		gateway       = flag.String("gateway", "", "site-gateway gRPC address (empty = standalone)")
+		advert        = flag.String("advertise-host", "127.0.0.1", "address the gateway uses to reach this engine")
+		engineHost    = flag.String("engine-host", "127.0.0.1", "host llama-server binds to (e.g. 0.0.0.0 or 127.0.0.1)")
+		tlsCA         = flag.String("tls-ca", "", "CA that signed the gateway certificate (enables mTLS)")
+		tlsCert       = flag.String("tls-cert", "", "this worker's client certificate")
+		tlsKey        = flag.String("tls-key", "", "this worker's private key")
+		tlsName       = flag.String("tls-server-name", "", "expected gateway certificate name (default: host of --gateway)")
+		workerID      = flag.String("worker-id", "", "worker id (default: hostname)")
+		rpcServerBin  = flag.String("rpc-server-bin", "", "path to ggml-rpc-server executable (default: search next to --llama-server)")
+		rpcPort       = flag.Int("rpc-port", 50052, "port for ggml-rpc-server when in rpc-worker mode")
+		rpcServers    = flag.String("rpc-servers", "", "default --rpc server address(es) for llama-server")
 		splitMode     = flag.String("split-mode", "layer", "--split-mode for llama-server (layer or row)")
 		tensorSplit   = flag.String("tensor-split", "", "--tensor-split for llama-server (e.g. 1,1)")
 		nCpuMoe       = flag.Int("n-cpu-moe", 0, "--n-cpu-moe for llama-server (-ncmoe)")
@@ -79,6 +80,8 @@ func serve(stop <-chan struct{}) {
 		cpuStrict     = flag.Bool("cpu-strict", false, "pass --cpu-strict 1 to llama-server when pinning threads")
 		loadMode      = flag.String("load-mode", "", "--load-mode for llama-server (e.g. none)")
 		mode          = flag.String("mode", "standalone", "initial engine mode: standalone, smart_1gpu, or rpc-worker")
+		slEvictURL    = flag.String("serverless-evict-url", "", "local ServerlessWorker control URL (e.g. http://127.0.0.1:18111). When set, the guard evicts Serverless guests BEFORE it stops the engine (ADR-003 D10). Off by default")
+		slSecretFile  = flag.String("serverless-secret-file", "", "file with the secret shared with the ServerlessWorker control endpoint (required with --serverless-evict-url)")
 		stateFile     = flag.String("state-file", "", "path to persist runtime engine/mode/pause state across restarts (default: <models-dir>/.worker-guard-state.json when --models-dir is set)")
 	)
 	flag.Parse()
@@ -94,9 +97,18 @@ func serve(stop <-chan struct{}) {
 		LogPath: *logPath, StartTimeout: *startTimeout, Grace: 500 * time.Millisecond,
 		Mode: *mode, NCpuMoe: *nCpuMoe, RPCServers: *rpcServers, SplitMode: *splitMode, TensorSplit: *tensorSplit, RPCPort: *rpcPort,
 		RPCServerBin: *rpcServerBin,
-		Threads: *threads, ThreadsBatch: *threadsBatch, CPURange: *cpuRange, CPURangeBatch: *cpuRangeBatch, CPUStrict: *cpuStrict, LoadMode: *loadMode,
+		Threads:      *threads, ThreadsBatch: *threadsBatch, CPURange: *cpuRange, CPURangeBatch: *cpuRangeBatch, CPUStrict: *cpuStrict, LoadMode: *loadMode,
 	}
-	g := NewGuard(Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near, StateFile: sf}, SMISampler{Index: *gpu}, eng)
+	cfg := Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near, StateFile: sf}
+	if *slEvictURL != "" {
+		sec, err := os.ReadFile(*slSecretFile)
+		if err != nil || len(strings.TrimSpace(string(sec))) < 16 {
+			log.Fatal("--serverless-secret-file must exist and hold a secret of at least 16 characters")
+		}
+		cfg.Evictor = &HTTPEvictor{URL: *slEvictURL, Secret: strings.TrimSpace(string(sec)), GPU: *gpu}
+		log.Printf("serverless co-tenancy ON: guests are evicted before the engine is stopped (%s)", *slEvictURL)
+	}
+	g := NewGuard(cfg, SMISampler{Index: *gpu}, eng)
 	go g.Run(stop)
 	if *gateway != "" {
 		host, _ := os.Hostname()

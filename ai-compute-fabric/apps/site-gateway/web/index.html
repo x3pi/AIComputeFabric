@@ -261,7 +261,8 @@
       </div>
 
       <div class="vram-bar" id="cluster-vram-bar" role="img" aria-label="Phân bổ 6-Bucket VRAM toàn cụm"></div>
-      <div class="vram-legend" id="cluster-vram-leg" style="margin-bottom:16px"></div>
+      <div class="vram-legend" id="cluster-vram-leg" style="margin-bottom:8px"></div>
+      <div id="sl-vram-summary" class="mut mono" style="font-size:12px;margin-bottom:14px">⚡ Serverless GPU Leases: 0 MiB (0 container ấm) · LLM &amp; Chủ máy theo 6-Bucket</div>
 
       <div class="grid" id="grid" role="list"></div>
       <div class="leg">
@@ -489,6 +490,40 @@
       <button id="sv-go" class="primary" style="align-self:flex-end">Áp dụng</button>
     </form>
     <div id="sv-msg" class="mut" role="status" style="margin-top:8px;font-size:13px"></div>
+  </div>
+
+  <!-- Serverless GPU & Warm Containers Card (Phase 6) -->
+  <div class="card" id="serverless-card">
+    <div class="card-header">
+      <div class="card-title-group">
+        <h2>⚡ Serverless GPU &amp; Container Ấm (Modal-style)</h2>
+        <span class="pill ok" id="sl-status-badge">ĐANG TẢI…</span>
+        <span class="mut" id="sl-summary" style="font-size:12.5px">0 container ấm · 0 MiB VRAM giữ</span>
+      </div>
+      <div class="row" id="sl-global-controls" style="gap:8px;flex-wrap:wrap">
+        <button type="button" class="sm" id="sl-btn-toggle-drain">⏸ Bật Drain</button>
+        <button type="button" class="sm err ghost" id="sl-btn-toggle-enabled">⛔ Tắt Serverless</button>
+      </div>
+    </div>
+    <div id="sl-feedback" class="mut" role="status" style="font-size:12.5px;margin-bottom:8px"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Container ID</th>
+            <th>Tenant</th>
+            <th>Ứng dụng / Hàm</th>
+            <th>Worker</th>
+            <th class="num">VRAM giữ (Lease)</th>
+            <th class="num">Scale-to-zero (TTL)</th>
+            <th>Thao tác</th>
+          </tr>
+        </thead>
+        <tbody id="sl-rows">
+          <tr><td colspan="7" class="mut">Chưa có container Serverless ấm nào đang giữ lease.</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Full-width Workers Table Card -->
@@ -1307,15 +1342,138 @@ document.getElementById("home-btn-burst").addEventListener("click", async () => 
   loadHomeBusOverview();
 });
 
+// ---- Serverless GPU & Warm Containers (Phase 6) ----
+let slState = { enabled: true, draining: false };
+
+function syncServerlessRoleUI() {
+  const canEvict = Boolean(window.AICF && (window.AICF.can.serverless_evict || window.AICF.role === "admin" || window.AICF.role === "operator"));
+  const ctrl = document.getElementById("sl-global-controls");
+  if (ctrl) ctrl.style.display = canEvict ? "flex" : "none";
+}
+
+async function loadServerless() {
+  syncServerlessRoleUI();
+  try {
+    const r = await api("/api/serverless/v1/status");
+    if (!r || !r.ok) return;
+    const d = await r.json();
+    slState = { enabled: d.enabled !== false, draining: !!d.draining };
+    const badge = document.getElementById("sl-status-badge");
+    const drainBtn = document.getElementById("sl-btn-toggle-drain");
+    const enBtn = document.getElementById("sl-btn-toggle-enabled");
+    if (!slState.enabled) {
+      badge.textContent = "ĐÃ TẮT TOÀN CỤC";
+      badge.className = "pill err";
+    } else if (slState.draining) {
+      badge.textContent = "ĐANG RÚT LUI (DRAIN)";
+      badge.className = "pill warn";
+    } else {
+      badge.textContent = "ĐANG BẬT · SẴN SÀNG";
+      badge.className = "pill ok";
+    }
+    if (drainBtn) drainBtn.textContent = slState.draining ? "▶ Tắt Drain" : "⏸ Bật Drain";
+    if (enBtn) enBtn.textContent = slState.enabled ? "⛔ Tắt Serverless" : "✅ Bật Serverless";
+
+    const containers = d.containers || [];
+    const totalVramMb = containers.reduce((acc, c) => acc + (+c.vram_mb || 0), 0);
+    const usageObj = d.usage || {};
+    const totalCalls = Object.values(usageObj).reduce((acc, u) => acc + (+u.calls || 0), 0);
+    document.getElementById("sl-summary").textContent =
+      `${containers.length} container ấm · ${totalVramMb} MiB VRAM giữ · ${totalCalls} lượt gọi hoàn tất`;
+    const vramSumEl = document.getElementById("sl-vram-summary");
+    if (vramSumEl) {
+      vramSumEl.textContent =
+        `⚡ Serverless GPU Leases: ${totalVramMb} MiB (${containers.length} container ấm) · Phân biệt với LLM Weights/KV & OSUser trên thanh 6-Bucket`;
+    }
+
+    const canEvict = Boolean(window.AICF && (window.AICF.can.serverless_evict || window.AICF.role === "admin" || window.AICF.role === "operator"));
+    const tb = document.getElementById("sl-rows");
+    tb.replaceChildren();
+    if (!containers.length) {
+      tb.append(el("tr", {}, el("td", { colspan: 7, class: "mut" }, "Chưa có container Serverless ấm nào đang giữ lease.")));
+      return;
+    }
+    for (const c of containers) {
+      const actTd = el("td", {});
+      if (canEvict) {
+        const evBtn = el("button", {
+          type: "button",
+          class: "sm err sl-evict-btn",
+          "data-cid": c.container_id,
+          onclick: async () => {
+            if (!confirm(`Force Evict container ${c.container_id} (tenant ${c.tenant_id})? Lease VRAM sẽ được giải phóng ngay và ghi Audit.`)) return;
+            const res = await api(`/api/serverless/v1/containers/${encodeURIComponent(c.container_id)}`, { method: "DELETE" });
+            const fb = document.getElementById("sl-feedback");
+            if (res && res.ok) {
+              fb.textContent = `Đã Force Evict container ${c.container_id} và giải phóng lease.`;
+              fb.className = "pill ok";
+            } else {
+              fb.textContent = `Lỗi Force Evict: HTTP ${res ? res.status : "err"}`;
+              fb.className = "pill err";
+            }
+            loadServerless();
+          }
+        }, "💥 Force Evict");
+        actTd.append(evBtn);
+      } else {
+        actTd.append(el("span", { class: "mut", style: "font-size:12px" }, "chỉ xem"));
+      }
+      tb.append(
+        el("tr", { "data-cid": c.container_id },
+          el("td", { class: "mono" }, c.container_id),
+          el("td", { style: "font-weight:600" }, c.tenant_id || "-"),
+          el("td", { class: "mono" }, `${c.app_name || "-"} / ${c.fn_id || "-"}`),
+          el("td", { class: "mono" }, c.worker_id || "-"),
+          el("td", { class: "num mono" }, `${c.vram_mb || 0} MiB` + (c.lease_id ? ` (${c.lease_id})` : "")),
+          el("td", { class: "num mono" }, `${Math.round(+c.ttl_remaining_s || 0)} s`),
+          actTd
+        )
+      );
+    }
+  } catch {}
+}
+
+document.getElementById("sl-btn-toggle-drain").addEventListener("click", async () => {
+  const nextDrain = !slState.draining;
+  const r = await api("/api/serverless/v1/admin/state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ draining: nextDrain }),
+  });
+  const fb = document.getElementById("sl-feedback");
+  if (r && r.ok) {
+    fb.textContent = nextDrain ? "Đã bật chế độ Drain Serverless (chặn lượt mới)." : "Đã tắt chế độ Drain Serverless.";
+    fb.className = "pill ok";
+  }
+  loadServerless();
+});
+
+document.getElementById("sl-btn-toggle-enabled").addEventListener("click", async () => {
+  const nextEnabled = !slState.enabled;
+  if (!nextEnabled && !confirm("Tắt Serverless toàn cục? Mọi lượt gọi mới sẽ bị từ chối với HTTP 503.")) return;
+  const r = await api("/api/serverless/v1/admin/state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled: nextEnabled }),
+  });
+  const fb = document.getElementById("sl-feedback");
+  if (r && r.ok) {
+    fb.textContent = nextEnabled ? "Đã bật lại Serverless toàn cục." : "Đã tắt Serverless toàn cục.";
+    fb.className = nextEnabled ? "pill ok" : "pill warn";
+  }
+  loadServerless();
+});
+
 let lastLoad = 0;
 stream("/api/fleet/stream", s => { renderGrid(s); if (Date.now() - lastLoad > 1000) { lastLoad = Date.now(); loadPage(); loadTopology(); } });
-window.AICF_READY.then(() => { svLoadOptions().then(svRender); loadTopology(); loadHomeBusOverview(); });
+window.AICF_READY.then(() => { syncServerlessRoleUI(); svLoadOptions().then(svRender); loadTopology(); loadHomeBusOverview(); loadServerless(); });
 loadPage();
 loadStats();
 loadTopology();
 loadHomeBusOverview();
+loadServerless();
 initEstimator();
-setInterval(() => { loadPage(); loadStats(); loadTopology(); loadHomeBusOverview(); }, 2000);
+setInterval(() => { loadPage(); loadStats(); loadTopology(); loadHomeBusOverview(); loadServerless(); }, 2000);
 </script>
 </body>
 </html>

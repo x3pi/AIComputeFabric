@@ -208,7 +208,7 @@ async def ensure_stream(
             or info.config.max_bytes != max_bytes
             or info.config.max_msg_size != max_msg_size
             or info.config.discard != DiscardPolicy.NEW
-            or sorted(info.config.subjects or []) != sorted(cfg.subjects)
+            or sorted(info.config.subjects or []) != sorted(cfg.subjects or [])
         ):
             await js.update_stream(cfg)
     except NotFoundError:
@@ -314,13 +314,13 @@ class BusTLSConfig:
             raise BusAuthError(f"failed to load TLS credentials for {expected_identity!r}: {e}") from e
 
         # 1. Verify private key matches certificate public key
-        if priv_key.public_key().public_numbers() != cli_cert.public_key().public_numbers():
+        if priv_key.public_key().public_numbers() != cli_cert.public_key().public_numbers():  # type: ignore[union-attr]
             raise BusAuthError(f"private key does not match certificate for {expected_identity!r}")
 
         # 2. Verify certificate is signed by the trusted CA
         try:
             ca_pub = ca_cert.public_key()
-            ca_pub.verify(  # type: ignore[call-arg]
+            ca_pub.verify(  # type: ignore[call-arg,union-attr]
                 cli_cert.signature,
                 cli_cert.tbs_certificate_bytes,
                 ec.ECDSA(cli_cert.signature_hash_algorithm),  # type: ignore[arg-type]
@@ -989,10 +989,10 @@ class BusWorker:
         # If data_classes was not explicitly passed and equals DEFAULT_WORKER_DATA_CLASSES,
         # subscribe to INTERNAL (default `aicf.task.<type>[.<label>]`) and PUBLIC (`...dc.PUBLIC`)
         for tp in target_types:
-            for lbl in label_choices:
+            for lbl_choice in label_choices:
                 for dc in self.data_classes:
-                    subj = task_subject(tp, label=lbl, data_class=dc)
-                    dur = consumer_durable_name(tp, label=lbl, data_class=dc)
+                    subj = task_subject(tp, label=lbl_choice, data_class=dc)
+                    dur = consumer_durable_name(tp, label=lbl_choice, data_class=dc)
                     try:
                         sub = await _pull_sub_with_conflict_cleanup(subj, dur)
                         subs.append(sub)
@@ -1422,8 +1422,8 @@ class BusMetricsCollector:
             lines.append(f'aicf_bus_live_agents{{task_type="{tp}"}} {val}')
 
         header("aicf_bus_queue_wait_median_seconds", "gauge", "Median queue wait time in seconds per task type")
-        for tp, val in sorted(snap.median_wait_s_by_type.items()):
-            lines.append(f'aicf_bus_queue_wait_median_seconds{{task_type="{tp}"}} {val:.6f}')
+        for tp, fval in sorted(snap.median_wait_s_by_type.items()):
+            lines.append(f'aicf_bus_queue_wait_median_seconds{{task_type="{tp}"}} {fval:.6f}')
 
         header("aicf_bus_redeliveries_total", "counter", "Tasks redelivered after worker timeout or loss")
         for tp, val in sorted(snap.redelivered_by_type.items()):

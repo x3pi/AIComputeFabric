@@ -54,3 +54,36 @@
 - **Eviction** - the warm pool evicts the least-recently-used idle container when full; busy containers are never evicted (`SandboxBusy`).
 - GPU functions are refused at three layers (tenant policy `gpu_allowed`, service worker selection `gpu-sl` label, worker `--gpu-enabled`). None
   is on by default. Phase 3 owns the lease/VRAM gate that must pass before any of them is turned on.
+
+## Phase 3 additions (implemented, measured on real RTX 3060)
+
+- **D10 Eviction & G-RECLAIM (`apps/worker-guard/evict.go`, `guard.go`)** - When `free < Headroom` or operator calls `Pause()`, `worker-guard` calls `POST /v1/evict` (1.5 s timeout) on the local `ControlServer` (`127.0.0.1:18111`, authenticated with `X-Aicf-Evict-Secret`). If `/v1/evict` errors or hangs, `HTTPEvictor.Kill()` falls back to `docker kill` filtered strictly by `--filter label=aicf.sl=1 --filter label=aicf.gpu=<idx>` with hex ID regex validation (`^[0-9a-f]{12,64}$`). Across 30 real-GPU iterations (`benchmarks/reports/p_serverless_3_reclaim.json`), `G-RECLAIM` measured **p50 309.4 ms / p95 387.9 ms / p99 393.9 ms** (`< 2000 ms` gate) with `engine_stopped = 0` `[ĐO]`.
+- **Orphan-proof `_warm_runner.py` (`_watch_stdin`)** - Daemon thread inside the container polls `stdin` for `POLLHUP | POLLERR` (or 0-byte EOF read while `_IN_CALL` is `True`) and calls `os._exit(0)`. When the host worker receives `SIGKILL` mid-CUDA-execution, the container exits and releases 2 GiB VRAM in **0.5 s** `[ĐO]`.
+- **Per-container VRAM enforcement (`agents/sl_gpu.py`)** - `GpuAdmission` serialises `(free - uncovered_reservations - vram_mb >= headroom)` under a single lock; `GpuMonitor` samples `nvidia-smi --query-compute-apps` + `/proc/<pid>/cgroup` every 250 ms and kills any container exceeding `vram_mb + tolerance_mib`.
+- **HTTP Lease Bridge (`apps/site-gateway/leases.go`, `serverless/service.py`)** - `/api/serverless/v1/_lease/{request,extend,release,active}` gated by `X-Aicf-Proxy-Secret`; `LeaseManager` matches `gpu:<name>` / `worker:<id>` constraints, tracks `TenantID` and `WorkloadKind`, and runs an active background `StartSweeper`. Cold GPU calls acquire a 30 s container lease; warm calls make 0 lease RPCs (D3); `tick_leases()` renews only while the worker is live in `AICF_AGENTS`.
+- **A/B LLM Co-tenancy (`benchmarks/reports/p_serverless_3_ab_llm.json`)** - With `Qwen3-4B-Q4_K_M.gguf` on `llama-server` (`-ngl 99`), a co-tenant warm GPU Serverless container holding 1024 MiB VRAM and serving 72 concurrent warm calls degraded TTFT p95 by `-10.07%` (47.15 ms -> 42.40 ms) and `tok/s` p50 by `-0.02%` (101.43 -> 101.45 tok/s), well within the `<= 5%` gate `[ĐO]`.
+- **Phase 3 Mutation Gate (`benchmarks/reports/p_serverless_3_mutations.json`)** - **15/15 mutants KILLED** `[ĐO]`.
+
+## Phase 4–7 additions (implemented, measured)
+
+- **Phase 4 SDK & CLI (`sdk/python/aicf/`, `benchmarks/reports/p_serverless_4_sdk.json`, `p_serverless_4_mutations.json`)**:
+  - `@app.cls` stateful containers (`@aicf.enter()`, `@aicf.exit()`, `@aicf.method()`): 10 consecutive `.remote()` calls run `enter()` **exactly once** (`load_count == 1`), reusing warm container state for the remaining 9 calls `[ĐO]`.
+  - `.map(200)` across 2 isolated workers: 200/200 items completed in order; mid-flight worker failure respects D8 (`retries=0` -> `WorkerLost`, `retries=1` -> 100/100 recovered); `.map(10_000)` backpressure bounded RSS growth to `0.51 MiB` `[ĐO]`.
+  - `Secret.from_name`: injected into container env (`AICF_SECRET_*`), **0 leaks** across stdout/stderr, call store, and audit logs; `secret_access` recorded in audit log `[ĐO]`.
+  - `aicf doctor`: detects all 5 canonical misconfigurations (bad URL, bad API key, Python minor version mismatch, tenant disabled, quota exceeded) with actionable hints `[ĐO]`.
+  - Mutation gate `serverless_p4`: **6/6 mutants KILLED** `[ĐO]`.
+- **Phase 5 HTTP Routes, Immutable Deploy/Rollback, Volumes, Metering & OpenAPI (`benchmarks/reports/p_serverless_5_metering.json`, `p_serverless_5_mutations.json`)**:
+  - Immutable versioned deploy (`v1` -> `v2` -> `rollback` to `v1`) and JSON-only authenticated web endpoints (`POST /api/serverless/v1/web/{tenant}/{app}/{fn}`).
+  - `VolumeStore` (`serverless/volumes.py`): strict tenant partitioning, path normalization, `..`/absolute/symlink traversal rejection (audited), quota enforcement (`max_volume_bytes`), and atomic `.tmp` cleanup on `ENOSPC`.
+  - Execution + idle-lease metering (`Usage` records in `metering.go`): reconciled across 1,000 calls (`exec_gpu_ms = 51573`, `idle_gpu_ms = 2321`, `total_gpu_ms = 53894`, `total_vram_mib_sec = 27594`, relative diff `0.0% <= 1%`), `VerifyLedgerFile` PASS `[ĐO]`.
+  - OpenAPI 3.1.0 conformance (`tests/contracts/test_openapi_conformance.py`): **6/6 PASS**, covering all `/api/serverless/v1/*` routes.
+  - Mutation gate `serverless_p5`: **8/8 mutants KILLED** `[ĐO]`.
+- **Phase 6 Web Admin UI & Playwright E2E (`benchmarks/reports/p_serverless_6_e2e.json`)**:
+  - `index.html` 6-Bucket bar separates Serverless lease VRAM (`#sl-vram-summary`) from LLM Weights/KV and Host OSUser; Serverless table displays warm containers, TTL countdown, global **Drain** / **Disable Serverless** toggles, and per-container **Force Evict** button (hidden for `viewer`).
+  - `tenants.html` displays per-tenant `GPU-seconds` / `VRAM MiB·s` and interactive Serverless quota editor (`serverless_enabled`, `gpu_allowed`, `max_vram_mb`, `max_concurrency`).
+  - Real headless Chromium E2E (`tests/e2e/serverless_e2e.mjs`) at `2560x1440` and `375x812`: **15/15 checks PASS** with 0 horizontal overflow `[ĐO]`.
+- **Phase 7 Scale, Security T1–T11, Chaos & Emergency Rollback (`benchmarks/reports/p_serverless_7_scale_e2e.json`)**:
+  - Scale `.map(200)` with real NATS JetStream + Core NATS direct path: K=10 (`2657.5 ms`), K=25 (`2981.4 ms`), K=50 (`3547.4 ms`), 200/200 in-order, `0` leaked leases `[ĐO]`.
+  - K=50 20% worker drop (10/50 workers dropped mid-map): `200/200` recovered in `1626.0 ms`; 50-call cold-start storm completed in `470.9 ms` `[ĐO]`.
+  - Security threat suite (`tests/security/test_serverless_threats.py`, T1–T11, 12 tests) + Resilience chaos suite (`tests/resilience/test_serverless_chaos.py`, 4 tests): **16/16 PASS** `[ĐO]`.
+  - Emergency rollback drill (`set_admin_state(draining=True, serverless_enabled=False)`): evicted 12 warm GPU containers and released all 12 leases (`active_leases_after = 0`) in **`11.79 ms`** (`<< 5 min` SLA) `[ĐO]`.

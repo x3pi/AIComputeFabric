@@ -15,6 +15,7 @@ class TenantPolicy:
     max_timeout_s: float = 120.0
     max_keep_warm_s: int = 300
     max_bundle_bytes: int = 8 * 1024 * 1024
+    max_volume_bytes: int = 256 * 1024 * 1024
     allowed_data_classes: tuple = ("PUBLIC", "INTERNAL")
     gpu_allowed: bool = False
     max_vram_mb: int = 0
@@ -28,8 +29,9 @@ class QuotaError(Exception):
 
 
 class Quotas:
-    def __init__(self, policies: dict, default: TenantPolicy | None = None):
+    def __init__(self, policies: dict, default: TenantPolicy | None = None, secrets: dict | None = None):
         self.policies, self.default = policies, default or TenantPolicy()
+        self.secrets: dict[str, dict[str, dict[str, str]]] = dict(secrets or {})
         self._inflight: dict = {}
         self._mu = threading.Lock()
 
@@ -42,7 +44,33 @@ class Quotas:
             if "allowed_data_classes" in d:
                 d["allowed_data_classes"] = tuple(d["allowed_data_classes"])
             pol[tid] = TenantPolicy(**d)
-        return cls(pol)
+        return cls(pol, secrets=doc.get("secrets", {}))
+
+    def set_policy(self, tenant: str, updates: dict) -> TenantPolicy:
+        with self._mu:
+            cur = self.policies.get(tenant, self.default)
+            d = {f: getattr(cur, f) for f in cur.__dataclass_fields__}
+            for k, v in updates.items():
+                if k not in d:
+                    raise ValueError(f"unknown policy field: {k}")
+                d[k] = tuple(v) if k == "allowed_data_classes" else v
+            pol = TenantPolicy(**d)
+            self.policies[tenant] = pol
+            return pol
+
+    def set_secret(self, tenant: str, name: str, env_vars: dict[str, str]) -> None:
+        with self._mu:
+            self.secrets.setdefault(tenant, {})[name] = {str(k): str(v) for k, v in env_vars.items()}
+
+    def resolve_secrets(self, tenant: str, names: list[str]) -> dict[str, str]:
+        with self._mu:
+            t_sec = self.secrets.get(tenant, {})
+            merged: dict[str, str] = {}
+            for name in names:
+                if name not in t_sec:
+                    raise QuotaError("secret_not_found", f"secret {name!r} is not defined for tenant {tenant}", 404, 0)
+                merged.update(t_sec[name])
+            return merged
 
     def policy(self, tenant: str) -> TenantPolicy:
         return self.policies.get(tenant, self.default)

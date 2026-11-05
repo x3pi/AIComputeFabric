@@ -44,3 +44,49 @@ curl -s -H "Authorization: Bearer <API_KEY>" -H 'Content-Type: application/json'
   chạy `benchmarks/hardware/probe_windows.ps1`, `benchmarks/hardware/reclaim_poc.py`, `deploy/windows/install-service.ps1`.
 - Nhiều PC thật, fleet thật quy mô lớn (mới mô phỏng 5.000 worker), NATS, PostgreSQL, HA gateway, thu hồi chứng chỉ mTLS.
 - Con số hiệu năng trong plan là của 1 GPU RTX 3060; 2 worker trong benchmark affinity dùng chung 1 GPU.
+
+## 7. Kiểm thử Nền tảng Serverless GPU/Python (kiểu Modal.com)
+
+### 7.1. Unit, Integration & E2E theo từng Pha (Pha 1 → Pha 7)
+```bash
+# Pha 1: EnvCache, GpuDockerSandbox, WarmDockerPool, _warm_runner
+.venv/bin/pytest tests/serverless/test_p1_runtime.py -q
+
+# Pha 2: Lát cắt dọc CPU (Gateway -> Service -> NATS -> Worker -> Docker)
+.venv/bin/pytest tests/serverless/test_p2_e2e.py -q
+cd apps/site-gateway && go test -v -run TestServerless ./...
+
+# Pha 3: GPU Lease, Co-tenancy với LLM, Cưỡng chế VRAM, G-RECLAIM (< 2s)
+.venv/bin/pytest tests/serverless/test_p3_gpu.py -q
+cd apps/worker-guard && go test -v -run TestEvict ./...
+
+# Pha 4: SDK đầy đủ (@app.cls, .map, .spawn, Volume, Secret, CLI aicf doctor)
+.venv/bin/pytest tests/serverless/test_p4_sdk_cli.py -q
+
+# Pha 5: Web endpoint, Deploy/Rollback theo version, Volume, Metering & OpenAPI
+.venv/bin/pytest tests/serverless/test_p5_http_volumes_metering.py tests/contracts/test_openapi_conformance.py -q
+
+# Pha 7: Bảo mật (T1-T11) & Chịu lỗi Chaos (D8 at-most-once, lease TTL, ENOSPC, Rollback)
+.venv/bin/pytest tests/security/test_serverless_threats.py tests/resilience/test_serverless_chaos.py -q
+```
+
+### 7.2. Kiểm thử Đột biến (Mutation Testing — yêu cầu `100% KILLED`)
+```bash
+.venv/bin/python -m tests.mutation.harness serverless_p2
+.venv/bin/python -m tests.mutation.harness serverless_p3
+.venv/bin/python -m tests.mutation.harness serverless_p4
+.venv/bin/python -m tests.mutation.harness serverless_p5
+```
+
+### 7.3. E2E Trình duyệt Thực tế (Playwright Chromium ở `2560x1440` và `375x812`)
+```bash
+node tests/e2e/serverless_e2e.mjs
+node tests/e2e/roles_e2e.mjs
+```
+
+### 7.4. Benchmark Quy mô (K=10, 25, 50 worker), G-RECLAIM & A/B LLM trên GPU thật
+```bash
+.venv/bin/python benchmarks/serverless/p3_reclaim_ab.py
+.venv/bin/python benchmarks/serverless/p7_scale_chaos.py
+```
+Báo cáo JSON sinh ra tại `benchmarks/reports/p_serverless_{0..7}_*.json`.

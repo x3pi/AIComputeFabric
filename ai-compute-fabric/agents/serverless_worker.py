@@ -18,7 +18,7 @@ from typing import Optional
 
 from agents.env_cache import EnvCache, EnvError, EnvSpec
 from agents.orchestrator import WorkerLost
-from agents.sandbox import CallRefused, GpuDockerSandbox, SandboxBusy, SandboxError, ServerlessLimits, WarmDockerPool, WarmKey
+from agents.sandbox import CallRefused, GpuDockerSandbox, NoCapacity, SandboxBusy, SandboxError, ServerlessLimits, WarmDockerPool, WarmKey
 from agents.sl_security import SignatureError, Verifier, sha256_hex
 from agents.sl_store import MAX_INLINE_BYTES, BlobError
 from agents.task_bus import SERVERLESS_DIRECT, BusWorker
@@ -41,10 +41,13 @@ class ServerlessExecutor:
         self._mu = threading.Lock()
         self._builds = threading.Semaphore(max_concurrent_builds)
         self.counters = {"ok": 0, "error": 0, "rejected": 0, "signature_failures": 0, "duplicates": 0, "cold_starts": 0}
+        self.orphans_killed_at_start: list = []
+        self.control: object = None
+        self.monitor: object = None
 
     # -- helpers
     def _out(self, status: str, t0: float, **kw) -> ServerlessExecOut:
-        return ServerlessExecOut(status=status, total_ms=round((time.perf_counter() - t0) * 1000, 3), worker_id=self.worker_id, **kw)
+        return ServerlessExecOut(status=status, total_ms=round((time.perf_counter() - t0) * 1000, 3), worker_id=self.worker_id, **kw)  # type: ignore[arg-type]
 
     def _bad(self, status: str, t0: float, typ: str, msg: str, **kw) -> ServerlessExecOut:
         self.counters["rejected"] += 1
@@ -150,13 +153,24 @@ class ServerlessExecutor:
         except SandboxBusy as e:
             self.verifier.release(inp)
             raise WorkerLost(str(e)) from None              # nothing ran: let another worker take it
+        except NoCapacity as e:
+            self.verifier.release(inp)                          # nothing ran and nothing was marked started
+            self.counters["no_capacity"] = self.counters.get("no_capacity", 0) + 1
+            return self._out("no_capacity", t0, error=ServerlessError(type="NoCapacity", message=str(e)[:500]))
         except CallRefused:
             self.counters["duplicates"] += 1
             return self._out("duplicate", t0, error=ServerlessError(
                 type="WorkerLost", message="an earlier delivery of this call already started and its worker did not answer"))
         except SandboxError as e:
             msg = str(e)
-            status = "timeout" if "timed out" in msg else ("oom" if ("memory" in msg or "137" in msg) else "error")
+            if "stopped by the worker:" in msg and "vram_limit" not in msg:
+                status = "evicted"
+            elif "vram_limit" in msg:
+                status = "oom"
+            elif "timed out" in msg:
+                status = "timeout"
+            else:
+                status = "oom" if ("memory" in msg or "137" in msg) else "error"
             self.counters["error"] += 1
             return self._out(status, t0, error=ServerlessError(type="SandboxError", message=msg[:1000]), env_built=built)
 
@@ -167,9 +181,9 @@ class ServerlessExecutor:
             self.counters["cold_starts"] += 1
         if not resp.get("ok"):
             self.counters["error"] += 1
-            e = resp.get("error", {})
-            return self._out("error", t0, error=ServerlessError(type=str(e.get("type", "Error"))[:200], message=str(e.get("message", ""))[:2000],
-                                                                 traceback=str(e.get("traceback", ""))[-8000:]), **common)
+            err_info = resp.get("error", {})
+            return self._out("error", t0, error=ServerlessError(type=str(err_info.get("type", "Error"))[:200], message=str(err_info.get("message", ""))[:2000],
+                                                                 traceback=str(err_info.get("traceback", ""))[-8000:]), **common)
         raw = base64.b64decode(resp["result_b64"])
         self.counters["ok"] += 1
         if len(raw) > MAX_INLINE_BYTES:
@@ -183,6 +197,8 @@ class ServerlessExecutor:
 def direct_handler(ex: "ServerlessExecutor"):
     """Handler for the core-NATS warm path: same executor, same signature checks, no JetStream involved."""
     def handle(req: dict) -> dict:
+        if getattr(ex, "draining", False):
+            return {"ok": False, "error": "WorkerLost: worker is draining"}
         try:
             task = Task.model_validate(req["task"])
             res = ex.execute(task, int(req.get("attempt", 1)))
@@ -193,17 +209,30 @@ def direct_handler(ex: "ServerlessExecutor"):
 
 
 def build_worker(url: str, *, worker_id: str, key_file: str, store_dir: str, gpu_enabled: bool = False, gpu_index: Optional[int] = None,
-                 slots: int = 4, max_containers: int = 8, nats_store=None, tls_config=None, security_policy=None) -> tuple:
+                 slots: int = 4, max_containers: int = 8, nats_store=None, tls_config=None, security_policy=None, headroom_mib: int = 1536,
+                 control_secret: Optional[str] = None, control_port: int = 18111, probe=None) -> tuple:
     """Assemble a BusWorker around a ServerlessExecutor. Returns (BusWorker, ServerlessExecutor)."""
     from agents.sl_security import load_keys
     from agents.sl_store import NatsStore
     store = nats_store or NatsStore(url, identity=f"{worker_id}-store", tls_config=tls_config, security_policy=security_policy)
     pool = WarmDockerPool(GpuDockerSandbox(), max_containers=max_containers, worker_id=worker_id)
+    control = monitor = None
+    if gpu_enabled:
+        from agents.sl_gpu import ControlServer, GpuAdmission, GpuMonitor, GpuProbe
+        if gpu_index is None or not control_secret:
+            raise ValueError("--gpu-enabled needs --gpu-index and --control-secret-file (the worker-guard must be able to evict this worker)")
+        probe = probe or GpuProbe()
+        adm = GpuAdmission(probe, headroom_mib)
+        pool.admission = adm
+        monitor = GpuMonitor(pool, probe, adm, gpu_index)
+        monitor.start()
+        control = ControlServer(pool, monitor, control_secret, port=control_port).start()
     killed = pool.kill_orphans()                       # containers left by a previous crashed run of this worker
     pool.start_reaper()
     ex = ServerlessExecutor(worker_id=worker_id, verifier=Verifier(load_keys(key_file)), env_cache=EnvCache(Path(store_dir)), pool=pool,
                             blobs=store, ledger=store, gpu_enabled=gpu_enabled, gpu_index=gpu_index)
     ex.orphans_killed_at_start = killed
+    ex.control, ex.monitor = control, monitor
     labels = [f"w-{worker_id}"] + (["gpu-sl"] if gpu_enabled else [])      # every extra label is one more JetStream subscription to poll
     if hasattr(store, "serve_direct"):
         store.serve_direct(f"{SERVERLESS_DIRECT}.{worker_id}", direct_handler(ex), max_concurrent=slots)
@@ -224,11 +253,19 @@ if __name__ == "__main__":
     ap.add_argument("--gpu-index", type=int, default=None)
     ap.add_argument("--gpu-enabled", action="store_true", help="allow GPU functions (off by default; see plan phase 3 gate)")
     ap.add_argument("--slots", type=int, default=4)
+    ap.add_argument("--headroom-mib", type=int, default=1536, help="VRAM that must stay free for the owner (match worker-guard --headroom)")
+    ap.add_argument("--control-port", type=int, default=18111)
+    ap.add_argument("--control-secret-file", default=None, help="secret shared with worker-guard --serverless-secret-file (required with --gpu-enabled)")
     a = ap.parse_args()
+    secret = open(a.control_secret_file).read().strip() if a.control_secret_file else None
     bw, ex = build_worker(a.nats, worker_id=a.worker_id, key_file=a.key_file, store_dir=a.store_dir, gpu_enabled=a.gpu_enabled,
-                          gpu_index=a.gpu_index, slots=a.slots)
+                          gpu_index=a.gpu_index, slots=a.slots, headroom_mib=a.headroom_mib, control_secret=secret, control_port=a.control_port)
     signal.signal(signal.SIGTERM, lambda *_: bw.request_drain())
     try:
         bw.run()
     finally:
+        if ex.monitor:
+            ex.monitor.stop()
+        if ex.control:
+            ex.control.close()
         ex.pool.close()

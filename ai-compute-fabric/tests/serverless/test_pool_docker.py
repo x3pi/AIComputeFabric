@@ -353,6 +353,8 @@ def gpu_name():
 
 @pytest.mark.skipif(not _gpu_ok(), reason="needs nvidia docker runtime and a GPU")
 def test_gpu_visible_inside_hardened_warm_container(pool, env):
+    from agents.sl_gpu import GpuAdmission, GpuProbe
+    pool.admission = GpuAdmission(GpuProbe(), 1536)
     r, _ = call(pool, env, gpu_name, limits=L(gpu_index=0, vram_mb=1024))
     assert "NVIDIA" in value(r)
     r2, _ = call(pool, env, gpu_name, limits=L())                     # CPU function on the same host: no GPU

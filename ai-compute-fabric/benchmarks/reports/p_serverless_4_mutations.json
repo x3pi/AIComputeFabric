@@ -1,0 +1,82 @@
+{
+  "phase": "serverless_p4",
+  "baseline_rc": 0,
+  "total": 6,
+  "killed": 6,
+  "failed": 0,
+  "results": [
+    {
+      "id": "P4-M01 @app.cls re-runs @aicf.enter() on every call instead of once per container",
+      "file": "agents/_warm_runner.py",
+      "why": "@aicf.enter() must execute exactly once per warm container",
+      "mutation": "'if sha in _LOADED:\\n        return _LOADED[sha], False, 0.0' -> 'if False:\\n        return _LOADED[sha], False, 0.0'",
+      "red_rc": 1,
+      "red_seconds": 0.4,
+      "red_tail": "ssertionError\n=========================== short test summary info ============================\nFAILED tests/serverless/test_runner_unit.py::test_class_enter_runs_once_and_state_persists\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 12 deselected in 0.07s\n",
+      "green_rc": 0,
+      "green_seconds": 0.4,
+      "status": "KILLED"
+    },
+    {
+      "id": "P4-M02 Image.pip_install_from_requirements accepts unhashed requirements",
+      "file": "sdk/python/aicf/image.py",
+      "why": "pip_install_from_requirements must require --hash=sha256: by default (D4/T9)",
+      "mutation": "'if require_hashes and not _HASH_RE.search(entry):' -> 'if False:'",
+      "red_rc": 1,
+      "red_seconds": 3.2,
+      "red_tail": " EOF\n=========================== short test summary info ============================\nFAILED tests/serverless/test_p4_sdk_cli.py::test_image_local_files_and_requirements_hash_enforcement\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 deselected in 2.74s\n",
+      "green_rc": 0,
+      "green_seconds": 3.5,
+      "status": "KILLED"
+    },
+    {
+      "id": "P4-M03 Image.add_local_file bypasses MAX_LOCAL_FILES_BYTES limit",
+      "file": "sdk/python/aicf/image.py",
+      "why": "local file bundling must enforce MAX_LOCAL_FILES_BYTES",
+      "mutation": "'if total > MAX_LOCAL_FILES_BYTES:' -> 'if False:'",
+      "red_rc": 1,
+      "red_seconds": 3.3,
+      "red_tail": " EOF\n=========================== short test summary info ============================\nFAILED tests/serverless/test_p4_sdk_cli.py::test_image_local_files_and_requirements_hash_enforcement\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 deselected in 2.84s\n",
+      "green_rc": 0,
+      "green_seconds": 3.4,
+      "status": "KILLED"
+    },
+    {
+      "id": "P4-M04 .map() backpressure window unbounded (loads all items at once)",
+      "file": "sdk/python/aicf/app.py",
+      "why": ".map() must bound in-flight futures by 2 * max_concurrency",
+      "mutation": "'window = max(1, max_concurrency * 2)' -> 'window = 1000000'",
+      "red_rc": 1,
+      "red_seconds": 2.3,
+      "red_tail": " AssertionError\n=========================== short test summary info ============================\nFAILED tests/serverless/test_p4_sdk_cli.py::test_map_10000_backpressure_keeps_memory_flat\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 deselected in 1.87s\n",
+      "green_rc": 0,
+      "green_seconds": 1.9,
+      "status": "KILLED"
+    },
+    {
+      "id": "P4-M05 ServerlessAudit sanitizer disabled (leaks secrets/env_vars)",
+      "file": "serverless/ledger.py",
+      "why": "audit log must never persist secret values, env_vars, args, or bundles",
+      "mutation": "'if k in (\"env_vars\", \"secret\", \"secrets\", \"args\", \"args_b64\", \"bundle_b64\", \"res' -> 'if False:'",
+      "red_rc": 1,
+      "red_seconds": 3.8,
+      "red_tail": "========================= short test summary info ============================\nFAILED tests/serverless/test_p4_sdk_cli.py::test_secret_injected_into_container_and_never_logged_or_audited\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 deselected in 3.30s\n",
+      "green_rc": 0,
+      "green_seconds": 3.4,
+      "status": "KILLED"
+    },
+    {
+      "id": "P4-M06 FunctionCall status/logs cross-tenant isolation check disabled",
+      "file": "serverless/service.py",
+      "why": "a tenant must never read or cancel another tenant's spawned call_id",
+      "mutation": "'if role == \"tenant\" and rec[\"tenant_id\"] != tenant:\\n            raise ServiceErr' -> 'if False:\\n            raise ServiceError(403, \"forbidden\", \"cannot access anothe'",
+      "red_rc": 1,
+      "red_seconds": 3.4,
+      "red_tail": "nats: unexpected EOF\n=========================== short test summary info ============================\nFAILED tests/serverless/test_p4_sdk_cli.py::test_spawn_function_call_logs_and_cancel\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 6 deselected in 2.85s\n",
+      "green_rc": 0,
+      "green_seconds": 3.4,
+      "status": "KILLED"
+    }
+  ],
+  "label": "[ĐO]"
+}
