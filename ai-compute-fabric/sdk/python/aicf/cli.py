@@ -7,11 +7,12 @@ import importlib.util
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from aicf import errors as E
 from aicf.app import App, Function, FunctionCall, Volume
-from aicf.client import Client
+from aicf.client import Client, save_config
 from aicf.image import SUPPORTED_PYTHON
 
 
@@ -55,12 +56,22 @@ def cmd_run(a) -> int:
     return 0
 
 
+def _collect_apps(mod) -> list[App]:
+    apps = [v for v in vars(mod).values() if isinstance(v, App)]
+    seen = {id(app) for app in apps}
+    for v in vars(mod).values():
+        if isinstance(v, Function) and id(v.app) not in seen:
+            apps.append(v.app)
+            seen.add(id(v.app))
+    return apps
+
+
 def cmd_deploy(a) -> int:
     try:
         mod = _load(a.script)
-        apps = [v for v in vars(mod).values() if isinstance(v, App)]
+        apps = _collect_apps(mod)
         if not apps:
-            print(f"error: no aicf.App found in {a.script}", file=sys.stderr)
+            print(f"error: no aicf.App or @endpoint/@task_queue/@function found in {a.script}", file=sys.stderr)
             return 2
         res = apps[0].deploy()
         print(json.dumps(res, indent=2))
@@ -68,6 +79,56 @@ def cmd_deploy(a) -> int:
     except E.AicfError as e:
         print(f"{type(e).__name__}: {e}", file=sys.stderr)
         return 1
+
+
+def cmd_serve(a) -> int:
+    """Beam/Beta9-style `aicf serve script.py`: deploys and hot-reloads on file edits."""
+    script_path = Path(a.script)
+    if not script_path.is_file():
+        print(f"error: file not found: {a.script}", file=sys.stderr)
+        return 2
+    last_mtime = 0.0
+    while True:
+        try:
+            mtime = script_path.stat().st_mtime
+            if mtime != last_mtime:
+                last_mtime = mtime
+                mod = _load(str(script_path))
+                apps = _collect_apps(mod)
+                if not apps:
+                    print(f"error: no App or @endpoint/@task_queue/@function in {a.script}", file=sys.stderr)
+                    return 2
+                for app in apps:
+                    res = app.deploy()
+                    gw = app.client().url
+                    tid = res.get("tenant", "demo")
+                    aname = res.get("app_name", app.name)
+                    ver = res.get("active_version", "")
+                    print(f"✓ Deployed {aname}@{ver} (tenant={tid})")
+                    for fn in res.get("web_endpoints", []):
+                        print(f"  🌐 Endpoint: POST {gw}/api/serverless/v1/web/{tid}/{aname}/{fn}")
+                if getattr(a, "once", False):
+                    return 0
+            time.sleep(1.0)
+        except KeyboardInterrupt:
+            return 0
+        except E.AicfError as e:
+            print(f"{type(e).__name__}: {e}", file=sys.stderr)
+            if getattr(a, "once", False):
+                return 1
+            time.sleep(2.0)
+
+
+def cmd_configure(a) -> int:
+    """Beam/Beta9-style `aicf configure`: saves gateway URL and API key to ~/.aicf/config.json."""
+    url = a.url or os.environ.get("AICF_GATEWAY_URL") or "http://127.0.0.1:18080"
+    key = a.key or os.environ.get("AICF_API_KEY") or ""
+    if not key:
+        print("error: provide --key aicf_... (or set AICF_API_KEY)", file=sys.stderr)
+        return 2
+    path = save_config(url, key, tenant_id=a.tenant or "")
+    print(json.dumps({"saved": str(path), "url": url, "tenant_id": a.tenant or ""}, indent=2))
+    return 0
 
 
 def cmd_rollback(a) -> int:
@@ -186,8 +247,19 @@ def main(argv=None) -> int:
     r.set_defaults(fn=cmd_run)
 
     dep = sub.add_parser("deploy", help="deploy an app from a script")
-    dep.add_argument("script", help="script.py containing aicf.App")
+    dep.add_argument("script", help="script.py containing aicf.App or @endpoint/@task_queue")
     dep.set_defaults(fn=cmd_deploy)
+
+    srv = sub.add_parser("serve", help="deploy and hot-reload a script on file changes (Beta9 style)")
+    srv.add_argument("script", help="script.py containing aicf.App or @endpoint")
+    srv.add_argument("--once", action="store_true", help="deploy once and exit")
+    srv.set_defaults(fn=cmd_serve)
+
+    cfg = sub.add_parser("configure", help="save gateway URL and API key to ~/.aicf/config.json (Beta9 style)")
+    cfg.add_argument("--url", default="", help="Gateway URL, e.g. http://127.0.0.1:18080")
+    cfg.add_argument("--key", default="", help="Tenant API key (aicf_...)")
+    cfg.add_argument("--tenant", default="", help="Optional default tenant ID")
+    cfg.set_defaults(fn=cmd_configure)
 
     rb = sub.add_parser("rollback", help="roll back a deployed app to a previous version")
     rb.add_argument("app_name", help="deployed app name")

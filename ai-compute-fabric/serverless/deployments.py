@@ -105,6 +105,32 @@ def scratch_note(payload: dict) -> dict:
     }
 ''',
     ),
+    "beta9_style": (
+        "classify",
+        '''from aicf import endpoint, Image, Volume
+
+@endpoint(
+    name="text-analyzer",
+    gpu="any",
+    vram_mb=1024,
+    memory=512,
+    keep_warm_seconds=120,
+    image=Image.debian_slim(python_version="3.12"),
+    volumes=[Volume("shared-artifacts", mount_path="/mnt/volumes/shared-artifacts")],
+)
+def classify(**inputs) -> dict:
+    """Phong cách Beam/Beta9 (@endpoint + **inputs): nhận trực tiếp các trường JSON."""
+    text = str(inputs.get("text", ""))
+    words = text.split()
+    print(f"[beta9_endpoint] words={len(words)} keys={list(inputs.keys())}")
+    return {
+        "sdk_style": "beam-beta9-compatible",
+        "word_count": len(words),
+        "top_words": words[:5],
+        "preview": text[:80],
+    }
+''',
+    ),
 }
 
 
@@ -123,6 +149,46 @@ def _sample_classify_v2(payload: dict) -> dict:
     return {"release": "v2", "word_count": len(words), "char_count": len(text), "top_tokens": upper_words, "preview": text[:80]}
 
 
+def _ensure_sandbox_aicf_shim() -> None:
+    """Provide lightweight decorator shims inside the sandbox container if `aicf` is imported in user scripts."""
+    if "aicf" in sys.modules:
+        return
+    import types
+    m = types.ModuleType("aicf")
+
+    def _passthru_deco(*_a: Any, **_kw: Any) -> Any:
+        def _wrap(f: Any) -> Any:
+            return f
+        return _wrap
+
+    class _DummyObj:
+        def __call__(self, *_a: Any, **_kw: Any) -> Any:
+            return self
+        def __getattr__(self, _name: str) -> Any:
+            return self
+        def function(self, *_a: Any, **_kw: Any) -> Any:
+            return _passthru_deco()
+        def web_endpoint(self, *_a: Any, **_kw: Any) -> Any:
+            return _passthru_deco()
+        def cls(self, *_a: Any, **_kw: Any) -> Any:
+            return _passthru_deco()
+
+    dummy = _DummyObj()
+    setattr(m, "endpoint", _passthru_deco)
+    setattr(m, "task_queue", _passthru_deco)
+    setattr(m, "function", _passthru_deco)
+    setattr(m, "enter", _passthru_deco)
+    setattr(m, "exit", _passthru_deco)
+    setattr(m, "method", _passthru_deco)
+    setattr(m, "App", dummy)
+    setattr(m, "Image", dummy)
+    setattr(m, "Volume", dummy)
+    setattr(m, "Secret", dummy)
+    setattr(m, "ModelCache", dummy)
+    setattr(m, "Sandbox", dummy)
+    sys.modules["aicf"] = m
+
+
 class _SandboxSourceRunner:
     """Callable pickled into the bundle. Executes user source ONLY inside `_warm_runner.py` in the isolated container."""
 
@@ -134,13 +200,28 @@ class _SandboxSourceRunner:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if self._fn is None:
+            _ensure_sandbox_aicf_shim()
             ns: dict[str, Any] = {"__name__": "__aicf_user_app__", "__file__": f"/tmp/aicf_files/{self.filename}"}
             code_obj = compile(self.source_code, ns["__file__"], "exec")
             exec(code_obj, ns)  # noqa: S102 — runs strictly inside isolated rootless container (_warm_runner.py)
             fn = ns.get(self.entrypoint)
+            if hasattr(fn, "fn") and callable(getattr(fn, "fn")):
+                fn = getattr(fn, "fn")
             if not callable(fn):
                 raise RuntimeError(f"Entrypoint {self.entrypoint!r} is not callable in {self.filename}")
             self._fn = fn
+        # Support both `def fn(payload: dict)` (Modal/AICF style) and `def fn(**inputs)` (Beam/Beta9 style)
+        if len(args) == 1 and isinstance(args[0], dict) and not kwargs:
+            import inspect
+            try:
+                sig = inspect.signature(self._fn)
+                params = list(sig.parameters.values())
+                has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+                pos_params = [p for p in params if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+                if has_var_kw and len(pos_params) == 0:
+                    return self._fn(**args[0])
+            except Exception:
+                pass
         return self._fn(*args, **kwargs)
 
 

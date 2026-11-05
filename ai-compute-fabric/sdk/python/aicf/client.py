@@ -6,20 +6,54 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from aicf import errors as E
 
 
+def config_file_path() -> Path:
+    custom = os.environ.get("AICF_CONFIG_PATH")
+    if custom:
+        return Path(custom)
+    return Path.home() / ".aicf" / "config.json"
+
+
+def load_saved_config() -> dict[str, str]:
+    p = config_file_path()
+    if not p.is_file():
+        return {}
+    try:
+        doc = json.loads(p.read_text("utf-8"))
+        return doc if isinstance(doc, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_config(url: str, api_key: str, tenant_id: str = "") -> Path:
+    p = config_file_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    doc = {"url": url.rstrip("/"), "api_key": api_key.strip()}
+    if tenant_id:
+        doc["tenant_id"] = tenant_id.strip()
+    p.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    try:
+        p.chmod(0o600)
+    except OSError:
+        pass
+    return p
+
+
 class Client:
     def __init__(self, url: str | None = None, api_key: str | None = None, timeout: float = 700.0):
-        self.url = (url or os.environ.get("AICF_GATEWAY_URL", "")).rstrip("/")
-        self.api_key = api_key or os.environ.get("AICF_API_KEY", "")
+        saved = load_saved_config() if (not url and not os.environ.get("AICF_GATEWAY_URL")) or (not api_key and not os.environ.get("AICF_API_KEY")) else {}
+        self.url = (url or os.environ.get("AICF_GATEWAY_URL") or saved.get("url", "")).rstrip("/")
+        self.api_key = api_key or os.environ.get("AICF_API_KEY") or saved.get("api_key", "")
         self.timeout = timeout
         if not self.url:
-            raise E.ConfigError("AICF_GATEWAY_URL is not set (example: export AICF_GATEWAY_URL=http://gateway.lan:18080)")
+            raise E.ConfigError("AICF_GATEWAY_URL is not set (run `aicf configure` or export AICF_GATEWAY_URL=http://gateway.lan:18080)")
         if not self.api_key:
-            raise E.ConfigError("AICF_API_KEY is not set (ask your administrator for a tenant API key: it starts with 'aicf_')")
+            raise E.ConfigError("AICF_API_KEY is not set (run `aicf configure` or export AICF_API_KEY=aicf_...)")
 
     def request(self, method: str, path: str, body: Any = None, *, headers: dict | None = None, raw_response: bool = False) -> Any:
         data: bytes | None = None

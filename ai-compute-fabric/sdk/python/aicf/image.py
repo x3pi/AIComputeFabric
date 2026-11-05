@@ -37,6 +37,16 @@ class Image:
 
     pip_install = uv_pip_install
 
+    def add_python_packages(self, *packages: str | list[str] | tuple[str, ...]) -> "Image":
+        """Beam/Beta9-compatible helper: accepts a list (`add_python_packages(['numpy', 'scipy'])`) or varargs."""
+        flat: list[str] = []
+        for p in packages:
+            if isinstance(p, (list, tuple)):
+                flat.extend(str(x) for x in p)
+            else:
+                flat.append(str(p))
+        return self.uv_pip_install(*flat)
+
     def pip_install_from_requirements(self, requirements_txt: str | Path, *, require_hashes: bool = True) -> "Image":
         p = Path(requirements_txt)
         if not p.is_file():

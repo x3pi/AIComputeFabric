@@ -412,6 +412,7 @@
                   <option value="demo_v2">2. Trích xuất Top Token &amp; Thống kê (v2)</option>
                   <option value="gpu_bench">3. Benchmark GPU &amp; Kiểm tra CUDA</option>
                   <option value="volume_io">4. Đọc/Ghi tệp JSON trong Sandbox</option>
+                  <option value="beta9_style">5. Phong cách Beam / Beta9 (@endpoint + **inputs)</option>
                 </select>
               </div>
               <div class="row" style="gap:6px">
@@ -683,9 +684,24 @@ aicf app list</div>
                 </thead>
                 <tbody>
                   <tr>
-                    <td class="mono"><strong>@app.function(...)</strong></td>
+                    <td class="mono"><strong>@aicf.endpoint(...)</strong><br><span class="mut" style="font-size:11px">(Chuẩn Beam/Beta9)</span></td>
+                    <td class="mono" style="font-size:12px">name="...", gpu="any", vram_mb=1024, memory=512, keep_warm_seconds=120, image=..., volumes=[...]</td>
+                    <td>Tương thích 1:1 với <code>beam-cloud/beta9</code>: xuất hàm thành REST JSON Endpoint tại <code>POST /api/serverless/v1/web/{tenant}/{app}/{fn}</code>, hỗ trợ cả chữ ký <code>def fn(**inputs)</code> và <code>def fn(payload: dict)</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="mono"><strong>@aicf.task_queue(...)</strong><br><span class="mut" style="font-size:11px">(Chuẩn Beam/Beta9)</span></td>
+                    <td class="mono" style="font-size:12px">name="...", gpu="any", vram_mb=2048, retries=2, keep_warm_seconds=60</td>
+                    <td>Hàng đợi Background Job bất đồng bộ: gọi <code>job = fn.put(...)</code> (hoặc <code>fn.spawn(...)</code>) → nhận <code>FunctionCall</code> để tra cứu trạng thái <code>job.get()</code>, xem log <code>job.logs()</code> hoặc hủy <code>job.cancel()</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="mono"><strong>aicf.Sandbox(...)</strong><br><span class="mut" style="font-size:11px">(Chuẩn Beam/Beta9 &amp; Modal)</span></td>
+                    <td class="mono" style="font-size:12px">gpu="any", vram_mb=1024, memory=512, keep_warm_seconds=120</td>
+                    <td>Khởi tạo môi trường Sandbox cô lập (<code>sb = Sandbox(...).create()</code>): chạy code động <code>sb.run_code("...")</code>, chạy lệnh shell <code>sb.process.exec("...")</code> và thu hồi ngay bằng <code>sb.terminate()</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="mono"><strong>@app.function(...)</strong><br><span class="mut" style="font-size:11px">(Chuẩn Modal.com)</span></td>
                     <td class="mono" style="font-size:12px">gpu=None|"any"|"RTX3060", vram_mb=0, memory_mb=512, cpus=1.0, timeout_s=30, keep_warm_s=60, retries=0, image=..., secrets=[...], volumes={...}</td>
-                    <td>Đóng gói hàm Python qua <code>cloudpickle</code>, cấp phát container cô lập (và GPU Lease nếu <code>vram_mb &gt; 0</code>). Hỗ trợ <code>.remote()</code>, <code>.local()</code>, <code>.map()</code>, <code>.starmap()</code>, <code>.spawn()</code>.</td>
+                    <td>Đóng gói hàm Python qua <code>cloudpickle</code>, cấp phát container cô lập (và GPU Lease nếu <code>vram_mb &gt; 0</code>). Hỗ trợ <code>.remote()</code>, <code>.local()</code>, <code>.map()</code>, <code>.starmap()</code>, <code>.spawn()</code>, <code>.put()</code>.</td>
                   </tr>
                   <tr>
                     <td class="mono"><strong>@app.cls(...)</strong><br><strong>@aicf.enter()</strong><br><strong>@aicf.exit()</strong></td>
@@ -931,6 +947,33 @@ def classify(payload: dict) -> dict:
         "file": path,
         "size_bytes": os.path.getsize(path),
         "data": loaded,
+    }
+`
+  },
+  beta9_style: {
+    fn: "classify",
+    hw: "gpu-1024",
+    code: `from aicf import endpoint, Image, Volume
+
+@endpoint(
+    name="text-analyzer",
+    gpu="any",
+    vram_mb=1024,
+    memory=512,
+    keep_warm_seconds=120,
+    image=Image.debian_slim(python_version="3.12"),
+    volumes=[Volume("shared-artifacts", mount_path="/mnt/volumes/shared-artifacts")],
+)
+def classify(**inputs) -> dict:
+    """Phong cách Beam/Beta9 (@endpoint + **inputs): nhận trực tiếp các trường JSON."""
+    text = str(inputs.get("text", ""))
+    words = text.split()
+    print(f"[beta9_endpoint] words={len(words)} keys={list(inputs.keys())}")
+    return {
+        "sdk_style": "beam-beta9-compatible",
+        "word_count": len(words),
+        "top_words": words[:5],
+        "preview": text[:80],
     }
 `
   }
@@ -1809,29 +1852,34 @@ document.getElementById("sl-btn-refresh").onclick = loadOverview;
 function getQuickstartPythonCode() {
   const tid = tenantInput.value.trim() || "demo";
   return `import aicf
+from aicf import endpoint, task_queue, Sandbox, Image, Volume
 
-app = aicf.App("text-analyzer")
-vol = aicf.Volume.from_name("shared-artifacts", create_if_missing=True)
-image = aicf.Image.debian_slim(python_version="3.12")
-
-@app.function(
-    image=image,
+# --- 1. Phong cách Beam/Beta9: @endpoint + @task_queue + Sandbox ---
+@endpoint(
+    name="text-analyzer",
     gpu="any",
     vram_mb=2048,
-    memory_mb=1024,
-    timeout_s=60,
-    keep_warm_s=120,
-    volumes={"/mnt/volumes/shared-artifacts": vol},
+    memory=1024,
+    keep_warm_seconds=120,
+    image=Image.debian_slim().add_python_packages(["numpy"]),
+    volumes=[Volume("shared-artifacts", mount_path="/mnt/volumes/shared-artifacts")],
 )
-def classify(text: str) -> dict:
+def classify(**inputs) -> dict:
+    text = str(inputs.get("text", ""))
     words = text.split()
     return {"tenant": "${tid}", "word_count": len(words), "top": words[:5]}
+
+@task_queue(name="batch-worker", gpu="any", vram_mb=2048, retries=2)
+def process_document(doc_id: str, text: str) -> dict:
+    return {"doc_id": doc_id, "words": len(text.split())}
+
+# --- 2. Phong cách Modal.com: App + @app.function + @app.cls ---
+app = aicf.App("text-analyzer")
 
 @app.cls(gpu="any", vram_mb=2048, keep_warm_s=180)
 class Embedder:
     @aicf.enter()
     def load_model(self):
-        # Chạy 1 lần duy nhất khi khởi tạo container ấm
         self.dim = 384
 
     @aicf.method()
@@ -1839,8 +1887,15 @@ class Embedder:
         return {"len": len(sentence), "dim": self.dim}
 
 if __name__ == "__main__":
-    print(classify.remote("Chạy hàm Python trên AI Compute Fabric Serverless GPU"))
-    print(classify.map(["Câu 1", "Câu 2", "Câu 3"]))
+    # Gọi trực tiếp hoặc đẩy vào hàng đợi @task_queue (.put / .spawn):
+    print(classify.remote(text="Chạy hàm trên AI Compute Fabric Serverless GPU"))
+    job = process_document.put("doc-01", "Xử lý bất đồng bộ qua Task Queue")
+    print("Task Queue Result:", job.get())
+
+    # Khởi tạo Sandbox cô lập kiểu Beta9/Modal:
+    with Sandbox(gpu="any", vram_mb=1024).create() as sb:
+        res = sb.run_code("result = sum(i*i for i in range(100))\\nprint('sum=', result)")
+        print("Sandbox stdout:", res.stdout, "result:", res.result)
 `;
 }
 

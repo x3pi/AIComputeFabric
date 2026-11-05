@@ -62,17 +62,19 @@ class Secret:
 
 
 class Volume:
-    """Tenant-isolated persistent storage volume (ADR-003 D7)."""
+    """Tenant-isolated persistent storage volume (ADR-003 D7). Supports both Modal (`Volume.from_name`) and Beta9 (`Volume(name=..., mount_path=...)`)."""
 
-    def __init__(self, name: str, client: Optional[Client] = None):
+    def __init__(self, name: str, client: Optional[Client] = None, *, mount_path: Optional[str] = None, create_if_missing: bool = True):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", name):
             raise E.InvalidRequest(f"invalid volume name: {name!r}")
         self.name = name
+        self.mount_path = mount_path or f"/mnt/volumes/{name}"
+        self.create_if_missing = create_if_missing
         self._client = client
 
     @classmethod
-    def from_name(cls, name: str, client: Optional[Client] = None) -> "Volume":
-        return cls(name, client=client)
+    def from_name(cls, name: str, client: Optional[Client] = None, *, create_if_missing: bool = True) -> "Volume":
+        return cls(name, client=client, create_if_missing=create_if_missing)
 
     def _c(self) -> Client:
         if self._client is None:
@@ -279,6 +281,9 @@ class Function:
         client = self.app.client()
         doc = client.post("/spawn", self._request(args, kwargs))
         return FunctionCall(doc["call_id"], client)
+
+    # Beam/Beta9 `@task_queue` alias: `job = my_queue.put(...)` -> `job.get()`
+    put = spawn
 
     def map(self, iterable: Iterable[Any], *, order_outputs: bool = True, max_concurrency: int = 16,
             return_exceptions: bool = False, retries: Optional[int] = None) -> Iterator[Any]:
@@ -516,3 +521,254 @@ class App:
     def rollback(self, version: Optional[str] = None) -> dict:
         body = {"version": version} if version else {}
         return self.client().post(f"/apps/{self.name}/rollback", body)
+
+
+# ==============================================================================
+# Beam / Beta9-Compatible Top-Level Primitives (@endpoint, @task_queue, @function, Sandbox)
+# ==============================================================================
+
+def _normalize_volumes(volumes: Optional[dict[str, Volume | str] | Iterable[Volume | str]]) -> dict[str, Volume | str]:
+    if not volumes:
+        return {}
+    if isinstance(volumes, dict):
+        return dict(volumes)
+    out: dict[str, Volume | str] = {}
+    for v in volumes:
+        if isinstance(v, Volume):
+            out[v.mount_path] = v
+        else:
+            s = str(v)
+            out[f"/mnt/volumes/{s}"] = s
+    return out
+
+
+def endpoint(name: Optional[str] = None, *, gpu: Optional[str] = None, vram_mb: int = 0,
+             memory: int = 512, memory_mb: Optional[int] = None, cpu: float = 1.0,
+             keep_warm_seconds: int = 60, keep_warm_s: Optional[int] = None,
+             timeout: float = 30.0, timeout_s: Optional[float] = None,
+             retries: int = 0, image: Optional[Image] = None,
+             volumes: Optional[dict[str, Volume | str] | Iterable[Volume | str]] = None,
+             secrets: Iterable[Secret | str] = (), requires_auth: bool = True,
+             app: Optional[App] = None, client: Optional[Client] = None):
+    """Beam/Beta9-style `@endpoint(...)` decorator for synchronous REST API endpoints."""
+    def deco(fn: Callable) -> Function:
+        import functools
+        import inspect
+        try:
+            sig = inspect.signature(fn)
+            params = list(sig.parameters.values())
+            has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+            pos_params = [p for p in params if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+            needs_kw_unpack = has_var_kw and len(pos_params) == 0
+        except Exception:
+            needs_kw_unpack = False
+
+        if needs_kw_unpack:
+            @functools.wraps(fn)
+            def _wrapped(*args: Any, **kwargs: Any) -> Any:
+                if len(args) == 1 and isinstance(args[0], dict) and not kwargs:
+                    return fn(**args[0])
+                return fn(*args, **kwargs)
+            target_fn: Callable = _wrapped
+        else:
+            target_fn = fn
+
+        app_name = name or getattr(fn, "__name__", "endpoint-app").replace("_", "-")
+        target_app = app or App(app_name, client=client)
+        eff_mem = memory_mb if memory_mb is not None else memory
+        eff_warm = keep_warm_s if keep_warm_s is not None else keep_warm_seconds
+        eff_timeout = timeout_s if timeout_s is not None else timeout
+        eff_vram = vram_mb or (1024 if gpu else 0)
+        return target_app.function(
+            image=image, gpu=gpu, vram_mb=eff_vram, memory_mb=eff_mem, cpu=cpu,
+            timeout_s=eff_timeout, keep_warm_s=eff_warm, retries=retries,
+            secrets=secrets, volumes=_normalize_volumes(volumes),
+            web_endpoint=True, requires_auth=requires_auth,
+        )(target_fn)
+    return deco
+
+
+def task_queue(name: Optional[str] = None, *, gpu: Optional[str] = None, vram_mb: int = 0,
+               memory: int = 512, memory_mb: Optional[int] = None, cpu: float = 1.0,
+               keep_warm_seconds: int = 60, keep_warm_s: Optional[int] = None,
+               timeout: float = 120.0, timeout_s: Optional[float] = None,
+               retries: int = 1, image: Optional[Image] = None,
+               volumes: Optional[dict[str, Volume | str] | Iterable[Volume | str]] = None,
+               secrets: Iterable[Secret | str] = (),
+               app: Optional[App] = None, client: Optional[Client] = None):
+    """Beam/Beta9-style `@task_queue(...)` decorator for async background jobs (`fn.put(...)` / `fn.spawn(...)`)."""
+    def deco(fn: Callable) -> Function:
+        app_name = name or getattr(fn, "__name__", "task-queue-app").replace("_", "-")
+        target_app = app or App(app_name, client=client)
+        eff_mem = memory_mb if memory_mb is not None else memory
+        eff_warm = keep_warm_s if keep_warm_s is not None else keep_warm_seconds
+        eff_timeout = timeout_s if timeout_s is not None else timeout
+        eff_vram = vram_mb or (1024 if gpu else 0)
+        return target_app.function(
+            image=image, gpu=gpu, vram_mb=eff_vram, memory_mb=eff_mem, cpu=cpu,
+            timeout_s=eff_timeout, keep_warm_s=eff_warm, retries=retries,
+            secrets=secrets, volumes=_normalize_volumes(volumes),
+            web_endpoint=False,
+        )(fn)
+    return deco
+
+
+def function(name: Optional[str] = None, *, gpu: Optional[str] = None, vram_mb: int = 0,
+             memory: int = 512, memory_mb: Optional[int] = None, cpu: float = 1.0,
+             keep_warm_seconds: int = 60, keep_warm_s: Optional[int] = None,
+             timeout: float = 30.0, timeout_s: Optional[float] = None,
+             retries: int = 0, image: Optional[Image] = None,
+             volumes: Optional[dict[str, Volume | str] | Iterable[Volume | str]] = None,
+             secrets: Iterable[Secret | str] = (),
+             app: Optional[App] = None, client: Optional[Client] = None):
+    """Beam/Beta9-style standalone `@function(...)` decorator (`fn.remote(...)`, `fn.map(...)`, `fn.spawn(...)`)."""
+    def deco(fn: Callable) -> Function:
+        app_name = name or getattr(fn, "__name__", "fn-app").replace("_", "-")
+        target_app = app or App(app_name, client=client)
+        eff_mem = memory_mb if memory_mb is not None else memory
+        eff_warm = keep_warm_s if keep_warm_s is not None else keep_warm_seconds
+        eff_timeout = timeout_s if timeout_s is not None else timeout
+        eff_vram = vram_mb or (1024 if gpu else 0)
+        return target_app.function(
+            image=image, gpu=gpu, vram_mb=eff_vram, memory_mb=eff_mem, cpu=cpu,
+            timeout_s=eff_timeout, keep_warm_s=eff_warm, retries=retries,
+            secrets=secrets, volumes=_normalize_volumes(volumes),
+            web_endpoint=False,
+        )(fn)
+    return deco
+
+
+def _sandbox_exec_payload(cmd_or_code: str, mode: str = "code") -> dict:
+    import io
+    import os
+    import subprocess
+    import traceback
+    from contextlib import redirect_stderr, redirect_stdout
+
+    if mode == "shell":
+        proc = subprocess.run(cmd_or_code, shell=True, capture_output=True, text=True, timeout=25)  # noqa: S602 — inside isolated container
+        return {
+            "exit_code": proc.returncode,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+            "result": None,
+            "pid": os.getpid(),
+        }
+    out_buf, err_buf = io.StringIO(), io.StringIO()
+    ns: dict[str, Any] = {"__name__": "__aicf_sandbox__"}
+    exit_code = 0
+    res_val = None
+    try:
+        with redirect_stdout(out_buf), redirect_stderr(err_buf):
+            code_obj = compile(cmd_or_code, "<sandbox>", "exec")
+            exec(code_obj, ns)  # noqa: S102 — inside isolated rootless container
+            res_val = ns.get("result")
+    except Exception:
+        exit_code = 1
+        err_buf.write(traceback.format_exc())
+    return {
+        "exit_code": exit_code,
+        "stdout": out_buf.getvalue(),
+        "stderr": err_buf.getvalue(),
+        "result": res_val,
+        "pid": os.getpid(),
+    }
+
+
+class SandboxResult:
+    """Result of executing Python code or a command inside an `aicf.Sandbox`."""
+
+    def __init__(self, doc: dict):
+        self.exit_code: int = int(doc.get("exit_code", 0))
+        self.returncode: int = self.exit_code
+        self.stdout: str = str(doc.get("stdout", ""))
+        self.stderr: str = str(doc.get("stderr", ""))
+        self.result: Any = doc.get("result")
+        self.pid: int = int(doc.get("pid", 0))
+
+    def logs(self) -> str:
+        return self.stdout + (("\n" + self.stderr) if self.stderr else "")
+
+    def __repr__(self) -> str:
+        return f"SandboxResult(exit_code={self.exit_code}, stdout={self.stdout!r}, result={self.result!r})"
+
+
+class _SandboxProcessNamespace:
+    def __init__(self, inst: "SandboxInstance"):
+        self._inst = inst
+
+    def exec(self, command: str) -> SandboxResult:
+        return self._inst.exec(command, mode="shell")
+
+
+class SandboxInstance:
+    """Active isolated Sandbox handle (compatible with `beam-cloud/beta9` `Sandbox.create()`)."""
+
+    def __init__(self, sandbox: "Sandbox", fn: Function):
+        self.sandbox = sandbox
+        self._fn = fn
+        self.process = _SandboxProcessNamespace(self)
+
+    def run_code(self, python_code: str) -> SandboxResult:
+        """Execute arbitrary Python code inside the isolated container sandbox."""
+        doc = self._fn.remote(python_code, "code")
+        return SandboxResult(doc if isinstance(doc, dict) else {"stdout": str(doc)})
+
+    def exec(self, command_or_code: str, *, mode: str = "code") -> SandboxResult:
+        """Execute code (`mode='code'`) or shell command (`mode='shell'`) inside the sandbox."""
+        doc = self._fn.remote(command_or_code, mode)
+        return SandboxResult(doc if isinstance(doc, dict) else {"stdout": str(doc)})
+
+    def terminate(self) -> dict:
+        """Evict any warm container associated with this sandbox and release its GPU lease."""
+        client = self._fn.app.client()
+        containers = client.get("/containers").get("containers", [])
+        evicted = []
+        for c in containers:
+            if c.get("app_name") == self._fn.app.name:
+                cid = c.get("container_id")
+                if cid:
+                    client.delete(f"/containers/{cid}?reason=idle")
+                    evicted.append(cid)
+        return {"terminated": True, "evicted_containers": evicted}
+
+    def __enter__(self) -> "SandboxInstance":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        try:
+            self.terminate()
+        except Exception:
+            pass
+
+
+class Sandbox:
+    """Beam/Beta9 & Modal-compatible isolated Sandbox environment on AICF Serverless."""
+
+    def __init__(self, *, name: str = "aicf-sandbox", image: Optional[Image] = None,
+                 gpu: Optional[str] = None, vram_mb: int = 0, memory: int = 512,
+                 memory_mb: Optional[int] = None, cpu: float = 1.0,
+                 keep_warm_seconds: int = 120, timeout: float = 30.0,
+                 volumes: Optional[dict[str, Volume | str] | Iterable[Volume | str]] = None,
+                 client: Optional[Client] = None):
+        self.name = name
+        self.image = image or Image.debian_slim()
+        self.gpu = gpu
+        self.vram_mb = vram_mb or (1024 if gpu else 0)
+        self.memory_mb = memory_mb if memory_mb is not None else memory
+        self.cpu = cpu
+        self.keep_warm_s = keep_warm_seconds
+        self.timeout_s = timeout
+        self.volumes = _normalize_volumes(volumes)
+        self._client = client
+
+    def create(self) -> SandboxInstance:
+        app = App(self.name, client=self._client)
+        fn = app.function(
+            image=self.image, gpu=self.gpu, vram_mb=self.vram_mb,
+            memory_mb=self.memory_mb, cpu=self.cpu,
+            timeout_s=self.timeout_s, keep_warm_s=self.keep_warm_s,
+            volumes=self.volumes,
+        )(_sandbox_exec_payload)
+        return SandboxInstance(self, fn)
+

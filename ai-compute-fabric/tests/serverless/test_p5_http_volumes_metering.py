@@ -316,3 +316,59 @@ func TestVerifyServerlessPythonLedger(t *testing.T) {{
         "go_verify_ledger_file": "PASS (1010 hash-chained entries verified)",
     }
     (ROOT / "benchmarks/reports/p_serverless_5_metering.json").write_text(json.dumps(rep, indent=2) + "\n")
+
+
+def test_beta9_compatible_dx_endpoint_task_queue_sandbox_and_web_source_deploy(stack):
+    """Verify Beam/Beta9-style `@endpoint`, `@task_queue` (`.put()`), `Sandbox`, and Web IDE `source_code` deploy."""
+    alpha_c = aicf.Client(stack.gateway_url, stack.keys["alpha"])
+    alpha_id = stack.tenants["alpha"]
+
+    @aicf.endpoint(
+        name="beta9-api",
+        memory=512,
+        keep_warm_seconds=60,
+        image=aicf.Image.debian_slim().add_python_packages(["cloudpickle"]),
+        volumes=[aicf.Volume("shared-vol", mount_path="/mnt/volumes/shared-vol")],
+        client=alpha_c,
+    )
+    def summarize(**inputs):
+        words = str(inputs.get("text", "")).split()
+        return {"count": len(words), "first": words[0] if words else ""}
+
+    # Deploy & call via Web Endpoint
+    dep_doc = summarize.app.deploy()
+    assert dep_doc["app_name"] == "beta9-api"
+    st, wdoc = stack.http("POST", f"/api/serverless/v1/web/{alpha_id}/beta9-api/summarize", stack.keys["alpha"], {"text": "hello beta9 dx"}, headers={"Content-Type": "application/json"})
+    assert st == 200 and wdoc["result"] == {"count": 3, "first": "hello"}
+
+    # @task_queue with `.put(...)` -> `job.get()`
+    @aicf.task_queue(name="beta9-queue", memory=512, retries=1, client=alpha_c)
+    def bg_double(n: int) -> int:
+        return n * 2
+
+    job = bg_double.put(21)
+    assert job.get(timeout=15) == 42
+
+    # Sandbox `.create()` -> `.run_code(...)` & `.process.exec(...)` -> `.terminate()`
+    with aicf.Sandbox(name="beta9-sb", memory=512, keep_warm_seconds=60, client=alpha_c).create() as sb:
+        r_code = sb.run_code("result = 6 * 7\nprint('ans=', result)")
+        assert r_code.exit_code == 0 and r_code.result == 42 and "ans= 42" in r_code.stdout
+        r_sh = sb.process.exec("echo sandbox-shell-ok")
+        assert r_sh.exit_code == 0 and "sandbox-shell-ok" in r_sh.stdout
+
+    # Web IDE `source_code` deploy with syntax error check + valid Beta9 `@endpoint` source
+    st_err, err_doc = stack.http("POST", "/api/serverless/v1/deploy", stack.keys["alpha"], {
+        "app_name": "ide-bad",
+        "functions": [{"fn_id": "bad", "source_code": "def broken(:\n    pass"}],
+    }, headers={"Content-Type": "application/json"})
+    assert st_err == 400 and err_doc["error"]["code"] == "syntax_error"
+
+    st_ok, ok_doc = stack.http("POST", "/api/serverless/v1/deploy", stack.keys["alpha"], {
+        "app_name": "ide-beta9",
+        "functions": [{"fn_id": "classify", "builtin_template": "beta9_style"}],
+        "web_endpoints": {"classify": {"requires_auth": True}},
+    }, headers={"Content-Type": "application/json"})
+    assert st_ok == 200 and ok_doc["active_version"].startswith("v-")
+    st_call, call_doc = stack.http("POST", f"/api/serverless/v1/web/{alpha_id}/ide-beta9/classify", stack.keys["alpha"], {"text": "one two three"}, headers={"Content-Type": "application/json"})
+    assert st_call == 200 and call_doc["result"]["sdk_style"] == "beam-beta9-compatible" and call_doc["result"]["word_count"] == 3
+
