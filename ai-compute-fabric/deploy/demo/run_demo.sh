@@ -94,7 +94,7 @@ if docker info >/dev/null 2>&1; then
   "$PY" -m serverless.app --listen "127.0.0.1:$SL_PORT" --gateway "http://127.0.0.1:$HTTP_PORT" \
     --secret-file "$D/serverless.secret" --data-dir "$D/serverless" --worker-id pc-001 \
     --gpu-enabled --gpu-index 0 --headroom-mib 512 --control-port "$SL_CTRL_PORT" \
-    --canary-tenant demo --canary-gpu-allowed --canary-max-vram-mb 4096 >"$D/logs/serverless.log" 2>&1 & pids+=($!)
+    --canary-tenant demo --canary-gpu-allowed --canary-max-vram-mb 4096 --default-enabled >"$D/logs/serverless.log" 2>&1 & pids+=($!)
   GW_EXTRA+=(-serverless-url "http://127.0.0.1:$SL_PORT" -serverless-secret-file "$D/serverless.secret")
   WG_SL_ARGS=(--serverless-evict-url "http://127.0.0.1:$SL_CTRL_PORT" --serverless-secret-file "$D/serverless.secret")
 else

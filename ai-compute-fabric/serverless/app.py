@@ -400,6 +400,7 @@ def main() -> int:
     ap.add_argument("--canary-tenant", default="demo", help="Pre-configured canary tenant ID")
     ap.add_argument("--canary-gpu-allowed", action="store_true", help="Allow GPU for the initial canary tenant policy")
     ap.add_argument("--canary-max-vram-mb", type=int, default=4096, help="Max VRAM MiB for the canary tenant")
+    ap.add_argument("--default-enabled", action="store_true", help="Enable serverless + GPU by default for all gateway-authenticated tenants")
     args = ap.parse_args()
 
     if args.gpu_enabled and sys.platform == "win32":
@@ -455,11 +456,17 @@ def main() -> int:
             max_vram_mb=args.canary_max_vram_mb,
             max_concurrency=4,
         )
+    default_policy = TenantPolicy(
+        serverless_enabled=bool(args.default_enabled),
+        gpu_allowed=bool(args.default_enabled and args.gpu_enabled),
+        max_vram_mb=args.canary_max_vram_mb,
+        max_concurrency=8,
+    )
 
     leases = HttpLeaseClient(args.gateway, secret)
     svc = ServerlessService(
         keys=keys,
-        quotas=Quotas(policies),
+        quotas=Quotas(policies, default=default_policy),
         dispatch=lambda task, attempt: executor.execute(task, attempt),
         live_workers=lambda: [SimpleNamespace(agent_id=args.worker_id, labels=worker_labels)],
         blobs=blob_store,

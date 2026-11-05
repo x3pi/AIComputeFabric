@@ -50,3 +50,4 @@ scrape_configs:
           node: "pc-win-01"
           os: "windows"
           serverless_gpu: "llm_only_d_win"
+

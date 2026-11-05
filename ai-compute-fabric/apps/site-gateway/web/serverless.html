@@ -699,28 +699,54 @@ async function deploySample(templateName, label) {
   const appName = document.getElementById("sl-web-app").value.trim() || "text-analyzer";
   const fnName = document.getElementById("sl-web-fn").value.trim() || "classify";
   msgEl.textContent = `Đang triển khai ${appName}@${label}…`;
-  const r = await slTenantFetch("/api/serverless/v1/deploy", {
+  const payload = {
+    app_name: appName,
+    functions: [{
+      fn_id: fnName,
+      kind: "function",
+      builtin_template: templateName,
+      memory_mb: 512,
+      cpus: 1.0,
+      timeout_s: 30,
+      keep_warm_s: 120,
+    }],
+    web_endpoints: {
+      [fnName]: { requires_auth: true }
+    }
+  };
+  let r = await slTenantFetch("/api/serverless/v1/deploy", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      app_name: appName,
-      functions: [{
-        fn_id: fnName,
-        kind: "function",
-        builtin_template: templateName,
-        memory_mb: 512,
-        cpus: 1.0,
-        timeout_s: 30,
-        keep_warm_s: 120,
-      }],
-      web_endpoints: {
-        [fnName]: { requires_auth: true }
-      }
-    }),
+    body: JSON.stringify(payload),
   });
+  if (r && r.status === 403) {
+    const errTxt = await r.text();
+    const m = errTxt.match(/tenant\s+([A-Za-z0-9_.-]+)/);
+    const detectedTenant = m ? m[1] : (tenantInput.value.trim() || "demo");
+    const polRes = await api(`/api/serverless/v1/policies/${encodeURIComponent(detectedTenant)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serverless_enabled: true, gpu_allowed: true, max_vram_mb: 8192, max_concurrency: 8 }),
+    });
+    if (polRes && polRes.ok) {
+      r = await slTenantFetch("/api/serverless/v1/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      msgEl.textContent = `Lỗi triển khai (403): Tenant '${detectedTenant}' chưa được bật Serverless. Hãy đăng nhập Admin Token (demo-admin-token) ở góc phải trên cùng rồi bấm lại!`;
+      return;
+    }
+  }
   if (r && r.ok) {
     const d = await r.json();
-    msgEl.textContent = `✓ Đã triển khai thành công '${d.app_name}' phiên bản ${d.active_version} (${label})!`;
+    if (d.tenant) {
+      tenantInput.value = d.tenant;
+      try { sessionStorage.setItem(SL_TENANT_STORE, d.tenant); } catch {}
+      renderSdkSnippet();
+    }
+    msgEl.textContent = `✓ Đã triển khai thành công '${d.app_name}' phiên bản ${d.active_version} (${label}) cho tenant '${d.tenant}'!`;
     loadOverview();
   } else {
     const txt = r ? await r.text() : "error";
@@ -742,9 +768,17 @@ document.getElementById("sl-btn-fill-sample-web").onclick = () => {
 document.getElementById("sl-btn-call-web").onclick = async () => {
   const outBox = document.getElementById("sl-web-output");
   const latEl = document.getElementById("sl-web-latency");
-  const tid = tenantInput.value.trim() || "demo";
   const appName = document.getElementById("sl-web-app").value.trim() || "text-analyzer";
   const fnName = document.getElementById("sl-web-fn").value.trim() || "classify";
+  let tid = tenantInput.value.trim() || "demo";
+  const apps = currentOverview.apps || [];
+  if (!apps.some(a => a.app_name === appName && a.tenant === tid)) {
+    const matched = apps.find(a => a.app_name === appName);
+    if (matched && matched.tenant) {
+      tid = matched.tenant;
+      tenantInput.value = tid;
+    }
+  }
   const rawPayload = document.getElementById("sl-web-payload").value;
   let parsed;
   try {

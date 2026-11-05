@@ -82,3 +82,4 @@ groups:
         annotations:
           summary: "AICF Serverless HTTP service (:18110) is unreachable"
           description: "Prometheus could not scrape aicf-serverless metrics for more than 1 minute."
+
