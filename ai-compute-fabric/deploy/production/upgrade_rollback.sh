@@ -81,3 +81,4 @@ else
   echo "Usage: $0 {upgrade /path/to/bin|rollback}" >&2
   exit 1
 fi
+

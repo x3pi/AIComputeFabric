@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 
@@ -42,7 +41,7 @@ func verifyWorkerPeer(ctx context.Context, workerID string) error {
 		return nil
 	}
 	cn := tlsInfo.State.PeerCertificates[0].Subject.CommonName
-	if cn != "" && cn != workerID {
+	if workerID == "" || cn == "" || cn != workerID {
 		return status.Errorf(codes.PermissionDenied, "certificate CN %q may not act as worker %q", cn, workerID)
 	}
 	return nil
@@ -139,15 +138,7 @@ func HTTPHandler(f *Fleet) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	registerEstimatorAndStatsRoutes(mux, f, nil, nil)
-	var staticFS http.FileSystem
-	if fi, err := os.Stat("apps/site-gateway/web/index.html"); err == nil && !fi.IsDir() {
-		staticFS = http.Dir("apps/site-gateway/web")
-	} else if fi, err := os.Stat("web/index.html"); err == nil && !fi.IsDir() {
-		staticFS = http.Dir("web")
-	} else {
-		sub, _ := fs.Sub(webFS, "web")
-		staticFS = http.FS(sub)
-	}
-	mux.Handle("/", http.FileServer(staticFS))
+	sub, _ := fs.Sub(webFS, "web")
+	mux.Handle("/", http.FileServer(http.FS(sub)))
 	return mux
 }

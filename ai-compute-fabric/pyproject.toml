@@ -18,7 +18,7 @@ dependencies = [
     "pgvector==0.5.1",
     "cryptography==50.0.2",
     "protobuf==7.36.2",
-    "pypdf==6.21.2",
+    "pypdf==6.21.4",
     "python-docx==1.2.0",
     "pillow==13.0.0",
     "reportlab==5.1.0",

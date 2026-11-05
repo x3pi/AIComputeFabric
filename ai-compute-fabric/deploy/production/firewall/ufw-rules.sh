@@ -22,3 +22,4 @@ for port in 18090 18095 18100 18110; do
 done
 
 echo "[aicf-ufw] Firewall rules applied."
+

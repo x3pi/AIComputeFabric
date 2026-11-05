@@ -160,3 +160,4 @@ def test_secrets_encrypted_at_rest_and_masked_in_metadata(tmp_path: pathlib.Path
     tampered = ct[:-4] + ("AAAA" if not ct.endswith("AAAA") else "BBBB")
     with pytest.raises(ValueError, match="authentication tag mismatch|corrupted"):
         decrypt_secret_value(tampered)
+

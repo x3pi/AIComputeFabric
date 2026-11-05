@@ -49,3 +49,4 @@
 | `M-B1-1` | Bỏ giới hạn tốc độ trong `SignupRateLimiter.Allow` (`return true`) | **KILLED** | `TestB1SignupDisabledByDefaultAndRateLimited` FAIL `[ĐO]` |
 | `M-B1-2` | Coi request không có token là `isAdmin = true` trong `/signup` | **KILLED** | `TestB1SignupDisabledByDefaultAndRateLimited` FAIL `[ĐO]` |
 | `M-B1-3` | Bỏ so sánh hằng thời gian `subtle.ConstantTimeCompare` trong `verifyPasswordHash` | **KILLED** | `TestB1Argon2idPasswordStrengthLockoutAndMigration` FAIL `[ĐO]` |
+

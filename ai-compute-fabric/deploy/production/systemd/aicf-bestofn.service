@@ -30,3 +30,4 @@ ReadOnlyPaths=/etc/aicf
 
 [Install]
 WantedBy=multi-user.target
+

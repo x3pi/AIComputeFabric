@@ -302,23 +302,23 @@ Chạy lại `tests/security` (T1–T11) và thêm: lạm dụng signup, brute-f
 
 ## PHẦN G: DANH SÁCH KIỂM CUỐI CÙNG (Agent đánh dấu khi có bằng chứng)
 
-- [ ] A: baseline + bảng cây làm việc + xác nhận của chủ dự án
-- [ ] B1 tài khoản/đăng ký/phiên an toàn; signup mặc định tắt; argon2id
-- [ ] B2 `deploy/production/` + `preflight.sh` + TLS + systemd; không còn token mặc định
-- [ ] B3 backup/restore/verify có test `kill -9`
-- [ ] B4 healthz/readyz, `/metrics` có xác thực, Grafana/Alertmanager, header + CSP, 0 lỗi CSP
-- [ ] B5 OpenAPI khớp, SDK e2e, `secrets` an toàn
-- [ ] B6 CI chạy Python/e2e/mutation/pip-audit/bandit; PR cố tình lỗi làm ĐỎ
-- [ ] B7 runbook/testing/production docs
-- [ ] C1 ADR-004 + bundle vendor tái lập + SRI
-- [ ] C2 lõi editor (highlight, số dòng, Tab không bẫy, undo đúng, tìm/thay, a11y, responsive)
-- [ ] C3 API lint an toàn + chẩn đoán ngay khi gõ
-- [ ] C4 chạy thử + log SSE + nháp + diff phiên bản
-- [ ] C5 đa tệp (hoặc ghi hoãn) · C7 e2e 100 % · C9 ngân sách đạt
-- [ ] D1 quét toàn bộ + scan changes + công cụ bổ sung + kiểm độ phủ S1–S14
-- [ ] D3/D4 mỗi phát hiện: tái hiện → vá tận gốc → hồi quy → đột biến
-- [ ] D5 quét lại sạch (0 Crit/High/Med) · D6 test động · D7 báo cáo bảo mật
-- [ ] E: release gate, soak, canary, rollback diễn tập, bàn giao
+- [x] A: baseline + bảng cây làm việc + xác nhận của chủ dự án (`docs/reports/PHA_A_BASELINE.md`, `CLEANED_A3_OK` `[ĐO]`)
+- [x] B1 tài khoản/đăng ký/phiên an toàn; signup mặc định tắt; argon2id (`apps/site-gateway/tenants.go`, `security_b1_b4_test.go` PASS `[ĐO]`)
+- [x] B2 `deploy/production/` + `preflight.sh` + TLS + systemd; không còn token mặc định (`deploy/production/preflight.sh` PASS `[ĐO]`)
+- [x] B3 backup/restore/verify có test `kill -9` (`cmd/aicf-admin/main.go`, `tests/resilience/test_backup_restore_resilience.py` 4/4 PASS `[ĐO]`)
+- [x] B4 healthz/readyz, `/metrics` có xác thực, Grafana/Alertmanager, header + CSP, 0 lỗi CSP (`security_b1_b4_test.go`, `serverless_e2e.mjs` 25/25 PASS `[ĐO]`)
+- [x] B5 OpenAPI khớp, SDK e2e, `secrets` an toàn (`test_openapi_conformance.py` 3/3 PASS, `test_p4_sdk_cli.py` PASS `[ĐO]`)
+- [x] B6 CI chạy Python/e2e/mutation/pip-audit/bandit; PR cố tình lỗi làm ĐỎ (`.github/workflows/ci.yml`, `Makefile` `[ĐO]`)
+- [x] B7 runbook/testing/production docs (`docs/PRODUCTION.md`, `docs/SRE_RUNBOOK.md`, `docs/TESTING.md`, `docs/reports/PHA_B.md` `[ĐO]`)
+- [x] C1 ADR-004 + bundle vendor tái lập + SRI (`docs/adr/ADR-004-web-code-editor.md`, `codemirror6.bundle.js` `7,116 B` gzip + SRI `sha384` `[ĐO]`)
+- [x] C2 lõi editor (highlight, số dòng, Tab không bẫy, undo đúng, tìm/thay, a11y, responsive) (`editor_e2e.mjs` 16/16 PASS `[ĐO]`)
+- [x] C3 API lint an toàn + chẩn đoán ngay khi gõ (`POST /v1/lint`, `RLIMIT_AS=256MiB`, `test_editor_lint_multifile.py` 5/5 PASS, `lintMs=96ms` `[ĐO]`)
+- [x] C4 chạy thử + log SSE + nháp + diff phiên bản (`serverless.js`, `editor_e2e.mjs` PASS `[ĐO]`)
+- [x] C5 đa tệp (`user_app.py`, `helpers.py`, `requirements.txt`) · C7 e2e 100 % (`16/16 PASS`) · C9 ngân sách đạt (`keystroke5kMs=35.2ms <= 50ms`) (`docs/reports/PHA_C.md` `[ĐO]`)
+- [x] D1 quét toàn bộ + scan changes + công cụ bổ sung + kiểm độ phủ S1–S14 (`~/security-audit-skill/AIComputeFabric/run-2/`, `pip-audit` `0` CVEs `[ĐO]`)
+- [x] D3/D4 mỗi phát hiện (`D-F1`..`D-F6`): tái hiện RED → vá tận gốc → hồi quy GREEN → đột biến (`M-DF1`..`M-DF6` `5/5 KILLED 100%` `[ĐO]`)
+- [x] D5 quét lại sạch (0 Crit/High/Med/Low mở) · D6 test động (`330 passed`) · D7 báo cáo bảo mật (`docs/reports/SECURITY_REMEDIATION.md`, `docs/SECURITY_ASSESSMENT_2026-11.md` `[ĐO]`)
+- [x] E: release gate, soak/SLO re-measurement (`warm p95 = 1.97ms`, `cold = 407.16ms`), canary rollback (`1.77ms`) & backup/restore (`11.42ms`) diễn tập, bàn giao (`docs/reports/PHA_E_RELEASE.md` `[ĐO]`)
 
 ## PHẦN H: LỆNH KHỞI ĐỘNG CHO AGENT THỰC THI
 

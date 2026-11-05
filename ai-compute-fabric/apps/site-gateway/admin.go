@@ -553,6 +553,7 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 		r.Header.Del("X-Aicf-User") // identity headers are set below from the credential, never taken from the client
 		r.Header.Del("X-Aicf-Role")
 		r.Header.Del("X-Aicf-Tenant")
+		r.Header.Del("X-Aicf-Target-Tenant")
 		r.Header.Del("X-Aicf-Proxy-Secret")
 		bearer := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 

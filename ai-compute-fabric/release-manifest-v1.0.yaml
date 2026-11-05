@@ -1,9 +1,9 @@
-# Release Manifest — AI Compute Fabric v1.0 (Release Candidate)
+# Release Manifest — AI Compute Fabric v1.1 (Production Ready + Serverless GPU + CM6 Web IDE)
 schema_version: 1
 release:
-  version: "1.0.0-rc1"
-  date: "2026-10-26"
-  status: "release-candidate"
+  version: "1.1.0"
+  date: "2026-11-05"
+  status: "production-ready"
   upstream_manifest: "third_party/upstream-manifest.yaml"
   openapi_contract: "contracts/openapi/aicf_v1.yaml"
   protobuf_contracts:
@@ -11,11 +11,17 @@ release:
     - "contracts/protobuf/aicf/v1/gateway.proto"
   notice_file: "NOTICE"
   sre_runbook: "docs/SRE_RUNBOOK.md"
+  production_guide: "docs/PRODUCTION.md"
+  security_assessment: "docs/SECURITY_ASSESSMENT_2026-11.md"
 
 binaries:
   - name: "site-gateway"
     module: "apps/site-gateway"
     entrypoint: "."
+    targets: ["linux/amd64", "windows/amd64"]
+  - name: "aicf-admin"
+    module: "apps/site-gateway"
+    entrypoint: "./cmd/aicf-admin"
     targets: ["linux/amd64", "windows/amd64"]
   - name: "worker-guard"
     module: "apps/worker-guard"
@@ -33,6 +39,10 @@ python_services:
     module: "agents.dag_api"
   - name: "ai-studio"
     module: "studio"
+  - name: "serverless-gpu"
+    module: "serverless.app"
+  - name: "bestofn-service"
+    module: "bestofn.service"
 
 security_and_sbom:
   public_key: "deploy/security/cosign.pub"
@@ -75,6 +85,15 @@ verified_evidence_rtx3060_linux:
     reports:
       - "benchmarks/reports/p9_studio_evidence.json"
       - "benchmarks/reports/p6_tts_asr_roundtrip.json"
+  - gate: "Pha A-E Serverless GPU, CodeMirror 6 Web IDE & Full Security Remediation"
+    reports:
+      - "docs/reports/PHA_A_BASELINE.md"
+      - "docs/reports/PHA_B.md"
+      - "docs/reports/PHA_C.md"
+      - "docs/reports/SECURITY_REMEDIATION.md"
+      - "docs/reports/PHA_E_RELEASE.md"
+      - "benchmarks/reports/p_editor_c6_e2e.json"
+      - "benchmarks/reports/p_serverless_6_e2e.json"
 
 pending_physical_and_organisational_signoff:
   - item: "Legal & HR Sign-off (third_party/upstream-manifest.yaml legal_reviewed=true)"

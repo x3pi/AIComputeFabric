@@ -112,3 +112,4 @@ if [[ "${fails}" -gt 0 ]]; then
   exit 1
 fi
 echo "PREFLIGHT_OK (7/7 checks passed)"
+

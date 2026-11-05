@@ -470,10 +470,16 @@ def _materialize_files(files: dict) -> None:
     if not files or not isinstance(files, dict):
         return
     import posixpath
-    root = "/tmp/aicf_files"
-    os.makedirs(root, exist_ok=True)
-    if root not in sys.path:
-        sys.path.insert(0, root)
+    import tempfile
+    bundle_dir = tempfile.mkdtemp(prefix="aicf_files_")
+    if bundle_dir not in sys.path:
+        sys.path.insert(0, bundle_dir)
+    tmp_base = tempfile.gettempdir()
+    compat_root = os.environ.get("AICF_FILES_ROOT") or os.path.join(tmp_base, "aicf_files")
+    if os.path.islink(compat_root):
+        raise ValueError("refusing symlinked AICF_FILES_ROOT")
+    os.makedirs(compat_root, mode=0o700, exist_ok=True)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
     for rel, content in files.items():
         if not isinstance(rel, str):
             continue
@@ -481,14 +487,14 @@ def _materialize_files(files: dict) -> None:
         clean = posixpath.normpath(rel.lstrip("/"))
         if not clean or clean == "." or clean.startswith("..") or "/../" in f"/{clean}/":
             raise ValueError(f"invalid bundled file path: {rel!r}")
-        targets = [os.path.join(root, clean)]
-        if rel.startswith("/tmp/"):
-            sub = posixpath.normpath(rel[5:].lstrip("/"))
-            if sub and sub != "." and not sub.startswith(".."):
-                targets.append(os.path.join("/tmp", sub))
+        targets = [os.path.join(bundle_dir, clean), os.path.join(compat_root, clean)]
         for dst in targets:
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            with open(dst, "wb") as f:
+            parent = os.path.dirname(dst)
+            if os.path.islink(parent) or os.path.islink(dst):
+                raise ValueError(f"refusing symlinked destination: {dst!r}")
+            os.makedirs(parent, mode=0o700, exist_ok=True)
+            fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | nofollow, 0o600)
+            with os.fdopen(fd, "wb") as f:
                 f.write(raw)
 
 

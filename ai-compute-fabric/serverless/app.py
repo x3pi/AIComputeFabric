@@ -103,6 +103,8 @@ def make_handler(svc: ServerlessService, secret: str):
             user = self.headers.get("X-Aicf-User", "")
             try:
                 if path == "/v1/metrics":
+                    if role == "tenant":
+                        return self._send(403, {"error": {"code": "forbidden", "message": "metrics endpoint requires admin, operator, or viewer role"}})
                     return self._send(200, svc.render_metrics(), "text/plain; version=0.0.4")
                 if path in ("/v1/status", "/v1/overview"):
                     return self._send(200, svc.overview(tenant=tenant if role == "tenant" else q.get("tenant"), role=role, user=user))
@@ -242,6 +244,8 @@ def make_handler(svc: ServerlessService, secret: str):
                         return
                     return self._send(200, svc.set_admin_state(enabled=body.get("enabled"), draining=body.get("draining"), actor=user))
                 if path == "/v1/internal/reclaim-metric":
+                    if role in ("tenant", "viewer"):
+                        return self._send(403, {"error": {"code": "forbidden", "message": "internal endpoint restricted"}})
                     body = self._read_json(allow_empty=True)
                     if body is None or not isinstance(body, dict):
                         return
@@ -350,6 +354,8 @@ def make_handler(svc: ServerlessService, secret: str):
                     return self._send(200, svc.evict_container(cid, actor=user or tenant or role, role=role,
                                                                tenant=tenant if role == "tenant" else None, reason=reason))
                 if path.startswith("/v1/calls/"):
+                    if role not in ("tenant", "admin", "operator"):
+                        return self._send(403, {"error": {"code": "forbidden", "message": "insufficient role to cancel call"}})
                     call_id = path[len("/v1/calls/"):].strip("/")
                     return self._send(200, svc.cancel_call(tenant, role, call_id))
                 if path.startswith("/v1/apps/"):

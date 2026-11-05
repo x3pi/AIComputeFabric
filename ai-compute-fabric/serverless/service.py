@@ -546,10 +546,11 @@ class ServerlessService:
     def stop_app(self, tenant: str, app_name: str, role: str = "tenant") -> dict:
         removed = self.deployments.stop_app(tenant, app_name)
         evicted = 0
+        evict_reason = "admin" if role in ("admin", "operator") else "idle"
         for c in list(self.list_containers(tenant=tenant if role == "tenant" else None)):
             if c["app_name"] == app_name or c["fn_id"] == app_name:
                 try:
-                    self.evict_container(c["container_id"], actor=tenant or role, role=role, tenant=tenant, reason="admin")
+                    self.evict_container(c["container_id"], actor=tenant or role, role=role, tenant=tenant, reason=evict_reason)
                     evicted += 1
                 except ServiceError:
                     pass
@@ -557,6 +558,10 @@ class ServerlessService:
         return {"stopped": removed or evicted > 0, "app_name": app_name, "evicted_containers": evicted}
 
     def invoke_web(self, caller_tenant: str, caller_role: str, target_tenant: str, app_name: str, fn_id: str, payload: Any) -> dict:
+        # Enforce tenant isolation BEFORE resolving deployment metadata to prevent both cross-tenant IDOR
+        # and cross-tenant app/function/version-hash enumeration oracles (D-F1).
+        if caller_role not in ("tenant", "admin", "operator") or (caller_role == "tenant" and caller_tenant != target_tenant):
+            raise ServiceError(403, "forbidden", "web endpoint requires matching tenant API key")
         try:
             fndef, ver, web_meta = self.deployments.resolve_function(target_tenant, app_name, fn_id)
         except DeploymentError as e:

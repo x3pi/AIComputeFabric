@@ -4,17 +4,17 @@
   "guests_per_iteration": 2,
   "vram_each_mib": 2048,
   "detect_to_freed_ms": {
-    "p50": 215.2,
-    "p95": 247.2,
-    "p99": 250.1,
-    "max": 250.1
+    "p50": 230.0,
+    "p95": 257.1,
+    "p99": 263.9,
+    "max": 263.9
   },
   "guard_tick_ms": {
-    "p50": 259.1,
-    "p99": 292.6
+    "p50": 272.7,
+    "p99": 315.1
   },
   "engine_stopped": 0,
   "path": "worker-guard Tick -> HTTP /v1/evict -> docker kill (all guests) -> nvidia-smi until free >= headroom",
   "note": "engine is a stub; sampler, guests, docker and driver are real. detect_to_freed_ms starts when the guard decides to evict.",
-  "sigkill_worker_vram_released_s": 0.26
+  "sigkill_worker_vram_released_s": 0.27
 }

@@ -43,3 +43,4 @@ Chúng tôi chọn **Phương án C**: Xây dựng mô-đun trình soạn thảo
 3. **Đa tệp (`files: dict[str, str]`), Lưu nháp (`localStorage`) & So sánh Phiên bản (`Diff`):**
    - Hỗ trợ thanh tab nhiều tệp `.py` (`user_app.py`, `helpers.py`, ...); khi triển khai, mọi tệp trong `files` được đóng gói và giải nén vào thư mục làm việc của container sandbox trước khi nạp `entrypoint`.
    - Tự động lưu bản nháp vào `localStorage` kèm cảnh báo khi chưa lưu và công cụ so sánh khác biệt (`Diff`) theo từng dòng giữa mã đang sửa với các phiên bản đã triển khai (`v-...`).
+

@@ -98,3 +98,4 @@ sudo AICF_ADMIN_TOKEN="$ADMIN_TOKEN" deploy/production/upgrade_rollback.sh upgra
 # Rollback khẩn cấp về phiên bản trước
 sudo AICF_ADMIN_TOKEN="$ADMIN_TOKEN" deploy/production/upgrade_rollback.sh rollback
 ```
+
