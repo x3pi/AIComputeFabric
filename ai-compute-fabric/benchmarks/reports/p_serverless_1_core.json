@@ -1,0 +1,59 @@
+{
+  "env_ensure_ms": 0.3,
+  "env_built_now": false,
+  "cpu": {
+    "cold_call_total_ms": {
+      "n": 15,
+      "p50": 370.136,
+      "p95": 389.591,
+      "min": 325.672,
+      "max": 398.819
+    },
+    "warm_call_total_ms": {
+      "n": 300,
+      "p50": 0.075,
+      "p95": 0.187,
+      "min": 0.046,
+      "max": 1.285
+    },
+    "warm_call_user_exec_ms": {
+      "n": 300,
+      "p50": 0.0,
+      "p95": 0.001,
+      "min": 0.0,
+      "max": 0.005
+    },
+    "note": "total = host-side call incl. cloudpickle-free frame I/O; cold = new container + runner start + bundle load + call"
+  },
+  "gpu": {
+    "cold_call_total_ms": {
+      "n": 15,
+      "p50": 471.422,
+      "p95": 499.633,
+      "min": 440.796,
+      "max": 508.162
+    },
+    "warm_call_total_ms": {
+      "n": 300,
+      "p50": 0.473,
+      "p95": 1.309,
+      "min": 0.063,
+      "max": 1.739
+    },
+    "warm_call_user_exec_ms": {
+      "n": 300,
+      "p50": 0.001,
+      "p95": 0.003,
+      "min": 0.0,
+      "max": 0.006
+    },
+    "note": "total = host-side call incl. cloudpickle-free frame I/O; cold = new container + runner start + bundle load + call"
+  },
+  "oneshot_dockersandbox_ms": {
+    "n": 15,
+    "p50": 391.111,
+    "p95": 426.057,
+    "min": 370.883,
+    "max": 435.514
+  }
+}

@@ -27,6 +27,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "cloudpickle==3.1.2",
     "pytest==9.1.1",
     "pip-audit==2.10.1",
     "cyclonedx-bom==7.5.0",

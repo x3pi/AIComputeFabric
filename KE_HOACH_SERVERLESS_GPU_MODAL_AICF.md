@@ -17,7 +17,8 @@
 | Pha | Trạng thái | Bằng chứng |
 |---|---|---|
 | 0 | **XONG (Linux)**; Windows hoãn (D-WIN) | `benchmarks/reports/p_serverless_0_probe.json`, `benchmarks/serverless/p0_probe.py`, `docs/adr/ADR-003-serverless-gpu.md` |
-| 1–8 | Chưa bắt đầu | — |
+| 1 | **XONG** — 79 test xanh (50 unit lõi + 13 runner + 16 Docker thật), 20/20 đột biến bị giết | `agents/env_cache.py`, `agents/_warm_runner.py`, `agents/sandbox.py` (`GpuDockerSandbox`, `WarmDockerPool`), `tests/serverless/`, `tests/mutation/`, `benchmarks/reports/p_serverless_1_{core,mutations}.json` |
+| 2–8 | Chưa bắt đầu | — |
 
 **Kết quả Pha 0 làm thay đổi kế hoạch:** (1) `--gpus` hỏng trên host, dùng `--runtime=nvidia`; (2) Object Store chỉ ≤ 8 MiB (get 512 MiB mất 389 s); (3) env phải dưới cùng mount cha + hardlink để tiết kiệm đĩa (host còn ~7 GB); (4) Lease truy cập qua cầu nối HTTP trong gateway, không dùng grpcio; (5) `OSUser` đã chứa VRAM Serverless ⇒ cần bucket riêng ở worker-guard; (6) một wheel torch cu130 phủ sm_86 và sm_120.
 
