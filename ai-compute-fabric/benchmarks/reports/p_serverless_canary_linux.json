@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "label": "[ĐO]",
+  "node": "pc-001 (Linux RTX 3060 12GB)",
+  "windows_node_policy": "pc-win-01 LLM-only (ADR-003 D-WIN)",
+  "pass": true,
+  "total_checks": 10,
+  "passed_checks": 10,
+  "checks": [
+    {
+      "name": "Step 3 (D-WIN): Windows worker-guard.exe builds cleanly in LLM-only mode",
+      "ok": true,
+      "detail": "size=19328000B"
+    },
+    {
+      "name": "Step 3 (D-WIN): Python build_worker rejects gpu_enabled=True on Windows (win32)",
+      "ok": true,
+      "detail": "Serverless GPU (gpu-sl) is Linux-only in v1.0 per ADR-003 D-WIN; Windows nodes (pc-win-01) must run in LLM-only mode until Phase 8 WSL2 + PDH < 2s reclaim is verified"
+    },
+    {
+      "name": "Step 1: Linux (pc-001) serverless.app + ControlServer (:18172) online",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Step 1 (Stage 1 CPU-only): CPU function executes in real Docker container on pc-001",
+      "ok": true,
+      "detail": "exec_ms=0.003 result={'stage': 'canary-cpu', 'square': 81, 'pid': 1} err=None"
+    },
+    {
+      "name": "Step 1 (Stage 1 CPU-only): GPU request rejected with 403 gpu_denied before promotion",
+      "ok": true,
+      "detail": "{\"error\": {\"code\": \"gpu_denied\", \"message\": \"GPU functions are not enabled for this tenant\"}}"
+    },
+    {
+      "name": "Step 1 (Stage 2 GPU Promotion): Canary tenant promoted to gpu_allowed=True, max_vram_mb=4096",
+      "ok": true,
+      "detail": "{\"serverless_enabled\": true, \"max_concurrency\": 4, \"max_memory_mb\": 2048, \"max_timeout_s\": 120.0, \"max_keep_warm_s\": 300, \"max_bundle_bytes\": 8388608, \"max_volume_bytes\": 268435456, \"allowed_data_classes\": [\"PUBLIC\", \"INTERNAL\"], \"gpu_allowed\": true, \"max_vram_mb\": 4096, \"max_retries\": 0}"
+    },
+    {
+      "name": "Step 1 (Stage 2 GPU Execution): GPU function executes in GpuDockerSandbox with VRAM lease",
+      "ok": true,
+      "detail": "exec_ms=0.005 result={'stage': 'canary-gpu', 'cube': 125, 'nvidia_visible': 'void'}"
+    },
+    {
+      "name": "Step 1 (G-RECLAIM Drill): ControlServer evicted warm containers under 2.0s gate",
+      "ok": true,
+      "detail": "reclaim_ms=124.24ms evicted=1"
+    },
+    {
+      "name": "Step 2 (Prometheus Scrape): /api/serverless/v1/metrics exports counters, gauges, and histograms",
+      "ok": true,
+      "detail": "bytes=3980"
+    },
+    {
+      "name": "Step 2 (Alertmanager Rules): prometheus_serverless_alerts.yml defines all 6 SRE alerts",
+      "ok": true,
+      "detail": "alerts=['ServerlessGpuReclaimLatencyWarning', 'ServerlessGpuReclaimSloBreach', 'ServerlessHighErrorRate', 'ServerlessNoCapacitySpike', 'ServerlessOrphanContainerDetected', 'ServerlessServiceDown']"
+    }
+  ]
+}

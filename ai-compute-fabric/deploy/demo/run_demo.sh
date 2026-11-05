@@ -26,6 +26,7 @@ mkdir -p "$D/bin" "$D/logs" "$D/studio"
 
 GRPC_PORT="${GRPC_PORT:-17443}"; HTTP_PORT="${HTTP_PORT:-18080}"
 SIDECAR_PORT="${SIDECAR_PORT:-18095}"; DAG_PORT="${DAG_PORT:-18096}"; STUDIO_PORT="${STUDIO_PORT:-18098}"; BESTOFN_PORT="${BESTOFN_PORT:-18099}"
+SL_PORT="${SL_PORT:-18110}"; SL_CTRL_PORT="${SL_CTRL_PORT:-18111}"
 EMBED_PORT="${EMBED_PORT:-18091}"; RERANK_PORT="${RERANK_PORT:-18092}"
 export AICF_ADMIN_TOKEN="${AICF_ADMIN_TOKEN:-demo-admin-token}"
 export PYTHONPATH="$ROOT"
@@ -81,12 +82,23 @@ PYEOF
   GW_EXTRA+=(-agents-url "http://127.0.0.1:$DAG_PORT" -studio-url "http://127.0.0.1:$STUDIO_PORT")
 fi
 
-# 2b. Best-of-N Orchestrator Service (if Docker daemon is reachable for sandbox execution)
+# 2b. Best-of-N Orchestrator & Serverless GPU/Python Service (if Docker daemon is reachable for sandbox execution)
+WG_SL_ARGS=()
 if docker info >/dev/null 2>&1; then
   "$PY" -m bestofn.service --listen "127.0.0.1:$BESTOFN_PORT" --gateway "http://127.0.0.1:$HTTP_PORT" >"$D/logs/bestofn.log" 2>&1 & pids+=($!)
   GW_EXTRA+=(-bestofn-url "http://127.0.0.1:$BESTOFN_PORT")
+
+  mkdir -p "$D/serverless"
+  [ -f "$D/serverless.secret" ] || (umask 077 && head -c 32 /dev/urandom | base64 | tr -d '\n=' >"$D/serverless.secret")
+  chmod 600 "$D/serverless.secret"
+  "$PY" -m serverless.app --listen "127.0.0.1:$SL_PORT" --gateway "http://127.0.0.1:$HTTP_PORT" \
+    --secret-file "$D/serverless.secret" --data-dir "$D/serverless" --worker-id pc-001 \
+    --gpu-enabled --gpu-index 0 --headroom-mib 512 --control-port "$SL_CTRL_PORT" \
+    --canary-tenant demo --canary-gpu-allowed --canary-max-vram-mb 4096 >"$D/logs/serverless.log" 2>&1 & pids+=($!)
+  GW_EXTRA+=(-serverless-url "http://127.0.0.1:$SL_PORT" -serverless-secret-file "$D/serverless.secret")
+  WG_SL_ARGS=(--serverless-evict-url "http://127.0.0.1:$SL_CTRL_PORT" --serverless-secret-file "$D/serverless.secret")
 else
-  echo "WARNING: docker info failed: Best-of-N (/api/bestofn/*) disabled" >&2
+  echo "WARNING: docker info failed: Best-of-N (/api/bestofn/*) and Serverless (/api/serverless/*) disabled" >&2
 fi
 
 # 3. Site Gateway
@@ -104,7 +116,7 @@ read -r -a CPU_FLAGS_ARR <<< "$CPU_FLAGS_STR"
   --engine-port 18090 --engine-host 0.0.0.0 --advertise-host 192.168.1.40 \
   --models-dir "$D/models" --adapters-dir "$D/adapters" --state-file "$D/worker-state-pc-001.json" --gateway "127.0.0.1:$GRPC_PORT" --worker-id pc-001 \
   --tls-ca "$D/pki/ca.crt" --tls-cert "$D/pki/pc-001.crt" --tls-key "$D/pki/pc-001.key" \
-  --tls-server-name localhost "${CPU_FLAGS_ARR[@]}" >"$D/logs/worker.log" 2>&1 & pids+=($!)
+  --tls-server-name localhost "${WG_SL_ARGS[@]}" "${CPU_FLAGS_ARR[@]}" >"$D/logs/worker.log" 2>&1 & pids+=($!)
 
 cat <<MSG
 AI Compute Fabric Full-Stack Demo is starting (model loads in ~10-25 s):
@@ -113,10 +125,11 @@ AI Compute Fabric Full-Stack Demo is starting (model loads in ~10-25 s):
   2. Người dùng & Khóa API : http://192.168.1.40:$HTTP_PORT/tenants.html
   3. Playground & Đo tải   : http://192.168.1.40:$HTTP_PORT/chat.html
   4. AI Agent (Đồ thị DAG) : http://192.168.1.40:$HTTP_PORT/agents.html
-  5. AI Studio             : http://192.168.1.40:$HTTP_PORT/studio.html
-  6. Audio AI Factory      : http://192.168.1.40:$HTTP_PORT/audio.html
-  7. Hướng dẫn Sử dụng     : http://192.168.1.40:$HTTP_PORT/guide.html
-  8. Worker Guard Local UI : http://192.168.1.40:8099/ (Linux) | http://192.168.1.49:8099/ (Windows)
+  5. Serverless GPU/Python : http://192.168.1.40:$HTTP_PORT/serverless.html
+  6. AI Studio             : http://192.168.1.40:$HTTP_PORT/studio.html
+  7. Audio AI Factory      : http://192.168.1.40:$HTTP_PORT/audio.html
+  8. Hướng dẫn Sử dụng     : http://192.168.1.40:$HTTP_PORT/guide.html
+  9. Worker Guard Local UI : http://192.168.1.40:8099/ (Linux) | http://192.168.1.49:8099/ (Windows LLM-only)
   Logs                     : $D/logs/
 Ctrl-C to stop.
 MSG

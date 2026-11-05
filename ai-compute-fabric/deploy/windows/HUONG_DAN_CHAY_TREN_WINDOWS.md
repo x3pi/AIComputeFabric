@@ -10,6 +10,7 @@ Toàn bộ chuỗi thành phần Windows (`worker-guard.exe`, `site-gateway.exe`
 - **Thu hồi GPU (G-RECLAIM):** 10/10 lần đạt, trung vị `174.1 ms`, max `638.2 ms` (< 2.0 s).
 - **Dịch vụ Windows AICFWorkerGuard:** Cài đặt SCM thành công, `Stop-Service` tắt sạch tiến trình con trong `262 ms` và trả VRAM về nền `203 MiB`.
 - **Cụm 2 máy thật mTLS:** `site-gateway` điều phối song song Linux RTX 3060 (`180.4 tok/s`) và Windows RTX 5070 (`166.9 tok/s`), đạt thông lượng tổng hợp **334.9 tok/s** (hiệu suất scale 96.4%).
+- **Chính sách Serverless GPU v1.0 (`ADR-003 D-WIN`):** Trong phiên bản v1.0, node Windows (`pc-win-01`) được khóa cứng ở chế độ **LLM-only** (không gắn nhãn `gpu-sl` và không bật `--serverless-evict-url`). Mọi tác vụ Serverless GPU (`SERVERLESS_EXEC`) được định tuyến về node Linux (`pc-001`) nơi NVIDIA Container Toolkit + NVML per-PID và `G-RECLAIM < 2s` (`p99 = 393.9 ms`) đã được nghiệm thu.
 
 ## 0. Chuẩn bị (máy Windows có GPU NVIDIA)
 - Driver NVIDIA mới, `nvidia-smi` chạy được trong PowerShell.

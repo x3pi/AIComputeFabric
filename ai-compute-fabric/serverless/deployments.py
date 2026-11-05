@@ -38,8 +38,10 @@ def _builtin_template_bundle(name: str) -> Optional[str]:
     fn = {"demo_v1": _sample_classify_v1, "demo_v2": _sample_classify_v2}.get(name)
     if fn is None:
         return None
+    import sys
     import cloudpickle
-    return base64.b64encode(cloudpickle.dumps(fn)).decode("ascii")
+    cloudpickle.register_pickle_by_value(sys.modules[__name__])
+    return base64.b64encode(cloudpickle.dumps({"kind": "function", "obj": fn})).decode("ascii")
 
 
 class DeploymentError(Exception):

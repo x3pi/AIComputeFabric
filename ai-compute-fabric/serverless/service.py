@@ -103,6 +103,10 @@ class ServerlessService:
         self._mu = threading.Lock()
         self.enabled: bool = True
         self.draining: bool = False
+        self._orphan_containers: int = 0
+        self.metrics.set_gauge("sl_orphan_containers", "Orphan containers detected outside WarmDockerPool", 0.0)
+        self.metrics.set_gauge("sl_enabled", "Whether serverless service is globally enabled (1=enabled, 0=disabled)", 1.0)
+        self.metrics.set_gauge("sl_draining", "Whether serverless service is draining (1=draining, 0=normal)", 0.0)
 
         base_dir = Path(storage_dir) if storage_dir else Path(tempfile.mkdtemp(prefix="aicf-sl-svc-"))
         self.audit = audit or ServerlessAudit(base_dir / "audit.jsonl")
@@ -734,9 +738,17 @@ class ServerlessService:
                        tenant=tenant, app_name=req["app_name"], fn_id=req["fn_id"], vram_mb=int(req["vram_mb"]), container_id=last.container or "",
                        pinned_from=last_pinned)
         self.metrics.inc("sl_calls_total", "Serverless calls by outcome", status=last.status, gpu=str(bool(need_label)).lower())
+        elapsed_s = max(0.0, time.perf_counter() - t0)
+        self.metrics.observe("sl_call_duration_seconds", "End-to-end serverless call latency in seconds", elapsed_s, tenant=tenant, status=last.status)
         if last.cold_start:
             self.metrics.inc("sl_cold_starts_total", "Cold starts")
+            ckind = "cold_env_build" if getattr(last, "env_built", False) else "cold_docker"
+            self.metrics.observe("sl_cold_start_seconds", "Cold start duration in seconds", elapsed_s, kind=ckind)
+        else:
+            self.metrics.observe("sl_cold_start_seconds", "Cold start duration in seconds", elapsed_s, kind="warm_exec")
         gpu_ms = float(last.exec_ms or 0.0) if need_label else 0.0
+        if gpu_ms > 0:
+            self.metrics.inc("sl_gpu_seconds_total", "Cumulative GPU execution time in seconds", value=round(gpu_ms / 1000.0, 6), tenant=tenant)
         self.ledger.record_call(tenant, call_id, gpu_ms, int(req["vram_mb"]) if need_label else 0)
         self.audit.record("invoke", tenant=tenant, actor=tenant, detail={
             "call_id": call_id,
@@ -824,3 +836,41 @@ class ServerlessService:
             "policies": policies,
             "audit": self.audit.recent(50, tenant=tenant),
         }
+
+    def record_reclaim(self, latency_s: float, *, evicted: int = 0, orphans: int = 0, reason: str = "reclaim") -> dict:
+        lat = max(0.0, float(latency_s))
+        self._orphan_containers = max(0, int(orphans))
+        self.metrics.observe(
+            "sl_reclaim_latency_seconds",
+            "GPU reclaim latency in seconds (G-RECLAIM < 2.0s gate)",
+            lat,
+            buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 1.5, 2.0, 5.0),
+            reason=reason,
+        )
+        self.metrics.set_gauge("sl_orphan_containers", "Orphan containers detected outside WarmDockerPool", float(self._orphan_containers))
+        if evicted > 0:
+            self.metrics.inc("sl_reclaim_evictions_total", "Total containers evicted during GPU reclaim", value=float(evicted), reason=reason)
+        self.audit.record("reclaim_metric", tenant="-", actor="worker-guard", detail={
+            "latency_s": round(lat, 4),
+            "evicted": int(evicted),
+            "orphans": int(self._orphan_containers),
+            "reason": reason,
+        })
+        return {"ok": True, "latency_s": round(lat, 4), "evicted": int(evicted), "orphans": int(self._orphan_containers)}
+
+    def render_metrics(self) -> str:
+        self.metrics.set_gauge("sl_enabled", "Whether serverless service is globally enabled (1=enabled, 0=disabled)", 1.0 if self.enabled else 0.0)
+        self.metrics.set_gauge("sl_draining", "Whether serverless service is draining (1=draining, 0=normal)", 1.0 if self.draining else 0.0)
+        self.metrics.set_gauge("sl_orphan_containers", "Orphan containers detected outside WarmDockerPool", float(self._orphan_containers))
+        self.metrics.clear_gauge_family("sl_warm_containers")
+        self.metrics.clear_gauge_family("sl_vram_lease_bytes")
+        containers = self.list_containers()
+        by_tw: dict[tuple[str, str], tuple[int, int]] = {}
+        for c in containers:
+            key = (str(c.get("tenant_id") or "-"), str(c.get("worker_id") or "-"))
+            cnt, vram = by_tw.get(key, (0, 0))
+            by_tw[key] = (cnt + 1, vram + int(c.get("vram_mb") or 0) * 1024 * 1024)
+        for (t, w), (cnt, vbytes) in by_tw.items():
+            self.metrics.set_gauge("sl_warm_containers", "Active warm containers", float(cnt), tenant=t, worker_id=w)
+            self.metrics.set_gauge("sl_vram_lease_bytes", "VRAM bytes held by warm container leases", float(vbytes), tenant=t, worker_id=w)
+        return self.metrics.render()

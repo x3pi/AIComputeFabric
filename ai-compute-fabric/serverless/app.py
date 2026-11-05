@@ -102,7 +102,7 @@ def make_handler(svc: ServerlessService, secret: str):
             tenant = self.headers.get("X-Aicf-Tenant", "")
             try:
                 if path == "/v1/metrics":
-                    return self._send(200, svc.metrics.render(), "text/plain; version=0.0.4")
+                    return self._send(200, svc.render_metrics(), "text/plain; version=0.0.4")
                 if path in ("/v1/status", "/v1/overview"):
                     return self._send(200, svc.overview(tenant=tenant if role == "tenant" else q.get("tenant")))
                 if path == "/v1/usage":
@@ -220,6 +220,16 @@ def make_handler(svc: ServerlessService, secret: str):
                     if body is None or not isinstance(body, dict):
                         return
                     return self._send(200, svc.set_admin_state(enabled=body.get("enabled"), draining=body.get("draining"), actor=user))
+                if path == "/v1/internal/reclaim-metric":
+                    body = self._read_json(allow_empty=True)
+                    if body is None or not isinstance(body, dict):
+                        return
+                    return self._send(200, svc.record_reclaim(
+                        float(body.get("latency_s", 0.0)),
+                        evicted=int(body.get("evicted", 0)),
+                        orphans=int(body.get("orphans", 0)),
+                        reason=str(body.get("reason", "reclaim")),
+                    ))
                 self._send(404, {"error": {"code": "not_found", "message": self.path}})
             except ServiceError as e:
                 self._fail(e)
@@ -354,3 +364,142 @@ def serve(svc: ServerlessService, secret: str, host: str = "127.0.0.1", port: in
     srv = ThreadingHTTPServer((host, port), make_handler(svc, secret))
     srv.daemon_threads = True
     return srv
+
+
+def main() -> int:
+    import argparse
+    import sys
+    import threading
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from agents.env_cache import EnvCache
+    from agents.sandbox import GpuDockerSandbox, WarmDockerPool
+    from agents.serverless_worker import ServerlessExecutor
+    from agents.sl_security import Verifier, load_keys, new_key_file
+    from agents.sl_store import MemoryBlobStore, MemoryStartedLedger
+    from serverless.deployments import DeploymentStore
+    from serverless.ledger import ServerlessAudit, UsageLedger
+    from serverless.quota import Quotas, TenantPolicy
+    from serverless.service import HttpLeaseClient
+    from serverless.volumes import ModelCacheStore, VolumeStore
+
+    ap = argparse.ArgumentParser(description="AICF Serverless GPU/Python HTTP service (:18110)")
+    ap.add_argument("--listen", default="127.0.0.1:18110", help="host:port to listen on (loopback)")
+    ap.add_argument("--gateway", default="http://127.0.0.1:18080", help="site-gateway HTTP URL for GPU lease bridge")
+    ap.add_argument("--secret-file", required=True, help="File holding X-Aicf-Proxy-Secret (>=16 chars)")
+    ap.add_argument("--key-file", default="", help="HMAC signing key file (auto-created in --data-dir if omitted)")
+    ap.add_argument("--data-dir", required=True, help="Persistent data directory for volumes, deployments, ledger, audit, and env_cache")
+    ap.add_argument("--env-store", default="", help="EnvCache store directory (defaults to .aicf-work/sl-test/store if present, else <data-dir>/env_cache)")
+    ap.add_argument("--worker-id", default="pc-001", help="Local Linux worker ID")
+    ap.add_argument("--gpu-enabled", action="store_true", help="Enable GPU execution on Linux worker (ADR-003 D-WIN)")
+    ap.add_argument("--gpu-index", type=int, default=0, help="GPU index on Linux worker")
+    ap.add_argument("--headroom-mib", type=int, default=1536, help="Free VRAM headroom MiB for G-RECLAIM")
+    ap.add_argument("--control-port", type=int, default=18111, help="ControlServer port for worker-guard --serverless-evict-url")
+    ap.add_argument("--max-containers", type=int, default=8, help="Max warm Docker containers in pool")
+    ap.add_argument("--canary-tenant", default="demo", help="Pre-configured canary tenant ID")
+    ap.add_argument("--canary-gpu-allowed", action="store_true", help="Allow GPU for the initial canary tenant policy")
+    ap.add_argument("--canary-max-vram-mb", type=int, default=4096, help="Max VRAM MiB for the canary tenant")
+    args = ap.parse_args()
+
+    if args.gpu_enabled and sys.platform == "win32":
+        raise SystemExit("ADR-003 D-WIN: Serverless GPU (--gpu-enabled) is Linux-only in v1.0; Windows nodes run LLM-only.")
+
+    data_dir = Path(args.data_dir).resolve()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    secret = Path(args.secret_file).read_text(encoding="utf-8").strip()
+    if len(secret) < 16:
+        raise SystemExit("--secret-file must contain at least 16 characters")
+
+    key_file = Path(args.key_file) if args.key_file else (data_dir / "hmac.key")
+    if not key_file.exists():
+        new_key_file(key_file)
+    keys = load_keys(key_file)
+
+    blob_store = MemoryBlobStore()
+    started_ledger = MemoryStartedLedger()
+    pool = WarmDockerPool(GpuDockerSandbox(), max_containers=args.max_containers, worker_id=args.worker_id)
+    control = monitor = None
+    if args.gpu_enabled:
+        from agents.sl_gpu import ControlServer, GpuAdmission, GpuMonitor, GpuProbe
+        probe = GpuProbe()
+        adm = GpuAdmission(probe, args.headroom_mib)
+        pool.admission = adm
+        monitor = GpuMonitor(pool, probe, adm, args.gpu_index)
+        monitor.start()
+        control = ControlServer(pool, monitor, secret, port=args.control_port).start()
+
+    killed_orphans = pool.kill_orphans()
+    pool.start_reaper()
+    default_env_store = Path(__file__).resolve().parents[1] / ".aicf-work" / "sl-test" / "store"
+    env_store_dir = Path(args.env_store).resolve() if args.env_store else (default_env_store if default_env_store.exists() else (data_dir / "env_cache"))
+    executor = ServerlessExecutor(
+        worker_id=args.worker_id,
+        verifier=Verifier(keys),
+        env_cache=EnvCache(env_store_dir),
+        pool=pool,
+        blobs=blob_store,
+        ledger=started_ledger,
+        gpu_enabled=args.gpu_enabled,
+        gpu_index=args.gpu_index if args.gpu_enabled else None,
+    )
+    executor.orphans_killed_at_start = killed_orphans
+    executor.control, executor.monitor = control, monitor
+
+    worker_labels = ("cpu", "gpu-sl", f"w-{args.worker_id}") if args.gpu_enabled else ("cpu", f"w-{args.worker_id}")
+    policies: dict[str, TenantPolicy] = {}
+    if args.canary_tenant:
+        policies[args.canary_tenant] = TenantPolicy(
+            serverless_enabled=True,
+            gpu_allowed=bool(args.canary_gpu_allowed),
+            max_vram_mb=args.canary_max_vram_mb,
+            max_concurrency=4,
+        )
+
+    leases = HttpLeaseClient(args.gateway, secret)
+    svc = ServerlessService(
+        keys=keys,
+        quotas=Quotas(policies),
+        dispatch=lambda task, attempt: executor.execute(task, attempt),
+        live_workers=lambda: [SimpleNamespace(agent_id=args.worker_id, labels=worker_labels)],
+        blobs=blob_store,
+        leases=leases,
+        volumes=VolumeStore(data_dir / "volumes"),
+        model_cache=ModelCacheStore(data_dir / "model_cache"),
+        deployments=DeploymentStore(data_dir / "deployments.json"),
+        ledger=UsageLedger(data_dir / "usage_ledger.jsonl"),
+        audit=ServerlessAudit(data_dir / "audit.jsonl"),
+        storage_dir=data_dir,
+    )
+
+    stop_ev = threading.Event()
+
+    def _lease_renewer() -> None:
+        while not stop_ev.wait(10.0):
+            try:
+                svc.tick_leases()
+            except Exception:
+                pass
+
+    threading.Thread(target=_lease_renewer, daemon=True).start()
+
+    host, port_s = args.listen.rsplit(":", 1)
+    srv = serve(svc, secret, host, int(port_s))
+    print(f"serverless service listening on http://{args.listen} (worker={args.worker_id}, gpu={args.gpu_enabled})", flush=True)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop_ev.set()
+        srv.server_close()
+        if monitor:
+            monitor.stop()
+        if control:
+            control.close()
+        pool.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

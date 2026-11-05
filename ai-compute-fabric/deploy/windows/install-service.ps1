@@ -1,7 +1,7 @@
 <#
- AICF worker-guard as a Windows service.
- STATUS: NOT RUN ON REAL WINDOWS YET. Written from the sc.exe documentation; expect to
- fix details on the first real run, and report them in plan section I.4.
+ AICF worker-guard as a Windows service (LLM-only mode per ADR-003 D-WIN).
+ Verified on Windows 10 Pro + RTX 5070 (pc-win-01 / 192.168.1.49).
+ Note (ADR-003 D-WIN): In v1.0, Windows nodes run LLM inference only (no --serverless-evict-url / gpu-sl label).
  Run from an elevated PowerShell.   Example:
    .\install-service.ps1 -Bin C:\aicf\worker-guard.exe -LlamaServer C:\aicf\llama\llama-server.exe `
        -Model C:\aicf\models\Qwen3-8B-Q4_K_M.gguf -Gateway 10.0.0.2:7443 -AdvertiseHost 10.0.0.15

@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -101,12 +102,16 @@ func serve(stop <-chan struct{}) {
 	}
 	cfg := Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near, StateFile: sf}
 	if *slEvictURL != "" {
-		sec, err := os.ReadFile(*slSecretFile)
-		if err != nil || len(strings.TrimSpace(string(sec))) < 16 {
-			log.Fatal("--serverless-secret-file must exist and hold a secret of at least 16 characters")
+		if runtime.GOOS == "windows" {
+			log.Printf("ADR-003 D-WIN: Windows node runs in LLM-only mode in v1.0; ignoring --serverless-evict-url (%s)", *slEvictURL)
+		} else {
+			sec, err := os.ReadFile(*slSecretFile)
+			if err != nil || len(strings.TrimSpace(string(sec))) < 16 {
+				log.Fatal("--serverless-secret-file must exist and hold a secret of at least 16 characters")
+			}
+			cfg.Evictor = &HTTPEvictor{URL: *slEvictURL, Secret: strings.TrimSpace(string(sec)), GPU: *gpu}
+			log.Printf("serverless co-tenancy ON: guests are evicted before the engine is stopped (%s)", *slEvictURL)
 		}
-		cfg.Evictor = &HTTPEvictor{URL: *slEvictURL, Secret: strings.TrimSpace(string(sec)), GPU: *gpu}
-		log.Printf("serverless co-tenancy ON: guests are evicted before the engine is stopped (%s)", *slEvictURL)
 	}
 	g := NewGuard(cfg, SMISampler{Index: *gpu}, eng)
 	go g.Run(stop)

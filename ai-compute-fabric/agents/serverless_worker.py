@@ -212,6 +212,13 @@ def build_worker(url: str, *, worker_id: str, key_file: str, store_dir: str, gpu
                  slots: int = 4, max_containers: int = 8, nats_store=None, tls_config=None, security_policy=None, headroom_mib: int = 1536,
                  control_secret: Optional[str] = None, control_port: int = 18111, probe=None) -> tuple:
     """Assemble a BusWorker around a ServerlessExecutor. Returns (BusWorker, ServerlessExecutor)."""
+    if gpu_enabled:
+        import sys
+        if sys.platform == "win32":
+            raise ValueError(
+                "Serverless GPU (gpu-sl) is Linux-only in v1.0 per ADR-003 D-WIN; "
+                "Windows nodes (pc-win-01) must run in LLM-only mode until Phase 8 WSL2 + PDH < 2s reclaim is verified"
+            )
     from agents.sl_security import load_keys
     from agents.sl_store import NatsStore
     store = nats_store or NatsStore(url, identity=f"{worker_id}-store", tls_config=tls_config, security_policy=security_policy)

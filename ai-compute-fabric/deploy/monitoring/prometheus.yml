@@ -1,0 +1,52 @@
+# Prometheus configuration for AI Compute Fabric (Linux pc-001 + Windows pc-win-01 LLM-only)
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "prometheus_serverless_alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "127.0.0.1:9093"
+
+scrape_configs:
+  - job_name: "aicf-site-gateway"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["127.0.0.1:18080"]
+        labels:
+          node: "pc-001"
+          role: "gateway"
+
+  - job_name: "aicf-serverless"
+    metrics_path: "/api/serverless/v1/metrics"
+    authorization:
+      type: Bearer
+      credentials_file: "/etc/aicf/admin.token"
+    static_configs:
+      - targets: ["127.0.0.1:18080"]
+        labels:
+          node: "pc-001"
+          role: "serverless"
+          os: "linux"
+
+  - job_name: "aicf-worker-guard-linux"
+    metrics_path: "/api/state"
+    static_configs:
+      - targets: ["127.0.0.1:8099"]
+        labels:
+          node: "pc-001"
+          os: "linux"
+          serverless_gpu: "enabled"
+
+  - job_name: "aicf-worker-guard-windows"
+    metrics_path: "/api/state"
+    static_configs:
+      - targets: ["192.168.1.49:8099"]
+        labels:
+          node: "pc-win-01"
+          os: "windows"
+          serverless_gpu: "llm_only_d_win"

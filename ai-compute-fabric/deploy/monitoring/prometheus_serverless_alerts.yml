@@ -1,0 +1,84 @@
+# Prometheus Alert Rules for AI Compute Fabric Serverless GPU/Python (ADR-003, SRE_RUNBOOK.md Section 6)
+groups:
+  - name: aicf_serverless_gpu_alerts
+    interval: 15s
+    rules:
+      # 1. Orphan Containers > 0 (Runbook 6.A: Orphan Docker container holding GPU VRAM outside WarmDockerPool)
+      - alert: ServerlessOrphanContainerDetected
+        expr: sl_orphan_containers > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: aicf-serverless
+          runbook: "docs/SRE_RUNBOOK.md#6a-container-mồ-côi-orphan-docker-container-giữ-vram"
+        annotations:
+          summary: "Orphan Serverless Docker container(s) detected ({{ $value }})"
+          description: "WarmDockerPool detected {{ $value }} orphan container(s) labelled aicf.sl=1 holding host/GPU resources for > 60s."
+
+      # 2. GPU Reclaim Latency Warning > 1.5s (Early warning before G-RECLAIM 2.0s hard gate)
+      - alert: ServerlessGpuReclaimLatencyWarning
+        expr: histogram_quantile(0.99, sum(rate(sl_reclaim_latency_seconds_bucket[5m])) by (le)) > 1.5
+        for: 2m
+        labels:
+          severity: warning
+          service: aicf-serverless
+          invariant: G-RECLAIM
+          runbook: "docs/SRE_RUNBOOK.md#6e-vram-reclaim-chậm--2s-cảnh-báo-g-reclaim"
+        annotations:
+          summary: "Serverless GPU reclaim p99 latency approaching 2.0s limit ({{ $value | humanizeDuration }})"
+          description: "p99 GPU reclaim latency is {{ $value }}s (> 1.5s warning threshold). Inspect worker-guard HTTPEvictor and ControlServer (:18111)."
+
+      # 3. GPU Reclaim SLO Breach > 2.0s (Runbook 6.E: Hard G-RECLAIM invariant breach)
+      - alert: ServerlessGpuReclaimSloBreach
+        expr: histogram_quantile(0.99, sum(rate(sl_reclaim_latency_seconds_bucket[5m])) by (le)) > 2.0
+        for: 1m
+        labels:
+          severity: critical
+          service: aicf-serverless
+          invariant: G-RECLAIM
+          runbook: "docs/SRE_RUNBOOK.md#6e-vram-reclaim-chậm--2s-cảnh-báo-g-reclaim"
+        annotations:
+          summary: "CRITICAL: Serverless GPU reclaim p99 breached G-RECLAIM < 2.0s gate ({{ $value | humanizeDuration }})"
+          description: "p99 GPU reclaim latency reached {{ $value }}s (> 2.0s). Disable Serverless GPU or trigger global drain immediately."
+
+      # 4. High Function Error / Timeout / OOM Rate > 5%
+      - alert: ServerlessHighErrorRate
+        expr: |
+          (
+            sum(rate(sl_calls_total{status=~"error|timeout|oom|worker_lost"}[5m]))
+            /
+            clamp_min(sum(rate(sl_calls_total[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: aicf-serverless
+          runbook: "docs/SRE_RUNBOOK.md#6-vận-hành-serverless-gpupython-pha-27--adr-003"
+        annotations:
+          summary: "Serverless function error/OOM/timeout rate > 5% ({{ $value | humanizePercentage }})"
+          description: "More than 5% of Serverless invocations failed in the last 5 minutes."
+
+      # 5. GPU Capacity Rejection Spike (Runbook 6.B: VRAM 6-Bucket saturation)
+      - alert: ServerlessNoCapacitySpike
+        expr: increase(sl_no_capacity_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+          service: aicf-serverless
+          invariant: G-VRAM
+          runbook: "docs/SRE_RUNBOOK.md#6b-hết-vram--từ-chối-cấp-lease-503-no_capacity"
+        annotations:
+          summary: "Serverless GPU calls rejected due to insufficient VRAM ({{ $value }} in 5m)"
+          description: "Site-gateway LeaseManager or GpuAdmission rejected {{ $value }} GPU requests in 5m to protect LLM and user headroom."
+
+      # 6. Serverless Service Down / Globally Disabled Unexpectedly
+      - alert: ServerlessServiceDown
+        expr: up{job="aicf-serverless"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: aicf-serverless
+          runbook: "docs/SRE_RUNBOOK.md#6-vận-hành-serverless-gpupython-pha-27--adr-003"
+        annotations:
+          summary: "AICF Serverless HTTP service (:18110) is unreachable"
+          description: "Prometheus could not scrape aicf-serverless metrics for more than 1 minute."
