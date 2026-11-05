@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // NewAPI wraps the fleet API with admin authentication and adds tenant management.
@@ -260,6 +261,50 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 		if strings.HasPrefix(r.URL.Path, "/api/serverless/v1/_lease/") {
 			// Internal lease bridge (ADR-003 D-LEASE-HTTP): LeaseHTTPHandler verifies X-Aicf-Proxy-Secret with constant-time HMAC equality.
 			mux.ServeHTTP(w, r)
+			return
+		}
+		if r.URL.Path == "/api/serverless/v1/signup" && r.Method == http.MethodPost {
+			if ts == nil {
+				http.Error(w, "tenant store not configured", http.StatusServiceUnavailable)
+				return
+			}
+			var in struct {
+				Name string `json:"name"`
+			}
+			_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&in)
+			want := strings.TrimSpace(in.Name)
+			if want == "" {
+				want = "dev-workspace"
+			}
+			bearerTok := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			isAdmin := auth.Open()
+			if !isAdmin && bearerTok != "" {
+				if p, ok := auth.Identify(bearerTok); ok && p.Role == RoleAdmin {
+					isAdmin = true
+				}
+			}
+			t, key, err := ts.Create(want, 1, 4)
+			if errors.Is(err, ErrDuplicated) {
+				if isAdmin {
+					for _, ex := range ts.List() {
+						if ex.Name == want || ex.ID == want {
+							if rk, rerr := ts.RotateKey(ex.ID); rerr == nil {
+								t, key, err = ex, rk, nil
+							}
+							break
+						}
+					}
+				} else {
+					suffix := fmt.Sprintf("%s-%04d", want, time.Now().UnixNano()%10000)
+					t, key, err = ts.Create(suffix, 1, 4)
+				}
+			}
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			note(Principal{Name: "signup:" + t.Name, Role: "tenant"}, r, http.StatusCreated)
+			writeJSON(w, http.StatusCreated, map[string]any{"tenant": t, "api_key": key})
 			return
 		}
 		r.Header.Del("X-Aicf-User") // identity headers are set below from the credential, never taken from the client

@@ -6,8 +6,8 @@
     "375x812"
   ],
   "pass": true,
-  "total_checks": 20,
-  "passed_checks": 20,
+  "total_checks": 23,
+  "passed_checks": 23,
   "checks": [
     {
       "name": "serverless service & gateway proxy ready with 2 warm containers",
@@ -67,7 +67,7 @@
     {
       "name": "tenants.html displays measured GPU-seconds (4.500 s) and VRAM MiB·s (including idle lease on evict) for alpha",
       "ok": true,
-      "detail": "4.500 s (4500 ms) | 51295 MiB·s"
+      "detail": "4.500 s (4500 ms) | 51556 MiB·s"
     },
     {
       "name": "saving tenant Serverless quota updates policy on server",
@@ -82,12 +82,12 @@
     {
       "name": "serverless.html 1-Click Demo creates/rotates tenant key and enables Serverless",
       "ok": true,
-      "detail": "aicf_K6_oA…"
+      "detail": "aicf_q6y6q…"
     },
     {
       "name": "serverless.html deploys v1 -> v2 and rolls back to v1 cleanly",
       "ok": true,
-      "detail": "v-e42185f5d1f074fe -> v-539fda4fc6f28210 -> v-e42185f5d1f074fe"
+      "detail": "v-881537edf9266bc3 -> v-d34301e134d36433 -> v-881537edf9266bc3"
     },
     {
       "name": "serverless.html Web Endpoint tester executes deployed function and renders JSON output + cURL",
@@ -95,7 +95,22 @@
       "detail": ""
     },
     {
+      "name": "serverless.html Cloud Python Code Editor compiles and deploys custom source code",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "serverless.html separates Developer Workspace (User UI) from Admin Cluster UI",
+      "ok": true,
+      "detail": ""
+    },
+    {
       "name": "serverless.html Volume manager uploads and lists tenant volume file with SHA-256",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "serverless.html Cloud Developer Docs hub renders Quickstart, SDK, REST API & CLI references",
       "ok": true,
       "detail": ""
     },

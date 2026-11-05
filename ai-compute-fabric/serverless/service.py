@@ -128,7 +128,7 @@ class ServerlessService:
             fndef, ver, _ = self.deployments.resolve_function(tenant, str(body["app_name"]), str(body["fn_id"]), body.get("version"))
         except DeploymentError as e:
             raise ServiceError(e.status, e.code, str(e)) from None
-        merged = dict(fndef)
+        merged = {k: v for k, v in fndef.items() if k in ALLOWED_REQ}
         merged.update(body)
         merged.pop("version", None)
         return merged
@@ -817,7 +817,7 @@ class ServerlessService:
                     break
             return items
 
-    def overview(self, tenant: Optional[str] = None) -> dict:
+    def overview(self, tenant: Optional[str] = None, role: str = "", user: str = "") -> dict:
         live = []
         try:
             for a in self.live_workers():
@@ -825,9 +825,16 @@ class ServerlessService:
         except Exception:
             pass
         policies = {tid: asdict(pol) for tid, pol in self.quotas.policies.items() if not tenant or tid == tenant}
+        if tenant and tenant not in policies:
+            policies[tenant] = asdict(self.quotas.policy(tenant))
         return {
             "enabled": self.enabled,
             "draining": self.draining,
+            "whoami": {
+                "role": role or ("tenant" if tenant else "anonymous"),
+                "tenant_id": tenant or None,
+                "user": user or None,
+            },
             "workers": live,
             "containers": self.list_containers(tenant=tenant),
             "apps": self.deployments.list_apps(tenant=tenant),

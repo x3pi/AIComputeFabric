@@ -100,11 +100,12 @@ def make_handler(svc: ServerlessService, secret: str):
                 return self._send(401, {"error": {"code": "unauthorized", "message": "gateway secret required"}})
             role = self.headers.get("X-Aicf-Role", "")
             tenant = self.headers.get("X-Aicf-Tenant", "")
+            user = self.headers.get("X-Aicf-User", "")
             try:
                 if path == "/v1/metrics":
                     return self._send(200, svc.render_metrics(), "text/plain; version=0.0.4")
                 if path in ("/v1/status", "/v1/overview"):
-                    return self._send(200, svc.overview(tenant=tenant if role == "tenant" else q.get("tenant")))
+                    return self._send(200, svc.overview(tenant=tenant if role == "tenant" else q.get("tenant"), role=role, user=user))
                 if path == "/v1/usage":
                     totals = svc.ledger.totals_by_tenant()
                     if role == "tenant":

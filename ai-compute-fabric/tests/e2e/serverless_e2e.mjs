@@ -159,7 +159,7 @@ svc = ServerlessService(
     quotas=Quotas({
         alpha_id: TenantPolicy(serverless_enabled=True, gpu_allowed=True, max_vram_mb=8192, max_concurrency=4),
         beta_id: TenantPolicy(serverless_enabled=True, gpu_allowed=False, max_vram_mb=2048, max_concurrency=2),
-    }),
+    }, default=TenantPolicy(serverless_enabled=True, gpu_allowed=True, max_vram_mb=4096, max_concurrency=4)),
     keys=load_keys(kf),
     live_workers=lambda: [SimpleNamespace(agent_id="sim-00000", labels=("cpu", "gpu-sl"))],
     dispatch=_fake_dispatch,
@@ -371,6 +371,26 @@ while True:
     await page.waitForFunction(() => /e2e-ok/.test(document.getElementById("sl-web-output")?.textContent || ""), null, { timeout: 10000 });
     check("serverless.html Web Endpoint tester executes deployed function and renders JSON output + cURL", true);
 
+    // Test Cloud Code Editor: custom Python source deploy & syntax check
+    await page.fill("#sl-code-editor", "def classify(payload: dict) -> dict:\n    return {'custom_editor': True, 'len': len(str(payload))}\n");
+    await page.click("#sl-btn-deploy-code");
+    await page.waitForFunction(() => /triển khai thành công/i.test(document.getElementById("sl-deploy-msg")?.textContent || ""), null, { timeout: 10000 });
+    check("serverless.html Cloud Python Code Editor compiles and deploys custom source code", true);
+
+    // Test User vs Admin UI mode switcher
+    const userModeHidesAdmin = await page.evaluate(() => {
+      const p = document.getElementById("sl-admin-cluster-panel");
+      return p && getComputedStyle(p).display === "none";
+    });
+    await page.click("#sl-mode-admin");
+    const adminModeShowsAdmin = await page.evaluate(() => {
+      const p = document.getElementById("sl-admin-cluster-panel");
+      return p && getComputedStyle(p).display !== "none";
+    });
+    await page.click("#sl-mode-user");
+    check("serverless.html separates Developer Workspace (User UI) from Admin Cluster UI",
+      userModeHidesAdmin && adminModeShowsAdmin);
+
     // Switch to Tab 3 (Volumes) and create sample file
     await page.click("#tab-btn-volumes");
     await page.click("#sl-btn-sample-vol");
@@ -378,6 +398,12 @@ while True:
     const volText = await page.textContent("#sl-vol-rows");
     check("serverless.html Volume manager uploads and lists tenant volume file with SHA-256",
       /configs\/prompt_template\.json/.test(volText));
+
+    // Switch to Tab 4 (Cloud Developer Docs) and verify Quickstart / SDK / REST API / CLI sub-tabs
+    await page.click("#tab-btn-sdk");
+    await page.click('.doc-tab[data-doc="doc-rest-api"]');
+    const apiDocVisible = await page.evaluate(() => getComputedStyle(document.getElementById("doc-rest-api")).display !== "none");
+    check("serverless.html Cloud Developer Docs hub renders Quickstart, SDK, REST API & CLI references", apiDocVisible);
 
     const wideSlNoOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     await page.setViewportSize({ width: 375, height: 812 });

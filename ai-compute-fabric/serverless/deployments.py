@@ -1,22 +1,111 @@
-"""Immutable versioned app deployments and rollback (Phase 5).
+"""Immutable versioned app deployments, custom Python source compilation, and rollback (Phase 5 & Web IDE).
 
 * `deploy` computes `version = sha256(canonical_json(functions + web_endpoints))[:16]` and stores up to `max_versions`
   versions per `(tenant, app_name)`.
-* `rollback` switches `active_version` to the target (or previous) version without interrupting in-flight calls.
-* Web endpoints (`/api/serverless/v1/web/{tenant}/{app}/{fn}`) resolve `(tenant, app_name, fn_id)` through `active_version`.
+* Supports both pre-pickled `bundle_b64` (from Python SDK/CLI), `builtin_template` (`demo_v1`, `demo_v2`, `gpu_bench`, `volume_io`),
+  and custom `source_code` + `entrypoint` (from the Web Code Editor or uploaded `.py` files).
+* Host safety: `source_code` is ONLY syntax-checked via `ast.parse()` on the host; compilation/execution happens exclusively
+  inside the isolated rootless Docker sandbox (`_warm_runner.py`).
 """
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import json
 import re
+import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
 
 IDENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
+TEMPLATE_SOURCES: dict[str, tuple[str, str]] = {
+    "demo_v1": (
+        "classify",
+        '''def classify(payload: dict) -> dict:
+    """Phân tích văn bản cơ bản (v1) — chạy trong container cô lập."""
+    text = str((payload or {}).get("text", ""))
+    words = text.split()
+    print(f"[demo_v1] classified {len(words)} words")
+    return {
+        "release": "v1",
+        "word_count": len(words),
+        "char_count": len(text),
+        "preview": text[:80],
+    }
+''',
+    ),
+    "demo_v2": (
+        "classify",
+        '''def classify(payload: dict) -> dict:
+    """Phân tích văn bản nâng cao & trích xuất top token (v2)."""
+    text = str((payload or {}).get("text", ""))
+    words = text.split()
+    upper_words = [w.upper() for w in words[:5]]
+    print(f"[demo_v2] classified {len(words)} words -> top={upper_words}")
+    return {
+        "release": "v2",
+        "word_count": len(words),
+        "char_count": len(text),
+        "top_tokens": upper_words,
+        "preview": text[:80],
+    }
+''',
+    ),
+    "gpu_bench": (
+        "gpu_compute",
+        '''import math
+import os
+import time
+
+def gpu_compute(payload: dict) -> dict:
+    """Kiểm tra môi trường GPU container & đo tốc độ tính toán."""
+    n = min(int((payload or {}).get("size", 2000)), 10000)
+    t0 = time.perf_counter()
+    acc = sum(math.sin(i * 0.001) * math.cos(i * 0.001) for i in range(n * 100))
+    elapsed_ms = round((time.perf_counter() - t0) * 1000, 3)
+    gpu_env = os.environ.get("NVIDIA_VISIBLE_DEVICES", "cpu")
+    vram_cap = os.environ.get("AICF_VRAM_MB", "0")
+    print(f"[gpu_bench] n={n} elapsed={elapsed_ms}ms gpu={gpu_env} vram_cap={vram_cap}MiB")
+    return {
+        "release": "gpu-bench-v1",
+        "iterations": n * 100,
+        "checksum": round(acc, 6),
+        "compute_ms": elapsed_ms,
+        "nvidia_visible_devices": gpu_env,
+        "vram_cap_mb": int(vram_cap or 0),
+        "sandbox_pid": os.getpid(),
+    }
+''',
+    ),
+    "volume_io": (
+        "scratch_note",
+        '''import json
+import os
+import time
+
+def scratch_note(payload: dict) -> dict:
+    """Đọc/ghi dữ liệu tạm trong sandbox /tmp và trả về thống kê."""
+    note = str((payload or {}).get("text", "Hello from AICF Serverless Sandbox"))
+    path = "/tmp/aicf_user_note.json"
+    record = {"saved_at": time.time(), "length": len(note), "note": note}
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(record, f, ensure_ascii=False)
+    with open(path, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+    print(f"[volume_io] wrote {len(note)} chars to {path}")
+    return {
+        "release": "storage-v1",
+        "file": path,
+        "size_bytes": os.path.getsize(path),
+        "data": loaded,
+    }
+''',
+    ),
+}
 
 
 def _sample_classify_v1(payload: dict) -> dict:
@@ -34,14 +123,96 @@ def _sample_classify_v2(payload: dict) -> dict:
     return {"release": "v2", "word_count": len(words), "char_count": len(text), "top_tokens": upper_words, "preview": text[:80]}
 
 
-def _builtin_template_bundle(name: str) -> Optional[str]:
-    fn = {"demo_v1": _sample_classify_v1, "demo_v2": _sample_classify_v2}.get(name)
-    if fn is None:
-        return None
-    import sys
+class _SandboxSourceRunner:
+    """Callable pickled into the bundle. Executes user source ONLY inside `_warm_runner.py` in the isolated container."""
+
+    def __init__(self, source_code: str, entrypoint: str, filename: str = "user_app.py"):
+        self.source_code = source_code
+        self.entrypoint = entrypoint
+        self.filename = filename
+        self._fn: Any = None
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        if self._fn is None:
+            ns: dict[str, Any] = {"__name__": "__aicf_user_app__", "__file__": f"/tmp/aicf_files/{self.filename}"}
+            code_obj = compile(self.source_code, ns["__file__"], "exec")
+            exec(code_obj, ns)  # noqa: S102 — runs strictly inside isolated rootless container (_warm_runner.py)
+            fn = ns.get(self.entrypoint)
+            if not callable(fn):
+                raise RuntimeError(f"Entrypoint {self.entrypoint!r} is not callable in {self.filename}")
+            self._fn = fn
+        return self._fn(*args, **kwargs)
+
+
+def _builtin_template_bundle(name: str) -> Optional[tuple[str, str, str]]:
+    """Return (bundle_b64, source_code, entrypoint) for a named template."""
     import cloudpickle
     cloudpickle.register_pickle_by_value(sys.modules[__name__])
-    return base64.b64encode(cloudpickle.dumps({"kind": "function", "obj": fn})).decode("ascii")
+    if name == "demo_v1":
+        ep, src = TEMPLATE_SOURCES["demo_v1"]
+        b64 = base64.b64encode(cloudpickle.dumps({"kind": "function", "obj": _sample_classify_v1})).decode("ascii")
+        return b64, src, ep
+    if name == "demo_v2":
+        ep, src = TEMPLATE_SOURCES["demo_v2"]
+        b64 = base64.b64encode(cloudpickle.dumps({"kind": "function", "obj": _sample_classify_v2})).decode("ascii")
+        return b64, src, ep
+    if name in TEMPLATE_SOURCES:
+        ep, src = TEMPLATE_SOURCES[name]
+        b64, resolved_ep, _ = compile_source_bundle(src, ep)
+        return b64, src, resolved_ep
+    return None
+
+
+def compile_source_bundle(source_code: str, entrypoint: str = "", filename: str = "user_app.py") -> tuple[str, str, list[str]]:
+    """Validate Python syntax via `ast.parse` (no host execution) and package into a sandbox bundle.
+
+    Returns `(bundle_b64, resolved_entrypoint, all_function_names)`.
+    """
+    if not isinstance(source_code, str) or not source_code.strip():
+        raise DeploymentError(400, "empty_source", "Mã nguồn Python không được để trống")
+    if len(source_code.encode("utf-8")) > 512 * 1024:
+        raise DeploymentError(413, "source_too_large", "Mã nguồn trực tiếp tối đa 512 KiB (hãy dùng Volume cho dữ liệu lớn)")
+    try:
+        tree = ast.parse(source_code, filename=filename)
+    except SyntaxError as e:
+        line_info = f"dòng {e.lineno}" + (f", cột {e.offset}" if e.offset else "")
+        raise DeploymentError(400, "syntax_error", f"Lỗi cú pháp Python tại {line_info}: {e.msg}") from None
+
+    fn_names = [
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    if not fn_names:
+        raise DeploymentError(
+            400,
+            "no_function_defined",
+            "Mã nguồn phải định nghĩa ít nhất một hàm Python ở cấp cao nhất, ví dụ: def classify(payload: dict) -> dict:",
+        )
+
+    chosen = (entrypoint or "").strip()
+    if not chosen or chosen == "auto":
+        public_fns = [n for n in fn_names if not n.startswith("_")]
+        chosen = public_fns[0] if public_fns else fn_names[0]
+    elif chosen not in fn_names:
+        raise DeploymentError(
+            400,
+            "entrypoint_not_found",
+            f"Không tìm thấy hàm entrypoint '{chosen}' trong mã nguồn. Các hàm hiện có: {', '.join(fn_names)}",
+        )
+
+    import cloudpickle
+    cloudpickle.register_pickle_by_value(sys.modules[__name__])
+    runner = _SandboxSourceRunner(source_code=source_code, entrypoint=chosen, filename=filename)
+    bundle_doc = {
+        "kind": "function",
+        "obj": runner,
+        "files": {
+            filename: base64.b64encode(source_code.encode("utf-8")).decode("ascii"),
+        },
+    }
+    b64 = base64.b64encode(cloudpickle.dumps(bundle_doc)).decode("ascii")
+    return b64, chosen, fn_names
 
 
 class DeploymentError(Exception):
@@ -87,12 +258,21 @@ class DeploymentStore:
             if not isinstance(f, dict) or not isinstance(f.get("fn_id"), str) or not IDENT.match(f["fn_id"]):
                 raise DeploymentError(400, "bad_request", "every function must have a valid fn_id")
             f_copy = dict(f)
-            if not isinstance(f_copy.get("bundle_b64"), str) and isinstance(f_copy.get("builtin_template"), str):
-                gen_b64 = _builtin_template_bundle(f_copy["builtin_template"])
-                if gen_b64:
-                    f_copy["bundle_b64"] = gen_b64
             if not isinstance(f_copy.get("bundle_b64"), str):
-                raise DeploymentError(400, "bad_request", f"function {f['fn_id']!r} is missing bundle_b64")
+                if isinstance(f_copy.get("source_code"), str) and f_copy["source_code"].strip():
+                    b64, resolved_ep, _ = compile_source_bundle(
+                        f_copy["source_code"],
+                        str(f_copy.get("entrypoint") or f_copy["fn_id"]),
+                        str(f_copy.get("filename") or f"{app_name}.py"),
+                    )
+                    f_copy["bundle_b64"] = b64
+                    f_copy["entrypoint"] = resolved_ep
+                elif isinstance(f_copy.get("builtin_template"), str):
+                    tpl = _builtin_template_bundle(f_copy["builtin_template"])
+                    if tpl is not None:
+                        f_copy["bundle_b64"], f_copy["source_code"], f_copy["entrypoint"] = tpl
+            if not isinstance(f_copy.get("bundle_b64"), str):
+                raise DeploymentError(400, "bad_request", f"function {f['fn_id']!r} is missing bundle_b64 or source_code")
             fn_map[f["fn_id"]] = f_copy
         web_map: dict[str, dict] = {}
         for k, w in (web_endpoints or {}).items():
@@ -180,16 +360,28 @@ class DeploymentStore:
     def _summary(rec: dict, previous_version: Optional[str] = None) -> dict:
         active = rec["active_version"]
         vrec = next((v for v in rec["versions"] if v["version"] == active), rec["versions"][-1])
+        fn_details = {}
+        for fn_id, fdef in vrec["functions"].items():
+            fn_details[fn_id] = {
+                "fn_id": fn_id,
+                "entrypoint": fdef.get("entrypoint") or fn_id,
+                "source_code": fdef.get("source_code") or "",
+                "gpu": fdef.get("gpu"),
+                "vram_mb": int(fdef.get("vram_mb") or 0),
+                "memory_mb": int(fdef.get("memory_mb") or 512),
+                "timeout_s": float(fdef.get("timeout_s") or 30),
+                "keep_warm_s": int(fdef.get("keep_warm_s") or 60),
+            }
         out = {
             "tenant": rec["tenant"],
             "app_name": rec["app_name"],
             "active_version": active,
             "versions": [v["version"] for v in rec["versions"]],
             "functions": sorted(vrec["functions"].keys()),
+            "functions_detail": fn_details,
             "web_endpoints": sorted(vrec.get("web_endpoints", {}).keys()),
             "updated_at": rec.get("updated_at", vrec["created_at"]),
         }
         if previous_version is not None:
             out["previous_version"] = previous_version
         return out
-
