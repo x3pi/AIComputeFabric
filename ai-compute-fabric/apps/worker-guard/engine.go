@@ -48,7 +48,20 @@ func validateCPURange(label, spec string, numCPU int) error {
 
 // Buffers are the CUDA / RPC buffers llama.cpp logs at start-up (MiB). They feed the
 // Weights / KV / Compute buckets, i.e. engine-reported numbers (plan §B.2).
-type Buffers struct{ ModelMiB, KVMiB, ComputeMiB float64 }
+// Local* track only the local CUDA device(s) so a merged master does not count remote RPC
+// buffers against its own single-GPU 6-bucket bar.
+type Buffers struct {
+	ModelMiB, KVMiB, ComputeMiB             float64
+	LocalModelMiB, LocalKVMiB, LocalComputeMiB float64
+}
+
+// Local returns the local CUDA device buffers when present, or the total buffers otherwise.
+func (b Buffers) Local() (modelMiB, kvMiB, computeMiB float64) {
+	if b.LocalModelMiB > 0 || b.LocalKVMiB > 0 || b.LocalComputeMiB > 0 {
+		return b.LocalModelMiB, b.LocalKVMiB, b.LocalComputeMiB
+	}
+	return b.ModelMiB, b.KVMiB, b.ComputeMiB
+}
 
 var bufRe = regexp.MustCompile(`(\S+)\s+(model|KV|compute)\s+buffer size\s*=\s*([\d.]+)\s*MiB`)
 
@@ -63,14 +76,24 @@ func ParseBuffers(line string, b *Buffers) {
 	if (!strings.HasPrefix(dev, "CUDA") && !strings.HasPrefix(dev, "RPC")) || strings.HasPrefix(dev, "CUDA_Host") {
 		return
 	}
+	isLocal := strings.HasPrefix(dev, "CUDA")
 	v, _ := strconv.ParseFloat(m[3], 64)
 	switch m[2] {
 	case "model":
 		b.ModelMiB += v
+		if isLocal {
+			b.LocalModelMiB += v
+		}
 	case "KV":
 		b.KVMiB += v
+		if isLocal {
+			b.LocalKVMiB += v
+		}
 	case "compute":
 		b.ComputeMiB += v
+		if isLocal {
+			b.LocalComputeMiB += v
+		}
 	}
 }
 

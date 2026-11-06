@@ -21,17 +21,17 @@
       {
         "name": "topology model selector lists 4B, 8B, 30B-A3B and Coder-30B-A3B",
         "ok": true,
-        "detail": "Qwen3-4B-Q4_K_M.gguf, Qwen3-8B-Q4_K_M.gguf, Qwen3-30B-A3B-Q4_K_M.gguf, Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"
+        "detail": "Qwen3-4B-Q4_K_M.gguf, Qwen3-8B-Q4_K_M.gguf, DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf, Qwen3.8-27B-UD-Q4_K_M.gguf, Qwen3-30B-A3B-Q4_K_M.gguf, Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"
       },
       {
         "name": "topology node status cards render both pc-001 (RTX 3060) and pc-win-01 (RTX 5070)",
         "ok": true,
-        "detail": "pc-001MASTER (MERGED 2 GPU, 24 GB)NVIDIA GeForce RTX 3060 · Model: Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.ggufTrạng thái: running1905 / 12288 MiB trống || pc-win-01RPC GPU MEMBER -> pc-001NVIDIA GeForce RTX 5070 · Model: rpc://50052Trạng thái: running666 / 12227 MiB trống"
+        "detail": "pc-001MASTER (MERGED 2 GPU, 24 GB)NVIDIA GeForce RTX 3060 · Model: Qwen3.8-27B-UD-Q4_K_M.ggufTrạng thái: running2459 / 12288 MiB trống || pc-win-01RPC GPU MEMBER -> pc-001NVIDIA GeForce RTX 5070 · Model: rpc://50052Trạng thái: running3695 / 12227 MiB trống"
       },
       {
         "name": "merged groups board displays active group and Split button",
         "ok": true,
-        "detail": "pc-001 (RTX 3060) + pc-win-01 (RTX 5070) · Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf · tỷ lệ 48,52 · 24 GBTách nhóm"
+        "detail": "pc-001 (RTX 3060) + pc-win-01 (RTX 5070) · Qwen3.8-27B-UD-Q4_K_M.gguf · tỷ lệ 48,52 · 24 GBTách nhóm"
       },
       {
         "name": "machines in an active merged group have their checkboxes disabled until split",
@@ -41,7 +41,7 @@
       {
         "name": "UI form restores active model and tensor_split slider from live topology state",
         "ok": true,
-        "detail": "model=Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf, slider=48%"
+        "detail": "model=Qwen3.8-27B-UD-Q4_K_M.gguf, slider=48%"
       },
       {
         "name": "clicking Smart 1-GPU mode card reveals -ncmoe N input panel",

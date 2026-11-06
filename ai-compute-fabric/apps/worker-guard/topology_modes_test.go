@@ -31,6 +31,10 @@ func TestParseBuffersWithRPCBuffers(t *testing.T) {
 	if b.ComputeMiB != 84.00 {
 		t.Errorf("expected ComputeMiB=84.00, got %.2f", b.ComputeMiB)
 	}
+	lm, lkv, lc := b.Local()
+	if lm != 8600.50 || lkv != 512.00 || lc != 42.00 {
+		t.Errorf("expected Local()=(8600.50, 512.00, 42.00), got (%.2f, %.2f, %.2f)", lm, lkv, lc)
+	}
 }
 
 func TestLlamaEngineRPCWorkerArgs(t *testing.T) {

@@ -22,9 +22,9 @@ mkdir -p "$D/bin" "$D/logs" "$D/studio"
 (cd "$ROOT/apps/site-gateway" && go build -o "$D/bin/site-gateway" . && go build -o "$D/bin/pki" ./cmd/pki)
 (cd "$ROOT/apps/worker-guard" && go build -o "$D/bin/worker-guard" .)
 (cd "$ROOT/apps/global-control-plane" && go build -o "$D/bin/gcp-server" ./cmd/gcp-server)
-[ -f "$D/pki/ca.crt" ] && [ -f "$D/pki/pc-win-01.crt" ] || "$D/bin/pki" -out "$D/pki" -workers pc-001,pc-win-01 -gateway-hosts 127.0.0.1,localhost,192.168.1.40
+[ -f "$D/pki/ca.crt" ] && [ -f "$D/pki/pc-win-01.crt" ] || "$D/bin/pki" -out "$D/pki" -workers pc-001,pc-win-01 -gateway-hosts 127.0.0.1,localhost,192.168.1.40,10.42.0.1
 
-GRPC_PORT="${GRPC_PORT:-17443}"; HTTP_PORT="${HTTP_PORT:-18080}"; HTTP_HOST="${HTTP_HOST:-127.0.0.1}"
+GRPC_PORT="${GRPC_PORT:-17443}"; GRPC_HOST="${GRPC_HOST:-0.0.0.0}"; HTTP_PORT="${HTTP_PORT:-18080}"; HTTP_HOST="${HTTP_HOST:-127.0.0.1}"
 SIDECAR_PORT="${SIDECAR_PORT:-18095}"; DAG_PORT="${DAG_PORT:-18096}"; STUDIO_PORT="${STUDIO_PORT:-18098}"; BESTOFN_PORT="${BESTOFN_PORT:-18099}"
 SL_PORT="${SL_PORT:-18110}"; SL_CTRL_PORT="${SL_CTRL_PORT:-18111}"
 EMBED_PORT="${EMBED_PORT:-18091}"; RERANK_PORT="${RERANK_PORT:-18092}"
@@ -45,6 +45,7 @@ pids=(); trap 'kill "${pids[@]}" 2>/dev/null || true; wait 2>/dev/null || true' 
 
 # chat models the web UI may switch to (symlinks; embedding/reranker models are not chat models), and where exported adapters go
 mkdir -p "$D/models" "$D/adapters"
+find "$D/models" -xtype l -delete 2>/dev/null || true
 for g in "$WORK_DIR"/*.gguf; do [ -f "$g" ] && ! basename "$g" | grep -qiE 'embed|rerank|bge' && ln -sf "$g" "$D/models/$(basename "$g")"; done
 
 # 1. GGUF VRAM Sidecar
@@ -115,7 +116,7 @@ else
 fi
 
 # 3. Site Gateway
-"$D/bin/site-gateway" -grpc "$HTTP_HOST:$GRPC_PORT" -http "$HTTP_HOST:$HTTP_PORT" -tenants-file "$D/tenants.json" -topology-file "$D/topology.json" \
+"$D/bin/site-gateway" -grpc "$GRPC_HOST:$GRPC_PORT" -http "$HTTP_HOST:$HTTP_PORT" -tenants-file "$D/tenants.json" -topology-file "$D/topology.json" \
   -allow-signup -signup-auto-approve \
   -tls-cert "$D/pki/gateway.crt" -tls-key "$D/pki/gateway.key" -tls-client-ca "$D/pki/ca.crt" \
   "${GW_EXTRA[@]}" >"$D/logs/gateway.log" 2>&1 & pids+=($!)
@@ -127,7 +128,7 @@ CPU_FLAGS_STR="${AICF_CPU_FLAGS---threads 8 --cpu-range 0-7 --cpu-strict}"
 read -r -a CPU_FLAGS_ARR <<< "$CPU_FLAGS_STR"
 "$D/bin/worker-guard" --llama-server "$LLAMA" --model "$MODEL" --parallel "${PARALLEL:-2}" --ctx "${CTX:-4096}" --headroom-mib 512 \
   --engine-log "$D/logs/engine-pc001.log" --engine-start-timeout "${ENGINE_START_TIMEOUT:-600s}" \
-  --engine-port 18090 --engine-host "${ENGINE_HOST:-127.0.0.1}" --advertise-host 192.168.1.40 \
+  --engine-port 18090 --engine-host "${ENGINE_HOST:-127.0.0.1}" --advertise-host "${ADVERTISE_HOST:-127.0.0.1}" \
   --models-dir "$D/models" --adapters-dir "$D/adapters" --state-file "$D/worker-state-pc-001.json" --gateway "127.0.0.1:$GRPC_PORT" --worker-id pc-001 \
   --tls-ca "$D/pki/ca.crt" --tls-cert "$D/pki/pc-001.crt" --tls-key "$D/pki/pc-001.key" \
   --tls-server-name localhost "${WG_SL_ARGS[@]}" "${CPU_FLAGS_ARR[@]}" >"$D/logs/worker.log" 2>&1 & pids+=($!)

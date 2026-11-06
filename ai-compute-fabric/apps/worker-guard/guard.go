@@ -292,8 +292,8 @@ func (g *Guard) Tick() error {
 		g.mu.Lock()
 		lastOwn := g.lastOwn
 		if lastOwn == 0 {
-			b := g.eng.Buffers()
-			lastOwn = uint64(b.ModelMiB + b.KVMiB + b.ComputeMiB)
+			bm, bkv, bc := g.eng.Buffers().Local()
+			lastOwn = uint64(bm + bkv + bc)
 		}
 		need := lastOwn + g.cfg.HeadroomMiB
 		g.mu.Unlock()
@@ -369,8 +369,8 @@ func (g *Guard) reclaim(pre GPUSample, own uint64) {
 	// target of 0 would count the reclaim as "freed" on the very first sample.
 	expected := own
 	if expected == 0 {
-		b := g.eng.Buffers()
-		expected = uint64(b.ModelMiB + b.KVMiB + b.ComputeMiB)
+		bm, bkv, bc := g.eng.Buffers().Local()
+		expected = uint64(bm + bkv + bc)
 	}
 	if expected == 0 {
 		expected = 256
@@ -409,8 +409,8 @@ func (g *Guard) Snapshot() Snapshot {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	const mib = uint64(1 << 20)
-	b := g.eng.Buffers()
-	w, kv, c := uint64(b.ModelMiB)*mib, uint64(b.KVMiB)*mib, uint64(b.ComputeMiB)*mib
+	bm, bkv, bc := g.eng.Buffers().Local()
+	w, kv, c := uint64(bm)*mib, uint64(bkv)*mib, uint64(bc)*mib
 	own := g.own
 	if own == 0 && g.st == StRunning {
 		own = (w + kv + c) / mib

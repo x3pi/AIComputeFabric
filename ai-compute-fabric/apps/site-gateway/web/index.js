@@ -412,6 +412,8 @@ svEl("sv-form").addEventListener("submit", async ev => {
 const TOPO_MODELS = {
   "Qwen3-4B-Q4_K_M.gguf":      { label: "Qwen3-4B (2,5 GB): nhỏ, vừa 1 card",                          mib: 2381,  kvKiB: 144, fits1: true },
   "Qwen3-8B-Q4_K_M.gguf":      { label: "Qwen3-8B (5,0 GB): nhỏ, vừa 1 card",                          mib: 4794,  kvKiB: 144, fits1: true },
+  "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf": { label: "DeepSeek-R1-Distill-14B (8,4 GB): suy luận, sát ngưỡng 1 card 12 GB", mib: 8580, kvKiB: 192, fits1: true },
+  "Qwen3.8-27B-UD-Q4_K_M.gguf": { label: "Qwen3.8-27B-UD (16,5 GB): Dense/Hybrid lớn, KHÔNG vừa 1 card 12 GB", mib: 15702, kvKiB: 96, fits1: false },
   "Qwen3-30B-A3B-Q4_K_M.gguf": { label: "Qwen3-30B-A3B (18,56 GB): MoE lớn, KHÔNG vừa 1 card 12 GB",   mib: 17697, kvKiB: 96,  fits1: false },
   // same qwen3moe shape as the 30B-A3B (48 layers, 4 KV heads x 128): file 18 556 689 568 B, KV 96 KiB/token. Measured in P3_CODER_30B_GOP_2_CARD.md (8k 58:42 -> 132.4 tok/s; 32k 52:48 -> 126.7 tok/s).
   "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf": { label: "Qwen3-Coder-30B-A3B (18,56 GB): chuyên viết code, MoE lớn, KHÔNG vừa 1 card 12 GB", mib: 17697, kvKiB: 96, fits1: false }
