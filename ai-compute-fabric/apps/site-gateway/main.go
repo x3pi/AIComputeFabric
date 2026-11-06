@@ -33,7 +33,10 @@ func main() {
 	weightsFlag := flag.String("tenant-weights", "", "comma list tenant=weight, e.g. sales=3,ops=1")
 	tenantsFile := flag.String("tenants-file", "", "JSON file with tenants and hashed API keys (enables API-key auth)")
 	adminToken := flag.String("admin-token", os.Getenv("AICF_ADMIN_TOKEN"), "bearer token for /api/* (admin); required when listening beyond loopback")
-	rolesFile := flag.String("roles-file", "", "JSON roles file (viewer/operator/admin, SHA-256 token hashes) for the admin API")
+	adminUser := flag.String("admin-user", os.Getenv("AICF_ADMIN_USER"), "admin username for Username+Password console login (default: admin)")
+	adminPassword := flag.String("admin-password", os.Getenv("AICF_ADMIN_PASSWORD"), "admin password (>=12 chars, hashed with Argon2id in memory) for Username+Password console login")
+	adminPasswordHash := flag.String("admin-password-hash", os.Getenv("AICF_ADMIN_PASSWORD_HASH"), "pre-computed argon2id$ password hash for the admin user")
+	rolesFile := flag.String("roles-file", "", "JSON roles file (viewer/operator/admin, SHA-256 token hashes or Argon2id password hashes) for the admin API")
 	studioURL := flag.String("studio-url", "", "AI Studio service (python -m studio), served at /api/studio/")
 	agentsURL := flag.String("agents-url", "", "agent workflow view service (agents/dag_api.py), served read-only at /api/agents/")
 	serverlessURL := flag.String("serverless-url", "", "serverless GPU/Python service (python -m serverless), served at /api/serverless/ (off when empty)")
@@ -105,6 +108,19 @@ func main() {
 		MaxInflightTenant: *perTenantInflight, Weights: weights, AffinityPatience: *affinity}, reg)
 	go router.Run(nil)
 	auth := NewAuth(*adminToken)
+	admUsername := strings.TrimSpace(*adminUser)
+	if admUsername == "" {
+		admUsername = "admin"
+	}
+	if strings.TrimSpace(*adminPasswordHash) != "" {
+		if err := auth.SetUserPasswordHash(admUsername, admUsername+"@aicf.local", RoleAdmin, "", *adminPasswordHash); err != nil {
+			log.Fatalf("--admin-password-hash: %v", err)
+		}
+	} else if *adminPassword != "" {
+		if err := auth.SetUserPassword(admUsername, admUsername+"@aicf.local", RoleAdmin, "", *adminPassword); err != nil {
+			log.Fatalf("--admin-password: %v", err)
+		}
+	}
 	if *rolesFile != "" {
 		if err := auth.LoadRoles(*rolesFile); err != nil {
 			log.Fatal(err)

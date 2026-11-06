@@ -457,3 +457,107 @@ func TestStudioProxyRolesIdentityHeadersAndBodyCap(t *testing.T) {
 		}
 	}
 }
+
+func TestProductionUserPasswordAuthFlow(t *testing.T) {
+	reg := NewRegistry(time.Hour)
+	ts, err := NewTenantStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := NewAuth("")
+	if err := auth.SetUserPassword("admin", "admin@aicf.local", RoleAdmin, "", "Admin@AICF2026!"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewAPIWith(NewFleet(reg), ts, auth, nil)
+
+	call := func(method, path, tok, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.RemoteAddr = "10.0.0.5:41000"
+		req.Header.Set("Content-Type", "application/json")
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// 1. Admin logs in via Username + Password on /api/auth/login
+	rec := call("POST", "/api/auth/login", "", `{"username":"admin","password":"Admin@AICF2026!"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin login: got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var loginRes struct {
+		Authenticated bool   `json:"authenticated"`
+		Role          string `json:"role"`
+		Name          string `json:"name"`
+		SessionToken  string `json:"session_token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &loginRes)
+	if !loginRes.Authenticated || loginRes.Role != RoleAdmin || !strings.HasPrefix(loginRes.SessionToken, "aicf_adm_sess_") {
+		t.Fatalf("unexpected admin login response: %+v", loginRes)
+	}
+	admSess := loginRes.SessionToken
+
+	// 2. Admin session token works on /api/whoami and /api/tenants (creating a tenant with email + Argon2id password)
+	rec = call("GET", "/api/whoami", admSess, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("whoami with admin session: %d", rec.Code)
+	}
+	rec = call("POST", "/api/tenants", admSess, `{"name":"prod-team","email":"team@aicf.local","password":"TeamPassword@2026!","weight":2,"max_inflight":4}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create tenant with password: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 3. Tenant logs in via Email + Password on /api/auth/login
+	rec = call("POST", "/api/auth/login", "", `{"identifier":"team@aicf.local","password":"TeamPassword@2026!"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("tenant login: %d %s", rec.Code, rec.Body.String())
+	}
+	var tLogin struct {
+		Role         string     `json:"role"`
+		SessionToken string     `json:"session_token"`
+		Tenant       TenantView `json:"tenant"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &tLogin)
+	if tLogin.Role != "tenant" || !strings.HasPrefix(tLogin.SessionToken, "aicf_sess_") || !tLogin.Tenant.HasPassword {
+		t.Fatalf("unexpected tenant login response: %+v", tLogin)
+	}
+
+	// 4. Tenant session works on /api/whoami (reports role=tenant)
+	rec = call("GET", "/api/whoami", tLogin.SessionToken, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("tenant whoami: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 5. Wrong current_password on /api/auth/change-password must be rejected (401)
+	rec = call("POST", "/api/auth/change-password", admSess, `{"current_password":"WrongCurrentPassword!","new_password":"NewAdminPassword@2026!"}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 on wrong current_password, got %d", rec.Code)
+	}
+
+	// 6. Valid password change updates Argon2id hash, revokes old session, and issues a fresh session token
+	rec = call("POST", "/api/auth/change-password", admSess, `{"current_password":"Admin@AICF2026!","new_password":"NewAdminPassword@2026!"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("change password: %d %s", rec.Code, rec.Body.String())
+	}
+	var cpRes struct {
+		SessionToken string `json:"session_token"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &cpRes)
+	if call("GET", "/api/whoami", admSess, "").Code != http.StatusUnauthorized {
+		t.Fatalf("old admin session must be revoked after password change")
+	}
+	if call("GET", "/api/whoami", cpRes.SessionToken, "").Code != http.StatusOK {
+		t.Fatalf("new admin session after password change must work")
+	}
+
+	// 7. Logout revokes the active session immediately
+	rec = call("POST", "/api/auth/logout", cpRes.SessionToken, `{}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("logout: %d", rec.Code)
+	}
+	if call("GET", "/api/whoami", cpRes.SessionToken, "").Code != http.StatusUnauthorized {
+		t.Fatalf("session must be invalid after logout")
+	}
+}

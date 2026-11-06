@@ -206,12 +206,20 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 		case http.MethodPost:
 			var in struct {
 				Name        string  `json:"name"`
+				Email       string  `json:"email"`
+				Password    string  `json:"password"`
 				Weight      float64 `json:"weight"`
 				MaxInflight int     `json:"max_inflight"`
 			}
 			if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&in) != nil {
 				http.Error(w, "bad JSON", http.StatusBadRequest)
 				return
+			}
+			if in.Password != "" {
+				if err := ValidatePasswordStrength(in.Password); err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
 			}
 			t, key, err := ts.Create(strings.TrimSpace(in.Name), in.Weight, in.MaxInflight)
 			switch {
@@ -220,6 +228,16 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 			case err != nil:
 				http.Error(w, err.Error(), http.StatusBadRequest)
 			default:
+				if strings.TrimSpace(in.Email) != "" || in.Password != "" {
+					if updated, cerr := ts.SetCredentials(t.ID, in.Email, in.Password); cerr == nil {
+						t = updated
+					} else {
+						_ = ts.Delete(t.ID)
+						http.Error(w, cerr.Error(), http.StatusBadRequest)
+						return
+					}
+					provisionServerlessPolicy(mux, t.ID, false)
+				}
 				writeJSON(w, http.StatusCreated, map[string]any{"tenant": t, "api_key": key, "note": "shown once; store it now"})
 			}
 		default:
@@ -239,6 +257,8 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 			writeJSON(w, http.StatusOK, map[string]any{"api_key": key, "note": "the previous key no longer works"})
 		case len(parts) == 1 && r.Method == http.MethodPatch:
 			var in struct {
+				Email       *string  `json:"email"`
+				Password    *string  `json:"password"`
 				Weight      *float64 `json:"weight"`
 				MaxInflight *int     `json:"max_inflight"`
 				Disabled    *bool    `json:"disabled"`
@@ -255,6 +275,22 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 			case err != nil:
 				http.Error(w, err.Error(), http.StatusBadRequest)
 			default:
+				if (in.Email != nil && strings.TrimSpace(*in.Email) != "") || (in.Password != nil && *in.Password != "") {
+					em := ""
+					if in.Email != nil {
+						em = *in.Email
+					}
+					pw := ""
+					if in.Password != nil {
+						pw = *in.Password
+					}
+					updated, cerr := ts.SetCredentials(id, em, pw)
+					if cerr != nil {
+						http.Error(w, cerr.Error(), http.StatusBadRequest)
+						return
+					}
+					t = updated
+				}
 				if in.Pending != nil {
 					provisionServerlessPolicy(mux, id, *in.Pending)
 				}
@@ -297,7 +333,246 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 			return
 		}
 		if r.URL.Path == "/api/whoami" && r.Method == http.MethodGet {
-			who(w, r, auth)
+			who(w, r, auth, ts)
+			return
+		}
+		if r.URL.Path == "/api/auth/login" && r.Method == http.MethodPost {
+			var in struct {
+				Identifier string `json:"identifier"`
+				Username   string `json:"username"`
+				Email      string `json:"email"`
+				Password   string `json:"password"`
+				APIKey     string `json:"api_key"`
+				Token      string `json:"token"`
+			}
+			if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&in) != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "bad_request", "message": "Dữ liệu JSON không hợp lệ"}})
+				return
+			}
+			ident := strings.TrimSpace(in.Identifier)
+			if ident == "" {
+				ident = strings.TrimSpace(in.Username)
+			}
+			if ident == "" {
+				ident = strings.TrimSpace(in.Email)
+			}
+			rawTok := strings.TrimSpace(in.APIKey)
+			if rawTok == "" {
+				rawTok = strings.TrimSpace(in.Token)
+			}
+			if rawTok != "" {
+				if auth != nil {
+					if p, ok := auth.Identify(rawTok); ok {
+						note(Principal{Name: "login-token:" + p.Name, Role: p.Role}, r, http.StatusOK)
+						writeJSON(w, http.StatusOK, map[string]any{
+							"authenticated": true,
+							"role":          p.Role,
+							"name":          p.Name,
+							"email":         p.Email,
+							"site":          p.Site,
+							"token":         rawTok,
+							"session_token": rawTok,
+						})
+						return
+					}
+				}
+				if ts != nil {
+					if t, ok := ts.Authenticate(rawTok); ok {
+						note(Principal{Name: "login-key:" + t.Name, Role: "tenant"}, r, http.StatusOK)
+						writeJSON(w, http.StatusOK, map[string]any{
+							"authenticated": true,
+							"role":          "tenant",
+							"name":          t.Name,
+							"email":         t.Email,
+							"tenant":        t,
+							"token":         rawTok,
+							"session_token": rawTok,
+							"api_key":       rawTok,
+						})
+						return
+					}
+				}
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "invalid_key", "message": "Khóa API hoặc Token không hợp lệ"}})
+				return
+			}
+			if auth != nil {
+				p, sessTok, err := auth.LoginUser(ident, in.Password, r.RemoteAddr)
+				if errors.Is(err, ErrAccountLocked) {
+					w.Header().Set("Retry-After", "30")
+					note(Principal{Name: "login-locked:" + ident, Role: "-"}, r, http.StatusTooManyRequests)
+					writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": map[string]any{"code": "account_locked", "message": "Tài khoản hoặc IP tạm thời bị khóa do nhập sai nhiều lần. Vui lòng thử lại sau."}})
+					return
+				}
+				if err == nil {
+					note(Principal{Name: "login:" + p.Name, Role: p.Role}, r, http.StatusOK)
+					writeJSON(w, http.StatusOK, map[string]any{
+						"authenticated": true,
+						"role":          p.Role,
+						"name":          p.Name,
+						"email":         p.Email,
+						"site":          p.Site,
+						"token":         sessTok,
+						"session_token": sessTok,
+					})
+					return
+				}
+			}
+			if ts != nil {
+				t, sessTok, err := ts.LoginAccountFrom(ident, in.Password, r.RemoteAddr)
+				if errors.Is(err, ErrAccountLocked) {
+					w.Header().Set("Retry-After", "30")
+					note(Principal{Name: "login-locked:" + ident, Role: "-"}, r, http.StatusTooManyRequests)
+					writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": map[string]any{"code": "account_locked", "message": "Tài khoản hoặc IP tạm thời bị khóa do nhập sai nhiều lần. Vui lòng thử lại sau."}})
+					return
+				}
+				if err == nil {
+					note(Principal{Name: "login:" + t.Name, Role: "tenant"}, r, http.StatusOK)
+					writeJSON(w, http.StatusOK, map[string]any{
+						"authenticated": true,
+						"role":          "tenant",
+						"name":          t.Name,
+						"email":         t.Email,
+						"tenant":        t,
+						"token":         sessTok,
+						"session_token": sessTok,
+						"api_key":       sessTok,
+					})
+					return
+				}
+			}
+			note(Principal{Name: "login-failed:" + ident, Role: "-"}, r, http.StatusUnauthorized)
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "invalid_credentials", "message": "Tên tài khoản/Email hoặc mật khẩu không đúng"}})
+			return
+		}
+		if r.URL.Path == "/api/auth/logout" && r.Method == http.MethodPost {
+			bearerTok := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			var in struct {
+				SessionToken string `json:"session_token"`
+				All          bool   `json:"all"`
+			}
+			_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&in)
+			if bearerTok == "" {
+				bearerTok = strings.TrimSpace(in.SessionToken)
+			}
+			revoked := false
+			if auth != nil && bearerTok != "" {
+				if auth.LogoutSession(bearerTok) {
+					revoked = true
+				}
+			}
+			if ts != nil && bearerTok != "" {
+				if in.All {
+					if t, ok := ts.Authenticate(bearerTok); ok {
+						if ts.RevokeAllSessions(t.ID) > 0 {
+							revoked = true
+						}
+					}
+				} else if ts.LogoutSession(bearerTok) {
+					revoked = true
+				}
+			}
+			note(Principal{Name: "logout", Role: "-"}, r, http.StatusOK)
+			writeJSON(w, http.StatusOK, map[string]any{"logged_out": true, "session_revoked": revoked})
+			return
+		}
+		if r.URL.Path == "/api/auth/change-password" && r.Method == http.MethodPost {
+			bearerTok := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			var in struct {
+				CurrentPassword string `json:"current_password"`
+				NewPassword     string `json:"new_password"`
+			}
+			if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&in) != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "bad_request", "message": "Dữ liệu JSON không hợp lệ"}})
+				return
+			}
+			if auth != nil {
+				if p, ok := auth.Identify(bearerTok); ok {
+					targetUser := p.Name
+					if targetUser == "admin-token" {
+						targetUser = "admin"
+					}
+					if err := auth.ChangeUserPassword(targetUser, in.CurrentPassword, in.NewPassword); err != nil {
+						code := http.StatusBadRequest
+						errCode := "weak_password"
+						if errors.Is(err, ErrBadCreds) {
+							code = http.StatusUnauthorized
+							errCode = "invalid_credentials"
+						}
+						writeJSON(w, code, map[string]any{"error": map[string]any{"code": errCode, "message": err.Error()}})
+						return
+					}
+					_, newSess, _ := auth.LoginUser(targetUser, in.NewPassword, r.RemoteAddr)
+					note(Principal{Name: "change-password:" + targetUser, Role: p.Role}, r, http.StatusOK)
+					writeJSON(w, http.StatusOK, map[string]any{"name": targetUser, "role": p.Role, "password_changed": true, "sessions_revoked": true, "session_token": newSess})
+					return
+				}
+			}
+			if ts != nil {
+				if t, ok := ts.Authenticate(bearerTok); ok {
+					if err := ts.VerifyAndChangePassword(t.ID, in.CurrentPassword, in.NewPassword); err != nil {
+						code := http.StatusBadRequest
+						errCode := "weak_password"
+						if errors.Is(err, ErrBadCreds) {
+							code = http.StatusUnauthorized
+							errCode = "invalid_credentials"
+						}
+						writeJSON(w, code, map[string]any{"error": map[string]any{"code": errCode, "message": err.Error()}})
+						return
+					}
+					_, newSess, _ := ts.LoginAccountFrom(t.ID, in.NewPassword, r.RemoteAddr)
+					note(Principal{Name: "change-password:" + t.Name, Role: "tenant"}, r, http.StatusOK)
+					writeJSON(w, http.StatusOK, map[string]any{"tenant": t, "role": "tenant", "password_changed": true, "sessions_revoked": true, "session_token": newSess})
+					return
+				}
+			}
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "unauthorized", "message": "Cần đăng nhập để đổi mật khẩu"}})
+			return
+		}
+		if r.URL.Path == "/api/auth/sessions" && r.Method == http.MethodGet {
+			bearerTok := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			if auth != nil {
+				if p, ok := auth.Identify(bearerTok); ok {
+					targetUser := p.Name
+					if targetUser == "admin-token" {
+						targetUser = ""
+					}
+					writeJSON(w, http.StatusOK, map[string]any{"sessions": auth.ListSessions(targetUser)})
+					return
+				}
+			}
+			if ts != nil {
+				if t, ok := ts.Authenticate(bearerTok); ok {
+					writeJSON(w, http.StatusOK, map[string]any{"sessions": ts.ListSessions(t.ID)})
+					return
+				}
+			}
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "unauthorized", "message": "Cần đăng nhập để xem danh sách phiên"}})
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/auth/sessions/") && r.Method == http.MethodDelete {
+			bearerTok := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			sessID := strings.TrimPrefix(r.URL.Path, "/api/auth/sessions/")
+			if auth != nil {
+				if p, ok := auth.Identify(bearerTok); ok {
+					targetUser := p.Name
+					if p.Role == RoleAdmin {
+						targetUser = ""
+					}
+					revoked := auth.RevokeSessionByID(targetUser, sessID)
+					note(Principal{Name: "revoke-session:" + p.Name, Role: p.Role}, r, http.StatusOK)
+					writeJSON(w, http.StatusOK, map[string]any{"revoked": revoked, "session_id": sessID})
+					return
+				}
+			}
+			if ts != nil {
+				if t, ok := ts.Authenticate(bearerTok); ok {
+					revoked := ts.RevokeSessionByID(t.ID, sessID)
+					note(Principal{Name: "revoke-session:" + t.Name, Role: "tenant"}, r, http.StatusOK)
+					writeJSON(w, http.StatusOK, map[string]any{"revoked": revoked, "session_id": sessID})
+					return
+				}
+			}
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "unauthorized", "message": "Cần đăng nhập để thu hồi phiên"}})
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/serverless/v1/_lease/") {
@@ -434,6 +709,18 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 				return
 			}
 			t, sessTok, err := ts.LoginAccountFrom(in.Identifier, in.Password, r.RemoteAddr)
+			if errors.Is(err, ErrBadCreds) && auth != nil {
+				if p, admSess, aerr := auth.LoginUser(in.Identifier, in.Password, r.RemoteAddr); aerr == nil {
+					note(Principal{Name: "login:" + p.Name, Role: p.Role}, r, http.StatusOK)
+					writeJSON(w, http.StatusOK, map[string]any{
+						"role":          p.Role,
+						"tenant":        map[string]any{"id": p.Name, "name": p.Name, "email": p.Email},
+						"api_key":       admSess,
+						"session_token": admSess,
+					})
+					return
+				}
+			}
 			if errors.Is(err, ErrAccountLocked) {
 				w.Header().Set("Retry-After", "30")
 				note(Principal{Name: "login-locked:" + in.Identifier, Role: "-"}, r, http.StatusTooManyRequests)
@@ -446,7 +733,7 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 				return
 			}
 			note(Principal{Name: "login:" + t.Name, Role: "tenant"}, r, http.StatusOK)
-			writeJSON(w, http.StatusOK, map[string]any{"tenant": t, "api_key": sessTok, "session_token": sessTok})
+			writeJSON(w, http.StatusOK, map[string]any{"role": "tenant", "tenant": t, "api_key": sessTok, "session_token": sessTok})
 			return
 		}
 		if r.URL.Path == "/api/serverless/v1/auth/logout" && r.Method == http.MethodPost {
@@ -516,14 +803,21 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 				return
 			}
 			var in struct {
-				NewPassword string `json:"new_password"`
+				CurrentPassword string `json:"current_password"`
+				NewPassword     string `json:"new_password"`
 			}
 			if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&in) != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "bad_request", "message": "Dữ liệu JSON không hợp lệ"}})
 				return
 			}
-			if err := ts.ChangePassword(t.ID, in.NewPassword); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"code": "weak_password", "message": err.Error()}})
+			if err := ts.VerifyAndChangePassword(t.ID, in.CurrentPassword, in.NewPassword); err != nil {
+				code := http.StatusBadRequest
+				errCode := "weak_password"
+				if errors.Is(err, ErrBadCreds) {
+					code = http.StatusUnauthorized
+					errCode = "invalid_credentials"
+				}
+				writeJSON(w, code, map[string]any{"error": map[string]any{"code": errCode, "message": err.Error()}})
 				return
 			}
 			note(Principal{Name: "change-password:" + t.Name, Role: "tenant"}, r, http.StatusOK)
@@ -653,13 +947,27 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 // who answers GET /api/whoami so the dashboard can hide what the caller may not do. It is a convenience for the UI
 // only: every action is still checked server-side by Allowed, whatever the page shows.
-func who(w http.ResponseWriter, r *http.Request, auth *Auth) {
+func who(w http.ResponseWriter, r *http.Request, auth *Auth, ts *TenantStore) {
 	p := Principal{Name: "open", Role: RoleAdmin}
 	open := auth.Open()
 	if !open {
+		bearer := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 		var ok bool
-		p, ok = auth.Identify(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+		p, ok = auth.Identify(bearer)
 		if !ok {
+			if ts != nil && bearer != "" {
+				if t, tokOK := ts.Authenticate(bearer); tokOK {
+					writeJSON(w, http.StatusOK, map[string]any{
+						"name": t.Name, "email": t.Email, "tenant_id": t.ID, "role": "tenant", "site": "", "open": false,
+						"can": map[string]bool{
+							"view": false, "pause": false, "tenants": false,
+							"studio": false, "studio_delete": false, "serverless_evict": false,
+							"serverless": !t.Disabled && !t.Pending,
+						},
+					})
+					return
+				}
+			}
 			w.Header().Set("WWW-Authenticate", `Bearer realm="aicf-admin"`)
 			http.Error(w, "admin token required", http.StatusUnauthorized)
 			return
@@ -670,7 +978,7 @@ func who(w http.ResponseWriter, r *http.Request, auth *Auth) {
 		return Allowed(p, req, func(string) string { return p.Site })
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"name": p.Name, "role": p.Role, "site": p.Site, "open": open,
+		"name": p.Name, "email": p.Email, "role": p.Role, "site": p.Site, "open": open,
 		"can": map[string]bool{"view": probe("GET", "/api/stats"), "pause": probe("POST", "/api/workers/x/pause"), "tenants": probe("POST", "/api/tenants"),
 			"studio": probe("POST", "/api/studio/x"), "studio_delete": probe("DELETE", "/api/studio/x"),
 			"serverless_evict": probe("DELETE", "/api/serverless/v1/containers/x")},

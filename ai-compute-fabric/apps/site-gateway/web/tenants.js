@@ -111,6 +111,19 @@ async function load() {
         else msg("Lỗi: " + (await res.text()));
       }
     }, "Đổi khóa");
+    const resetPw = el("button", {
+      class: "sm",
+      title: "Đặt hoặc cấp lại mật khẩu đăng nhập (Argon2id ≥ 12 ký tự) cho tài khoản này",
+      onclick: async () => {
+        const newPw = prompt(`Đặt mật khẩu mới (tối thiểu 12 ký tự, Argon2id) cho tài khoản "${t.name}":`, "");
+        if (newPw === null) return;
+        if (newPw.length < 12) {
+          msg("Lỗi: Mật khẩu phải có ít nhất 12 ký tự.");
+          return;
+        }
+        await patch(t.id, { password: newPw });
+      }
+    }, "🔒 Đặt MK");
     const del = el("button", {
       class: "sm ghost err",
       title: "Xóa vĩnh viễn tenant và khóa API (không hoàn tác). Dùng 'Vô hiệu hóa' nếu có thể cần lại.",
@@ -133,10 +146,15 @@ async function load() {
     const servedCount = servedMap[t.id] || servedMap[t.name] || 0;
     const statusPillClass = t.disabled ? "err" : (t.pending ? "warn" : "ok");
     const statusPillText = t.disabled ? "đã vô hiệu" : (t.pending ? "⏳ chờ duyệt" : "hoạt động");
-    const actionRow = approveBtn ? [approveBtn, save, tog, rot, del] : [save, tog, rot, del];
+    const actionRow = approveBtn ? [approveBtn, save, tog, rot, resetPw, del] : [save, tog, rot, resetPw, del];
+    const nameCell = el("td", { style: "font-weight:600" },
+      el("div", {}, t.name),
+      t.email ? el("div", { class: "mut mono", style: "font-size:11px;font-weight:400" }, t.email + (t.has_password ? " · 🔐 Argon2id" : "")) :
+        (t.has_password ? el("div", { class: "mut", style: "font-size:11px;font-weight:400" }, "🔐 Đã bật MK Argon2id") : null)
+    );
     tb.append(
       el("tr", {},
-        el("td", { style: "font-weight:600" }, t.name),
+        nameCell,
         el("td", { class: "mut mono" }, t.id),
         shareCell,
         el("td", { class: "num" }, w),
@@ -251,19 +269,30 @@ async function loadServerlessTenants(gatewayList) {
 
 document.getElementById("add").onsubmit = async e => {
   e.preventDefault();
+  const emailVal = (document.getElementById("t-email")?.value || "").trim();
+  const passVal = document.getElementById("t-pass")?.value || "";
+  if (passVal && passVal.length < 12) {
+    msg("Lỗi: Mật khẩu tài khoản phải có ít nhất 12 ký tự (chuẩn Argon2id).");
+    return;
+  }
+  const payload = {
+    name: document.getElementById("n").value.trim(),
+    weight: +document.getElementById("w").value,
+    max_inflight: +document.getElementById("m").value,
+  };
+  if (emailVal) payload.email = emailVal;
+  if (passVal) payload.password = passVal;
   const r = await api("/api/tenants", {
     method: "POST",
-    body: JSON.stringify({
-      name: document.getElementById("n").value.trim(),
-      weight: +document.getElementById("w").value,
-      max_inflight: +document.getElementById("m").value,
-    }),
+    body: JSON.stringify(payload),
   });
   if (r.status === 201) {
     const d = await r.json();
     showKey(d.api_key);
-    msg("Đã tạo tenant " + d.tenant.name + " thành công.");
+    msg("Đã tạo tenant " + d.tenant.name + (passVal ? " (kèm mật khẩu Argon2id)" : "") + " thành công.");
     document.getElementById("n").value = "";
+    if (document.getElementById("t-email")) document.getElementById("t-email").value = "";
+    if (document.getElementById("t-pass")) document.getElementById("t-pass").value = "";
   } else {
     msg("Lỗi: " + (await r.text()));
   }

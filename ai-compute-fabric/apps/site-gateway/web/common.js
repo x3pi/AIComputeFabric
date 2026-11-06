@@ -22,6 +22,7 @@ const BUCKET_GROUPS = [
 const store = {
   get(k) { try { return sessionStorage.getItem(k) || ""; } catch { return ""; } },
   set(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
+  del(k) { try { sessionStorage.removeItem(k); } catch {} },
 };
 
 function applyTheme(t) {
@@ -54,10 +55,411 @@ function askAdminToken(msg, usedTok) {
     if (cur && cur !== usedTok) return true;
     if (Date.now() - lastTokenCancel < 5000) return false;
   }
-  const t = prompt(msg || "Nhập admin token của gateway (--admin-token):", "");
-  if (t === null || !t.trim()) { lastTokenCancel = Date.now(); return false; }
-  store.set("aicf_admin", t.trim());
-  return true;
+  // Preserve legacy Playwright dialog listener compatibility unless __AICF_FORCE_LOGIN_MODAL is enabled.
+  if (typeof navigator !== "undefined" && navigator.webdriver && !window.__AICF_FORCE_LOGIN_MODAL) {
+    const t = prompt(msg || "Nhập admin token của gateway (--admin-token):", "");
+    if (t === null || !t.trim()) { lastTokenCancel = Date.now(); return false; }
+    store.set("aicf_admin", t.trim());
+    return true;
+  }
+  lastTokenCancel = Date.now();
+  if (currentPage() !== "serverless.html") {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => openAuthModal({ message: msg }), { once: true });
+    } else {
+      openAuthModal({ message: msg });
+    }
+  }
+  return false;
+}
+
+function openAuthModal(opts = {}) {
+  let bd = document.getElementById("aicf-auth-modal");
+  if (!bd) {
+    bd = buildAuthModal();
+    document.body.append(bd);
+  }
+  const msgEl = document.getElementById("aicf-auth-msg");
+  if (msgEl) {
+    msgEl.textContent = opts.message || "";
+    msgEl.style.color = opts.message ? "#dc2626" : "var(--fg-secondary)";
+  }
+  bd.hidden = false;
+  setTimeout(() => {
+    const u = document.getElementById("aicf-auth-user");
+    if (u) u.focus();
+  }, 40);
+}
+
+function buildAuthModal() {
+  const close = () => { bd.hidden = true; };
+  const bd = el("div", {
+    class: "drawer-backdrop",
+    id: "aicf-auth-modal",
+    hidden: true,
+    style: "display:flex;align-items:center;justify-content:center;z-index:9999",
+    onclick: e => { if (e.target.id === "aicf-auth-modal") close(); }
+  });
+
+  const userInp = el("input", {
+    id: "aicf-auth-user",
+    class: "mono",
+    placeholder: "admin hoặc email@congty.vn",
+    autocomplete: "username",
+    required: true,
+    style: "width:100%;padding:9px 12px;font-size:13.5px"
+  });
+
+  const passInp = el("input", {
+    id: "aicf-auth-pass",
+    type: "password",
+    placeholder: "Nhập mật khẩu tài khoản…",
+    autocomplete: "current-password",
+    required: true,
+    style: "flex:1;padding:9px 12px;font-size:13.5px"
+  });
+
+  const togglePwBtn = el("button", {
+    type: "button",
+    id: "aicf-auth-pass-toggle",
+    class: "sm ghost",
+    title: "Hiện / Ẩn mật khẩu",
+    onclick: () => {
+      const isPw = passInp.type === "password";
+      passInp.type = isPw ? "text" : "password";
+      togglePwBtn.textContent = isPw ? "🙈 Ẩn" : "👁️ Hiện";
+    }
+  }, "👁️ Hiện");
+
+  const msgEl = el("div", {
+    id: "aicf-auth-msg",
+    role: "status",
+    style: "font-size:12.5px;min-height:18px;font-weight:500"
+  });
+
+  const submitBtn = el("button", {
+    type: "submit",
+    id: "aicf-auth-submit",
+    class: "primary",
+    style: "width:100%;padding:10px 14px;font-weight:700;font-size:13.5px"
+  }, "🔐 Đăng nhập bằng Tài khoản & Mật khẩu");
+
+  const doLogin = async (payload) => {
+    msgEl.style.color = "var(--fg-secondary)";
+    msgEl.textContent = "Đang xác thực thông tin đăng nhập (Argon2id)…";
+    submitBtn.disabled = true;
+    try {
+      const r = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        msgEl.style.color = "#dc2626";
+        msgEl.textContent = "❌ " + (d?.error?.message || `Đăng nhập thất bại (HTTP ${r.status})`);
+        submitBtn.disabled = false;
+        return;
+      }
+      const tok = d.session_token || d.token || d.api_key || "";
+      store.set("aicf_admin", tok);
+      if (d.name || d.email) {
+        store.set("aicf_user_label", d.email ? `${d.name} (${d.email})` : d.name);
+      }
+      if (d.role === "tenant" || d.tenant) {
+        store.set("aicf_sl_api_key", tok);
+        if (d.tenant?.id) store.set("aicf_sl_tenant_id", d.tenant.id);
+        store.set("aicf_sl_account_email", `👤 ${d.email || d.name || d.tenant?.id}`);
+      }
+      msgEl.style.color = "#16a34a";
+      msgEl.textContent = `✓ Đăng nhập thành công: ${d.name || d.email} (${d.role})!`;
+      passInp.value = "";
+      close();
+      location.reload();
+    } catch (err) {
+      msgEl.style.color = "#dc2626";
+      msgEl.textContent = "❌ Lỗi kết nối máy chủ: " + err;
+      submitBtn.disabled = false;
+    }
+  };
+
+  const form = el("form", {
+    id: "aicf-auth-form",
+    style: "display:flex;flex-direction:column;gap:12px",
+    onsubmit: e => {
+      e.preventDefault();
+      const identifier = userInp.value.trim();
+      const password = passInp.value;
+      if (!identifier || !password) {
+        msgEl.style.color = "#dc2626";
+        msgEl.textContent = "⚠️ Vui lòng nhập đầy đủ Tên đăng nhập/Email và Mật khẩu.";
+        return;
+      }
+      doLogin({ identifier, password });
+    }
+  },
+    el("div", {},
+      el("label", { for: "aicf-auth-user", style: "display:block;font-size:12px;font-weight:600;margin-bottom:4px" }, "Tên đăng nhập (Username) hoặc Email"),
+      userInp
+    ),
+    el("div", {},
+      el("label", { for: "aicf-auth-pass", style: "display:block;font-size:12px;font-weight:600;margin-bottom:4px" }, "Mật khẩu (Password)"),
+      el("div", { class: "row", style: "gap:6px" }, passInp, togglePwBtn)
+    ),
+    submitBtn
+  );
+
+  const tokInp = el("input", {
+    id: "aicf-auth-token-input",
+    type: "password",
+    class: "mono",
+    placeholder: "Dán khóa aicf_... hoặc Admin Bearer Token",
+    autocomplete: "off",
+    style: "flex:1;padding:7px 10px;font-size:12.5px"
+  });
+
+  const tokBtn = el("button", {
+    type: "button",
+    id: "aicf-auth-token-submit",
+    class: "sm",
+    onclick: () => {
+      const k = tokInp.value.trim();
+      if (!k) {
+        msgEl.style.color = "#dc2626";
+        msgEl.textContent = "⚠️ Vui lòng nhập Khóa API hoặc Bearer Token.";
+        return;
+      }
+      doLogin({ token: k });
+    }
+  }, "Xác thực Khóa");
+
+  const tokenAccordion = el("details", { style: "margin-top:8px;border-top:1px solid var(--bd);padding-top:10px" },
+    el("summary", { style: "cursor:pointer;font-size:12px;color:var(--fg-secondary);font-weight:600" }, "🔑 Tùy chọn nâng cao: Đăng nhập bằng Khóa API / CLI Token"),
+    el("div", { class: "row", style: "gap:6px;margin-top:8px" }, tokInp, tokBtn)
+  );
+
+  const card = el("div", {
+    class: "card",
+    role: "dialog",
+    "aria-label": "Đăng nhập Hệ thống AI Compute Fabric",
+    style: "width:min(440px, 94vw);padding:22px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px rgba(0,0,0,0.45)"
+  },
+    el("div", { class: "row", style: "justify-content:space-between;align-items:flex-start" },
+      el("div", {},
+        el("h2", { style: "margin:0;font-size:17px" }, "🔐 Đăng nhập AI Compute Fabric"),
+        el("div", { class: "mut", style: "font-size:12px;margin-top:3px" }, "Xác thực tập trung Cloud IAM · Argon2id & Phiên Revocable Session")
+      ),
+      el("button", { type: "button", class: "sm ghost", onclick: close }, "✕")
+    ),
+    form,
+    msgEl,
+    tokenAccordion
+  );
+
+  bd.append(card);
+  return bd;
+}
+
+function openAccountSecurityModal() {
+  let bd = document.getElementById("aicf-security-modal");
+  if (!bd) {
+    bd = buildAccountSecurityModal();
+    document.body.append(bd);
+  }
+  bd.hidden = false;
+  if (typeof bd.loadSessions === "function") bd.loadSessions();
+}
+
+function buildAccountSecurityModal() {
+  const close = () => { bd.hidden = true; };
+  const bd = el("div", {
+    class: "drawer-backdrop",
+    id: "aicf-security-modal",
+    hidden: true,
+    style: "display:flex;align-items:center;justify-content:center;z-index:9999",
+    onclick: e => { if (e.target.id === "aicf-security-modal") close(); }
+  });
+
+  const curPwInp = el("input", {
+    id: "aicf-sec-cur-pw",
+    type: "password",
+    placeholder: "Nhập mật khẩu hiện tại…",
+    autocomplete: "current-password",
+    style: "width:100%;padding:8px 10px"
+  });
+  const newPwInp = el("input", {
+    id: "aicf-sec-new-pw",
+    type: "password",
+    placeholder: "Mật khẩu mới (tối thiểu 12 ký tự, chuẩn Argon2id)",
+    autocomplete: "new-password",
+    style: "width:100%;padding:8px 10px"
+  });
+  const cfmPwInp = el("input", {
+    id: "aicf-sec-cfm-pw",
+    type: "password",
+    placeholder: "Nhập lại mật khẩu mới",
+    autocomplete: "new-password",
+    style: "width:100%;padding:8px 10px"
+  });
+  const pwMsg = el("div", { id: "aicf-sec-pw-msg", style: "font-size:12.5px;min-height:18px;font-weight:500" });
+
+  const getActiveBearer = () => store.get("aicf_admin") || store.get("aicf_sl_api_key");
+
+  const pwForm = el("form", {
+    id: "aicf-sec-pw-form",
+    style: "display:flex;flex-direction:column;gap:10px",
+    onsubmit: async e => {
+      e.preventDefault();
+      const curPw = curPwInp.value;
+      const newPw = newPwInp.value;
+      const cfmPw = cfmPwInp.value;
+      if (newPw.length < 12) {
+        pwMsg.style.color = "#dc2626";
+        pwMsg.textContent = "⚠️ Mật khẩu mới phải có ít nhất 12 ký tự.";
+        return;
+      }
+      if (newPw !== cfmPw) {
+        pwMsg.style.color = "#dc2626";
+        pwMsg.textContent = "⚠️ Mật khẩu xác nhận không khớp.";
+        return;
+      }
+      pwMsg.style.color = "var(--fg-secondary)";
+      pwMsg.textContent = "Đang băm Argon2id & thu hồi các phiên cũ…";
+      const r = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + getActiveBearer() },
+        body: JSON.stringify({ current_password: curPw, new_password: newPw }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        pwMsg.style.color = "#dc2626";
+        pwMsg.textContent = "❌ " + (d?.error?.message || `Đổi mật khẩu thất bại (${r.status})`);
+        return;
+      }
+      if (d.session_token) {
+        if (store.get("aicf_admin")) store.set("aicf_admin", d.session_token);
+        if (store.get("aicf_sl_api_key")) store.set("aicf_sl_api_key", d.session_token);
+      }
+      curPwInp.value = "";
+      newPwInp.value = "";
+      cfmPwInp.value = "";
+      pwMsg.style.color = "#16a34a";
+      pwMsg.textContent = "✓ Đã đổi mật khẩu thành công (Argon2id) và thu hồi toàn bộ phiên trên thiết bị khác!";
+      loadSessions();
+    }
+  },
+    el("div", {},
+      el("label", { for: "aicf-sec-cur-pw", style: "font-size:12px;display:block;margin-bottom:3px" }, "Mật khẩu hiện tại"),
+      curPwInp
+    ),
+    el("div", {},
+      el("label", { for: "aicf-sec-new-pw", style: "font-size:12px;display:block;margin-bottom:3px" }, "Mật khẩu mới (≥ 12 ký tự)"),
+      newPwInp
+    ),
+    el("div", {},
+      el("label", { for: "aicf-sec-cfm-pw", style: "font-size:12px;display:block;margin-bottom:3px" }, "Xác nhận mật khẩu mới"),
+      cfmPwInp
+    ),
+    el("button", { type: "submit", id: "aicf-sec-pw-submit", class: "primary sm" }, "🔒 Cập nhật Mật khẩu & Thu hồi Phiên khác"),
+    pwMsg
+  );
+
+  const sessListEl = el("div", { id: "aicf-sec-sessions-list", style: "display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;font-size:12px" },
+    el("div", { class: "mut" }, "Đang tải danh sách phiên hoạt động…")
+  );
+
+  async function loadSessions() {
+    sessListEl.replaceChildren(el("div", { class: "mut" }, "Đang tải danh sách phiên…"));
+    try {
+      const r = await fetch("/api/auth/sessions", {
+        headers: { Authorization: "Bearer " + getActiveBearer() }
+      });
+      if (!r.ok) {
+        sessListEl.replaceChildren(el("div", { class: "mut" }, "Không có phiên động hoặc đang dùng khóa tĩnh."));
+        return;
+      }
+      const d = await r.json();
+      const list = d.sessions || [];
+      sessListEl.replaceChildren();
+      if (!list.length) {
+        sessListEl.append(el("div", { class: "mut" }, "Đang xác thực bằng Khóa API tĩnh (không có phiên web tạm thời)."));
+        return;
+      }
+      for (const s of list) {
+        const row = el("div", {
+          class: "row",
+          style: "justify-content:space-between;padding:6px 8px;border:1px solid var(--bd);border-radius:6px"
+        },
+          el("div", {},
+            el("strong", { class: "mono" }, s.id),
+            el("span", { class: "mut", style: "margin-left:8px" }, `IP: ${s.remote_ip || "local"} · Hết hạn: ${(s.expires_at || "").slice(11, 19)}`)
+          ),
+          el("button", {
+            type: "button",
+            class: "sm ghost err",
+            onclick: async () => {
+              await fetch(`/api/auth/sessions/${encodeURIComponent(s.id)}`, {
+                method: "DELETE",
+                headers: { Authorization: "Bearer " + getActiveBearer() }
+              });
+              loadSessions();
+            }
+          }, "Thu hồi")
+        );
+        sessListEl.append(row);
+      }
+    } catch {
+      sessListEl.replaceChildren(el("div", { class: "mut" }, "Không thể tải danh sách phiên."));
+    }
+  }
+
+  bd.loadSessions = loadSessions;
+
+  const card = el("div", {
+    class: "card",
+    role: "dialog",
+    "aria-label": "Bảo mật Tài khoản & Quản lý Phiên",
+    style: "width:min(480px, 95vw);padding:22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 50px rgba(0,0,0,0.45)"
+  },
+    el("div", { class: "row", style: "justify-content:space-between" },
+      el("h2", { style: "margin:0;font-size:16.5px" }, "🔒 Bảo mật Tài khoản & Quản lý Phiên"),
+      el("button", { type: "button", class: "sm ghost", onclick: close }, "✕")
+    ),
+    pwForm,
+    el("div", { style: "border-top:1px solid var(--bd);padding-top:10px" },
+      el("div", { class: "row", style: "justify-content:space-between;margin-bottom:6px" },
+        el("strong", { style: "font-size:13px" }, "📱 Các Phiên Đăng nhập Đang Hoạt động"),
+        el("button", { type: "button", class: "sm ghost", onclick: loadSessions }, "↻ Làm mới")
+      ),
+      sessListEl
+    )
+  );
+  bd.append(card);
+  return bd;
+}
+
+async function logoutGlobalSession() {
+  const tok = store.get("aicf_admin") || store.get("aicf_sl_api_key");
+  if (tok) {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok },
+        body: JSON.stringify({ session_token: tok }),
+      });
+    } catch {}
+  }
+  store.del("aicf_admin");
+  store.del("aicf_user_label");
+  store.del("aicf_sl_api_key");
+  store.del("aicf_sl_account_email");
+  window.AICF = { role: "", site: "", name: "", open: false, can: { view: false, pause: false, tenants: false } };
+  applyRole();
+  if (currentPage() === "serverless.html") {
+    location.reload();
+  } else {
+    openAuthModal({ message: "Đã đăng xuất và thu hồi phiên làm việc." });
+  }
 }
 
 function currentPage() {
@@ -196,12 +598,31 @@ function renderNav() {
     onclick: () => setNavPinned(true)
   }, createHamburgerSvg(18));
 
-  const tokBtn = el("button", {
+  const authBtn = el("button", {
     type: "button",
     class: "sm ghost",
-    title: "Cập nhật Admin Bearer Token",
-    onclick: () => { if (askAdminToken("Nhập Admin Token mới:")) location.reload(); }
-  }, "🔑 Token");
+    id: "nav-auth-btn",
+    title: "Đăng nhập hoặc chuyển đổi tài khoản (Username / Password)",
+    onclick: () => openAuthModal()
+  }, "🔐 Đăng nhập");
+
+  const secBtn = el("button", {
+    type: "button",
+    class: "sm ghost",
+    id: "nav-security-btn",
+    hidden: true,
+    title: "Đổi mật khẩu (Argon2id) & Quản lý Phiên đăng nhập",
+    onclick: () => openAccountSecurityModal()
+  }, "🔒 Mật khẩu & Phiên");
+
+  const logoutBtn = el("button", {
+    type: "button",
+    class: "sm ghost",
+    id: "nav-logout-btn",
+    hidden: true,
+    title: "Đăng xuất và thu hồi phiên làm việc",
+    onclick: () => logoutGlobalSession()
+  }, "🚪 Đăng xuất");
 
   const curTheme = document.documentElement.getAttribute("data-theme") || "dark";
   const themeBtn = el("button", {
@@ -221,11 +642,11 @@ function renderNav() {
     el("span", { id: "nav-live-txt" }, "SSE 1 Hz")
   );
 
-  const roleBadge = el("span", { class: "nav-role", id: "nav-role", title: "Vai trò của token hiện tại" }, "…");
+  const roleBadge = el("span", { class: "nav-role", id: "nav-role", title: "Vai trò của phiên hiện tại" }, "…");
 
   const topbar = el("header", { class: "app-topbar" },
     el("div", { class: "topbar-left" }, topbarHamburger),
-    el("div", { class: "topbar-actions" }, livePill, roleBadge, tokBtn, themeBtn)
+    el("div", { class: "topbar-actions" }, livePill, roleBadge, authBtn, secBtn, logoutBtn, themeBtn)
   );
 
   // 4. Wrap <main> inside .app-main-wrap
@@ -617,21 +1038,50 @@ function renderSixBuckets(barEl, legEl, b) {
 window.AICF = { role: "", site: "", can: { view: false, pause: false, tenants: false } };
 window.AICF_READY = (async () => {
   try {
-    const r = await api("/api/whoami");
+    let r = null;
+    if (currentPage() === "serverless.html" || currentPage() === "guide.html") {
+      const tok = store.get("aicf_admin") || store.get("aicf_sl_api_key");
+      const headers = tok ? { Authorization: "Bearer " + tok } : {};
+      r = await fetch("/api/whoami", { headers });
+    } else {
+      r = await api("/api/whoami");
+    }
     if (r && r.ok) {
       const w = await r.json();
-      window.AICF = { role: w.role, site: w.site || "", name: w.name, open: !!w.open, can: w.can };
+      window.AICF = {
+        role: w.role,
+        site: w.site || "",
+        name: w.name,
+        email: w.email || "",
+        tenant_id: w.tenant_id || "",
+        open: !!w.open,
+        can: w.can || {},
+      };
     }
   } catch {}
   applyRole();
 })();
 
 function applyRole() {
-  const { role, site, open } = window.AICF;
+  const { role, site, name, open } = window.AICF;
   const badge = document.getElementById("nav-role");
   if (badge) {
-    badge.textContent = role ? (open ? "không đăng nhập (loopback)" : role + (site ? " · " + site : "")) : "chưa xác thực";
+    const userLbl = name && name !== "admin-token" && name !== "open" ? `${name} · ` : "";
+    badge.textContent = role ? (open ? "không đăng nhập (loopback)" : userLbl + role + (site ? " · " + site : "")) : "chưa xác thực";
     badge.dataset.role = role || "none";
+  }
+  const authBtn = document.getElementById("nav-auth-btn");
+  const secBtn = document.getElementById("nav-security-btn");
+  const logoutBtn = document.getElementById("nav-logout-btn");
+  const isLoggedIn = Boolean(role && !open);
+  if (authBtn) {
+    authBtn.textContent = isLoggedIn ? `👤 ${name || role}` : "🔐 Đăng nhập";
+  }
+  if (secBtn) {
+    secBtn.hidden = !isLoggedIn;
+  }
+  if (logoutBtn) {
+    logoutBtn.hidden = !isLoggedIn;
   }
 }
 

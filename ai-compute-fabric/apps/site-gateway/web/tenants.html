@@ -82,17 +82,25 @@
       <span class="mut" style="font-size:12px">Khóa API sinh ngẫu nhiên 256-bit (tiền tố aicf_)</span>
     </div>
     <form id="add" class="row" autocomplete="off">
-      <div class="grow" style="min-width:200px">
-        <label for="n">Tên tenant (phòng ban / dịch vụ)</label>
+      <div class="grow" style="min-width:170px">
+        <label for="n">Tên tài khoản / Tenant</label>
         <input id="n" required maxlength="64" placeholder="VD: engineering, sales, rag-bot" style="width:100%">
+      </div>
+      <div style="min-width:170px">
+        <label for="t-email">Email đăng nhập (tùy chọn)</label>
+        <input id="t-email" type="email" placeholder="user@congty.vn" style="width:100%" autocomplete="off">
+      </div>
+      <div style="min-width:180px">
+        <label for="t-pass">Mật khẩu Argon2id (≥ 12 ký tự)</label>
+        <input id="t-pass" type="password" minlength="12" placeholder="Tùy chọn: đặt mật khẩu…" style="width:100%" autocomplete="new-password">
       </div>
       <div>
         <label for="w">Trọng số WFQ</label>
-        <input id="w" type="number" min="0.1" step="0.1" value="1" style="width:110px">
+        <input id="w" type="number" min="0.1" step="0.1" value="1" style="width:100px">
       </div>
       <div>
         <label for="m">Tối đa đồng thời (0 = mặc định)</label>
-        <input id="m" type="number" min="0" step="1" value="0" style="width:140px">
+        <input id="m" type="number" min="0" step="1" value="0" style="width:130px">
       </div>
       <button class="primary" style="align-self:flex-end">＋ Tạo tenant</button>
     </form>

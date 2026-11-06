@@ -382,16 +382,19 @@
           <div class="login-box">
             <div style="display:flex;justify-content:space-between;align-items:center">
               <strong style="font-size:14px">🔑 Đăng nhập Tài khoản Cloud</strong>
-              <span class="pill">Email / Password</span>
+              <span class="pill">Username / Email + Password</span>
             </div>
-            <div class="mut" style="font-size:12.5px">Đăng nhập vào Workspace hiện có bằng Email, Tên tài khoản hoặc Tenant ID kèm mật khẩu.</div>
+            <div class="mut" style="font-size:12.5px">Đăng nhập vào Workspace hoặc tài khoản Admin bằng Tên đăng nhập, Email hoặc Tenant ID kèm mật khẩu (Argon2id).</div>
             <div>
-              <label for="sl-login-id-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Email hoặc Tên Tài khoản / Tenant ID</label>
-              <input id="sl-login-id-input" class="mono" placeholder="dev@aicf.local hoặc dev-workspace" style="width:100%" autocomplete="username">
+              <label for="sl-login-id-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Tên Tài khoản (Username), Email hoặc Tenant ID</label>
+              <input id="sl-login-id-input" class="mono" placeholder="vd: admin hoặc ban@congty.vn" style="width:100%" autocomplete="username">
             </div>
             <div>
-              <label for="sl-login-pw-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Mật khẩu Cloud</label>
-              <input id="sl-login-pw-input" type="password" placeholder="••••••••" style="width:100%" autocomplete="current-password">
+              <label for="sl-login-pw-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Mật khẩu (Password)</label>
+              <div class="row" style="gap:6px">
+                <input id="sl-login-pw-input" type="password" placeholder="Nhập mật khẩu tài khoản…" style="flex:1" autocomplete="current-password">
+                <button type="button" id="sl-btn-login-pw-toggle" class="sm" title="Hiện / Ẩn mật khẩu">Hiện</button>
+              </div>
             </div>
             <div class="row" style="gap:8px;margin-top:auto;flex-wrap:wrap">
               <button type="button" id="sl-btn-login-account" class="pri">🔑 Đăng nhập Tài khoản →</button>
@@ -409,17 +412,23 @@
             </div>
             <div class="row" style="gap:8px;flex-wrap:wrap">
               <div style="flex:1;min-width:130px">
-                <label for="sl-signup-name-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Tên Workspace</label>
-                <input id="sl-signup-name-input" class="mono" value="dev-workspace" placeholder="vd: team-nlp" style="width:100%">
+                <label for="sl-signup-name-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Tên Tài khoản / Workspace</label>
+                <input id="sl-signup-name-input" class="mono" placeholder="vd: team-nlp" style="width:100%" autocomplete="username">
               </div>
               <div style="flex:1;min-width:150px">
                 <label for="sl-signup-email-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Email Tài khoản</label>
-                <input id="sl-signup-email-input" class="mono" value="dev@aicf.local" placeholder="ban@congty.vn" style="width:100%" autocomplete="email">
+                <input id="sl-signup-email-input" class="mono" placeholder="ban@congty.vn" style="width:100%" autocomplete="email">
               </div>
             </div>
             <div>
-              <label for="sl-signup-pw-input" class="mut" style="font-size:12px;display:block;margin-bottom:3px">Mật khẩu (tối thiểu 12 ký tự, Argon2id)</label>
-              <input id="sl-signup-pw-input" type="password" value="aicf-cloud-2026" placeholder="Mật khẩu tối thiểu 12 ký tự" style="width:100%" autocomplete="new-password">
+              <div class="row" style="justify-content:space-between;margin-bottom:3px">
+                <label for="sl-signup-pw-input" class="mut" style="font-size:12px">Mật khẩu (tối thiểu 12 ký tự, Argon2id)</label>
+                <span id="sl-signup-pw-strength" class="mut" style="font-size:11px">Chuẩn OWASP ≥ 12 ký tự</span>
+              </div>
+              <div class="row" style="gap:6px">
+                <input id="sl-signup-pw-input" type="password" placeholder="Nhập mật khẩu ≥ 12 ký tự…" style="flex:1" autocomplete="new-password">
+                <button type="button" id="sl-btn-signup-pw-toggle" class="sm" title="Hiện / Ẩn mật khẩu">Hiện</button>
+              </div>
             </div>
             <div class="row" style="gap:8px;margin-top:auto;flex-wrap:wrap">
               <button type="button" id="sl-btn-register-account" class="pri">✨ Đăng ký &amp; Đăng nhập</button>
@@ -472,6 +481,7 @@
         </div>
         <div class="row" style="gap:8px;flex-wrap:wrap">
           <button type="button" id="sl-btn-download-env" class="sm" title="Tải tệp cấu hình aicf.env cho SDK/CLI">⬇ Tải aicf.env</button>
+          <button type="button" id="sl-btn-security" class="sm" title="Đổi mật khẩu (Argon2id) & Quản lý Phiên đăng nhập">🔒 Đổi mật khẩu &amp; Phiên</button>
           <button type="button" id="sl-btn-switch-account" class="sm">🔑 Đổi Tài khoản</button>
           <button type="button" id="sl-btn-logout" class="sm" style="border-color:rgba(220,38,38,0.4);color:#dc2626;font-weight:600">🚪 Đăng xuất</button>
         </div>

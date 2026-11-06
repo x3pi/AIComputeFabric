@@ -229,7 +229,7 @@ function updateLoginGateVisibility() {
   }
 }
 
-function applyAuthenticatedSession({ token, tenantId, email, name }) {
+function applyAuthenticatedSession({ token, tenantId, email, name, role }) {
   keyInput.value = token;
   loginKeyInput.value = token;
   if (tenantId) tenantInput.value = tenantId;
@@ -239,7 +239,17 @@ function applyAuthenticatedSession({ token, tenantId, email, name }) {
     sessionStorage.setItem(SL_KEY_STORE, token);
     if (tenantId) sessionStorage.setItem(SL_TENANT_STORE, tenantId);
     sessionStorage.setItem(SL_EMAIL_STORE, `👤 ${label}`);
+    if (role === "admin" || role === "operator" || role === "viewer") {
+      sessionStorage.setItem("aicf_admin", token);
+    }
   } catch {}
+  if (window.AICF) {
+    window.AICF.role = role || "tenant";
+    window.AICF.name = name || email || tenantId;
+    window.AICF.email = email || "";
+    window.AICF.tenant_id = tenantId || "";
+    if (typeof applyRole === "function") applyRole();
+  }
   updateLoginGateVisibility();
   loadOverview();
 }
@@ -274,6 +284,64 @@ document.getElementById("sl-mode-admin").onclick = () => setUiMode("admin");
 document.getElementById("sl-btn-switch-account").onclick = () => {
   loginGate.style.display = loginGate.style.display === "none" ? "block" : "none";
 };
+const slSecBtn = document.getElementById("sl-btn-security");
+if (slSecBtn) {
+  slSecBtn.onclick = () => {
+    if (typeof openAccountSecurityModal === "function") openAccountSecurityModal();
+  };
+}
+const slLoginPwToggle = document.getElementById("sl-btn-login-pw-toggle");
+if (slLoginPwToggle && loginPwInput) {
+  slLoginPwToggle.onclick = () => {
+    const isPw = loginPwInput.type === "password";
+    loginPwInput.type = isPw ? "text" : "password";
+    slLoginPwToggle.textContent = isPw ? "Ẩn" : "Hiện";
+  };
+}
+const slSignupPwToggle = document.getElementById("sl-btn-signup-pw-toggle");
+if (slSignupPwToggle && signupPwInput) {
+  slSignupPwToggle.onclick = () => {
+    const isPw = signupPwInput.type === "password";
+    signupPwInput.type = isPw ? "text" : "password";
+    slSignupPwToggle.textContent = isPw ? "Ẩn" : "Hiện";
+  };
+}
+const slPwStrengthEl = document.getElementById("sl-signup-pw-strength");
+if (signupPwInput && slPwStrengthEl) {
+  signupPwInput.addEventListener("input", () => {
+    const len = signupPwInput.value.length;
+    if (len === 0) {
+      slPwStrengthEl.textContent = "Chuẩn OWASP ≥ 12 ký tự";
+      slPwStrengthEl.style.color = "var(--fg-secondary)";
+    } else if (len < 12) {
+      slPwStrengthEl.textContent = `Cần thêm ${12 - len} ký tự (${len}/12)`;
+      slPwStrengthEl.style.color = "#dc2626";
+    } else {
+      slPwStrengthEl.textContent = `✓ Đạt chuẩn Argon2id (${len} ký tự)`;
+      slPwStrengthEl.style.color = "#16a34a";
+    }
+  });
+}
+[loginIdInput, loginPwInput].forEach(inp => {
+  if (inp) {
+    inp.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        document.getElementById("sl-btn-login-account")?.click();
+      }
+    });
+  }
+});
+[signupNameInput, signupEmailInput, signupPwInput].forEach(inp => {
+  if (inp) {
+    inp.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        document.getElementById("sl-btn-register-account")?.click();
+      }
+    });
+  }
+});
 
 // Cloud Logout: revokes session token on server and locks Developer Workspace
 document.getElementById("sl-btn-logout").onclick = async () => {
@@ -396,7 +464,8 @@ document.getElementById("sl-btn-login-account").onclick = async () => {
   const tok = d.session_token || d.api_key;
   const tid = d.tenant?.id || identifier;
   authMsg.textContent = `✓ Đăng nhập thành công vào tài khoản '${d.tenant?.email || d.tenant?.name || tid}'!`;
-  applyAuthenticatedSession({ token: tok, tenantId: tid, email: d.tenant?.email, name: d.tenant?.name });
+  applyAuthenticatedSession({ token: tok, tenantId: tid, email: d.tenant?.email, name: d.tenant?.name, role: d.role || "tenant" });
+  if (d.role === "admin") setUiMode("admin");
 };
 
 // 2. Cloud Account Registration (Workspace Name + Email + Password)

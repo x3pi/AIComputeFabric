@@ -62,3 +62,4 @@
 3. **Diễn tập Sao lưu & Khôi phục Nguyên tử (`aicf-admin backup` & `aicf-admin restore`):**
    - Chạy `/tmp/aicf-admin backup --data-dir ... --out backup.tar.gz` (xác thực chữ ký chuỗi băm và tính toàn vẹn JSONL trước khi nén `0600`) và `/tmp/aicf-admin restore --in backup.tar.gz --data-dir ...`.
    - **Thời gian hoàn tất (`backup + restore` 27 bản ghi ledger + deployments):** **`11.42 ms`** (`≤ 60,000 ms` mục tiêu), dữ liệu khôi phục khớp 100% byte-for-byte `[ĐO]`.
+

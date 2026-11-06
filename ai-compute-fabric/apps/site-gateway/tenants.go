@@ -67,6 +67,7 @@ type TenantView struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
 	Email       string  `json:"email,omitempty"`
+	HasPassword bool    `json:"has_password,omitempty"`
 	Weight      float64 `json:"weight"`
 	MaxInflight int     `json:"max_inflight"`
 	Disabled    bool    `json:"disabled"`
@@ -363,7 +364,7 @@ func (s *TenantStore) CreateWithPending(name string, weight float64, maxInflight
 }
 
 func view(t *Tenant) TenantView {
-	return TenantView{ID: t.ID, Name: t.Name, Email: t.Email, Weight: t.Weight, MaxInflight: t.MaxInflight, Disabled: t.Disabled, Pending: t.Pending}
+	return TenantView{ID: t.ID, Name: t.Name, Email: t.Email, HasPassword: t.PassHash != "", Weight: t.Weight, MaxInflight: t.MaxInflight, Disabled: t.Disabled, Pending: t.Pending}
 }
 
 func ValidatePasswordStrength(password string) error {
@@ -620,13 +621,35 @@ func (s *TenantStore) LoginAccountFrom(identifier, password, remoteAddr string) 
 
 // ChangePassword updates a tenant's password to Argon2id and revokes all active web sessions.
 func (s *TenantStore) ChangePassword(tenantID, newPassword string) error {
+	return s.VerifyAndChangePassword(tenantID, "", newPassword)
+}
+
+// VerifyAndChangePassword verifies currentPassword (when non-empty and tenant already has a password)
+// before updating to newPassword with Argon2id and revoking all active web sessions.
+func (s *TenantStore) VerifyAndChangePassword(tenantID, currentPassword, newPassword string) error {
 	if err := ValidatePasswordStrength(newPassword); err != nil {
 		return err
+	}
+	s.mu.RLock()
+	t := s.byID[tenantID]
+	var storedHash, storedSalt string
+	if t != nil {
+		storedHash, storedSalt = t.PassHash, t.PassSalt
+	}
+	s.mu.RUnlock()
+	if t == nil {
+		dummyVerifyPassword(currentPassword)
+		return ErrNoTenant
+	}
+	if currentPassword != "" && storedHash != "" {
+		if ok, _ := verifyPasswordHash(storedHash, storedSalt, currentPassword); !ok {
+			return ErrBadCreds
+		}
 	}
 	newHash := hashPasswordArgon2id(newPassword)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	t := s.byID[tenantID]
+	t = s.byID[tenantID]
 	if t == nil {
 		return ErrNoTenant
 	}
@@ -639,6 +662,47 @@ func (s *TenantStore) ChangePassword(tenantID, newPassword string) error {
 	}
 	s.revokeTenantSessionsLocked(tenantID)
 	return nil
+}
+
+// SetCredentials updates a tenant's email and/or password (used by Admin provisioning/reset).
+func (s *TenantStore) SetCredentials(id, email, password string) (TenantView, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	var pwHash string
+	if password != "" {
+		if err := ValidatePasswordStrength(password); err != nil {
+			return TenantView{}, err
+		}
+		pwHash = hashPasswordArgon2id(password)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.byID[id]
+	if t == nil {
+		return TenantView{}, ErrNoTenant
+	}
+	if email != "" {
+		for _, other := range s.byID {
+			if other.ID != id && strings.EqualFold(other.Email, email) {
+				return TenantView{}, ErrDuplicated
+			}
+		}
+	}
+	old := *t
+	if email != "" {
+		t.Email = email
+	}
+	if pwHash != "" {
+		t.PassHash = pwHash
+		t.PassSalt = ""
+	}
+	if err := s.saveLocked(); err != nil {
+		*t = old
+		return TenantView{}, err
+	}
+	if pwHash != "" {
+		s.revokeTenantSessionsLocked(id)
+	}
+	return view(t), nil
 }
 
 func (s *TenantStore) revokeTenantSessionsLocked(tenantID string) int {

@@ -36,6 +36,8 @@ if [ "$HTTP_HOST" != "127.0.0.1" ] && [ "$HTTP_HOST" != "localhost" ] && [ "$HTT
   fi
 fi
 export AICF_ADMIN_TOKEN="${AICF_ADMIN_TOKEN:-demo-admin-token}"
+export AICF_ADMIN_USER="${AICF_ADMIN_USER:-admin}"
+export AICF_ADMIN_PASSWORD="${AICF_ADMIN_PASSWORD:-Admin@AICF2026!}"
 export PYTHONPATH="$ROOT"
 LD="$(dirname "$LLAMA")"; export LD_LIBRARY_PATH="$LD:${LD_LIBRARY_PATH:-}"
 
@@ -129,7 +131,7 @@ read -r -a CPU_FLAGS_ARR <<< "$CPU_FLAGS_STR"
 cat <<MSG
 AI Compute Fabric Full-Stack Demo is starting (model loads in ~10-25 s):
   Cụm GPU Đa Nút Heterogeneous (Linux RTX 3060 + Windows RTX 5070):
-  1. Cụm GPU & Dự báo VRAM : http://192.168.1.40:$HTTP_PORT/ (hoặc http://127.0.0.1:$HTTP_PORT/) [admin token: $AICF_ADMIN_TOKEN]
+  1. Cụm GPU & Dự báo VRAM : http://192.168.1.40:$HTTP_PORT/ (hoặc http://127.0.0.1:$HTTP_PORT/) [Admin Login: $AICF_ADMIN_USER / $AICF_ADMIN_PASSWORD | Token: $AICF_ADMIN_TOKEN]
   2. Người dùng & Khóa API : http://192.168.1.40:$HTTP_PORT/tenants.html
   3. Playground & Đo tải   : http://192.168.1.40:$HTTP_PORT/chat.html
   4. AI Agent (Đồ thị DAG) : http://192.168.1.40:$HTTP_PORT/agents.html
