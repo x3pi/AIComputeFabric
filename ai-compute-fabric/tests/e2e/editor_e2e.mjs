@@ -286,16 +286,27 @@ srv.serve_forever()
   await page.fill("#sl-ide-app", "text-analyzer");
   await page.fill("#sl-web-app", "text-analyzer");
 
-  // 3d. Measure 5,000-line keystroke latency budget (<= 50ms)
-  const keystroke5kMs = await page.evaluate(() => {
+  // 3d. Measure 5,000-line keystroke latency budget (<= 50ms) and verify editor scrollbar bounding box never cuts across editor
+  const { keystroke5kMs, geometryAligned } = await page.evaluate(() => {
     const lines = Array.from({ length: 5000 }, (_, i) => `def fn_${i}(x: int) -> int: return x + ${i}`).join("\n");
     const ta = document.getElementById("sl-code-editor");
     ta.value = lines;
     const t0 = performance.now();
     ta.value = lines + "\ndef fn_5000(x: int) -> int: return x + 5000";
-    return Math.round((performance.now() - t0) * 100) / 100;
+    const elapsed = Math.round((performance.now() - t0) * 100) / 100;
+    const wrapRect = document.getElementById("sl-cm6-wrap").getBoundingClientRect();
+    const taRect = ta.getBoundingClientRect();
+    const hlRect = document.getElementById("sl-cm6-highlight").getBoundingClientRect();
+    const gutterRect = document.getElementById("sl-cm6-gutter").getBoundingClientRect();
+    const aligned =
+      Math.abs(taRect.bottom - wrapRect.bottom) <= 2 &&
+      Math.abs(hlRect.bottom - wrapRect.bottom) <= 2 &&
+      Math.abs(gutterRect.bottom - wrapRect.bottom) <= 2 &&
+      Math.abs(taRect.height - hlRect.height) <= 2;
+    return { keystroke5kMs: elapsed, geometryAligned: aligned };
   });
-  check("5,000-line Python buffer keystroke latency completes within <= 50ms budget", keystroke5kMs <= 50, `keystroke5kMs=${keystroke5kMs}ms`);
+  check("5,000-line Python buffer keystroke latency completes within <= 50ms budget and scrollbar stays pinned to editor bottom/right edge",
+    keystroke5kMs <= 50 && geometryAligned, `keystroke5kMs=${keystroke5kMs}ms, geometryAligned=${geometryAligned}`);
 
   // 4. Test Multi-file support: add helpers.py, write helper function, import in user_app.py, and run Quick Test (Ctrl+Enter)
   await page.fill("#sl-new-file-input", "helpers.py");
