@@ -136,8 +136,7 @@ AI Compute Fabric Full-Stack Demo is starting (model loads in ~10-25 s):
   5. Serverless GPU/Python : http://192.168.1.40:$HTTP_PORT/serverless.html
   6. AI Studio             : http://192.168.1.40:$HTTP_PORT/studio.html
   7. Audio AI Factory      : http://192.168.1.40:$HTTP_PORT/audio.html
-  8. Hướng dẫn Sử dụng     : http://192.168.1.40:$HTTP_PORT/guide.html
-  9. Worker Guard Local UI : http://192.168.1.40:8099/ (Linux) | http://192.168.1.49:8099/ (Windows LLM-only)
+  8. Worker Guard Local UI : http://192.168.1.40:8099/ (Linux) | http://192.168.1.49:8099/ (Windows LLM-only)
   Logs                     : $D/logs/
 Ctrl-C to stop.
 MSG

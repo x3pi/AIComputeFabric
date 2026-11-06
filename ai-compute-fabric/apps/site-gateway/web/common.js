@@ -1,5 +1,5 @@
 // Shared by every page: admin token (kept in sessionStorage only), authenticated fetch,
-// SSE over fetch (EventSource cannot send an Authorization header), theme toggle, contextual user guide, and 6-bucket VRAM renderer.
+// SSE over fetch (EventSource cannot send an Authorization header), theme toggle, and 6-bucket VRAM renderer.
 const NAV = [
   ["index.html", "Cụm GPU & VRAM", "🖥️"],
   ["tenants.html", "Tenants & Khóa API", "🔑"],
@@ -8,7 +8,6 @@ const NAV = [
   ["agents.html", "AI Agent (DAG)", "🕸️"],
   ["studio.html", "AI Studio", "🧪"],
   ["audio.html", "Audio AI", "🎙️"],
-  ["guide.html", "Hướng dẫn", "📖"],
 ];
 
 const BUCKET_GROUPS = [
@@ -19,94 +18,6 @@ const BUCKET_GROUPS = [
   ["Headroom", "Headroom bảo vệ", "--b-headroom"],
   ["Allocatable", "Còn cấp phát được", "--b-free"],
 ];
-
-const PAGE_GUIDES = {
-  "index.html": {
-    title: "Hướng dẫn nhanh — Quản trị Cụm GPU & Dự báo 6-Bucket VRAM",
-    steps: [
-      ["Quan sát Heatmap & 6-Bucket", "Mỗi ô đại diện 1 máy trạm GPU cập nhật 1 Hz. Nhấp vào bất kỳ ô GPU nào (hoặc mã worker dưới bảng) để mở ngăn kéo soi chi tiết 6 ngăn bộ nhớ VRAM của máy đó."],
-      ["Dự báo VRAM Fit & Chia Layer", "Chọn mô hình GGUF, độ dài Context, số Slot song song và số GPU để kiểm tra trạng thái GREEN / YELLOW / RED cùng chế độ LOCAL_FULL, LOCAL_HYBRID hoặc DISTRIBUTED_MODEL."],
-      ["Điều khiển & Bảo vệ Máy trạm", "Khi chủ máy mở ứng dụng đồ họa nặng, Worker Guard tự động nhường GPU trong < 2 giây (yielded). Vận hành viên có thể bấm 'Tạm dừng AI' để chủ động giải phóng GPU."]
-    ],
-    tips: [
-      "Công thức 6-Bucket bão hòa: Allocatable = Total − OSUser − Weights − KVState − Compute − Headroom.",
-      "Chế độ LOCAL_HYBRID tự động tính toán số layer tối đa nạp lên VRAM (MaxGPULayers) và phần tràn sang Host RAM.",
-      "Endpoint Prometheus /metrics xuất toàn bộ số liệu cụm theo thời gian thực cho Grafana."
-    ]
-  },
-  "tenants.html": {
-    title: "Hướng dẫn nhanh — Quản trị Multi-Tenant, Khóa API & Trọng số WFQ",
-    steps: [
-      ["Đăng ký Phòng ban / Ứng dụng", "Nhập tên định danh (VD: engineering, sales-bot), đặt trọng số WFQ (Weight) và giới hạn request đồng thời tối đa (0 = không giới hạn cứng)."],
-      ["Sao chép Khóa API Một lần", "Sau khi khởi tạo, khóa bí mật có tiền tố aicf_... chỉ hiển thị duy nhất một lần (gateway chỉ lưu băm SHA-256 trên đĩa với quyền 0600)."],
-      ["Sử dụng & Xoay vòng Khóa", "Dán khóa aicf_... sang trang Playground hoặc gửi qua header 'Authorization: Bearer aicf_...' từ OpenAI SDK. Bấm 'Đổi khóa' khi cần vô hiệu hóa khóa cũ ngay lập tức."]
-    ],
-    tips: [
-      "Weighted Fair Queuing (WFQ) phân bổ GPU theo tỷ lệ trọng số khi có tranh chấp tải giữa nhiều phòng ban.",
-      "Chỉ tài khoản vai trò 'admin' mới được phép khởi tạo, chỉnh sửa hạn mức hoặc xoay vòng khóa API."
-    ]
-  },
-  "chat.html": {
-    title: "Hướng dẫn nhanh — AI Playground & Kiểm thử Tải Đồng thời (OpenAI-Compatible)",
-    steps: [
-      ["Xác thực Phiên Suy luận", "Dán khóa API (aicf_...) vừa cấp từ trang Người dùng vào ô 'Khóa API Tenant' ở cột trái (hoặc dùng mã Tenant ở chế độ mở loopback)."],
-      ["Thiết lập QoS & Chọn Câu hỏi", "Chọn lớp ưu tiên Interactive (ưu tiên cao) hoặc Batch (chạy nền), đặt Deadline SLA (ms), hoặc bấm các nút gợi ý câu hỏi nhanh."],
-      ["Streaming & Kiểm thử Burst 8×", "Bấm 'Gửi yêu cầu' để xem phản hồi SSE theo thời gian thực kèm thông số TTFT và tok/s, hoặc tích 'Gửi 8 yêu cầu cùng lúc' để kiểm tra bộ lập lịch WFQ."]
-    ],
-    tips: [
-      "Tương thích 100% chuẩn OpenAI: chỉ cần trỏ base_url tới http://<gateway>:18080/v1 và truyền api_key='aicf_...'.",
-      "Header X-Session-ID giữ kết nối về cùng worker (KV Prefix Affinity), giúp giảm thời gian chờ token đầu (TTFT) tới 36,6 lần."
-    ]
-  },
-  "agents.html": {
-    title: "Hướng dẫn nhanh — Đàn Agent Đàn Hồi (NATS JetStream) & Đồ thị Tác vụ (DAG)",
-    steps: [
-      ["Sổ Agent KV (AICF_AGENTS) & Co giãn nóng", "Mọi BusWorker tự đăng ký khả năng (TaskType, nhãn, model, slots, data_class) vào JetStream KV có TTL. Bấm '➕ Thêm Agent', '➖ Rút lui êm (Drain)' hoặc '💥 Kill đột ngột' để thử nghiệm co giãn trực tiếp không cần sửa cấu hình."],
-      ["Hàng đợi Kéo (AICF_TASKS) & Người giám sát", "Bấm '⚡ Bơm 16 tác vụ' để đẩy tải vào NATS JetStream; ElasticSupervisor (khóa cứng ở chế độ propose_only=True) sẽ phát hiện hàng đợi sâu và hiện đề xuất tăng agent để chủ dự án duyệt."],
-      ["Đồ thị Workflow DAG & Zero-Payload Privacy", "Bấm '🚀 Chạy Workflow Best-of-N mẫu' để thực thi đồ thị 10 bước qua NATS Bus + PostgreSQL. Nhấp vào từng ô bước để xem trạng thái mà không lộ nội dung dữ liệu gốc."]
-    ],
-    tips: [
-      "Khi một Agent bị Kill đột ngột giữa lúc giữ việc, NATS JetStream tự động giao lại việc đó cho Agent khác sau ack_wait mà không mất việc.",
-      "Điểm cuối Prometheus /api/agents/metrics xuất toàn bộ số liệu độ sâu hàng đợi, số agent sống, thời gian chờ trung vị và số lần giao lại."
-    ]
-  },
-  "studio.html": {
-    title: "Hướng dẫn nhanh — AI Studio: Tùy biến Mô hình Đa phương pháp theo Tenant",
-    steps: [
-      ["Chọn Tenant & Phương pháp", "Mọi dữ liệu trong AI Studio được cô lập nghiêm ngặt theo Tenant bằng PostgreSQL Row-Level Security (RLS). Chọn 1 trong 4 tab phương pháp tùy biến."],
-      ["Tri thức RAG & Prompt Few-shot", "Tab 'Kho tri thức (RAG)' nhận tệp .txt/.md/.html/.pdf/.docx và trả lời kèm trích dẫn nguồn [1], [2]. Tab 'Prompt & ví dụ mẫu' lưu phiên bản bất biến và chấm điểm đối sánh Zero-shot vs Few-shot."],
-      ["Huấn luyện QLoRA & Xuất GGUF", "Tab 'Huấn luyện LoRA' kiểm tra tập dữ liệu JSONL/CSV, huấn luyện QLoRA thực tế trên GPU, vẽ đường cong Loss/Perplexity và cho phép tải về cả .zip (Safetensors) lẫn .gguf cho llama-server."]
-    ],
-    tips: [
-      "Vai trò 'viewer' chỉ được xem và hỏi thử; 'operator' được phép tải tài liệu, lưu phiên bản prompt và chạy job LoRA; chỉ 'admin' mới được xóa dữ liệu.",
-      "Bạn có thể bấm nút '✨ Nạp mẫu thử nhanh' trong từng tab để điền sẵn dữ liệu mẫu chuẩn và chạy thử ngay lập tức."
-    ]
-  },
-  "audio.html": {
-    title: "Hướng dẫn nhanh — Audio AI Factory (ASR · TTS Tiếng Việt · VAD · Khử nhiễu · WER/CER)",
-    steps: [
-      ["Tổng hợp Tiếng Việt (TTS) & Vòng lặp", "Nhập câu tiếng Việt ở mục 1 rồi bấm '🔊 Tổng hợp Giọng nói (TTS)' hoặc '🔄 Chạy Vòng lặp TTS → ASR + Chấm WER' để tạo tệp WAV bằng facebook/mms-tts-vie và kiểm chứng độc lập bằng Qwen3-ASR-0.6B."],
-      ["Nhận dạng ASR & Lọc nhiễu Spectral Gate", "Tải tệp .wav (PCM 16-bit) hoặc bấm '↪ Đưa âm thanh này sang ô ASR & Lọc nhiễu' để nhận dạng văn bản, xem thanh phân đoạn giọng nói (Energy VAD) và nghe đối chiếu trước/sau lọc nhiễu Wiener Spectral Gate."],
-      ["Chuẩn hóa Tiếng Việt & Chấm điểm WER/CER", "Ở mục 4, nhập câu chuẩn và câu máy nhận dạng (hoặc bấm nút điền ví dụ mẫu) để tự động chuyển số/ngày tháng thành chữ, chuẩn hóa dấu thanh (hoà → hòa) và tính sai số từ/ký tự."]
-    ],
-    tips: [
-      "Energy VAD dùng ngưỡng tương đối -30 dB so với đỉnh tín hiệu thay vì ngưỡng cứng -40 dB, giúp không bỏ sót các bản thu âm nhỏ tiếng.",
-      "Hệ thống tuân thủ chính sách Đạo đức AI: mọi yêu cầu nhân bản giọng nói (Voice Cloning) hoặc giọng tùy chỉnh không có Consent đều bị từ chối ở tầng thực thi."
-    ]
-  },
-  "serverless.html": {
-    title: "Hướng dẫn nhanh — Nền tảng Serverless GPU / Python (Kiểu Modal.com)",
-    steps: [
-      ["Cấp khóa Tenant & Bật quyền 1-Click", "Bấm nút '⚡ Khởi tạo nhanh Tenant Demo & Bật quyền Serverless' (hoặc dán khóa aicf_... đã cấp ở trang Tenants) để tự động kích hoạt serverless_enabled và gpu_allowed."],
-      ["Triển khai App Bất biến (v1 → v2) & Gọi Web Endpoint", "Ở Tab 1, bấm '✨ Triển khai App Mẫu (v1)' rồi bấm '▶ Gọi Web Endpoint ngay' để thực thi hàm Python trong container ấm. Thử nâng cấp lên v2 và bấm '⏪ Rollback' mà không làm gián đoạn lượt gọi."],
-      ["Quản lý Container Ấm, Volume & Mã nguồn SDK", "Chuyển sang Tab 2 để xem container ấm, lease GPU và log stdout/stderr; Tab 3 để kéo-thả tệp vào aicf.Volume; Tab 4 để sao chép mã nguồn Python SDK (@app.function, @app.cls, .map) và xem Audit Log."]
-    ],
-    tips: [
-      "Quy tắc D10 (G-RECLAIM < 2s): Khi chủ máy trạm cần GPU, worker-guard ưu tiên thu hồi container Serverless trước để không bao giờ làm dừng mô hình LLM đang phục vụ.",
-      "Mỗi lệnh SERVERLESS_EXEC đều được ký HMAC-SHA256 kèm nonce/exp chống phát lại (T3), và cloudpickle.loads chỉ chạy duy nhất bên trong container không mạng (--network none, T1/T2)."
-    ]
-  }
-};
 
 const store = {
   get(k) { try { return sessionStorage.getItem(k) || ""; } catch { return ""; } },
@@ -152,123 +63,6 @@ function askAdminToken(msg, usedTok) {
 function currentPage() {
   const p = location.pathname.split("/").pop() || "index.html";
   return p === "" ? "index.html" : p;
-}
-
-function openHelpDrawer() {
-  let bd = document.getElementById("help-drawer");
-  if (!bd) {
-    bd = buildHelpDrawer();
-    document.body.append(bd);
-  }
-  bd.hidden = false;
-}
-
-function buildHelpDrawer() {
-  const here = currentPage();
-  const g = PAGE_GUIDES[here] || PAGE_GUIDES["index.html"];
-  const close = () => { bd.hidden = true; };
-  const bd = el("div", {
-    class: "drawer-backdrop",
-    id: "help-drawer",
-    hidden: true,
-    onclick: e => { if (e.target.id === "help-drawer") close(); }
-  });
-
-  const stepItems = g.steps.map(([stTitle, stDesc], idx) =>
-    el("div", { class: "guide-step" },
-      el("span", { class: "guide-num" }, String(idx + 1)),
-      el("div", {}, el("strong", {}, stTitle), el("span", {}, stDesc))
-    )
-  );
-
-  const tipItems = (g.tips || []).map(t => el("li", {}, t));
-
-  const drawer = el("aside", { class: "drawer", role: "dialog", "aria-label": "Hướng dẫn sử dụng" },
-    el("div", { class: "row", style: "justify-content:space-between;border-bottom:1px solid var(--bd);padding-bottom:12px" },
-      el("div", {},
-        el("h2", {}, "📖 " + g.title),
-        el("div", { class: "mut", style: "font-size:12.5px" }, "Cẩm nang thao tác nhanh theo ngữ cảnh trang hiện tại")
-      ),
-      el("button", { type: "button", class: "sm", onclick: close }, "Đóng ✕")
-    ),
-    el("div", { style: "display:flex;flex-direction:column;gap:10px" }, ...stepItems),
-    el("div", { class: "help-section" },
-      el("h3", {}, "💡 Lưu ý vận hành & Mẹo hữu ích"),
-      el("ul", {}, ...tipItems)
-    ),
-    el("div", { class: "help-section" },
-      el("h3", {}, "🔐 Thông tin Kết nối Mặc định (Demo)"),
-      el("div", { style: "font-size:12.5px;color:var(--fg-secondary);line-height:1.6" },
-        el("div", {}, "• Admin Token: ", el("code", { class: "mono" }, "demo-admin-token")),
-        el("div", {}, "• OpenAI Endpoint: ", el("code", { class: "mono" }, location.origin + "/v1/chat/completions")),
-        el("div", {}, "• Giao diện Worker Guard cục bộ: ", el("code", { class: "mono" }, "http://127.0.0.1:8099/"))
-      )
-    ),
-    el("div", { class: "row", style: "justify-content:space-between;padding-top:8px;border-top:1px solid var(--bd)" },
-      el("a", { href: "guide.html", style: "text-decoration:none" },
-        el("button", { type: "button", class: "primary sm" }, "📚 Mở trang Tài liệu & Hướng dẫn đầy đủ →")
-      ),
-      el("button", { type: "button", class: "sm ghost", onclick: close }, "Đóng")
-    )
-  );
-  bd.append(drawer);
-  return bd;
-}
-
-function renderPageGuideBanner() {
-  const here = currentPage();
-  const g = PAGE_GUIDES[here];
-  if (!g) return;
-  const main = document.querySelector("main");
-  if (!main || document.getElementById("page-guide-banner")) return;
-
-  const storageKey = "aicf_guide_hide_" + here;
-  let collapsed = false;
-  try { collapsed = localStorage.getItem(storageKey) === "1"; } catch {}
-
-  const stepsBox = el("div", { class: "guide-steps" },
-    ...g.steps.map(([title, desc], i) =>
-      el("div", { class: "guide-step" },
-        el("span", { class: "guide-num" }, String(i + 1)),
-        el("div", {}, el("strong", {}, title), el("span", {}, desc))
-      )
-    )
-  );
-  stepsBox.hidden = collapsed;
-
-  const toggleBtn = el("button", {
-    type: "button",
-    class: "sm ghost",
-    onclick: () => {
-      collapsed = !collapsed;
-      stepsBox.hidden = collapsed;
-      toggleBtn.textContent = collapsed ? "💡 Hiện 3 bước hướng dẫn" : "Thu gọn ▲";
-      try { localStorage.setItem(storageKey, collapsed ? "1" : "0"); } catch {}
-    }
-  }, collapsed ? "💡 Hiện 3 bước hướng dẫn" : "Thu gọn ▲");
-
-  const fullDocLink = el("a", {
-    href: "guide.html",
-    style: "font-size:12.5px;color:var(--acc);font-weight:600;text-decoration:none"
-  }, "Xem tài liệu chi tiết →");
-
-  const banner = el("section", { class: "guide-banner", id: "page-guide-banner", "aria-label": "Hướng dẫn nhanh" },
-    el("div", { class: "guide-banner-hdr" },
-      el("div", { class: "guide-banner-title" },
-        el("span", {}, "🧭"),
-        el("span", {}, g.title)
-      ),
-      el("div", { class: "row", style: "gap:10px" }, fullDocLink, toggleBtn)
-    ),
-    stepsBox
-  );
-
-  const hdr = main.querySelector(".page-header");
-  if (hdr && hdr.nextSibling) {
-    main.insertBefore(banner, hdr.nextSibling);
-  } else {
-    main.prepend(banner);
-  }
 }
 
 function createGeminiSparkleSvg(size = 22) {
@@ -402,13 +196,6 @@ function renderNav() {
     onclick: () => setNavPinned(true)
   }, createHamburgerSvg(18));
 
-  const helpBtn = el("button", {
-    type: "button",
-    class: "sm ghost",
-    title: "Mở hướng dẫn nhanh (phím tắt ?)",
-    onclick: openHelpDrawer
-  }, "📖 Trợ giúp", el("span", { class: "kbd-hint" }, "?"));
-
   const tokBtn = el("button", {
     type: "button",
     class: "sm ghost",
@@ -438,7 +225,7 @@ function renderNav() {
 
   const topbar = el("header", { class: "app-topbar" },
     el("div", { class: "topbar-left" }, topbarHamburger),
-    el("div", { class: "topbar-actions" }, livePill, roleBadge, helpBtn, tokBtn, themeBtn)
+    el("div", { class: "topbar-actions" }, livePill, roleBadge, tokBtn, themeBtn)
   );
 
   // 4. Wrap <main> inside .app-main-wrap
@@ -850,15 +637,10 @@ function applyRole() {
 
 document.addEventListener("DOMContentLoaded", () => {
   renderNav();
-  renderPageGuideBanner();
   applyRole();
 });
 
 document.addEventListener("keydown", e => {
-  if (e.key === "?" && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target && e.target.tagName) || "")) {
-    e.preventDefault();
-    openHelpDrawer();
-  }
   if (e.key === "Escape") {
     toggleSidebar(false);
   }

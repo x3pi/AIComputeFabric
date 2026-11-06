@@ -435,11 +435,10 @@ while True:
     check("serverless.html Volume manager uploads and lists tenant volume file with SHA-256",
       /configs\/prompt_template\.json/.test(volText));
 
-    // Switch to Tab 4 (Cloud Developer Docs) and verify Quickstart / SDK / REST API / CLI sub-tabs
-    await page.click("#tab-btn-sdk");
-    await page.click('.doc-tab[data-doc="doc-rest-api"]');
-    const apiDocVisible = await page.evaluate(() => getComputedStyle(document.getElementById("doc-rest-api")).display !== "none");
-    check("serverless.html Cloud Developer Docs hub renders Quickstart, SDK, REST API & CLI references", apiDocVisible);
+    // Tab 4: audit trail panel renders
+    await page.click("#tab-btn-audit");
+    const auditVisible = await page.evaluate(() => getComputedStyle(document.getElementById("panel-audit")).display !== "none");
+    check("serverless.html audit trail tab renders", auditVisible);
 
     const wideSlNoOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     await page.setViewportSize({ width: 375, height: 812 });

@@ -241,7 +241,6 @@ function applyAuthenticatedSession({ token, tenantId, email, name }) {
     sessionStorage.setItem(SL_EMAIL_STORE, `👤 ${label}`);
   } catch {}
   updateLoginGateVisibility();
-  renderSdkSnippet();
   loadOverview();
 }
 
@@ -322,7 +321,6 @@ document.getElementById("sl-btn-rotate-key").onclick = async () => {
     keyInput.value = d.api_key;
     loginKeyInput.value = d.api_key;
     try { sessionStorage.setItem(SL_KEY_STORE, d.api_key); } catch {}
-    renderSdkSnippet();
     document.getElementById("sl-deploy-msg").textContent =
       `🔑 Đã cấp lại Khóa API mới cho Workspace '${d.tenant?.id || tenantInput.value}': ${d.api_key.slice(0, 14)}… (khóa cũ đã bị vô hiệu hóa).`;
   }
@@ -330,11 +328,9 @@ document.getElementById("sl-btn-rotate-key").onclick = async () => {
 
 keyInput.addEventListener("input", () => {
   try { sessionStorage.setItem(SL_KEY_STORE, keyInput.value.trim()); } catch {}
-  renderSdkSnippet();
 });
 tenantInput.addEventListener("input", () => {
   try { sessionStorage.setItem(SL_TENANT_STORE, tenantInput.value.trim()); } catch {}
-  renderSdkSnippet();
 });
 
 document.getElementById("sl-btn-toggle-key").onclick = (ev) => {
@@ -365,16 +361,6 @@ for (const btn of document.querySelectorAll(".sl-tab")) {
     btn.classList.add("active");
     document.getElementById(btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "panel-volumes") listVolumeFiles();
-  };
-}
-
-// Cloud Docs sub-navigation switching
-for (const btn of document.querySelectorAll(".doc-tab")) {
-  btn.onclick = () => {
-    for (const b of document.querySelectorAll(".doc-tab")) b.classList.remove("active");
-    for (const s of document.querySelectorAll(".doc-section")) s.classList.remove("active");
-    btn.classList.add("active");
-    document.getElementById(btn.dataset.doc).classList.add("active");
   };
 }
 
@@ -1247,7 +1233,6 @@ async function executeDeploy({ sourceCode = "", extraFiles = null, templateName 
     if (d.tenant) {
       tenantInput.value = d.tenant;
       try { sessionStorage.setItem(SL_TENANT_STORE, d.tenant); } catch {}
-      renderSdkSnippet();
     }
     document.getElementById("sl-web-app").value = d.app_name;
     document.getElementById("sl-web-fn").value = fnName;
@@ -1534,88 +1519,6 @@ document.getElementById("sl-console-btn-enable").onclick = async () => {
 document.getElementById("sl-btn-refresh").onclick = loadOverview;
 
 // Render Cloud Developer Docs Snippets & Downloads
-function getQuickstartPythonCode() {
-  const tid = tenantInput.value.trim() || "demo";
-  return `import aicf
-from aicf import endpoint, task_queue, Sandbox, Image, Volume
-
-# --- 1. Phong cách Beam/Beta9: @endpoint + @task_queue + Sandbox ---
-@endpoint(
-    name="text-analyzer",
-    gpu="any",
-    vram_mb=2048,
-    memory=1024,
-    keep_warm_seconds=120,
-    image=Image.debian_slim().add_python_packages(["numpy"]),
-    volumes=[Volume("shared-artifacts", mount_path="/mnt/volumes/shared-artifacts")],
-)
-def classify(**inputs) -> dict:
-    text = str(inputs.get("text", ""))
-    words = text.split()
-    return {"tenant": "${tid}", "word_count": len(words), "top": words[:5]}
-
-@task_queue(name="batch-worker", gpu="any", vram_mb=2048, retries=2)
-def process_document(doc_id: str, text: str) -> dict:
-    return {"doc_id": doc_id, "words": len(text.split())}
-
-# --- 2. Phong cách Modal.com: App + @app.function + @app.cls ---
-app = aicf.App("text-analyzer")
-
-@app.cls(gpu="any", vram_mb=2048, keep_warm_s=180)
-class Embedder:
-    @aicf.enter()
-    def load_model(self):
-        self.dim = 384
-
-    @aicf.method()
-    def encode(self, sentence: str) -> dict:
-        return {"len": len(sentence), "dim": self.dim}
-
-if __name__ == "__main__":
-    # Gọi trực tiếp hoặc đẩy vào hàng đợi @task_queue (.put / .spawn):
-    print(classify.remote(text="Chạy hàm trên AI Compute Fabric Serverless GPU"))
-    job = process_document.put("doc-01", "Xử lý bất đồng bộ qua Task Queue")
-    print("Task Queue Result:", job.get())
-
-    # Khởi tạo Sandbox cô lập kiểu Beta9/Modal:
-    with Sandbox(gpu="any", vram_mb=1024).create() as sb:
-        res = sb.run_code("result = sum(i*i for i in range(100))\\nprint('sum=', result)")
-        print("Sandbox stdout:", res.stdout, "result:", res.result)
-`;
-}
-
-function renderSdkSnippet() {
-  const gw = location.origin;
-  const key = keyInput.value.trim() || "<AICF_API_KEY>";
-  const tid = tenantInput.value.trim() || "demo";
-  const envBox = document.getElementById("sl-doc-env-snippet");
-  if (envBox) {
-    envBox.textContent =
-`pip install -e sdk/python
-export AICF_GATEWAY_URL="${gw}"
-export AICF_TENANT_ID="${tid}"
-export AICF_API_KEY="${key}"`;
-  }
-  document.getElementById("sl-sdk-snippet").textContent = getQuickstartPythonCode();
-}
-
-document.getElementById("sl-btn-copy-sdk").onclick = async (ev) => {
-  try {
-    await navigator.clipboard.writeText(getQuickstartPythonCode());
-    ev.currentTarget.textContent = "✓ Đã sao chép!";
-    setTimeout(() => { ev.currentTarget.textContent = "📋 Sao chép Quickstart SDK"; }, 1500);
-  } catch {}
-};
-
-document.getElementById("sl-btn-dl-quickstart").onclick = () => {
-  const blob = new Blob([getQuickstartPythonCode()], { type: "text/x-python;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "quickstart_app.py";
-  a.click();
-  URL.revokeObjectURL(a.href);
-};
-
 document.getElementById("sl-btn-download-env").onclick = () => {
   const gw = location.origin;
   const key = keyInput.value.trim() || "<AICF_API_KEY>";
@@ -1628,7 +1531,5 @@ document.getElementById("sl-btn-download-env").onclick = () => {
   a.click();
   URL.revokeObjectURL(a.href);
 };
-
-renderSdkSnippet();
 setUiMode(uiMode);
 setInterval(loadOverview, 5000);
