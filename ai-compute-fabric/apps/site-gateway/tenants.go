@@ -77,12 +77,12 @@ type TenantView struct {
 // SessionRecord tracks an active web session (`aicf_sess_...`) by its SHA-256 hash only.
 type SessionRecord struct {
 	ID          string        `json:"id"`
-	TokenHash   string        `json:"-"`
+	TokenHash   string        `json:"token_hash"`
 	TenantID    string        `json:"tenant_id"`
 	CreatedAt   time.Time     `json:"created_at"`
 	LastActive  time.Time     `json:"last_active"`
 	ExpiresAt   time.Time     `json:"expires_at"`
-	IdleTimeout time.Duration `json:"-"`
+	IdleTimeout time.Duration `json:"idle_timeout"`
 	RemoteIP    string        `json:"remote_ip,omitempty"`
 }
 
@@ -257,6 +257,18 @@ func NewTenantStore(path string) (*TenantStore, error) {
 		s.byID[t.ID] = &t
 		s.byHash[t.KeyHash] = &t
 	}
+	if sb, serr := os.ReadFile(path + ".sessions"); serr == nil {
+		var slist []SessionRecord
+		if json.Unmarshal(sb, &slist) == nil {
+			now := s.now()
+			for i := range slist {
+				rec := slist[i]
+				if rec.TokenHash != "" && s.byID[rec.TenantID] != nil && now.Before(rec.ExpiresAt) {
+					s.bySession[rec.TokenHash] = &rec
+				}
+			}
+		}
+	}
 	return s, nil
 }
 
@@ -306,6 +318,25 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		_ = df.Close()
 	}
 	return nil
+}
+
+func (s *TenantStore) saveSessionsLocked() error {
+	if s.Path == "" {
+		return nil
+	}
+	now := s.now()
+	list := make([]SessionRecord, 0, len(s.bySession))
+	for _, sess := range s.bySession {
+		if now.Before(sess.ExpiresAt) {
+			list = append(list, *sess)
+		}
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
+	b, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(s.Path+".sessions", b, 0o600)
 }
 
 func (s *TenantStore) saveLocked() error {
@@ -616,6 +647,7 @@ func (s *TenantStore) LoginAccountFrom(identifier, password, remoteAddr string) 
 		IdleTimeout: idleTTL,
 		RemoteIP:    normalizeRemoteIP(remoteAddr),
 	}
+	_ = s.saveSessionsLocked()
 	return view(found), sessToken, nil
 }
 
@@ -713,6 +745,9 @@ func (s *TenantStore) revokeTenantSessionsLocked(tenantID string) int {
 			n++
 		}
 	}
+	if n > 0 {
+		_ = s.saveSessionsLocked()
+	}
 	return n
 }
 
@@ -756,6 +791,7 @@ func (s *TenantStore) RevokeSessionByID(tenantID, sessionID string) bool {
 	for h, sess := range s.bySession {
 		if sess.ID == sessionID && (tenantID == "" || sess.TenantID == tenantID) {
 			delete(s.bySession, h)
+			_ = s.saveSessionsLocked()
 			return true
 		}
 	}
@@ -772,6 +808,7 @@ func (s *TenantStore) LogoutSession(token string) bool {
 	defer s.mu.Unlock()
 	if _, ok := s.bySession[h]; ok {
 		delete(s.bySession, h)
+		_ = s.saveSessionsLocked()
 		return true
 	}
 	return false

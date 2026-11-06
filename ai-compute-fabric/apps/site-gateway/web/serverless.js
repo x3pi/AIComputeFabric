@@ -1006,14 +1006,37 @@ document.getElementById("sl-btn-download-py").onclick = () => {
 
 let currentOverview = { enabled: true, draining: false };
 
+function handleUnauthorizedSession(reason) {
+  const savedLabel = (emailBadge?.textContent || "").replace(/^👤\s*/, "").trim();
+  if (loginIdInput && !loginIdInput.value.trim() && savedLabel && savedLabel !== "Chưa đăng nhập" && savedLabel !== "Đã đăng xuất") {
+    loginIdInput.value = savedLabel;
+  }
+  keyInput.value = "";
+  loginKeyInput.value = "";
+  try { sessionStorage.removeItem(SL_KEY_STORE); } catch {}
+  const authMsg = document.getElementById("sl-auth-msg");
+  if (authMsg) {
+    authMsg.textContent = reason || "⚠️ Phiên đăng nhập trước đã hết hạn hoặc máy chủ vừa khởi động lại. Vui lòng nhập mật khẩu để đăng nhập lại hoặc bấm '⚡ Dùng thử 1-Click (Demo)'.";
+  }
+  updateLoginGateVisibility();
+}
+
 async function loadOverview() {
   let r;
   if (uiMode === "user" && keyInput.value.trim()) {
     r = await slTenantFetch("/api/serverless/v1/status");
+    if (r && r.status === 401) {
+      handleUnauthorizedSession();
+      return;
+    }
   } else {
     r = await api("/api/serverless/v1/status");
     if ((!r || !r.ok) && keyInput.value.trim()) {
       r = await slTenantFetch("/api/serverless/v1/status");
+      if (r && r.status === 401 && uiMode === "user") {
+        handleUnauthorizedSession();
+        return;
+      }
     }
   }
   if (!r || !r.ok) return;
@@ -1378,6 +1401,11 @@ async function executeDeploy({ sourceCode = "", extraFiles = null, templateName 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (r && r.status === 401) {
+    msgEl.textContent = "⚠️ Phiên làm việc đã hết hạn (401). Vui lòng đăng nhập lại ở khung phía trên để tiếp tục.";
+    handleUnauthorizedSession("⚠️ Phiên làm việc đã hết hạn (401). Vui lòng đăng nhập lại bằng Tài khoản / Mật khẩu hoặc bấm '⚡ Dùng thử 1-Click (Demo)' để tiếp tục triển khai code.");
+    return;
+  }
   if (r && r.status === 403) {
     const errTxt = await r.text();
     const m = errTxt.match(/tenant\s+([A-Za-z0-9_.-]+)/);
