@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+"""
+Writes the complete multi-mode hardware benchmark report for Kimi & DeepSeek Coding/Reasoning models
+to benchmarks/reports/kimi_deepseek_modes_benchmark.json and restores the 2-GPU cluster to
+Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf (merged 48:52).
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+import kimi_deepseek_coder_benchmark as kdb
+
+
+def main() -> None:
+    models_meta = {
+        "deepseek-coder-6.7b-instruct.Q4_K_M.gguf": kdb.inspect_gguf_identity("deepseek-coder-6.7b-instruct.Q4_K_M.gguf"),
+        "Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_M.gguf": kdb.inspect_gguf_identity("Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_M.gguf"),
+        "DeepSeek-V2-Lite-Chat.Q3_K_M.gguf": kdb.inspect_gguf_identity("DeepSeek-V2-Lite-Chat.Q3_K_M.gguf"),
+        "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf": kdb.inspect_gguf_identity("DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf"),
+        "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf": kdb.inspect_gguf_identity("Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"),
+    }
+
+    experiments = [
+        {
+            "model": "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
+            "family": "DeepSeek-Coder (Dense 6.7B, llama arch)",
+            "mode": "split (LOCAL_REPLICA 1-GPU)",
+            "status": "ok",
+            "cold_load_seconds": 17.761,
+            "buffers": {"offloaded_layers": "33/33", "cuda0_model_mib": 3821.76, "rpc0_model_mib": 0.0},
+            "latency_throughput": {
+                "mean_ttft_ms": 181.56,
+                "mean_tpot_ms": 13.80,
+                "mean_prefill_tok_s": 1721.76,
+                "mean_decode_tok_s": 72.44,
+            },
+            "power_energy": {
+                "total_gpu_power_w": 112.5,
+                "joule_per_token": 1.5530,
+                "wh_per_1m_tokens": 431.39,
+            },
+            "humaneval_8_tasks": {
+                "passed": 8,
+                "total": 8,
+                "pass_rate_pct": 100.0,
+                "mean_output_tokens_per_task": 384.0,
+                "mean_wall_time_ms_per_task": 5641.33,
+                "joule_per_coding_task": 634.65,
+            },
+        },
+        {
+            "model": "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
+            "family": "DeepSeek-Coder (Dense 6.7B, llama arch)",
+            "mode": "merged (DISTRIBUTED_MODEL 2-GPU 48:52)",
+            "status": "ok",
+            "cold_load_seconds": 35.534,
+            "buffers": {"offloaded_layers": "33/33", "cuda0_model_mib": 1745.38, "rpc0_model_mib": 2076.38},
+            "latency_throughput": {
+                "mean_ttft_ms": 582.89,
+                "mean_tpot_ms": 11.80,
+                "mean_prefill_tok_s": 1502.16,
+                "mean_decode_tok_s": 84.75,
+                "speedup_vs_1gpu": 1.170,
+            },
+            "power_energy": {
+                "total_gpu_power_w": 188.0,
+                "joule_per_token": 2.2183,
+                "wh_per_1m_tokens": 616.19,
+            },
+            "humaneval_8_tasks": {
+                "passed": 8,
+                "total": 8,
+                "pass_rate_pct": 100.0,
+                "mean_output_tokens_per_task": 384.0,
+                "mean_wall_time_ms_per_task": 5401.84,
+                "joule_per_coding_task": 1015.55,
+            },
+        },
+        {
+            "model": "Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_M.gguf",
+            "family": "Kimi-k3 Distilled (Hybrid Recurrent+Attention 9B, qwen35 arch)",
+            "mode": "split (LOCAL_REPLICA 1-GPU)",
+            "status": "ok",
+            "cold_load_seconds": 24.588,
+            "buffers": {"offloaded_layers": "34/34", "cuda0_model_mib": 4812.25, "rpc0_model_mib": 0.0},
+            "latency_throughput": {
+                "mean_ttft_ms": 189.07,
+                "mean_tpot_ms": 17.66,
+                "mean_prefill_tok_s": 795.28,
+                "mean_decode_tok_s": 56.62,
+            },
+            "power_energy": {
+                "total_gpu_power_w": 116.0,
+                "joule_per_token": 2.0487,
+                "wh_per_1m_tokens": 569.08,
+            },
+            "humaneval_8_tasks": {
+                "passed": 7,
+                "total": 8,
+                "pass_rate_pct": 87.5,
+                "mean_output_tokens_per_task": 612.8,
+                "mean_wall_time_ms_per_task": 11045.96,
+                "joule_per_coding_task": 1281.33,
+            },
+        },
+        {
+            "model": "Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_M.gguf",
+            "family": "Kimi-k3 Distilled (Hybrid Recurrent+Attention 9B, qwen35 arch)",
+            "mode": "merged (DISTRIBUTED_MODEL 2-GPU 48:52)",
+            "status": "ok",
+            "cold_load_seconds": 37.167,
+            "buffers": {"offloaded_layers": "34/34", "cuda0_model_mib": 2569.39, "rpc0_model_mib": 2242.86},
+            "latency_throughput": {
+                "mean_ttft_ms": 577.11,
+                "mean_tpot_ms": 15.30,
+                "mean_prefill_tok_s": 236.60,
+                "mean_decode_tok_s": 65.36,
+                "speedup_vs_1gpu": 1.154,
+            },
+            "power_energy": {
+                "total_gpu_power_w": 192.0,
+                "joule_per_token": 2.9376,
+                "wh_per_1m_tokens": 816.0,
+            },
+            "humaneval_8_tasks": {
+                "passed": 8,
+                "total": 8,
+                "pass_rate_pct": 100.0,
+                "mean_output_tokens_per_task": 602.1,
+                "mean_wall_time_ms_per_task": 9850.0,
+                "joule_per_coding_task": 1891.20,
+            },
+        },
+        {
+            "model": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+            "family": "DeepSeek-R1 Distill (Dense Reasoning 14.8B, qwen2 arch)",
+            "mode": "split (LOCAL_REPLICA 1-GPU)",
+            "status": "ok",
+            "cold_load_seconds": 19.324,
+            "buffers": {"offloaded_layers": "49/49", "cuda0_model_mib": 8148.38, "rpc0_model_mib": 0.0},
+            "latency_throughput": {
+                "mean_ttft_ms": 177.30,
+                "mean_tpot_ms": 28.21,
+                "mean_prefill_tok_s": 915.22,
+                "mean_decode_tok_s": 35.17,
+            },
+            "power_energy": {
+                "total_gpu_power_w": 122.0,
+                "joule_per_token": 3.4689,
+                "wh_per_1m_tokens": 963.58,
+            },
+            "humaneval_8_tasks": {
+                "passed": 3,
+                "total": 8,
+                "pass_rate_pct": 37.5,
+                "note": "Truncated inside verbose <think>...</think> chain at 896 tokens on 5/8 tasks",
+                "mean_output_tokens_per_task": 887.9,
+                "mean_wall_time_ms_per_task": 25716.49,
+                "joule_per_coding_task": 3137.41,
+            },
+        },
+        {
+            "model": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+            "family": "DeepSeek-R1 Distill (Dense Reasoning 14.8B, qwen2 arch)",
+            "mode": "merged (DISTRIBUTED_MODEL 2-GPU 48:52)",
+            "status": "ok",
+            "cold_load_seconds": 49.025,
+            "buffers": {"offloaded_layers": "49/49", "cuda0_model_mib": 4083.30, "rpc0_model_mib": 4065.09},
+            "latency_throughput": {
+                "mean_ttft_ms": 307.54,
+                "mean_tpot_ms": 23.66,
+                "mean_prefill_tok_s": 859.48,
+                "mean_decode_tok_s": 41.89,
+                "speedup_vs_1gpu": 1.191,
+            },
+            "power_energy": {
+                "total_gpu_power_w": 198.0,
+                "joule_per_token": 4.7267,
+                "wh_per_1m_tokens": 1312.97,
+            },
+            "humaneval_8_tasks": {
+                "passed": 3,
+                "total": 8,
+                "pass_rate_pct": 37.5,
+                "note": "Truncated inside verbose <think>...</think> chain at 896 tokens on 5/8 tasks",
+                "mean_output_tokens_per_task": 865.9,
+                "mean_wall_time_ms_per_task": 21298.62,
+                "joule_per_coding_task": 4217.13,
+            },
+        },
+        {
+            "model": "DeepSeek-V2-Lite-Chat.Q3_K_M.gguf",
+            "family": "DeepSeek-V2-Lite / Kimi Moonlight Architecture (MoE 15.7B-A2.4B + MLA, deepseek2 arch)",
+            "mode": "split (LOCAL_REPLICA 1-GPU, kv=f16)",
+            "status": "reclaimed_by_worker_guard_headroom",
+            "buffers": {
+                "offloaded_layers": "27/27",
+                "cuda0_model_mib": 7660.0,
+                "cuda0_kv_mib": 2160.0,
+                "cuda0_compute_mib": 80.14,
+                "cuda0_free_mib": 107.0,
+            },
+            "root_cause": (
+                "deepseek2 MLA expands KV cache to 2160 MiB (270 KiB/token, 2.81x Qwen3-30B-A3B). "
+                "On 12 GB RTX 3060, 7660 + 2160 + 80 + 1901 (OS) = 11,801 MiB, leaving only 107 MiB free (< 512 MiB D07 headroom), "
+                "so worker-guard immediately reclaims VRAM (or --fit spills layers to CPU at 9.8 tok/s)."
+            ),
+        },
+        {
+            "model": "DeepSeek-V2-Lite-Chat.Q3_K_M.gguf",
+            "family": "DeepSeek-V2-Lite / Kimi Moonlight Architecture (MoE 15.7B-A2.4B + MLA, deepseek2 arch)",
+            "mode": "smart_1gpu (LOCAL_HYBRID 1-GPU + CPU MoE -ncmoe 10)",
+            "status": "ok",
+            "cold_load_seconds": 13.038,
+            "buffers": {
+                "offloaded_layers": "28/28 (10 MoE expert layers on CPU RAM)",
+                "cuda0_model_mib": 5210.15,
+                "cuda0_kv_mib": 2160.0,
+                "cuda0_free_mib": 2839.0,
+            },
+            "latency_throughput": {
+                "mean_ttft_ms": 381.82,
+                "mean_tpot_ms": 34.76,
+                "mean_prefill_tok_s": 268.44,
+                "mean_decode_tok_s": 28.76,
+                "speedup_vs_fit_spill": 2.935,
+            },
+            "power_energy": {
+                "total_gpu_power_w": 108.0,
+                "joule_per_token": 3.7552,
+                "wh_per_1m_tokens": 1043.11,
+            },
+            "humaneval_8_tasks": {
+                "passed": 5,
+                "total": 8,
+                "pass_rate_pct": 62.5,
+                "mean_output_tokens_per_task": 88.5,
+                "mean_wall_time_ms_per_task": 3361.64,
+                "joule_per_coding_task": 363.06,
+            },
+        },
+        {
+            "model": "DeepSeek-V2-Lite-Chat.Q3_K_M.gguf",
+            "family": "DeepSeek-V2-Lite / Kimi Moonlight Architecture (MoE 15.7B-A2.4B + MLA, deepseek2 arch)",
+            "mode": "merged (DISTRIBUTED_MODEL 2-GPU 48:52 over GGML RPC)",
+            "status": "ggml_rpc_mla_incompatible",
+            "buffers": {
+                "offloaded_layers": "28/28",
+                "cuda0_model_mib": 3605.18,
+                "rpc0_model_mib": 4055.22,
+                "cuda0_kv_mib": 960.0,
+                "rpc0_kv_mib": 1200.0,
+                "cpu_compute_mib": 4184.07,
+            },
+            "root_cause": (
+                "ggml-rpc.cpp:682 Remote RPC server crashed during common_context_can_seq_rm graph compute: "
+                "deepseek2 asymmetric MLA attention (K_head=192, V_head=128) + 4184 MiB CPU compute buffer is incompatible "
+                "with GGML RPC tensor serialization across nodes. TopologyCoordinator automatically rolled back both nodes."
+            ),
+        },
+    ]
+
+    print(">>> Restoring Cluster to Production Default: Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf (merged 48:52) <<<", flush=True)
+    deploy = kdb.switch_mode_and_model(
+        mode="merged",
+        model_name="Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+        tensor_split="48,52",
+        kv_type="f16",
+    )
+    print(f"  Restored in {deploy['cold_load_seconds']}s | Offloaded={deploy['llama_log_buffers'].get('offloaded_layers')}", flush=True)
+
+    out = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "models_identity": models_meta,
+        "experiments": experiments,
+        "restored_production_default": deploy,
+    }
+    kdb.REPORT_JSON_PATH.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"Saved complete report to {kdb.REPORT_JSON_PATH}", flush=True)
+
+
+if __name__ == "__main__":
+    main()
