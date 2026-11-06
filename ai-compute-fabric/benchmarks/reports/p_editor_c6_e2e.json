@@ -20,7 +20,7 @@
     {
       "name": "Live Lint (POST /api/serverless/v1/lint) marks undefined_name in gutter and clicking diagnostic jumps to line 2 (<= 800ms)",
       "ok": true,
-      "detail": "lintMs=96ms"
+      "detail": "lintMs=94ms"
     },
     {
       "name": "Tab inserts 4 spaces, Ctrl+Z undoes cleanly, and Esc+Tab escapes focus out of editor",

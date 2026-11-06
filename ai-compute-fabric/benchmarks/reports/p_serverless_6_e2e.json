@@ -72,7 +72,7 @@
     {
       "name": "tenants.html displays measured GPU-seconds (4.500 s) and VRAM MiB·s (including idle lease on evict) for alpha",
       "ok": true,
-      "detail": "4.500 s (4500 ms) | 49274 MiB·s"
+      "detail": "4.500 s (4500 ms) | 48635 MiB·s"
     },
     {
       "name": "saving tenant Serverless quota updates policy on server",
@@ -87,7 +87,7 @@
     {
       "name": "serverless.html 1-Click Demo creates/rotates tenant key and enables Serverless",
       "ok": true,
-      "detail": "aicf_24D_5…"
+      "detail": "aicf_WlXiI…"
     },
     {
       "name": "serverless.html deploys v1 -> v2 and rolls back to v1 cleanly",
@@ -120,7 +120,7 @@
       "detail": ""
     },
     {
-      "name": "serverless.html Cloud Developer Docs hub renders Quickstart, SDK, REST API & CLI references",
+      "name": "serverless.html audit trail tab renders",
       "ok": true,
       "detail": ""
     },

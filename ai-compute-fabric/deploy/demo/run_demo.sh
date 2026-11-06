@@ -51,6 +51,10 @@ for g in "$WORK_DIR"/*.gguf; do [ -f "$g" ] && ! basename "$g" | grep -qiE 'embe
 "$PY" -m core.vram_sidecar.server --models-root "$(dirname "$MODEL")" --host 127.0.0.1 --port "$SIDECAR_PORT" >"$D/logs/sidecar.log" 2>&1 & pids+=($!)
 
 # 2. Agent DAG API & AI Studio (if PostgreSQL is reachable)
+if docker info >/dev/null 2>&1; then
+  docker start aicf-pg aicf-nats >/dev/null 2>&1 || true
+  sleep 1
+fi
 GW_EXTRA=(-vram-sidecar-url "http://127.0.0.1:$SIDECAR_PORT" -audit-log "$D/audit.jsonl")
 if "$PY" -c "import psycopg; psycopg.connect('$PG_ADMIN_DSN', connect_timeout=2).close()" >/dev/null 2>&1; then
   "$PY" -m agents.dag_api --dsn "$PG_ADMIN_DSN" --nats-url "${AICF_NATS_URL:-nats://127.0.0.1:54222}" --listen "127.0.0.1:$DAG_PORT" >"$D/logs/dag_api.log" 2>&1 & pids+=($!)
