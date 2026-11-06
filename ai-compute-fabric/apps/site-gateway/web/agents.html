@@ -93,7 +93,6 @@
   <div class="page-header">
     <div>
       <h1>Đàn Agent Đàn Hồi (NATS JetStream) &amp; Đồ thị Tác vụ (DAG)</h1>
-      <div class="sub">Thêm/bớt agent bất kỳ lúc nào không cần sửa cấu hình trung tâm: Sổ đăng ký KV <code>AICF_AGENTS</code> có TTL, hàng đợi kéo <code>AICF_TASKS</code>, Người giám sát chỉ-đề-xuất (<code>propose_only=True</code>) và đồ thị phụ thuộc DAG.</div>
     </div>
     <div class="row" style="gap:8px;flex-wrap:wrap">
       <span class="pill ok" id="bus-conn-pill">NATS JetStream: Đang kiểm tra…</span>
@@ -131,7 +130,6 @@
     <div class="card-header">
       <div>
         <h2>1. Đàn Agent Đàn Hồi — Sổ Đăng Ký KV (<code>AICF_AGENTS</code>) &amp; Hàng Đợi Tác Vụ</h2>
-        <div class="card-sub">Thử nghiệm co giãn nóng ngay trên trình duyệt: thêm agent mới, rút lui êm (<code>drain</code>), giả lập sập đột ngột (<code>kill</code> → tự giao lại sau <code>ack_wait</code>), hoặc bơm loạt tác vụ để quan sát <code>ElasticSupervisor</code> đề xuất co giãn.</div>
       </div>
       <div class="row" style="gap:6px">
         <a href="/api/agents/metrics" target="_blank" rel="noopener" style="text-decoration:none"><button type="button" class="sm ghost">📈 Prometheus /metrics</button></a>
@@ -226,7 +224,6 @@
     <div class="card-header">
       <div>
         <h2>2. Danh sách Workflow (Orchestrator DAG trên PostgreSQL)</h2>
-        <div class="card-sub">Chọn một workflow bên dưới (hoặc bấm nút <b>🚀 Chạy Workflow Best-of-N mẫu</b> ở trên) để xem đồ thị phụ thuộc và trạng thái từng bước</div>
       </div>
     </div>
     <div id="wf-list" class="row" style="flex-wrap:wrap;gap:8px"></div>
@@ -237,7 +234,6 @@
     <div class="card-header">
       <div>
         <h2 id="wf-title">Chọn một workflow</h2>
-        <div class="card-sub">Nhấp vào từng ô tác vụ trên đồ thị để xem chi tiết tenant, thời gian chạy và chuỗi phụ thuộc</div>
       </div>
       <div class="row" style="gap:8px">
         <span id="wf-state"></span>

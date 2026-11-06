@@ -257,7 +257,6 @@
           <h2>Bản đồ Nhiệt Cụm 200-GPU & Phân bổ 6-Bucket Toàn Cụm</h2>
           <span class="pill ok" id="heatmap-badge">1 Hz Shared Frame</span>
         </div>
-        <span class="mut" style="font-size:12px">Bấm vào ô GPU bất kỳ để xem chi tiết 6-Bucket VRAM của máy đó</span>
       </div>
 
       <div class="vram-bar" id="cluster-vram-bar" role="img" aria-label="Phân bổ 6-Bucket VRAM toàn cụm"></div>
@@ -369,28 +368,27 @@
       </div>
       <span class="mut" id="topo-summary" style="font-size:12.5px"></span>
     </div>
-    <div class="mut" style="font-size:12.5px;margin-top:4px">Làm theo 3 bước: <b>① chọn cách chạy</b> → <b>② chọn model</b> → <b>③ chọn máy &amp; tinh chỉnh</b>, rồi bấm Áp dụng. Số "đã đo" là kết quả đo ngày 28/10 trên cụm RTX 3060 + RTX 5070 nối dây 2,5 GbE.</div>
 
     <div id="topo-groups" style="display:none;margin-top:10px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Các nhóm đang gộp (mỗi nhóm chạy một model chung; máy ngoài nhóm chạy riêng):</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Các nhóm đang gộp:</div>
       <div id="topo-groups-list" class="topo-chips"></div>
     </div>
     <div class="topo-step"><span>1</span>Chọn cách chạy</div>
     <div class="topo-grid">
       <div class="topo-mode-card active" id="mode-card-split" data-topo-mode="split">
         <strong style="font-size:14px;color:var(--fg);margin-bottom:6px">A. Mỗi card chạy riêng</strong>
-        <p class="topo-tile-sub"><b>Hiểu đơn giản:</b> mỗi máy tự chạy một bản model, phục vụ khách song song.<br><b>Hợp khi:</b> model nhỏ, vừa một card 12 GB (Qwen3-4B, 8B).</p>
-        <div class="topo-tile-meta">Đã đo (4B): RTX 3060 100 · RTX 5070 167 tok/s, hai máy cùng lúc tổng 202. Không phụ thuộc mạng.</div>
+        <p class="topo-tile-sub">Mỗi máy chạy một bản model độc lập, phục vụ song song.</p>
+        <div class="topo-tile-meta">4B: RTX 3060 100 · RTX 5070 167 tok/s (tổng 202 tok/s).</div>
       </div>
       <div class="topo-mode-card" id="mode-card-smart" data-topo-mode="smart_1gpu">
         <strong style="font-size:14px;color:var(--fg);margin-bottom:6px">B. Mỗi card chạy riêng + dùng RAM</strong>
-        <p class="topo-tile-sub"><b>Hiểu đơn giản:</b> model chuyên gia (MoE) lớn hơn 12 GB vẫn chạy trên từng card riêng, bằng cách để một phần "chuyên gia" nằm ở RAM (<code>-ncmoe N</code>).<br><b>Hợp khi:</b> không có dây mạng nhanh giữa hai máy.</div>
-        <div class="topo-tile-meta">Đã đo (30B, ngữ cảnh 8k): RTX 3060 44 · RTX 5070 66 tok/s. Chậm hơn chế độ C.</div>
+        <p class="topo-tile-sub">Chạy model MoE lớn trên từng card bằng cách giữ một phần chuyên gia ở RAM (<code>-ncmoe N</code>).</div>
+        <div class="topo-tile-meta">30B (8k): RTX 3060 44 · RTX 5070 66 tok/s.</div>
       </div>
       <div class="topo-mode-card" id="mode-card-merged" data-topo-mode="merged">
         <strong style="font-size:14px;color:var(--fg);margin-bottom:6px">C. Gộp 2 card thành 1</strong>
-        <p class="topo-tile-sub"><b>Hiểu đơn giản:</b> hai card cùng chạy <i>một</i> model, mỗi card giữ một phần các lớp. Bạn chọn tỷ lệ chia bằng thanh trượt.<br><b>Hợp khi:</b> model lớn (30B) và hai máy nối dây nhanh (LAN 2,5 GbE).</p>
-        <div class="topo-tile-meta">Đã đo (30B): ~135 tok/s (8k), ~132 (32k), nhanh gấp 2–3,7× một card. Qua Wi-Fi thì rất chậm, không nên dùng.</div>
+        <p class="topo-tile-sub">Hai card chia lớp chạy chung một model lớn qua LAN 2,5 GbE.</p>
+        <div class="topo-tile-meta">30B: ~135 tok/s (8k), ~132 tok/s (32k).</div>
       </div>
     </div>
 
@@ -403,14 +401,13 @@
       <div style="font-size:12.5px;font-weight:600;margin-bottom:6px">Máy tham gia (tích chọn):</div>
       <div id="topo-machines" class="mut" style="font-size:13px">Chưa có worker online</div>
       <div id="topo-primary-wrap" style="display:none;margin-top:10px">
-        <label for="topo-primary" style="font-size:12.5px">Máy chủ chính (chạy chương trình điều phối, giữ phần đầu của model):</label>
+        <label for="topo-primary" style="font-size:12.5px">Máy chủ chính:</label>
         <select id="topo-primary" style="min-width:200px"></select>
       </div>
     </div>
 
     <div class="topo-opt-box" id="topo-opt-smart" style="display:none">
-      <div style="font-size:13px;font-weight:600">Số tầng chuyên gia để ở RAM (<code>-ncmoe N</code>)</div>
-      <div class="mut" style="font-size:12px;margin:4px 0 8px">N càng nhỏ càng nhanh nhưng càng dễ hết VRAM. Không có giá trị mặc định chung: phải theo bài đo của từng card.</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Số tầng chuyên gia để ở RAM (<code>-ncmoe N</code>)</div>
       <input type="number" id="topo-ncmoe" placeholder="nhập N" min="1" max="512" style="width:110px">
       <div class="topo-chips">
         <button type="button" class="sm" data-ncmoe="20">20 · RTX 3060, ctx 8k (đo 44 tok/s)</button>
@@ -420,8 +417,7 @@
     </div>
 
     <div class="topo-opt-box" id="topo-opt-merged" style="display:none">
-      <div style="font-size:13px;font-weight:600">Chia model giữa hai card (kéo thanh trượt)</div>
-      <div class="mut" style="font-size:12px;margin:4px 0">Phần trăm các lớp của model mà mỗi card giữ. Chia nghiêng về card mạnh hơn thì nhanh hơn, nhưng vượt dung lượng VRAM của card đó là tốc độ <b>sụp</b> hoặc hết VRAM.</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Chia model giữa hai card</div>
       <div id="topo-ratio-two">
         <div class="topo-slider-row">
           <div class="topo-slider-end"><div id="topo-nameA" class="mono"></div><b id="topo-pctA">50%</b></div>
@@ -435,16 +431,15 @@
         </div>
       </div>
       <div id="topo-ratio-many" style="display:none">
-        <label for="topo-ts-many" style="font-size:12.5px">Có từ 3 card trở lên: nhập tỷ lệ bằng số, máy chính trước rồi từng máy còn lại (vd 1,1,1):</label>
+        <label for="topo-ts-many" style="font-size:12.5px">Từ 3 card trở lên (nhập tỷ lệ, vd 1,1,1):</label>
         <input type="text" id="topo-ts-many" placeholder="mặc định chia đều" style="width:200px">
       </div>
-      <div style="margin-top:12px;font-size:12.5px"><label for="topo-ctx">Ngữ cảnh dự kiến (token, chỉ để ước tính VRAM):</label>
+      <div style="margin-top:12px;font-size:12.5px"><label for="topo-ctx">Ngữ cảnh dự kiến (token):</label>
         <input type="number" id="topo-ctx" value="8192" min="1024" max="131072" step="1024" style="width:110px"></div>
       <div class="topo-bars" id="topo-bars"></div>
-      <div class="mut" style="font-size:11.5px;margin-top:8px">Ước tính theo bài đo Qwen3-30B-A3B (trọng số + KV + vùng đệm + ~1 GB Windows/driver chiếm sẵn). Chỉ để tham khảo: màu <b>đỏ</b> = đã đo thấy tốc độ sụp/hết VRAM ở mức tương đương, <b>vàng</b> = sát giới hạn.</div>
       <details style="margin-top:10px"><summary style="cursor:pointer;font-size:12.5px">Nâng cao</summary>
         <div style="margin-top:8px;font-size:12.5px">
-          <label for="topo-ts-adv">Ghi đè tỷ lệ bằng chuỗi <code>--tensor-split</code> (máy chính trước):</label>
+          <label for="topo-ts-adv">Ghi đè <code>--tensor-split</code>:</label>
           <input type="text" id="topo-ts-adv" placeholder="để trống để dùng thanh trượt" style="width:200px">
           <div style="margin-top:8px"><label for="topo-kv">KV cache:</label>
           <select id="topo-kv"><option value="">mặc định của worker</option><option value="f16">f16</option><option value="q8_0">q8_0 (đo: chậm hơn ~9%)</option></select></div>

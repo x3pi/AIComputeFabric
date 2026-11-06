@@ -27,11 +27,8 @@ function table(head, rows) {
 }
 function methodCard(m) {
   const card = el("div", { class: "card" }, el("div", { class: "card-header" }, el("h2", {}, m.title),
-    el("span", { class: "pill " + (m.status === "available" ? "ok" : "warn") }, m.status === "available" ? "sẵn sàng" : "chưa hỗ trợ")),
-    el("p", {}, m.summary));
-  if (m.when_to_use) card.append(el("p", { class: "mut" }, "Khi nào dùng: " + m.when_to_use));
+    el("span", { class: "pill " + (m.status === "available" ? "ok" : "warn") }, m.status === "available" ? "sẵn sàng" : "chưa hỗ trợ")));
   if (m.reason) card.append(el("p", { class: "warn-txt" }, "Lý do chưa hỗ trợ: " + m.reason));
-  if (m.limits && m.limits.length) card.append(el("ul", { class: "limits" }, ...m.limits.map(l => el("li", {}, l))));
   return card;
 }
 
@@ -83,8 +80,7 @@ async function renderRag(root) {
   const uploadPanel = el("div", { class: "rag-upload-panel stack" },
     dropzone,
     classSelector,
-    el("div", { class: "row", style: "justify-content:space-between;align-items:center;padding-top:4px" },
-      el("div", { class: "mut", style: "font-size:12px" }, "🔒 Tệp được băm vector embeddings & cô lập theo Tenant qua PostgreSQL RLS."),
+    el("div", { class: "row", style: "justify-content:flex-end;align-items:center;padding-top:4px" },
       up
     )
   );
@@ -132,10 +128,7 @@ async function renderRag(root) {
   const grid = el("div", { class: "wide-split" },
     el("div", { class: "card stack", style: "margin-bottom:0" },
       el("div", { class: "card-header" },
-        el("div", {},
-          el("h2", {}, "Kho tri thức (RAG)"),
-          el("div", { class: "mut", style: "font-size:12px" }, "Nạp tài liệu & phân mảnh vector theo cấp độ bảo mật")
-        ),
+        el("h2", {}, "Kho tri thức (RAG)"),
         el("div", { class: "row", style: "gap:8px" }, fillSampleDoc, countBadge)
       ),
       uploadPanel,
@@ -146,10 +139,7 @@ async function renderRag(root) {
     ),
     el("div", { class: "card stack", style: "margin-bottom:0" },
       el("div", { class: "card-header" },
-        el("div", {},
-          el("h2", {}, "Hỏi đáp có dẫn nguồn"),
-          el("div", { class: "mut", style: "font-size:12px" }, "Truy vấn tri thức kết hợp trích dẫn số [1], [2]")
-        )
+        el("h2", {}, "Hỏi đáp có dẫn nguồn")
       ),
       el("div", { class: "row", style: "gap:8px" }, q, go),
       ask
@@ -269,8 +259,7 @@ async function renderLora(root) {
     if (j.status === "running" || last) items.push(el("div", { class: "bar", role: "progressbar", "aria-valuenow": Math.round(pct) }, el("i", { style: `width:${pct}%` })));
     const g = loss(j.progress); if (g) items.push(g);
     if (j.error) items.push(el("div", { class: "err" }, j.error));
-    if (j.result) { const r = j.result; items.push(el("div", {}, `Loss ${r.first_loss.toFixed(3)} → ${r.last_loss.toFixed(3)} · perplexity (tập giữ lại) ${r.val_perplexity_before && r.val_perplexity_before.toFixed(2)} → ${r.val_perplexity_after && r.val_perplexity_after.toFixed(2)} · ${r.seconds}s`),
-      el("div", { class: "mut" }, "Perplexity thấp hơn nghĩa là model dự đoán văn bản của bạn tốt hơn; chưa phải đánh giá chất lượng trả lời.")); }
+    if (j.result) { const r = j.result; items.push(el("div", {}, `Loss ${r.first_loss.toFixed(3)} → ${r.last_loss.toFixed(3)} · perplexity (tập giữ lại) ${r.val_perplexity_before && r.val_perplexity_before.toFixed(2)} → ${r.val_perplexity_after && r.val_perplexity_after.toFixed(2)} · ${r.seconds}s`)); }
     const acts = el("div", { class: "row", style: "gap:8px;flex-wrap:wrap" });
     if (["queued", "running"].includes(j.status)) acts.append(el("button", { disabled: !canWrite(), onclick: () => guarded(async () => { await call("POST", T("lora/jobs/" + id + "/cancel")); await refresh(); await show(id); }) }, "Hủy"));
     const save = (blob, name) => { const a = el("a", { href: URL.createObjectURL(blob), download: name }); document.body.append(a); a.click(); a.remove(); };
@@ -324,7 +313,8 @@ async function select(id) {
   CURRENT = id; clearInterval(POLL); POLL = null; say("");
   document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.id === id)));
   const m = METHODS.find(x => x.id === id), panel = document.getElementById("panel");
-  panel.replaceChildren(methodCard(m));
+  panel.replaceChildren();
+  if (m.status !== "available") panel.append(methodCard(m));
   if (m.status === "available" || RENDERERS[id]) {
     const r = RENDERERS[id];
     if (!r) { panel.append(el("div", { class: "card warn-txt" }, "Giao diện cho phương pháp này chưa có; dùng API.")); return; }

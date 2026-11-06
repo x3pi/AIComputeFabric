@@ -188,7 +188,6 @@ details.think summary {
   <div class="page-header">
     <div>
       <h1>AI Playground — Prompt &amp; Kiểm thử Tải Đồng thời</h1>
-      <div class="sub">Giao diện suy luận phong cách Google AI Studio. Tương thích chuẩn OpenAI <code>POST /v1/chat/completions</code>. Hỗ trợ truyền dòng thời gian thực (SSE), hiển thị suy luận (Reasoning / Thinking), định tuyến thông minh theo phiên (KV Affinity) và kiểm thử tải đồng thời WFQ.</div>
     </div>
     <div class="row" style="gap:8px">
       <span class="pill ok">⚡ OpenAI Compatible</span>
@@ -209,7 +208,6 @@ details.think summary {
       <div>
         <label for="key">Khóa API Tenant (aicf_…)</label>
         <input id="key" type="password" autocomplete="off" placeholder="Dán khóa aicf_... vào đây" style="width:100%">
-        <div class="mut" style="font-size:11px;margin-top:3px">Xác thực Bearer Token hoặc để trống nếu dùng chế độ loopback</div>
       </div>
 
       <div>
@@ -228,7 +226,6 @@ details.think summary {
       <div>
         <label for="ddl">Hạn chờ tối đa SLA (Deadline ms)</label>
         <input id="ddl" type="number" min="0" value="0" style="width:100%">
-        <div class="mut" style="font-size:11px;margin-top:3px">0 = không áp dụng thời gian hủy cưỡng bức</div>
       </div>
 
       <div style="padding-top:10px;border-top:1px solid var(--bd)">
@@ -254,8 +251,8 @@ details.think summary {
       <div id="log" aria-live="polite">
         <div class="chat-empty" id="empty-state">
           <div class="chat-empty-sparkle">✨</div>
-          <div class="chat-empty-title">Không gian Thử nghiệm Trực tiếp (Playground)</div>
-          <div class="chat-empty-desc">Nhập prompt bên dưới hoặc chọn gợi ý nhanh để bắt đầu phiên làm việc. Phản hồi mô hình sẽ truyền về qua Server-Sent Events (SSE) kèm số liệu TTFT và tok/s.</div>
+          <div class="chat-empty-title">Sẵn sàng suy luận</div>
+          <div class="chat-empty-desc">Nhập prompt bên dưới hoặc chọn gợi ý mẫu.</div>
         </div>
       </div>
 

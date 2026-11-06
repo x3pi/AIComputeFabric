@@ -95,7 +95,6 @@
   <div class="page-header">
     <div>
       <h1>🎙️ Audio AI Factory — Xử lý Tiếng nói & Đánh giá Tiếng Việt</h1>
-      <div class="sub">Hệ thống xử lý âm thanh đa tác vụ (Phase P6): Nhận dạng giọng nói <b>Qwen3-ASR-0.6B</b>, tổng hợp tiếng nói tiếng Việt <b>facebook/mms-tts-vie</b>, phát hiện giọng nói bất biến mức âm lượng (<b>Energy VAD</b>), khử nhiễu phổ (<b>Wiener Spectral Gate</b>) và chuẩn hóa chấm điểm <b>WER / CER Tiếng Việt</b>.</div>
     </div>
     <div class="row" style="gap:8px">
       <span id="asr-pill" class="pill">ASR: …</span>
@@ -136,7 +135,6 @@
       <div class="card-header">
         <div>
           <h2>1. Tổng hợp Tiếng nói (TTS), Tạo Giọng Mới & Kiểm thử Vòng lặp</h2>
-          <div class="sub">Chuyển văn bản tiếng Việt thành âm thanh WAV 16-bit PCM, tùy biến giọng đọc bằng <b>VITS + Acoustic DSP</b> và kiểm chứng độ rõ bằng Qwen3-ASR-0.6B</div>
         </div>
         <span class="pill info">AUDIO_TTS · VOICE STUDIO</span>
       </div>
@@ -176,7 +174,6 @@
         <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px">
           <div>
             <strong style="font-size:13.5px">🎛️ Phòng Thiết kế & Tạo Giọng Mới (Custom Voice Profile Studio)</strong>
-            <div class="mut" style="font-size:11.5px">Điều chỉnh tham số <b>VITS Stochastic Duration</b> kết hợp <b>DSP Pitch-Shift (OLA) & Shelf EQ</b> — hợp chuẩn bản quyền & Zero Voice-Cloning</div>
           </div>
           <div class="chip-row">
             <button type="button" class="sample-chip" data-preset="2.5|1.02|0.55|-1.5|Nữ Thanh lịch CSKH">👩 Mẫu Nữ (+2.5st)</button>
@@ -219,7 +216,6 @@
       <div class="card-header">
         <div>
           <h2>2. Nhận dạng Giọng nói (ASR — Speech-to-Text)</h2>
-          <div class="sub">Nhận dạng tệp WAV PCM 16-bit bằng <b>Qwen3-ASR-0.6B</b> kèm phân đoạn tiếng nói VAD và đối chiếu WER/CER</div>
         </div>
         <span class="pill info">AUDIO_ASR</span>
       </div>
@@ -258,7 +254,6 @@
       <div class="card-header">
         <div>
           <h2>3. Khử nhiễu Phổ (Spectral Gate) & Phát hiện Giọng nói (VAD)</h2>
-          <div class="sub">Tách khoảng có tiếng nói bằng <b>Energy VAD tương đối (-30 dB)</b> và lọc nhiễu nền tĩnh bằng <b>Wiener Spectral Gate</b></div>
         </div>
         <span class="pill info">AUDIO_VAD · ENHANCE</span>
       </div>
@@ -280,7 +275,6 @@
       <div class="card-header">
         <div>
           <h2>4. Chuẩn hóa Văn bản Tiếng Việt & Chấm điểm WER / CER</h2>
-          <div class="sub">Chuẩn hóa số đếm, ngày tháng, dấu thanh (<code>hoà → hòa</code>, <code>15/03/2026</code>) trước khi tính khoảng cách Levenshtein</div>
         </div>
         <button type="button" id="btn-norm-sample" class="sm ghost">✨ Điền ví dụ chuẩn hóa khó</button>
       </div>
@@ -316,7 +310,6 @@
       <div class="card-header">
         <div>
           <h2>5. Quản trị Tập Dữ liệu Huấn luyện Audio & Chia tập Speaker-Disjoint (P6.1)</h2>
-          <div class="sub">Kiểm tra bắt buộc <code>consent_ref</code> + <code>sha256</code> và chia tập <code>Train / Validation / Test</code> đảm bảo <b>0% trùng lặp người nói</b> (<code>train_speakers ∩ test_speakers = ∅</code>)</div>
         </div>
         <button type="button" id="btn-manifest-sample" class="sm ghost">✨ Điền Manifest 24 mẫu (8 người nói)</button>
       </div>
@@ -338,18 +331,9 @@
     <section class="card stack" style="margin-bottom:0" id="sec-audio-train">
       <div class="card-header">
         <div>
-          <h2>6. Huấn luyện Phân tán LoRA-FA & DiLoCo trên Tập Phiên âm Tiếng Việt (P6.3 · Màn hình 4b)</h2>
-          <div class="sub">Thích nghi miền văn bản phiên âm Tiếng Việt (<code>FLEURS vi_vn</code> 1.482 câu) bằng <b>LoRA-FA (Frozen-A)</b> + <b>DiLoCo Outer-Step Nesterov</b> & chống Stale Worker</div>
+          <h2>6. Huấn luyện Phân tán LoRA-FA & DiLoCo trên Tập Phiên âm Tiếng Việt (P6.3)</h2>
         </div>
         <a href="studio.html" style="text-decoration:none"><button type="button" class="sm">🚀 Mở Job Huấn luyện QLoRA GPU →</button></a>
-      </div>
-
-      <div class="audio-box" style="font-size:12.5px;line-height:1.55">
-        <b>📌 Trạng thái Huấn luyện Audio theo Kế hoạch P6:</b>
-        <ul style="margin:4px 0 0 18px;padding:0;color:var(--fg-secondary)">
-          <li><b>Huấn luyện LoRA-FA / DiLoCo trên tập phiên âm FLEURS-vi (Đã đo trên RTX 3060):</b> Giảm Perplexity trên tập Test độc lập từ <b>47.34</b> xuống <b>28.06</b> (DDP), <b>28.71</b> (DiLoCo H=10, tiết kiệm <b>86.7%</b> băng thông mạng) và <b>29.06</b> (DiLoCo H=50, tiết kiệm <b>97.3%</b> băng thông mạng).</li>
-          <li><b>Huấn luyện trực tiếp sóng âm ASR/TTS:</b> <code>facebook/mms-tts-vie</code> mang giấy phép <code>CC-BY-NC 4.0</code> và chính sách <b>Zero Voice-Cloning</b> nghiêm cấm fine-tune nhái giọng cá nhân; tùy biến miền từ vựng chuyên ngành được thực hiện qua <b>LoRA-FA</b> và <b>Hậu xử lý Chuẩn hóa/LLM</b>.</li>
-        </ul>
       </div>
 
       <div class="two-col">
