@@ -72,6 +72,20 @@
 
   --font-sans: "Google Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Google Sans Code", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Compatibility aliases used by page-specific styles */
+  --r: var(--radius-md);
+  --bg2: var(--bg-elevated);
+  --fg2: var(--fg-secondary);
+  --sh: var(--shadow-sm);
+  --mono: var(--font-mono);
+
+  /* Sleek Scrollbar Tokens (Light Theme) */
+  --sb-size: 6px;
+  --sb-track: transparent;
+  --sb-thumb: rgba(68, 71, 70, 0.22);
+  --sb-thumb-hover: rgba(26, 115, 232, 0.55);
+  --sb-thumb-active: rgba(26, 115, 232, 0.75);
 }
 
 /* ==========================================================================
@@ -129,6 +143,10 @@
     --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 14px 36px rgba(0, 0, 0, 0.7), 0 4px 10px rgba(0, 0, 0, 0.4);
     --shadow-glow: 0 0 24px rgba(138, 180, 248, 0.2);
+
+    --sb-thumb: rgba(196, 199, 197, 0.2);
+    --sb-thumb-hover: rgba(138, 180, 248, 0.55);
+    --sb-thumb-active: rgba(138, 180, 248, 0.8);
   }
 }
 
@@ -183,6 +201,46 @@
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 14px 36px rgba(0, 0, 0, 0.7), 0 4px 10px rgba(0, 0, 0, 0.4);
   --shadow-glow: 0 0 24px rgba(138, 180, 248, 0.2);
+
+  --sb-thumb: rgba(196, 199, 197, 0.2);
+  --sb-thumb-hover: rgba(138, 180, 248, 0.55);
+  --sb-thumb-active: rgba(138, 180, 248, 0.8);
+}
+
+/* ==========================================================================
+   Global Sleek Custom Scrollbars (WebKit/Blink + Firefox)
+   ========================================================================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sb-thumb) var(--sb-track);
+}
+
+::-webkit-scrollbar {
+  width: var(--sb-size);
+  height: var(--sb-size);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--sb-track);
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--sb-thumb);
+  border-radius: var(--radius-pill);
+  transition: background-color 0.15s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sb-thumb-hover);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: var(--sb-thumb-active);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* ==========================================================================
@@ -258,8 +316,7 @@ nav.app-sidebar {
   z-index: 60;
   transform: translateX(0);
   transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1);
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   user-select: none;
 }
 
@@ -397,6 +454,17 @@ body.nav-hidden .app-main-wrap {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: none;
+}
+.sidebar-nav-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.sidebar-nav-list:hover {
+  scrollbar-width: thin;
+}
+.sidebar-nav-list:hover::-webkit-scrollbar {
+  width: 4px;
 }
 
 .sidebar-nav-list a.nav-tab {
@@ -622,11 +690,34 @@ h3 {
 }
 
 /* KPI Grid — Google Cloud Metrics Style */
-.kpi-grid {
+.kpi-grid, .cards {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: clamp(10px, 1.2vw, 18px);
   margin-bottom: clamp(16px, 1.8vw, 24px);
+}
+
+.cards > .card {
+  margin-bottom: 0;
+}
+
+.lbl {
+  color: var(--mut);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.val {
+  font-size: clamp(20px, 1.8vw, 26px);
+  font-weight: 700;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  margin-bottom: 4px;
 }
 
 .kpi-card {
@@ -759,7 +850,7 @@ button:hover:not(:disabled) {
   box-shadow: var(--shadow-sm);
 }
 
-button.primary {
+button.primary, button.pri {
   background: var(--acc);
   border-color: var(--acc);
   color: #131314;
@@ -767,18 +858,18 @@ button.primary {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 0 12px var(--acc-glow);
 }
 
-[data-theme="light"] button.primary {
+[data-theme="light"] button.primary, [data-theme="light"] button.pri {
   color: #ffffff;
 }
 
-button.primary:hover:not(:disabled) {
+button.primary:hover:not(:disabled), button.pri:hover:not(:disabled) {
   background: var(--acc-hover);
   border-color: var(--acc-hover);
   color: #131314;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), 0 0 16px var(--acc-glow);
 }
 
-[data-theme="light"] button.primary:hover:not(:disabled) {
+[data-theme="light"] button.primary:hover:not(:disabled), [data-theme="light"] button.pri:hover:not(:disabled) {
   color: #ffffff;
 }
 
@@ -864,7 +955,9 @@ label {
 .table-wrap {
   width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-sm);
 }
 
 table {
@@ -1094,7 +1187,8 @@ th.num, td.num {
   min-height: clamp(320px, 52vh, 680px);
   max-height: 68vh;
   overflow-y: auto;
-  padding: 8px 4px;
+  overflow-x: hidden;
+  padding: 8px 6px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1781,7 +1875,7 @@ details.think summary:hover {
    Responsive Adaptations
    ========================================================================== */
 @media (max-width: 1100px) {
-  .kpi-grid {
+  .kpi-grid, .cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1824,7 +1918,7 @@ details.think summary:hover {
 }
 
 @media (max-width: 520px) {
-  .kpi-grid {
+  .kpi-grid, .cards {
     grid-template-columns: 1fr;
   }
   .live-pill span#nav-live-txt {

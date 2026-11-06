@@ -20,7 +20,7 @@
     {
       "name": "Live Lint (POST /api/serverless/v1/lint) marks undefined_name in gutter and clicking diagnostic jumps to line 2 (<= 800ms)",
       "ok": true,
-      "detail": "lintMs=141ms"
+      "detail": "lintMs=110ms"
     },
     {
       "name": "Tab inserts 4 spaces, Ctrl+Z undoes cleanly, and Esc+Tab escapes focus out of editor",
@@ -45,7 +45,7 @@
     {
       "name": "5,000-line Python buffer keystroke latency completes within <= 50ms budget",
       "ok": true,
-      "detail": "keystroke5kMs=39.6ms"
+      "detail": "keystroke5kMs=38.5ms"
     },
     {
       "name": "Live Lint passes on valid multi-file Python code",

@@ -63,6 +63,14 @@
   gap: 14px;
   margin-top: 10px;
 }
+.bus-grid-2 > div {
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .bus-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
 .tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
 .tag-chip {
   font-family: var(--font-mono);
@@ -154,7 +162,7 @@
     <div class="bus-grid-2">
       <div>
         <h3 style="font-size:14px;margin:4px 0 8px">Sổ Agent đang sống trong JetStream KV (<code>AICF_AGENTS</code>)</h3>
-        <div style="overflow-x:auto">
+        <div class="table-wrap">
           <table>
             <thead>
               <tr>
@@ -175,7 +183,7 @@
 
       <div>
         <h3 style="font-size:14px;margin:4px 0 8px">Hàng đợi theo loại tác vụ (<code>aicf.task.&lt;type&gt;</code>) &amp; Đề xuất Supervisor</h3>
-        <div style="overflow-x:auto">
+        <div class="table-wrap">
           <table>
             <thead>
               <tr>

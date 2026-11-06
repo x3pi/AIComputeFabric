@@ -329,9 +329,46 @@
     font-family: var(--mono);
     font-size: 12.5px;
     line-height: 1.55;
-    overflow-x: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     border: 1px solid #1e293b;
-    white-space: pre;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .code-editor, .code-box, #sl-diff-output, .cm6-autocomplete {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+  }
+  .code-editor::-webkit-scrollbar,
+  .code-box::-webkit-scrollbar,
+  #sl-diff-output::-webkit-scrollbar,
+  .cm6-autocomplete::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .code-editor::-webkit-scrollbar-track,
+  .code-box::-webkit-scrollbar-track,
+  #sl-diff-output::-webkit-scrollbar-track,
+  .cm6-autocomplete::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .code-editor::-webkit-scrollbar-thumb,
+  .code-box::-webkit-scrollbar-thumb,
+  #sl-diff-output::-webkit-scrollbar-thumb,
+  .cm6-autocomplete::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.25);
+    border-radius: 9999px;
+  }
+  .code-editor::-webkit-scrollbar-thumb:hover,
+  .code-box::-webkit-scrollbar-thumb:hover,
+  #sl-diff-output::-webkit-scrollbar-thumb:hover,
+  .cm6-autocomplete::-webkit-scrollbar-thumb:hover {
+    background: rgba(56, 189, 248, 0.55);
+  }
+  .code-editor::-webkit-scrollbar-corner,
+  .code-box::-webkit-scrollbar-corner,
+  #sl-diff-output::-webkit-scrollbar-corner {
+    background: transparent;
   }
   .sl-grid-2 {
     display: grid;
