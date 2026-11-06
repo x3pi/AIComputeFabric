@@ -284,15 +284,47 @@ Mô hình `Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf` (đang chạy ở chế đ�
 
 ---
 
-## PHẦN 5: TỔNG KẾT & KHUYẾN NGHỊ VẬN HÀNH THỰC TẾ
+## PHẦN 5: NHẬN XÉT TỔNG QUÁT & LỜI KHUYÊN CHIẾN LƯỢC TỪ KẾT QUẢ ĐO THỰC TẾ
 
-1. **Cấu hình Chủ lực Mặc định cho Lập trình & Tác tử Code (`Tier-1 Production Default`):**
-   - Chế độ **`DISTRIBUTED_MODEL` (`merged` — Gộp 2 card 24 GB VRAM, `tensor_split = "48,52"`)** chạy **`Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf`** (`127.11 tok/s`, `7.87 ms/token`, `1.61 Joule/token`, `> 90.8%` `HumanEval`).
-2. **Cấu hình Chuyên Code Nhanh & Nhẹ trên 1 Card Đơn lẻ (`Tier-2 Single-GPU Fast Coder`) hoặc Chạy Song song 2 Máy (`LOCAL_REPLICA`):**
-   - Khi muốn tách 2 máy chạy độc lập (`split`), lựa chọn tốt nhất cho tác vụ thuần viết code là **`deepseek-coder-6.7b-instruct.Q4_K_M.gguf`** (`72.44 tok/s`, `1.55 Joule/token`, chỉ chiếm `3.82 GiB VRAM` nên dư hơn `6.5 GB VRAM` cho người dùng), hoặc **`Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_M.gguf`** (`56.62 tok/s` trên 1 card / `65.36 tok/s` trên 2 card) khi cần mô hình vừa có suy luận `<think>` kiểu Kimi-k3 vừa viết code chính xác (`87.5% – 100%`).
-3. **Quy tắc Vận hành Bắt buộc cho Họ Kiến trúc `deepseek2` (`DeepSeek-V2-Lite` / `DeepSeek-Coder-V2-Lite` / Kimi `Moonlight-16B`):**
-   - Không chạy ở chế độ `split` với `f16` KV trên card 12 GB (do KV cache MLA chiếm `2,160 MiB` gây chạm ngưỡng `worker-guard` reclaim) và không chạy qua `GGML RPC` (`merged`). Bắt buộc sử dụng chế độ **`LOCAL_HYBRID` (`smart_1gpu` với `-ncmoe 10`)** để đạt tốc độ ổn định **`28.76 tok/s`** và giữ trống `2.84 GB VRAM`.
-4. **Khi cần Tinh chỉnh (`Fine-tuning`) mô hình nội bộ:**
-   - Sử dụng **`QLoRA` (`NF4` + `gradient_checkpointing`)** cho các mô hình `0.5B – 8B` trực tiếp trên 1 card 12 GB (`VRAM <= 8.75 GB`), hoặc sử dụng **`DiLoCo` ($H = 50$)** khi huấn luyện phân tán trên 2 máy qua LAN để tiết kiệm **`98%` băng thông mạng** và tăng tốc độ hội tụ gấp **`5.35 lần`** so với `DDP`.
+Từ toàn bộ 11 cấu hình đo thực nghiệm trên cụm phần cứng thực tế (`pc-001` RTX 3060 12 GB + `pc-win-01` RTX 5070 12 GB qua mạng 2.5 GbE) đối chiếu với tài liệu kiến trúc `AI_Compute_Fabric_Kien_truc_ky_thuat_v1.docx`, dưới đây là **5 đúc kết tổng quát quan trọng nhất** và **lời khuyên vận hành thực chiến**:
+
+### 5.1. Năm Đúc kết Tổng quát ("Sự thật từ Số đo Thực tế") `[ĐO]`
+
+1. **Kiến trúc MoE (Mixture-of-Experts) + Gộp 2 Card (`merged`) là "Điểm ngọt Vàng" (Golden Sweet-Spot) trên GPU tiêu dùng 12 GB:**
+   - Trên phần cứng PC phổ thông (12 GB VRAM/máy), mô hình đặc (Dense) bị kẹp giữa hai cực: nếu nhỏ (`6.7B–8B`) thì thiếu chiều sâu tri thức ở các bài toán kiến trúc lớn; nếu lớn (`14B–27B` như `DeepSeek-R1-14B`, `Qwen3.8-27B`) thì tốc độ giải mã tụt xuống `23–41 tok/s` và tốn `3.5–8.7 Joule/token`.
+   - Ngược lại, **`Qwen3-Coder-30B-A3B-Instruct` (MoE 30.5B tổng / chỉ kích hoạt 3.3B tham số mỗi token)** khi gộp 2 card (`merged` 24 GB VRAM) giữ được **trí thông minh của mô hình 30B (`> 90.8%` HumanEval)** nhưng chạy với **tốc độ và chi phí điện của mô hình 3B (`127.11 tok/s`, `7.87 ms/token`, `1.61 Joule/token` ~ `1,340 VNĐ / 1 triệu token`)**!
+
+2. **Không phải mọi mô hình đều nên Gộp Card (`merged`): Quy luật Ngưỡng VRAM 10 GB (`10 GB Rule`):**
+   - Với các mô hình **vừa khít trong 1 card 12 GB** (`deepseek-coder-6.7b` `3.8 GiB`, `Qwen3.5-9B-Kimi-k3-Distilled` `5.4 GiB`, `Qwen3-8B` `4.8 GiB`):
+     - Việc gộp 2 card (`merged`) chỉ làm tăng tốc độ giải mã 1 người dùng thêm **`+15% đến +19%`** (`72.4` $\rightarrow$ `84.8 tok/s` trên `deepseek-coder-6.7b`; `56.6` $\rightarrow$ `65.4 tok/s` trên `Kimi-k3-9B`), nhưng lại làm **thời gian phản hồi đầu tiên (`TTFT`) chậm đi gấp `3 lần`** (`181 ms` $\rightarrow$ `582 ms`) do chi phí truyền qua mạng RPC và làm **chi phí điện năng/token tăng thêm `43%`** vì phải nuôi 2 GPU cùng lúc.
+     - Ngược lại, nếu để **2 máy chạy độc lập (`split` / `LOCAL_REPLICA`)**, tổng thông lượng toàn cụm tăng gấp **`1.9–2.0 lần`** (`145–359 tok/s`), `TTFT` giữ ở mức `< 190 ms`, và máy nào bận chơi game thì chỉ máy đó tạm dừng, máy kia vẫn phục vụ bình thường!
+   - **Kết luận:** Chỉ bật **`merged` (Gộp 2 card)** cho các mô hình **không thể nhét vừa 1 card 12 GB** (`Qwen3-Coder-30B-A3B`, `Qwen3-30B-A3B`, `Qwen3.8-27B`) hoặc mô hình sát trần 12 GB (`DeepSeek-R1-14B` khi cần ngữ cảnh dài). Với mọi mô hình `<= 9B`, chế độ **`split` (Tách rời)** luôn tối ưu hơn!
+
+3. **"Thuế Suy luận" (`Thinking Tax`): Không dùng Mô hình Suy luận Chuỗi dài (`DeepSeek-R1`) cho Tác vụ Gợi ý Code Tương tác (Autocomplete / Quick Fix):**
+   - Kết quả đo chỉ ra sự khác biệt rất lớn giữa **Direct Coder (`Qwen3-Coder-30B`, `deepseek-coder-6.7b`)**, **Compact Reasoning (`Kimi-k3-Distill-9B`)** và **Verbose Reasoning (`DeepSeek-R1-Distill-14B`)**:
+     - Để viết xong 1 hàm Python chuẩn, `Qwen3-Coder-30B-A3B` chỉ sinh `~182 token` trong **`1.67 giây`** (`270 Joule`).
+     - `Qwen3.5-9B-Kimi-k3-Distilled` suy luận `<think>` vừa phải (`~420 token` nghĩ + `180 token` code = `602 token`), mất **`9.85 giây`** (`1,891 Joule`, đạt `100%` pass ở chế độ `merged`).
+     - Trong khi đó, `DeepSeek-R1-Distill-14B` luôn độc thoại `<think>` tới **`850–1,500+ token`**, mất **`21.3 – 25.7 giây/bài`** (`4,217 Joule/bài` — tốn gấp **15 lần thời gian** và **11.5 lần điện năng** so với `Qwen3-Coder-30B-A3B`) và dễ bị cắt cụt nếu `max_tokens < 1536`.
+
+4. **Kiến trúc `deepseek2` MLA (`DeepSeek-V2-Lite` / `DeepSeek-Coder-V2-Lite` / Kimi `Moonlight-16B`) có Đặc thù Riêng trên `llama.cpp`:**
+   - Bộ đệm KV cache của `deepseek2` ở `f16` phình tới **`2,160 MiB` (`270 KiB/token` — gấp `2.81×` so với `qwen3moe`)** làm tràn ngưỡng an toàn trên 1 card 12 GB (`split`), đồng thời không tương thích với bộ tuần tự hóa `GGML RPC` (`merged`).
+   - Do đó, với họ kiến trúc `deepseek2`, chế độ **`smart_1gpu (-ncmoe 10)`** là lựa chọn bắt buộc và duy nhất giúp chạy mượt ở **`28.76 tok/s`** với `2.84 GB VRAM` trống.
+
+5. **Tác tử Song song (`Best-of-N` + Sandbox) & Đào tạo `DiLoCo` là Vũ khí Nhân bản Chất lượng mà Không cần Mua thêm Card:**
+   - Thay vì cố nạp mô hình 70B (gây tràn VRAM), việc dùng **`Qwen3-Coder-30B-A3B` kết hợp `Best-of-8` + `DockerSandbox` kiểm thử tự động** giúp đẩy tỷ lệ giải đúng lên **`91.46%`**, và ở chiều đào tạo, **`DiLoCo` ($H=50$)** giúp huấn luyện LoRA trên 2 máy qua LAN nhanh gấp **`5.35 lần`** `DDP` với lượng truyền mạng giảm **`98%`**.
+
+---
+
+### 5.2. Bảng Khuyến nghị Chọn Mode & Model ("Cẩm nang Vận hành Nhanh")
+
+| Nhu cầu / Kịch bản Sử dụng Thực tế | Chế độ (`Mode`) Khuyến nghị | Mô hình (`Model`) Khuyến nghị | Lý do & Thông số Bảo chứng `[ĐO]` |
+| :--- | :--- | :--- | :--- |
+| **1. Viết Code, Refactor, Agent Lập trình Chủ lực hàng ngày (Khi cả 2 PC đều rảnh)** | **`merged`** *(Gộp 2 Card 24 GB, tỷ lệ `48:52`)* | **`Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf`** | **Mạnh nhất toàn diện:** `127.11 tok/s`, `TPOT = 7.87 ms`, giải xong 1 bài code trong **`1.67 giây`**, `pass@1 > 90.8%`, điện năng chỉ `1.61 J/tok`. |
+| **2. Khi 1 trong 2 PC đang bận chơi Game / Render đồ họa (Chỉ còn 1 PC rảnh)** | **`smart_1gpu`** *(1 Card Lai CPU-GPU, `-ncmoe 20`)* | **`Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf`** | **Giữ nguyên trí thông minh 30B trên 1 máy:** Đạt `46.15 – 65.6 tok/s`, không phụ thuộc máy kia, tự động chuyển đổi an toàn. |
+| **3. Gợi ý Code Tức thì (IDE Autocomplete `< 200ms TTFT`) hoặc Nhiều người dùng cùng lúc** | **`split`** *(Tách 2 máy chạy độc lập)* | **`deepseek-coder-6.7b-instruct.Q4_K_M.gguf`** | **Phản hồi tức thì & Siêu nhẹ:** `Prefill = 1,722 tok/s`, `Decode = 72.44 tok/s/máy` (`~145 tok/s` toàn cụm), chỉ tốn `3.8 GiB VRAM` (dư `> 6.5 GB VRAM` cho người dùng). |
+| **4. Phân tích Lỗi Khó, Thiết kế Thuật toán cần Suy luận `<think>` từng bước** | **`split`** *(1 card)* hoặc **`merged`** *(2 card)* | **`Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_M.gguf`** | **Suy luận Kimi-k3 cô đọng:** Đạt `56.6 – 65.4 tok/s`, chuỗi `<think>` súc tích (`~420 tok`), đạt **`87.5% – 100%` pass rate** mà không bị tràn token như `DeepSeek-R1-14B` (nếu dùng `R1-14B`, bắt buộc đặt `max_tokens >= 2048`). |
+| **5. Chạy thử nghiệm họ `DeepSeek-V2-Lite` / Kimi `Moonlight-16B` (`deepseek2` MLA)** | **`smart_1gpu`** *(Bắt buộc `-ncmoe 10`)* | **`DeepSeek-V2-Lite-Chat.Q3_K_M.gguf`** | Tránh hoàn toàn lỗi tràn `2,160 MiB` KV cache của `split` và lỗi `ggml-rpc` của `merged`, đạt `28.76 tok/s` ổn định. |
+| **6. Tinh chỉnh (`Fine-tune`) Mô hình Chuyên biệt cho Dự án Nội bộ** | **`QLoRA` 1-GPU** hoặc **`DiLoCo` 2-GPU ($H=50$)** | **`Qwen3-4B` / `Qwen3-8B` / `DeepSeek-Coder-6.7B`** | Chiếm `5.58 – 8.75 GB VRAM` (vừa khít card 12 GB), giảm `98%` băng thông LAN và hội tụ nhanh gấp `5.35×` so với `DDP`. |
+
 
 
