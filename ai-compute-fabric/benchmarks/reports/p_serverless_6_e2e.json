@@ -72,7 +72,7 @@
     {
       "name": "tenants.html displays measured GPU-seconds (4.500 s) and VRAM MiB·s (including idle lease on evict) for alpha",
       "ok": true,
-      "detail": "4.500 s (4500 ms) | 48635 MiB·s"
+      "detail": "4.500 s (4500 ms) | 48673 MiB·s"
     },
     {
       "name": "saving tenant Serverless quota updates policy on server",
@@ -87,7 +87,7 @@
     {
       "name": "serverless.html 1-Click Demo creates/rotates tenant key and enables Serverless",
       "ok": true,
-      "detail": "aicf_WlXiI…"
+      "detail": "aicf_Bk-g9…"
     },
     {
       "name": "serverless.html deploys v1 -> v2 and rolls back to v1 cleanly",
@@ -110,14 +110,14 @@
       "detail": ""
     },
     {
-      "name": "serverless.html separates Developer Workspace (User UI) from Admin Cluster UI",
+      "name": "serverless.html Volume manager uploads and lists tenant volume file with SHA-256",
       "ok": true,
       "detail": ""
     },
     {
-      "name": "serverless.html Volume manager uploads and lists tenant volume file with SHA-256",
+      "name": "serverless.html strictly separates User UI (hides all Admin tabs for tenants) from Admin Cluster UI",
       "ok": true,
-      "detail": ""
+      "detail": "tenantRoleUiHidden=true, adminModeSeparatesUi=true"
     },
     {
       "name": "serverless.html audit trail tab renders",

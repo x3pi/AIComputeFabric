@@ -413,21 +413,34 @@ while True:
     await waitFor(page, () => getComputedStyle(document.getElementById("sl-workspace-content")).display !== "none", null, { timeout: 10000 });
     check("serverless.html Cloud Auth (Register -> Logout locks workspace -> Login with Email+Password) works end-to-end", true);
 
-    // Test User vs Admin UI mode switcher
-    const userModeHidesAdmin = await page.evaluate(() => {
-      const p = document.getElementById("sl-admin-cluster-panel");
-      return p && getComputedStyle(p).display === "none";
+    // Test strict User vs Admin UI separation:
+    // 1) As logged-in regular User (e2e@aicf.local, role=tenant), Admin tabs in sidebar & Serverless Admin UI MUST be completely hidden
+    const tenantRoleUiHidden = await page.evaluate(() => {
+      const hidden = el => !el || getComputedStyle(el).display === "none";
+      const visible = el => !!el && getComputedStyle(el).display !== "none";
+      const adminModeBtn = document.getElementById("sl-mode-admin");
+      const adminPanel = document.getElementById("sl-admin-cluster-panel");
+      const auditTab = document.getElementById("tab-btn-audit");
+      const navIndex = document.querySelector('#app-sidebar a.nav-tab[href="index.html"]');
+      const navTenants = document.querySelector('#app-sidebar a.nav-tab[href="tenants.html"]');
+      const navAgents = document.querySelector('#app-sidebar a.nav-tab[href="agents.html"]');
+      const navGroupAdmin = document.getElementById("nav-group-admin");
+      const navChat = document.querySelector('#app-sidebar a.nav-tab[href="chat.html"]');
+      const appsTab = document.getElementById("tab-btn-apps");
+      return (
+        hidden(adminModeBtn) &&
+        hidden(adminPanel) &&
+        hidden(auditTab) &&
+        hidden(navIndex) &&
+        hidden(navTenants) &&
+        hidden(navAgents) &&
+        hidden(navGroupAdmin) &&
+        visible(navChat) &&
+        visible(appsTab)
+      );
     });
-    await page.click("#sl-mode-admin");
-    const adminModeShowsAdmin = await page.evaluate(() => {
-      const p = document.getElementById("sl-admin-cluster-panel");
-      return p && getComputedStyle(p).display !== "none";
-    });
-    await page.click("#sl-mode-user");
-    check("serverless.html separates Developer Workspace (User UI) from Admin Cluster UI",
-      userModeHidesAdmin && adminModeShowsAdmin);
 
-    // Switch to Tab 3 (Volumes) and create sample file
+    // Switch to Tab 3 (Volumes) as tenant user and create sample file
     await page.click("#tab-btn-volumes");
     await page.click("#sl-btn-sample-vol");
     await waitFor(page, () => document.querySelectorAll("#sl-vol-rows tr td.mono").length >= 1, null, { timeout: 10000 });
@@ -435,10 +448,35 @@ while True:
     check("serverless.html Volume manager uploads and lists tenant volume file with SHA-256",
       /configs\/prompt_template\.json/.test(volText));
 
-    // Tab 4: audit trail panel renders
+    // 2) Authenticate as Admin and verify Admin mode reveals Cluster Console & Audit tab while hiding Developer IDE
+    await page.click("#sl-btn-switch-account");
+    await page.fill("#sl-login-key-input", TOK.admin);
+    await page.click("#sl-btn-login-key");
+    await waitFor(page, () => {
+      const p = document.getElementById("sl-admin-cluster-panel");
+      return p && getComputedStyle(p).display !== "none";
+    }, null, { timeout: 5000 });
+    const adminModeSeparatesUi = await page.evaluate(() => {
+      const hidden = el => !el || getComputedStyle(el).display === "none";
+      const visible = el => !!el && getComputedStyle(el).display !== "none";
+      return (
+        visible(document.getElementById("sl-mode-admin")) &&
+        visible(document.getElementById("sl-admin-cluster-panel")) &&
+        visible(document.getElementById("tab-btn-audit")) &&
+        visible(document.querySelector('#app-sidebar a.nav-tab[href="index.html"]')) &&
+        hidden(document.getElementById("tab-btn-apps")) &&
+        hidden(document.getElementById("panel-apps"))
+      );
+    });
+    check("serverless.html strictly separates User UI (hides all Admin tabs for tenants) from Admin Cluster UI",
+      tenantRoleUiHidden && adminModeSeparatesUi,
+      `tenantRoleUiHidden=${tenantRoleUiHidden}, adminModeSeparatesUi=${adminModeSeparatesUi}`);
+
+    // Tab 4: audit trail panel renders in Admin mode
     await page.click("#tab-btn-audit");
     const auditVisible = await page.evaluate(() => getComputedStyle(document.getElementById("panel-audit")).display !== "none");
     check("serverless.html audit trail tab renders", auditVisible);
+    await page.click("#sl-mode-user");
 
     const wideSlNoOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     await page.setViewportSize({ width: 375, height: 812 });

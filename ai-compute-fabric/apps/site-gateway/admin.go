@@ -702,8 +702,20 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 			if k := strings.TrimSpace(in.APIKey); k != "" {
 				if t, ok := ts.Authenticate(k); ok {
 					note(Principal{Name: "login-key:" + t.Name, Role: "tenant"}, r, http.StatusOK)
-					writeJSON(w, http.StatusOK, map[string]any{"tenant": t, "api_key": k, "session_token": k})
+					writeJSON(w, http.StatusOK, map[string]any{"role": "tenant", "tenant": t, "api_key": k, "session_token": k})
 					return
+				}
+				if auth != nil {
+					if p, ok := auth.Identify(k); ok {
+						note(Principal{Name: "login-key:" + p.Name, Role: p.Role}, r, http.StatusOK)
+						writeJSON(w, http.StatusOK, map[string]any{
+							"role":          p.Role,
+							"tenant":        map[string]any{"id": p.Name, "name": p.Name, "email": p.Email},
+							"api_key":       k,
+							"session_token": k,
+						})
+						return
+					}
 				}
 				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"code": "invalid_key", "message": "Khóa API không hợp lệ hoặc đã bị thu hồi"}})
 				return
@@ -907,6 +919,30 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 			}
 		}
 
+		// /api/studio/* also allows authenticated Tenant sessions/keys to use AI Studio & Audio AI for their own tenant ID.
+		if strings.HasPrefix(r.URL.Path, "/api/studio/") && ts != nil && bearer != "" {
+			if _, staffOK := auth.Identify(bearer); !staffOK {
+				if t, tokOK := ts.Authenticate(bearer); tokOK {
+					if strings.HasPrefix(r.URL.Path, "/api/studio/v1/tenants/") {
+						rest := strings.TrimPrefix(r.URL.Path, "/api/studio/v1/tenants/")
+						targetTid := strings.SplitN(rest, "/", 2)[0]
+						if targetTid != t.ID && targetTid != t.Name {
+							http.Error(w, "tenant may only access its own Studio workspace", http.StatusForbidden)
+							note(Principal{Name: "tenant:" + t.Name, Role: "tenant"}, r, http.StatusForbidden)
+							return
+						}
+					}
+					r.Header.Set("X-Aicf-Tenant", t.ID)
+					r.Header.Set("X-Aicf-User", t.Name)
+					r.Header.Set("X-Aicf-Role", "tenant")
+					sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+					mux.ServeHTTP(sw, r)
+					note(Principal{Name: "tenant:" + t.Name, Role: "tenant"}, r, sw.code)
+					return
+				}
+			}
+		}
+
 		if !strings.HasPrefix(r.URL.Path, "/api/") || auth.Open() {
 			if auth.Open() {
 				r.Header.Set("X-Aicf-User", "open")
@@ -948,26 +984,29 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 // who answers GET /api/whoami so the dashboard can hide what the caller may not do. It is a convenience for the UI
 // only: every action is still checked server-side by Allowed, whatever the page shows.
 func who(w http.ResponseWriter, r *http.Request, auth *Auth, ts *TenantStore) {
+	bearer := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	if ts != nil && bearer != "" {
+		if _, staffOK := auth.Identify(bearer); !staffOK {
+			if t, tokOK := ts.Authenticate(bearer); tokOK {
+				active := !t.Disabled && !t.Pending
+				writeJSON(w, http.StatusOK, map[string]any{
+					"name": t.Name, "email": t.Email, "tenant_id": t.ID, "role": "tenant", "site": "", "open": false,
+					"can": map[string]bool{
+						"view": false, "pause": false, "tenants": false,
+						"studio": active, "studio_delete": active, "serverless_evict": false,
+						"serverless": active,
+					},
+				})
+				return
+			}
+		}
+	}
 	p := Principal{Name: "open", Role: RoleAdmin}
 	open := auth.Open()
 	if !open {
-		bearer := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 		var ok bool
 		p, ok = auth.Identify(bearer)
 		if !ok {
-			if ts != nil && bearer != "" {
-				if t, tokOK := ts.Authenticate(bearer); tokOK {
-					writeJSON(w, http.StatusOK, map[string]any{
-						"name": t.Name, "email": t.Email, "tenant_id": t.ID, "role": "tenant", "site": "", "open": false,
-						"can": map[string]bool{
-							"view": false, "pause": false, "tenants": false,
-							"studio": false, "studio_delete": false, "serverless_evict": false,
-							"serverless": !t.Disabled && !t.Pending,
-						},
-					})
-					return
-				}
-			}
 			w.Header().Set("WWW-Authenticate", `Bearer realm="aicf-admin"`)
 			http.Error(w, "admin token required", http.StatusUnauthorized)
 			return

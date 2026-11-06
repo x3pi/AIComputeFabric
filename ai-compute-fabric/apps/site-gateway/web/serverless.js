@@ -229,7 +229,86 @@ function updateLoginGateVisibility() {
   }
 }
 
-function applyAuthenticatedSession({ token, tenantId, email, name, role }) {
+function isAdminRole() {
+  const r = (window.AICF && window.AICF.role) || "";
+  return r === "admin" || r === "operator";
+}
+
+function activateTab(tabBtnId) {
+  const btn = document.getElementById(tabBtnId);
+  if (!btn) return;
+  for (const b of document.querySelectorAll(".sl-tab")) b.classList.remove("active");
+  for (const p of document.querySelectorAll(".sl-panel")) p.classList.remove("active");
+  btn.classList.add("active");
+  const panel = document.getElementById(btn.dataset.tab);
+  if (panel) panel.classList.add("active");
+  if (btn.dataset.tab === "panel-volumes") listVolumeFiles();
+}
+
+function syncRoleUi() {
+  const adminOk = isAdminRole();
+  const modeAdminBtn = document.getElementById("sl-mode-admin");
+  const modeSwitchWrap = modeAdminBtn ? modeAdminBtn.closest(".mode-switch") : null;
+  if (modeAdminBtn) modeAdminBtn.style.display = adminOk ? "inline-flex" : "none";
+  if (modeSwitchWrap) modeSwitchWrap.style.display = adminOk ? "inline-flex" : "none";
+  if (!adminOk && uiMode === "admin") {
+    uiMode = "user";
+    try { sessionStorage.setItem(SL_MODE_STORE, "user"); } catch {}
+  }
+
+  const wsBar = document.getElementById("sl-workspace-bar");
+  const tabApps = document.getElementById("tab-btn-apps");
+  const tabCont = document.getElementById("tab-btn-containers");
+  const tabVols = document.getElementById("tab-btn-volumes");
+  const tabAudit = document.getElementById("tab-btn-audit");
+  const panelApps = document.getElementById("panel-apps");
+  const panelCont = document.getElementById("panel-containers");
+  const panelVols = document.getElementById("panel-volumes");
+  const panelAudit = document.getElementById("panel-audit");
+  const adminPanel = document.getElementById("sl-admin-cluster-panel");
+
+  if (tenantInput) {
+    tenantInput.readOnly = !adminOk;
+    tenantInput.title = adminOk
+      ? "Admin có thể chuyển đổi Tenant để kiểm tra"
+      : "Tenant ID được gắn cố định với tài khoản đăng nhập của bạn";
+  }
+
+  if (adminOk && uiMode === "admin") {
+    // Admin Mode: Hide Developer Workspace IDE & Volumes, show ONLY Admin Cluster Console + Containers + Audit
+    if (wsBar) wsBar.style.display = "none";
+    if (adminPanel) adminPanel.style.display = "block";
+    if (tabApps) tabApps.style.display = "none";
+    if (tabVols) tabVols.style.display = "none";
+    if (tabCont) tabCont.style.display = "inline-flex";
+    if (tabAudit) tabAudit.style.display = "inline-flex";
+    if (panelApps) panelApps.classList.remove("active");
+    if (panelVols) panelVols.classList.remove("active");
+    if (!panelCont?.classList.contains("active") && !panelAudit?.classList.contains("active")) {
+      activateTab("tab-btn-containers");
+    }
+  } else {
+    // User / Developer Mode: Hide Admin Cluster Console & Audit tab, show Developer Workspace + 3 User tabs
+    if (wsBar) wsBar.style.display = "";
+    if (adminPanel) adminPanel.style.display = "none";
+    if (tabApps) tabApps.style.display = "inline-flex";
+    if (tabCont) tabCont.style.display = "inline-flex";
+    if (tabVols) tabVols.style.display = "inline-flex";
+    if (tabAudit) tabAudit.style.display = "none";
+    if (panelAudit) panelAudit.classList.remove("active");
+    if (
+      !panelApps?.classList.contains("active") &&
+      !panelCont?.classList.contains("active") &&
+      !panelVols?.classList.contains("active")
+    ) {
+      activateTab("tab-btn-apps");
+    }
+  }
+}
+window.syncServerlessRoleUi = syncRoleUi;
+
+function applyAuthenticatedSession({ token, tenantId, email, name, role, preserveAdminToken }) {
+  const effectiveRole = role || "tenant";
   keyInput.value = token;
   loginKeyInput.value = token;
   if (tenantId) tenantInput.value = tenantId;
@@ -239,28 +318,35 @@ function applyAuthenticatedSession({ token, tenantId, email, name, role }) {
     sessionStorage.setItem(SL_KEY_STORE, token);
     if (tenantId) sessionStorage.setItem(SL_TENANT_STORE, tenantId);
     sessionStorage.setItem(SL_EMAIL_STORE, `👤 ${label}`);
-    if (role === "admin" || role === "operator" || role === "viewer") {
-      sessionStorage.setItem("aicf_admin", token);
+    if (effectiveRole === "admin" || effectiveRole === "operator" || effectiveRole === "viewer") {
+      if (!preserveAdminToken) sessionStorage.setItem("aicf_admin", token);
+    } else {
+      sessionStorage.removeItem("aicf_admin");
     }
   } catch {}
   if (window.AICF) {
-    window.AICF.role = role || "tenant";
+    window.AICF.role = effectiveRole;
     window.AICF.name = name || email || tenantId;
     window.AICF.email = email || "";
     window.AICF.tenant_id = tenantId || "";
     if (typeof applyRole === "function") applyRole();
   }
-  updateLoginGateVisibility();
-  loadOverview();
+  syncRoleUi();
+  if (effectiveRole !== "admin" && effectiveRole !== "operator") {
+    setUiMode("user");
+  } else {
+    updateLoginGateVisibility();
+    loadOverview();
+  }
 }
 
 function setUiMode(mode) {
-  uiMode = mode === "admin" ? "admin" : "user";
+  const wantAdmin = mode === "admin" && isAdminRole();
+  uiMode = wantAdmin ? "admin" : "user";
   try { sessionStorage.setItem(SL_MODE_STORE, uiMode); } catch {}
   document.body.classList.toggle("sl-user-mode", uiMode === "user");
   document.getElementById("sl-mode-user").classList.toggle("active", uiMode === "user");
   document.getElementById("sl-mode-admin").classList.toggle("active", uiMode === "admin");
-  document.getElementById("sl-admin-cluster-panel").style.display = uiMode === "admin" ? "block" : "none";
   const wsBar = document.getElementById("sl-workspace-bar");
   wsBar.classList.toggle("admin-mode", uiMode === "admin");
   const badge = document.getElementById("sl-ws-role-badge");
@@ -274,6 +360,7 @@ function setUiMode(mode) {
     badge.className = "pill ok";
     heading.textContent = "⚡ AICF Serverless Cloud — Cổng Developer (GPU/Python)";
   }
+  syncRoleUi();
   updateLoginGateVisibility();
   loadOverview();
 }
@@ -365,7 +452,12 @@ document.getElementById("sl-btn-logout").onclick = async () => {
   try {
     sessionStorage.removeItem(SL_KEY_STORE);
     sessionStorage.removeItem(SL_EMAIL_STORE);
+    sessionStorage.removeItem("aicf_admin");
   } catch {}
+  if (window.AICF) {
+    window.AICF = { role: "", site: "", name: "", open: false, can: {} };
+    if (typeof applyRole === "function") applyRole();
+  }
   document.getElementById("sl-auth-msg").textContent =
     "✓ Đã đăng xuất an toàn và thu hồi phiên làm việc trên máy chủ. Hãy đăng nhập lại để tiếp tục.";
   setUiMode("user");
@@ -519,7 +611,8 @@ document.getElementById("sl-btn-login-key").onclick = async () => {
   const d = await r.json();
   const resolvedTid = d.tenant?.id || tenantInput.value.trim() || "demo";
   authMsg.textContent = `✓ Đăng nhập thành công vào Workspace '${resolvedTid}'!`;
-  applyAuthenticatedSession({ token: k, tenantId: resolvedTid, email: d.tenant?.email, name: d.tenant?.name });
+  applyAuthenticatedSession({ token: k, tenantId: resolvedTid, email: d.tenant?.email, name: d.tenant?.name, role: d.role || "tenant" });
+  if (d.role === "admin") setUiMode("admin");
 };
 
 // 4. 1-Click Self-Serve Workspace Signup / Quick Demo Setup
@@ -574,7 +667,15 @@ document.getElementById("sl-btn-quick-demo").onclick = async () => {
     }
 
     authMsg.textContent = `✓ Đã cấp khóa cho tenant '${tid}' (${apiKey.slice(0, 12)}…) và kích hoạt Developer Workspace!`;
-    applyAuthenticatedSession({ token: apiKey, tenantId: tid, email, name: rawName });
+    const keepAdmin = isAdminRole() && !!adminTok;
+    applyAuthenticatedSession({
+      token: apiKey,
+      tenantId: tid,
+      email,
+      name: rawName,
+      role: keepAdmin ? window.AICF.role : "tenant",
+      preserveAdminToken: keepAdmin,
+    });
   } catch (e) {
     authMsg.textContent = "Lỗi khởi tạo: " + e;
   }
@@ -1600,5 +1701,12 @@ document.getElementById("sl-btn-download-env").onclick = () => {
   a.click();
   URL.revokeObjectURL(a.href);
 };
+syncRoleUi();
 setUiMode(uiMode);
+if (window.AICF_READY && typeof window.AICF_READY.then === "function") {
+  window.AICF_READY.then(() => {
+    syncRoleUi();
+    setUiMode(uiMode);
+  });
+}
 setInterval(loadOverview, 5000);

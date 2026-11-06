@@ -1,14 +1,15 @@
 // Shared by every page: admin token (kept in sessionStorage only), authenticated fetch,
 // SSE over fetch (EventSource cannot send an Authorization header), theme toggle, and 6-bucket VRAM renderer.
 const NAV = [
-  ["index.html", "Cụm GPU & VRAM", "🖥️"],
-  ["tenants.html", "Tenants & Khóa API", "🔑"],
-  ["serverless.html", "Serverless GPU", "⚡"],
-  ["chat.html", "Playground & Tải", "💬"],
-  ["agents.html", "AI Agent (DAG)", "🕸️"],
-  ["studio.html", "AI Studio", "🧪"],
-  ["audio.html", "Audio AI", "🎙️"],
+  ["serverless.html", "Serverless GPU", "⚡", "user"],
+  ["chat.html", "Playground & Tải", "💬", "user"],
+  ["studio.html", "AI Studio", "🧪", "user"],
+  ["audio.html", "Audio AI", "🎙️", "user"],
+  ["index.html", "Cụm GPU & VRAM", "🖥️", "admin"],
+  ["tenants.html", "Tenants & Khóa API", "🔑", "admin"],
+  ["agents.html", "AI Agent (DAG)", "🕸️", "admin"],
 ];
+const ADMIN_PAGES = ["index.html", "tenants.html", "agents.html"];
 
 const BUCKET_GROUPS = [
   ["OSUser", "OS & người dùng", "--b-os"],
@@ -162,20 +163,28 @@ function buildAuthModal() {
         return;
       }
       const tok = d.session_token || d.token || d.api_key || "";
-      store.set("aicf_admin", tok);
-      if (d.name || d.email) {
-        store.set("aicf_user_label", d.email ? `${d.name} (${d.email})` : d.name);
-      }
-      if (d.role === "tenant" || d.tenant) {
+      const isStaffLogin = d.role === "admin" || d.role === "operator" || d.role === "viewer";
+      if (isStaffLogin) {
+        store.set("aicf_admin", tok);
+      } else {
+        store.del("aicf_admin");
         store.set("aicf_sl_api_key", tok);
+        store.set("aicf_sl_ui_mode", "user");
         if (d.tenant?.id) store.set("aicf_sl_tenant_id", d.tenant.id);
         store.set("aicf_sl_account_email", `👤 ${d.email || d.name || d.tenant?.id}`);
+      }
+      if (d.name || d.email) {
+        store.set("aicf_user_label", d.email ? `${d.name} (${d.email})` : d.name);
       }
       msgEl.style.color = "#16a34a";
       msgEl.textContent = `✓ Đăng nhập thành công: ${d.name || d.email} (${d.role})!`;
       passInp.value = "";
       close();
-      location.reload();
+      if (!isStaffLogin && ADMIN_PAGES.includes(currentPage())) {
+        location.href = "serverless.html";
+      } else {
+        location.reload();
+      }
     } catch (err) {
       msgEl.style.color = "#dc2626";
       msgEl.textContent = "❌ Lỗi kết nối máy chủ: " + err;
@@ -571,10 +580,42 @@ function renderNav() {
   );
 
   const navList = el("div", { class: "sidebar-nav-list" });
-  for (const [href, label, icon] of NAV) {
+  const userGroupHdr = el("div", {
+    id: "nav-group-user",
+    class: "mut",
+    style: "font-size:10.5px;font-weight:700;letter-spacing:0.06em;padding:8px 12px 4px;text-transform:uppercase"
+  }, "👤 Không gian Người dùng");
+  navList.append(userGroupHdr);
+
+  for (const [href, label, icon, scope] of NAV.filter(x => x[3] === "user")) {
     const a = el("a", {
       href,
       class: "nav-tab",
+      "data-nav-scope": scope,
+      title: label,
+      onclick: () => {
+        if (window.innerWidth <= 768) setNavPinned(false);
+      }
+    },
+      el("span", { class: "nav-tab-icon", "aria-hidden": "true" }, icon),
+      el("span", { class: "nav-tab-label" }, label)
+    );
+    if (href === here) a.setAttribute("aria-current", "page");
+    navList.append(a);
+  }
+
+  const adminGroupHdr = el("div", {
+    id: "nav-group-admin",
+    class: "mut",
+    style: "font-size:10.5px;font-weight:700;letter-spacing:0.06em;padding:12px 12px 4px;margin-top:4px;border-top:1px solid var(--bd);text-transform:uppercase"
+  }, "🛡️ Quản trị Cụm (Admin)");
+  navList.append(adminGroupHdr);
+
+  for (const [href, label, icon, scope] of NAV.filter(x => x[3] === "admin")) {
+    const a = el("a", {
+      href,
+      class: "nav-tab",
+      "data-nav-scope": scope,
       title: label,
       onclick: () => {
         if (window.innerWidth <= 768) setNavPinned(false);
@@ -661,7 +702,7 @@ function renderNav() {
 async function api(path, opts = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const headers = Object.assign({}, opts.headers || {});
-    const tok = store.get("aicf_admin");
+    const tok = store.get("aicf_admin") || store.get("aicf_sl_api_key");
     if (tok) headers["Authorization"] = "Bearer " + tok;
     const r = await fetch(path, Object.assign({}, opts, { headers }));
     if (r.status === 401 && attempt === 0 && askAdminToken(tok ? "Token sai. Nhập lại admin token:" : null, tok)) continue;
@@ -1039,10 +1080,14 @@ window.AICF = { role: "", site: "", can: { view: false, pause: false, tenants: f
 window.AICF_READY = (async () => {
   try {
     let r = null;
-    if (currentPage() === "serverless.html" || currentPage() === "guide.html") {
-      const tok = store.get("aicf_admin") || store.get("aicf_sl_api_key");
+    const adminTok = store.get("aicf_admin");
+    const tenantTok = store.get("aicf_sl_api_key");
+    const tok = adminTok || tenantTok;
+    if (!ADMIN_PAGES.includes(currentPage())) {
       const headers = tok ? { Authorization: "Bearer " + tok } : {};
       r = await fetch("/api/whoami", { headers });
+    } else if (tenantTok && !adminTok) {
+      r = await fetch("/api/whoami", { headers: { Authorization: "Bearer " + tenantTok } });
     } else {
       r = await api("/api/whoami");
     }
@@ -1063,11 +1108,53 @@ window.AICF_READY = (async () => {
 })();
 
 function applyRole() {
-  const { role, site, name, open } = window.AICF;
+  const { role, site, name, tenant_id, open } = window.AICF;
+  const isStaff = role === "admin" || role === "operator" || role === "viewer";
+  document.body.dataset.role = role || "none";
+
+  // Hide Admin sidebar section and all Admin nav tabs when logged in as a regular User (tenant) or unauthenticated
+  const adminHdr = document.getElementById("nav-group-admin");
+  if (adminHdr) adminHdr.style.display = isStaff ? "" : "none";
+  for (const elTab of document.querySelectorAll('.nav-tab[data-nav-scope="admin"]')) {
+    elTab.style.display = isStaff ? "" : "none";
+  }
+  const brandLink = document.querySelector("a.sidebar-brand");
+  if (brandLink) {
+    brandLink.setAttribute("href", isStaff ? "index.html" : "serverless.html");
+  }
+  const livePill = document.getElementById("nav-live");
+  if (livePill) {
+    livePill.style.display = isStaff ? "" : "none";
+  }
+
+  // If logged in as a regular User (tenant) and visiting an Admin-only page, redirect to User Workspace
+  if (role === "tenant" && ADMIN_PAGES.includes(currentPage())) {
+    location.replace("serverless.html");
+    return;
+  }
+
+  // Bind tenant inputs on User pages (studio.html, audio.html, chat.html) when logged in as a Tenant
+  if (role === "tenant") {
+    const activeTid = tenant_id || name || store.get("aicf_sl_tenant_id");
+    for (const id of ["tenant", "tts-tenant"]) {
+      const inp = document.getElementById(id);
+      if (inp && activeTid) {
+        inp.value = activeTid;
+        inp.readOnly = true;
+      }
+    }
+    const chatKeyInp = document.getElementById("key");
+    const slKey = store.get("aicf_sl_api_key");
+    if (chatKeyInp && slKey && !chatKeyInp.value) {
+      chatKeyInp.value = slKey;
+    }
+  }
+
   const badge = document.getElementById("nav-role");
   if (badge) {
     const userLbl = name && name !== "admin-token" && name !== "open" ? `${name} · ` : "";
-    badge.textContent = role ? (open ? "không đăng nhập (loopback)" : userLbl + role + (site ? " · " + site : "")) : "chưa xác thực";
+    const roleText = role === "tenant" ? "người dùng" : role;
+    badge.textContent = role ? (open ? "không đăng nhập (loopback)" : userLbl + roleText + (site ? " · " + site : "")) : "chưa xác thực";
     badge.dataset.role = role || "none";
   }
   const authBtn = document.getElementById("nav-auth-btn");
@@ -1082,6 +1169,9 @@ function applyRole() {
   }
   if (logoutBtn) {
     logoutBtn.hidden = !isLoggedIn;
+  }
+  if (typeof window.syncServerlessRoleUi === "function") {
+    window.syncServerlessRoleUi();
   }
 }
 
