@@ -1,0 +1,507 @@
+{
+  "generated_at": "2026-11-06T03:55:42.532932+00:00",
+  "document_reference": "AI_Compute_Fabric_Kien_truc_ky_thuat_v1.docx",
+  "model_identity": {
+    "model_name": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+    "symlink_path": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/models/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+    "resolved_path": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+    "size_bytes": 18556689568,
+    "size_gib": 17.282,
+    "size_gb_decimal": 18.557,
+    "gguf_magic": "GGUF",
+    "gguf_version": 3,
+    "tensor_count": 579,
+    "kv_count": 44,
+    "architecture": "Qwen3-MoE (30B total / 3.3B active per token, 128 experts, top-8 routing)",
+    "quantization": "Q4_K_M",
+    "fast_sha256_32mib": "effc9daee86a907f04b2031e3ae3aaa9047c689a23c55f0f799518220201bdce"
+  },
+  "deployment_and_vram": {
+    "cold_load_seconds": 62.935,
+    "previous_model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "topology": {
+      "mode": "merged",
+      "primary_worker_id": "pc-001",
+      "rpc_worker_ids": [
+        "pc-win-01"
+      ],
+      "model": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+      "kv_type": "f16",
+      "tensor_split": "48,52",
+      "rpc_port": 50052,
+      "status": "ready",
+      "updated_at": "2026-11-06T10:54:58.732024045+07:00",
+      "groups": [
+        {
+          "id": "pc-001",
+          "primary_worker_id": "pc-001",
+          "rpc_worker_ids": [
+            "pc-win-01"
+          ],
+          "model": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+          "kv_type": "f16",
+          "tensor_split": "48,52",
+          "rpc_port": 50052,
+          "vram_total_bytes": 25705840640
+        }
+      ],
+      "busy_worker_ids": [],
+      "workers": {
+        "pc-001": {
+          "worker_id": "pc-001",
+          "group_id": "pc-001",
+          "role": "master",
+          "mode": "merged",
+          "model": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+          "online": true,
+          "state": "running",
+          "gpu_name": "NVIDIA GeForce RTX 3060",
+          "vram_total_bytes": 12884901888,
+          "vram_free_bytes": 1792016384,
+          "engine_url": "http://127.0.0.1:18090",
+          "badge": "MASTER (MERGED 2 GPU, 24 GB)"
+        },
+        "pc-win-01": {
+          "worker_id": "pc-win-01",
+          "group_id": "pc-001",
+          "role": "member",
+          "mode": "rpc-worker",
+          "model": "rpc://50052",
+          "online": true,
+          "state": "running",
+          "gpu_name": "NVIDIA GeForce RTX 5070",
+          "vram_total_bytes": 12820938752,
+          "vram_free_bytes": 1776287744,
+          "engine_url": "http://10.42.0.225:18090",
+          "badge": "RPC GPU MEMBER -> pc-001"
+        }
+      }
+    },
+    "workers": [
+      {
+        "worker_id": "pc-001",
+        "site_id": "dev",
+        "hostname": "pi-System-Product-Name",
+        "gpu_name": "NVIDIA GeForce RTX 3060",
+        "model": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+        "lora": "",
+        "switching": false,
+        "state": "running",
+        "online": true,
+        "vram_total_bytes": 12884901888,
+        "vram_free_bytes": 1792016384,
+        "buckets": {
+          "Total": 12884901888,
+          "OSUser": 1994391552,
+          "Weights": 8611954688,
+          "KVState": 369098752,
+          "Compute": 117440512,
+          "Headroom": 536870912,
+          "Allocatable": 1255145472
+        },
+        "gpu_temp_c": 48,
+        "user_is_active": false,
+        "pause_requested": false,
+        "last_seen": "2026-11-06T10:54:58.417346897+07:00",
+        "agent_version": "0.1-poc",
+        "engine_url": "http://127.0.0.1:18090",
+        "parallel_slots": 2
+      },
+      {
+        "worker_id": "pc-win-01",
+        "site_id": "dev",
+        "hostname": "DESKTOP-2MJNHTH",
+        "gpu_name": "NVIDIA GeForce RTX 5070",
+        "model": "rpc://50052",
+        "lora": "",
+        "switching": false,
+        "state": "running",
+        "online": true,
+        "vram_total_bytes": 12820938752,
+        "vram_free_bytes": 1776287744,
+        "buckets": {
+          "Total": 12820938752,
+          "OSUser": 11044651008,
+          "Weights": 0,
+          "KVState": 0,
+          "Compute": 0,
+          "Headroom": 314572800,
+          "Allocatable": 1461714944
+        },
+        "gpu_temp_c": 38,
+        "user_is_active": false,
+        "pause_requested": false,
+        "last_seen": "2026-11-06T10:54:59.005781533+07:00",
+        "agent_version": "0.1-poc",
+        "engine_url": "http://10.42.0.225:18090",
+        "parallel_slots": 1
+      }
+    ],
+    "llama_log_buffers": {
+      "offloaded_layers": "49/49",
+      "cuda0_model_mib": 8213.65,
+      "rpc0_model_mib": 9310.78,
+      "cpu_mapped_model_mib": 166.92,
+      "cuda0_kv_mib": 352.0,
+      "rpc0_kv_mib": 416.0,
+      "cuda0_compute_mib": 112.04,
+      "rpc0_compute_mib": 152.05,
+      "cpu_compute_mib": 56.07
+    }
+  },
+  "latency_and_power_benchmark": {
+    "protocol": "3 warmup + 5 measured runs (Section 12.4 of AI_Compute_Fabric_Kien_truc_ky_thuat_v1.docx)",
+    "warmup_runs": [
+      {
+        "prompt_tokens": 117,
+        "output_tokens": 320,
+        "ttft_ms": 565.21,
+        "tpot_ms": 8.14,
+        "t_prefill_ms": 446.23,
+        "t_decode_ms": 2599.13,
+        "t_total_ms": 3166.29,
+        "t_overhead_ms": 120.93,
+        "prefill_tok_s": 262.2,
+        "decode_tok_s": 122.73
+      },
+      {
+        "prompt_tokens": 1,
+        "output_tokens": 320,
+        "ttft_ms": 147.09,
+        "tpot_ms": 8.01,
+        "t_prefill_ms": 16.22,
+        "t_decode_ms": 2556.6,
+        "t_total_ms": 2703.38,
+        "t_overhead_ms": 130.56,
+        "prefill_tok_s": 61.65,
+        "decode_tok_s": 124.78
+      },
+      {
+        "prompt_tokens": 1,
+        "output_tokens": 320,
+        "ttft_ms": 139.26,
+        "tpot_ms": 7.98,
+        "t_prefill_ms": 17.62,
+        "t_decode_ms": 2545.21,
+        "t_total_ms": 2683.93,
+        "t_overhead_ms": 121.1,
+        "prefill_tok_s": 56.75,
+        "decode_tok_s": 125.33
+      }
+    ],
+    "measured_runs": [
+      {
+        "prompt_tokens": 1,
+        "output_tokens": 320,
+        "ttft_ms": 39.59,
+        "tpot_ms": 7.8,
+        "t_prefill_ms": 15.13,
+        "t_decode_ms": 2487.5,
+        "t_total_ms": 2526.68,
+        "t_overhead_ms": 24.05,
+        "prefill_tok_s": 66.09,
+        "decode_tok_s": 128.24
+      },
+      {
+        "prompt_tokens": 1,
+        "output_tokens": 320,
+        "ttft_ms": 126.95,
+        "tpot_ms": 7.88,
+        "t_prefill_ms": 15.21,
+        "t_decode_ms": 2514.33,
+        "t_total_ms": 2641.24,
+        "t_overhead_ms": 111.69,
+        "prefill_tok_s": 65.75,
+        "decode_tok_s": 126.87
+      },
+      {
+        "prompt_tokens": 1,
+        "output_tokens": 320,
+        "ttft_ms": 147.74,
+        "tpot_ms": 7.94,
+        "t_prefill_ms": 19.78,
+        "t_decode_ms": 2533.15,
+        "t_total_ms": 2680.35,
+        "t_overhead_ms": 127.42,
+        "prefill_tok_s": 50.56,
+        "decode_tok_s": 125.93
+      },
+      {
+        "prompt_tokens": 1,
+        "output_tokens": 320,
+        "ttft_ms": 136.0,
+        "tpot_ms": 7.87,
+        "t_prefill_ms": 16.47,
+        "t_decode_ms": 2510.49,
+        "t_total_ms": 2646.28,
+        "t_overhead_ms": 119.31,
+        "prefill_tok_s": 60.73,
+        "decode_tok_s": 127.07
+      },
+      {
+        "prompt_tokens": 1,
+        "output_tokens": 320,
+        "ttft_ms": 128.77,
+        "tpot_ms": 7.85,
+        "t_prefill_ms": 14.24,
+        "t_decode_ms": 2503.51,
+        "t_total_ms": 2632.24,
+        "t_overhead_ms": 114.49,
+        "prefill_tok_s": 70.22,
+        "decode_tok_s": 127.42
+      }
+    ],
+    "summary": {
+      "ttft_ms": {
+        "mean": 115.81,
+        "std": 43.38,
+        "min": 39.59,
+        "p50": 128.77,
+        "p95": 147.74,
+        "max": 147.74
+      },
+      "tpot_ms": {
+        "mean": 7.87,
+        "std": 0.05,
+        "min": 7.8,
+        "p50": 7.87,
+        "p95": 7.94,
+        "max": 7.94
+      },
+      "t_prefill_ms": {
+        "mean": 16.17,
+        "std": 2.17,
+        "min": 14.24,
+        "p50": 15.21,
+        "p95": 19.78,
+        "max": 19.78
+      },
+      "t_decode_ms": {
+        "mean": 2509.8,
+        "std": 16.61,
+        "min": 2487.5,
+        "p50": 2510.49,
+        "p95": 2533.15,
+        "max": 2533.15
+      },
+      "t_total_ms": {
+        "mean": 2625.36,
+        "std": 58.09,
+        "min": 2526.68,
+        "p50": 2641.24,
+        "p95": 2680.35,
+        "max": 2680.35
+      },
+      "t_overhead_ms": {
+        "mean": 99.39,
+        "std": 42.54,
+        "min": 24.05,
+        "p50": 114.49,
+        "p95": 127.42,
+        "max": 127.42
+      },
+      "prefill_tok_s": {
+        "mean": 62.67,
+        "std": 7.56,
+        "min": 50.56,
+        "p50": 65.75,
+        "p95": 70.22,
+        "max": 70.22
+      },
+      "decode_tok_s": {
+        "mean": 127.11,
+        "std": 0.84,
+        "min": 125.93,
+        "p50": 127.07,
+        "p95": 128.24,
+        "max": 128.24
+      }
+    },
+    "power_and_energy": {
+      "pc001_rtx3060_measured": {
+        "sample_count": 59,
+        "mean_power_w": 109.38,
+        "peak_power_w": 113.32,
+        "min_power_w": 102.5,
+        "mean_temp_c": 55.9,
+        "peak_temp_c": 57.0,
+        "mean_util_pct": 54.3,
+        "peak_util_pct": 56.0
+      },
+      "pcwin01_rtx5070_estimated_active_w": 95.0,
+      "cluster_total_gpu_power_w": 204.38,
+      "joule_per_token_pc001_only": 0.8605,
+      "joule_per_token_2gpu_cluster": 1.6079,
+      "wh_per_1m_tokens_2gpu_cluster": 446.64
+    },
+    "sample_generated_code_preview": "```python\nimport time\nfrom collections import OrderedDict\nfrom threading import RLock\nfrom typing import Any, Optional, Tuple, Dict\n\nclass LRUCacheWithTTL:\n    \"\"\"\n    A thread-safe LRU Cache with Time-To-Live (TTL) functionality.\n    \n    This implementation uses OrderedDict to maintain insertion order for LRU eviction\n    and RLock for thread safety. Each cache entry has an optional TTL that determines\n    when it should be considered expired.\n    \"\"\"\n    \n    def __init__(self, capacity: int = 128):\n        \"\"\"\n        Initialize the LRU Cache with given capacity.\n        \n        Args:\n            capacity: Maximum number of items the cache can hold\n        \"\"\"\n        self.capacity = capacity\n        self.cache: OrderedDict[str, Tuple[Any, Optional[float]]] = OrderedDict()\n        self.stats: Dict[str, int] = {\n            'hits': 0,\n            'misses': 0,\n            'evictions': 0\n        }\n        self._lock = RLock()\n    \n    def get(self, key: str) -> Optional[Any]:\n        \"\"\"\n        Retrieve a value from the cache by key.\n        \n        Args:\n            key: The key to look up\n            \n        Returns:\n            The value if found and not expired, None other"
+  },
+  "humaneval_sandbox_benchmark": {
+    "total_tasks": 12,
+    "syntax_compile_pass": 11,
+    "syntax_compile_rate_pct": 91.67,
+    "unit_test_pass_at_1": 11,
+    "unit_test_pass_rate_pct": 91.67,
+    "mean_decode_tok_s": 125.68,
+    "mean_ttft_ms": 230.53,
+    "mean_tpot_ms": 7.9,
+    "tasks": [
+      {
+        "task_id": "HumanEval/0",
+        "entry_point": "has_close_elements",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 165,
+        "ttft_ms": 323.72,
+        "tpot_ms": 7.82,
+        "decode_tok_s": 127.09,
+        "total_ms": 1615.84,
+        "sandbox_exec_ms": 44.54,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/1",
+        "entry_point": "separate_paren_groups",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 226,
+        "ttft_ms": 257.13,
+        "tpot_ms": 7.99,
+        "decode_tok_s": 124.59,
+        "total_ms": 2062.97,
+        "sandbox_exec_ms": 23.44,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/2",
+        "entry_point": "truncate_number",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 91,
+        "ttft_ms": 233.81,
+        "tpot_ms": 7.76,
+        "decode_tok_s": 127.43,
+        "total_ms": 940.28,
+        "sandbox_exec_ms": 16.42,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/3",
+        "entry_point": "below_zero",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 150,
+        "ttft_ms": 224.62,
+        "tpot_ms": 7.74,
+        "decode_tok_s": 128.3,
+        "total_ms": 1386.0,
+        "sandbox_exec_ms": 21.19,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/4",
+        "entry_point": "mean_absolute_deviation",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 172,
+        "ttft_ms": 239.69,
+        "tpot_ms": 7.99,
+        "decode_tok_s": 124.41,
+        "total_ms": 1614.13,
+        "sandbox_exec_ms": 22.42,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/10",
+        "entry_point": "make_palindrome",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 242,
+        "ttft_ms": 239.15,
+        "tpot_ms": 7.81,
+        "decode_tok_s": 127.35,
+        "total_ms": 2130.89,
+        "sandbox_exec_ms": 23.43,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/20",
+        "entry_point": "find_closest_elements",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 276,
+        "ttft_ms": 267.16,
+        "tpot_ms": 7.89,
+        "decode_tok_s": 126.15,
+        "total_ms": 2446.24,
+        "sandbox_exec_ms": 22.37,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/31",
+        "entry_point": "is_prime",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 189,
+        "ttft_ms": 268.53,
+        "tpot_ms": 7.8,
+        "decode_tok_s": 127.37,
+        "total_ms": 1743.51,
+        "sandbox_exec_ms": 22.3,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/45",
+        "entry_point": "triangle_area",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 56,
+        "ttft_ms": 185.76,
+        "tpot_ms": 7.91,
+        "decode_tok_s": 124.09,
+        "total_ms": 628.64,
+        "sandbox_exec_ms": 21.5,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/55",
+        "entry_point": "fib",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 117,
+        "ttft_ms": 138.96,
+        "tpot_ms": 7.89,
+        "decode_tok_s": 125.56,
+        "total_ms": 1062.12,
+        "sandbox_exec_ms": 22.73,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/60",
+        "entry_point": "sum_to_n",
+        "passed": true,
+        "syntax_valid": true,
+        "output_tokens": 117,
+        "ttft_ms": 191.56,
+        "tpot_ms": 8.16,
+        "decode_tok_s": 121.57,
+        "total_ms": 1145.45,
+        "sandbox_exec_ms": 22.33,
+        "error": ""
+      },
+      {
+        "task_id": "HumanEval/75",
+        "entry_point": "is_multiply_prime",
+        "passed": false,
+        "syntax_valid": false,
+        "output_tokens": 384,
+        "ttft_ms": 196.26,
+        "tpot_ms": 8.05,
+        "decode_tok_s": 124.24,
+        "total_ms": 3279.59,
+        "sandbox_exec_ms": 85.26,
+        "error": "File \"/tmp/aicf_heval_7spwdk5p/solution.py\", line 4\n    ```python\n    ^\nSyntaxError: invalid syntax"
+      }
+    ]
+  }
+}
