@@ -86,22 +86,24 @@ ThreadingHTTPServer((HOST, PORT), H).serve_forever()
 PYEOF
 }
 
-case "$ACTION" in
-run)
-  exec python3 "$BRIDGE" "$CONF" ;;
-status)
+do_status() {
   if probe; then echo "[OK] Cau noi AICF dang chay tai ${LISTEN_HOST}:${LISTEN_PORT}"; curl -s "http://${LISTEN_HOST}:${LISTEN_PORT}/aicf/status"; echo
-  else echo "[--] Cau noi AICF KHONG chay"; exit 1; fi
-  exit 0 ;;
-uninstall)
+  else echo "[--] Cau noi AICF KHONG chay"; return 1; fi
+}
+do_uninstall() {
   if [ "$OS" = "Darwin" ]; then launchctl unload "$PLIST" 2>/dev/null || true; rm -f "$PLIST"
   else systemctl --user disable --now aicf-bridge.service 2>/dev/null || true; rm -f "$UNIT"; systemctl --user daemon-reload 2>/dev/null || true; fi
   [ -f "$DIR/bridge.pid" ] && kill "$(cat "$DIR/bridge.pid")" 2>/dev/null || true
   rm -f "$CODEX_DIR/aicf.config.toml"; rm -rf "$DIR"
   echo "[OK] Da go cau noi AICF. Cai dat Codex cua ban khong bi thay doi."
-  exit 0 ;;
-install) ;;
-*) echo "Dung: $0 [install|status|uninstall|run]"; exit 2 ;;
+}
+
+case "$ACTION" in
+run)       exec python3 "$BRIDGE" "$CONF" ;;
+status)    do_status; exit $? ;;
+uninstall) do_uninstall; exit 0 ;;
+install)   ;;
+*) echo "Dung: bash <file> [install|status|uninstall|run]"; exit 2 ;;
 esac
 
 # ---- install ----
@@ -110,14 +112,15 @@ echo " AI Compute Fabric - ket noi may nay voi cum GPU"
 echo " Cum may chu: ${GATEWAY_URL}"
 echo "=================================================================="
 
-if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(0 if s.connect_ex((sys.argv[1],int(sys.argv[2])))==0 else 1)" "$LISTEN_HOST" "$LISTEN_PORT"; then
-  if ! probe; then
-    echo "[LOI] Cong ${LISTEN_PORT} dang bi Ollama goc (hoac dich vu khac) chiem. Script KHONG tu dung no."
-    echo "  Linux : sudo systemctl stop ollama      (bat lai sau: sudo systemctl start ollama)"
-    echo "  macOS : thoat ung dung Ollama o thanh menu, hoac: pkill -x ollama"
-    echo "  Hoac dung cong khac: AICF_OLLAMA_PORT=11500 bash $0"
-    exit 1
-  fi
+port_busy() { python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(0 if s.connect_ex((sys.argv[1],int(sys.argv[2])))==0 else 1)" "$LISTEN_HOST" "$1"; }
+if port_busy "$LISTEN_PORT" && ! probe; then
+  WANT_PORT="$LISTEN_PORT"
+  for p in 11500 11501 11502 11503 11504; do if ! port_busy "$p" || ( LISTEN_PORT="$p"; probe ); then LISTEN_PORT="$p"; break; fi; done
+  if [ "$LISTEN_PORT" = "$WANT_PORT" ]; then echo "[LOI] Khong tim duoc cong trong (11500-11504)."; exit 1; fi
+  echo "[Luu y] Cong ${WANT_PORT} dang do Ollama goc (hoac dich vu khac) giu, script KHONG dung no."
+  echo "        Da chuyen sang cong ${LISTEN_PORT}. Codex CLI dung binh thuong (profile da tro dung cong nay)."
+  echo "        App chi chap nhan cong ${WANT_PORT} (Cursor, Open WebUI...): dung Ollama roi cai lai:"
+  echo "          Linux: sudo systemctl stop ollama     macOS: thoat Ollama o thanh menu"
 fi
 
 mkdir -p "$DIR" "$CODEX_DIR"; chmod 700 "$DIR"
@@ -139,6 +142,8 @@ json.dump({"gateway": sys.argv[2], "token": sys.argv[3], "host": sys.argv[4], "p
 PY
 )
 write_bridge
+{ declare -p LISTEN_HOST LISTEN_PORT DIR CODEX_DIR UNIT PLIST OS BRIDGE CONF; declare -f probe do_status do_uninstall
+  echo 'case "${1:-status}" in status) do_status ;; uninstall) do_uninstall ;; *) echo "Dung: bash $0 [status|uninstall]" ;; esac'; } > "$DIR/ctl.sh"
 printf 'model = "%s"\nmodel_provider = "aicf"\n\n[model_providers.aicf]\nname = "AI Compute Fabric (Cluster GPU)"\nbase_url = "http://%s:%s/v1"\nenv_key = "AICF_API_KEY"\nwire_api = "responses"\n' "$MODEL" "$LISTEN_HOST" "$LISTEN_PORT" > "$CODEX_DIR/aicf.config.toml"
 
 PYBIN="$(command -v python3)"
@@ -175,4 +180,4 @@ echo "  Dung Codex (terminal moi):"
 echo "    export AICF_API_KEY='${AICF_TOKEN:-ollama}'"
 echo "    codex --profile aicf"
 echo "  Cursor / Continue / Chatbox: chon Ollama, dia chi http://${LISTEN_HOST}:${LISTEN_PORT}"
-echo "  Kiem tra: bash $0 status      Go: bash $0 uninstall"
+echo "  Kiem tra: bash $DIR/ctl.sh status      Go: bash $DIR/ctl.sh uninstall"

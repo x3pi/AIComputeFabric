@@ -26,9 +26,9 @@ const HOW = {
     <li>Chờ dòng <b>[XONG]</b> rồi đóng cửa sổ. Cầu nối chạy nền và tự bật mỗi lần bạn đăng nhập Windows.</li></ol>
     <small>Gỡ: chạy <code>aicf-ollama-bridge.bat uninstall</code> trong terminal.</small>`,
   macos: `<ol class="how"><li>Mở <b>Terminal</b> và dán lệnh:</li></ol><pre>bash ~/Downloads/aicf-ollama-bridge.command</pre>
-    <small>Cầu nối chạy nền, tự bật khi đăng nhập. Gỡ: thêm <code>uninstall</code> vào cuối lệnh. Cần python3 (macOS sẽ gợi ý cài nếu thiếu).</small>`,
+    <small>Cầu nối chạy nền, tự bật khi đăng nhập. Gỡ: <code>bash ~/.local/share/aicf/ctl.sh uninstall</code>. Cần python3 (macOS sẽ gợi ý cài nếu thiếu).</small>`,
   linux: `<ol class="how"><li>Mở Terminal và dán lệnh:</li></ol><pre>bash ~/Downloads/aicf-ollama-bridge.sh</pre>
-    <small>Cầu nối chạy nền (systemd --user), tự bật khi đăng nhập. Gỡ: thêm <code>uninstall</code> vào cuối lệnh. Nếu báo cổng 11434 đang bị Ollama chiếm: <code>sudo systemctl stop ollama</code> rồi chạy lại.</small>`,
+    <small>Cầu nối chạy nền (systemd --user), tự bật khi đăng nhập. Gỡ: <code>bash ~/.local/share/aicf/ctl.sh uninstall</code>. Nếu máy đang chạy Ollama thật ở cổng 11434, script tự dùng cổng 11500 (Codex vẫn chạy bình thường); app đòi đúng 11434 thì <code>sudo systemctl stop ollama</code> rồi chạy lại.</small>`,
 };
 
 function setOS(v) {
@@ -96,19 +96,25 @@ $("b-activate").onclick = async () => {
 
 // Is the bridge on this computer answering on 127.0.0.1:11434 ? (the bridge sends CORS + Private-Network headers)
 async function probe() {
-  try {
-    const r = await fetch("http://127.0.0.1:11434/aicf/status", { signal: AbortSignal.timeout(2500) });
-    const d = r.ok ? await r.json() : { emulator: false };
-    const emu = d.emulator === true;
-    $("status").classList.add("up");
-    $("status-txt").textContent = emu ? "✓ Đã kích hoạt: máy bạn đã nối với cụm GPU" : "Cổng 11434 đang chạy Ollama khác (chưa phải cầu nối AICF)";
-    $("models").textContent = emu ? `Đã đi qua cầu nối: ${d.requests} request (từ ${String(d.since).replace("T", " ")})` : "";
-    $("next").hidden = !emu;
-    if (emu) $("s3").classList.add("done");
-  } catch {
-    $("status").classList.remove("up");
-    $("status-txt").textContent = "Đang chờ bạn chạy file ở bước 2…";
-    $("next").hidden = true;
+  let found = null, other = false;
+  for (const port of [11434, 11500, 11501, 11502, 11503, 11504]) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/aicf/status`, { signal: AbortSignal.timeout(1500) });
+      const d = r.ok ? await r.json() : { emulator: false };
+      if (d.emulator === true) { found = { port, d }; break; }
+      other = true;
+    } catch {}
+  }
+  const up = !!found;
+  $("status").classList.toggle("up", up);
+  $("next").hidden = !up;
+  if (up) {
+    $("s3").classList.add("done");
+    $("status-txt").textContent = `✓ Đã kích hoạt: máy bạn đã nối với cụm GPU (cổng ${found.port})`;
+    $("models").textContent = `Đã đi qua cầu nối: ${found.d.requests} request (từ ${String(found.d.since).replace("T", " ")})`;
+  } else {
+    $("status-txt").textContent = other ? "Cổng 11434 đang chạy Ollama khác (chưa phải cầu nối AICF)" : "Đang chờ bạn chạy file ở bước 2…";
+    $("models").textContent = "";
   }
 }
 function startPolling() { if (!polling) { probe(); polling = setInterval(probe, 3000); } }
