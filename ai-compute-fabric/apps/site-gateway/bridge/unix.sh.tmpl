@@ -95,6 +95,7 @@ do_uninstall() {
   else systemctl --user disable --now aicf-bridge.service 2>/dev/null || true; rm -f "$UNIT"; systemctl --user daemon-reload 2>/dev/null || true; fi
   [ -f "$DIR/bridge.pid" ] && kill "$(cat "$DIR/bridge.pid")" 2>/dev/null || true
   rm -f "$CODEX_DIR/aicf.config.toml"; rm -rf "$DIR"
+  if [ -f "$HOME/.gjc/agent/models.yml" ] && head -1 "$HOME/.gjc/agent/models.yml" | grep -q "managed by AICF"; then rm -f "$HOME/.gjc/agent/models.yml"; fi
   echo "[OK] Da go cau noi AICF. Cai dat Codex cua ban khong bi thay doi."
 }
 
@@ -146,6 +147,18 @@ write_bridge
   echo 'case "${1:-status}" in status) do_status ;; uninstall) do_uninstall ;; *) echo "Dung: bash $0 [status|uninstall]" ;; esac'; } > "$DIR/ctl.sh"
 printf 'model = "%s"\nmodel_provider = "aicf"\n\n[model_providers.aicf]\nname = "AI Compute Fabric (Cluster GPU)"\nbase_url = "http://%s:%s/v1"\nenv_key = "AICF_API_KEY"\nwire_api = "responses"\n' "$MODEL" "$LISTEN_HOST" "$LISTEN_PORT" > "$CODEX_DIR/aicf.config.toml"
 
+# GJC (gjc): neu da cai, them nha cung cap "aicf" vao ~/.gjc/agent/models.yml (khong ghi de file co san)
+GJC_YML="$HOME/.gjc/agent/models.yml"
+if [ -d "$HOME/.gjc/agent" ]; then
+  if [ ! -e "$GJC_YML" ]; then
+    ( umask 077; printf '# managed by AICF bridge\nproviders:\n  aicf:\n    baseUrl: http://%s:%s/v1\n    api: openai-completions\n    auth: apiKey\n    apiKeyEnv: AICF_API_KEY\n    discovery:\n      type: openai-models-list\n' "$LISTEN_HOST" "$LISTEN_PORT" > "$GJC_YML" )
+    echo "[OK] Da them nha cung cap 'aicf' cho GJC: $GJC_YML   (chay: gjc --model aicf/$MODEL)"
+  elif ! grep -q 'aicf:' "$GJC_YML"; then
+    echo "[Luu y] $GJC_YML da co. Them thu cong duoi 'providers:':"
+    printf '  aicf:\n    baseUrl: http://%s:%s/v1\n    api: openai-completions\n    auth: apiKey\n    apiKeyEnv: AICF_API_KEY\n    discovery:\n      type: openai-models-list\n' "$LISTEN_HOST" "$LISTEN_PORT"
+  fi
+fi
+
 PYBIN="$(command -v python3)"
 if [ -f "$DIR/bridge.pid" ]; then kill "$(cat "$DIR/bridge.pid")" 2>/dev/null || true; rm -f "$DIR/bridge.pid"; sleep 1; fi
 if [ "${AICF_NO_SERVICE:-0}" = "1" ]; then
@@ -178,6 +191,6 @@ echo
 echo "[XONG] Da kich hoat! Cau noi chay nen."
 echo "  Dung Codex (terminal moi):"
 echo "    export AICF_API_KEY='${AICF_TOKEN:-ollama}'"
-echo "    codex --profile aicf"
+echo "    codex --profile aicf        |   gjc --model aicf/$MODEL"
 echo "  Cursor / Continue / Chatbox: chon Ollama, dia chi http://${LISTEN_HOST}:${LISTEN_PORT}"
 echo "  Kiem tra: bash $DIR/ctl.sh status      Go: bash $DIR/ctl.sh uninstall"

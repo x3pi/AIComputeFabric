@@ -84,6 +84,7 @@ if ($action -eq 'uninstall') {
   Stop-Bridge
   Remove-Item $vbs -ErrorAction SilentlyContinue
   Remove-Item $aicfCfg -ErrorAction SilentlyContinue
+  $gy = Join-Path $env:USERPROFILE '.gjc\agent\models.yml'; if ((Test-Path $gy) -and ((Get-Content $gy -TotalCount 1) -like '*managed by AICF*')) { Remove-Item $gy }
   [Environment]::SetEnvironmentVariable('AICF_API_KEY', $null, 'User'); [Environment]::SetEnvironmentVariable('OLLAMA_HOST', $null, 'User')
   if (Test-Path $state) {
     $st = Get-Content $state -Raw | ConvertFrom-Json
@@ -118,6 +119,13 @@ $toml = @(('model = "' + $model + '"'), 'model_provider = "aicf"', '', '[model_p
 [Environment]::SetEnvironmentVariable('AICF_API_KEY', $(if ($TOK) { $TOK } else { 'ollama' }), 'User')
 [Environment]::SetEnvironmentVariable('OLLAMA_HOST', "http://127.0.0.1:$PORT", 'User')
 
+$gjcDir = Join-Path $env:USERPROFILE '.gjc\agent'; $gjcYml = Join-Path $gjcDir 'models.yml'
+if (Test-Path $gjcDir) {
+  $yml = @('# managed by AICF bridge', 'providers:', '  aicf:', "    baseUrl: http://127.0.0.1:$PORT/v1", '    api: openai-completions', '    auth: apiKey', '    apiKeyEnv: AICF_API_KEY', '    discovery:', '      type: openai-models-list') -join $nl
+  if (-not (Test-Path $gjcYml)) { [IO.File]::WriteAllText($gjcYml, $yml + $nl, (New-Object Text.UTF8Encoding($false))); Write-Host "[OK] Da them nha cung cap 'aicf' cho GJC (chay: gjc --model aicf/$model)" -ForegroundColor Green }
+  elseif (-not (Select-String -Path $gjcYml -Pattern 'aicf:' -Quiet)) { Write-Host "[Luu y] $gjcYml da co. Them thu cong duoi 'providers:':" -ForegroundColor Yellow; ($yml -split $nl | Select-Object -Skip 2) | ForEach-Object { Write-Host $_ } }
+}
+
 $vb = 'CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""' + $self + '"" run", 0, False'
 [IO.File]::WriteAllText($vbs, $vb, [Text.Encoding]::ASCII)
 Start-Process wscript.exe -ArgumentList ('"' + $vbs + '"')
@@ -125,6 +133,6 @@ $ok = $false; 1..15 | ForEach-Object { if (-not $ok) { Start-Sleep -Seconds 1; $
 if (-not $ok) { Write-Host '[LOI] Cau noi chua len. Chay lai file nay hoac xem cong 11434 co bi chiem khong.' -ForegroundColor Red; exit 1 }
 Write-Host ''
 Write-Host '[XONG] Da kich hoat! Cau noi chay nen va tu bat khi ban dang nhap Windows.' -ForegroundColor Green
-Write-Host '       Mo terminal MOI roi chay:  codex --profile aicf' -ForegroundColor Yellow
+Write-Host '       Mo terminal MOI roi chay:  codex --profile aicf   (hoac: gjc --model aicf/<model>)' -ForegroundColor Yellow
 Write-Host '       Cursor / Continue / Chatbox: chon Ollama, dia chi http://127.0.0.1:11434'
 Write-Host '       Go cai dat:  aicf-ollama-bridge.bat uninstall'
