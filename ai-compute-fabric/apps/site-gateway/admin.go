@@ -138,6 +138,8 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 		rt = routers[0]
 	}
 	registerEstimatorAndStatsRoutes(mux, f, ts, rt)
+	ollamaEmu := NewOllamaEmulator(f, ts, auth, audit, rt)
+	mux.Handle("/api/ollama-emulator/", http.HandlerFunc(ollamaEmu.HandleConfigAPI))
 	var topo *TopologyCoordinator
 	if f != nil {
 		topo = NewTopologyCoordinator(f.reg, audit)
@@ -917,6 +919,45 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 				http.Error(w, "invalid API key or admin token", http.StatusUnauthorized)
 				return
 			}
+		}
+
+		// Ollama Native Protocol Emulation (/api/tags, /api/show, /api/version, /api/ps, /api/chat, /api/generate, /api/ollama/v1/*)
+		if IsOllamaEndpoint(r.URL.Path) {
+			sw := &statusWriter{ResponseWriter: w, code: http.StatusOK}
+			ollamaEmu.ServeHTTP(sw, r)
+			note(Principal{Name: "ollama-emulator", Role: "tenant"}, r, sw.code)
+			return
+		}
+
+		// /api/ollama-emulator/* is accessible to authenticated staff, authenticated tenants, and open/bridge downloads.
+		if strings.HasPrefix(r.URL.Path, "/api/ollama-emulator/") {
+			qTok := strings.TrimSpace(r.URL.Query().Get("token"))
+			tok := bearer
+			if tok == "" {
+				tok = qTok
+			}
+			if auth.Open() || r.URL.Path == "/api/ollama-emulator/bridge-script" {
+				ollamaEmu.HandleConfigAPI(w, r)
+				return
+			}
+			if p, ok := auth.Identify(tok); ok {
+				r.Header.Set("X-Aicf-User", p.Name)
+				r.Header.Set("X-Aicf-Role", p.Role)
+				ollamaEmu.HandleConfigAPI(w, r)
+				return
+			}
+			if ts != nil && tok != "" {
+				if t, ok := ts.Authenticate(tok); ok {
+					r.Header.Set("X-Aicf-Tenant", t.ID)
+					r.Header.Set("X-Aicf-User", t.Name)
+					r.Header.Set("X-Aicf-Role", "tenant")
+					ollamaEmu.HandleConfigAPI(w, r)
+					return
+				}
+			}
+			w.Header().Set("WWW-Authenticate", `Bearer realm="aicf"`)
+			http.Error(w, "authentication required", http.StatusUnauthorized)
+			return
 		}
 
 		// /api/studio/* also allows authenticated Tenant sessions/keys to use AI Studio & Audio AI for their own tenant ID.

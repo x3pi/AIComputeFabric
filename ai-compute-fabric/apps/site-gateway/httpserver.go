@@ -16,7 +16,7 @@ type serverTimeouts struct {
 
 var defaultTimeouts = serverTimeouts{ReadHeader: 10 * time.Second, Read: 5 * time.Minute, Idle: 2 * time.Minute}
 
-const defaultCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+const defaultCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' http://127.0.0.1:11434 http://localhost:11434; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 
 // withSecurityHeaders attaches baseline production security headers and Cache-Control policy to every HTTP response (B4e, B4f).
 func withSecurityHeaders(next http.Handler) http.Handler {

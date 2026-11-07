@@ -329,6 +329,7 @@ function applyAuthenticatedSession({ token, tenantId, email, name, role, preserv
     window.AICF.name = name || email || tenantId;
     window.AICF.email = email || "";
     window.AICF.tenant_id = tenantId || "";
+    window.AICF.open = false;
     if (typeof applyRole === "function") applyRole();
   }
   syncRoleUi();
@@ -1716,18 +1717,28 @@ document.getElementById("sl-console-btn-enable").onclick = async () => {
 };
 document.getElementById("sl-btn-refresh").onclick = loadOverview;
 
+const ollamaCodexBtn = document.getElementById("sl-btn-ollama-codex");
+if (ollamaCodexBtn) {
+  ollamaCodexBtn.onclick = () => {
+    if (typeof openOllamaEmulatorModal === "function") openOllamaEmulatorModal();
+  };
+}
+
 // Render Cloud Developer Docs Snippets & Downloads
 document.getElementById("sl-btn-download-env").onclick = () => {
-  const gw = location.origin;
+  const gw = (location.hostname === "127.0.0.1" || location.hostname === "localhost")
+    ? "http://10.42.0.1:18080"
+    : location.origin;
   const key = keyInput.value.trim() || "<AICF_API_KEY>";
   const tid = tenantInput.value.trim() || "demo";
-  const envContent = `AICF_GATEWAY_URL=${gw}\nAICF_TENANT_ID=${tid}\nAICF_API_KEY=${key}\n`;
+  const envContent = `AICF_GATEWAY_URL=${gw}\nAICF_TENANT_ID=${tid}\nAICF_API_KEY=${key}\nOPENAI_BASE_URL=${gw}/v1\nOPENAI_API_KEY=${key}\nOLLAMA_HOST=http://127.0.0.1:11434\n`;
   const blob = new Blob([envContent], { type: "text/plain;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "aicf.env";
   a.click();
   URL.revokeObjectURL(a.href);
+  if (typeof openOllamaEmulatorModal === "function") openOllamaEmulatorModal();
 };
 syncRoleUi();
 setUiMode(uiMode);

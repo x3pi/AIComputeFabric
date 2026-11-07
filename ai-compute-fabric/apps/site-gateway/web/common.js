@@ -447,6 +447,268 @@ function buildAccountSecurityModal() {
   return bd;
 }
 
+function detectClientOS() {
+  const ua = (navigator.userAgent || "").toLowerCase();
+  if (ua.includes("win")) return "windows";
+  if (ua.includes("mac")) return "macos";
+  return "linux";
+}
+
+function openOllamaEmulatorModal() {
+  let bd = document.getElementById("aicf-ollama-modal");
+  if (!bd) {
+    bd = buildOllamaEmulatorModal();
+    document.body.append(bd);
+  }
+  bd.hidden = false;
+  if (typeof bd.refreshStatus === "function") bd.refreshStatus();
+}
+
+function buildOllamaEmulatorModal() {
+  const close = () => { bd.hidden = true; };
+  const bd = el("div", {
+    class: "drawer-backdrop",
+    id: "aicf-ollama-modal",
+    hidden: true,
+    style: "display:flex;align-items:center;justify-content:center;z-index:9999",
+    onclick: e => { if (e.target.id === "aicf-ollama-modal") close(); }
+  });
+
+  const getActiveBearer = () => store.get("aicf_sl_api_key") || store.get("aicf_admin");
+  let selectedOS = detectClientOS();
+
+  const localProbeBox = el("div", {
+    id: "aicf-ollama-local-probe",
+    style: "padding:12px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--bg-2, rgba(255,255,255,0.03));font-size:13px"
+  }, "⏳ Đang kiểm tra cổng mặc định http://127.0.0.1:11434 trên máy của bạn…");
+
+  const gwStatusBox = el("div", {
+    id: "aicf-ollama-gw-status",
+    style: "font-size:12.5px;color:var(--fg-secondary)"
+  }, "Đang tải trạng thái từ Gateway…");
+
+  const modelsListEl = el("div", {
+    id: "aicf-ollama-models-list",
+    style: "display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"
+  });
+
+  const clientsListEl = el("div", {
+    id: "aicf-ollama-clients-list",
+    style: "display:flex;flex-direction:column;gap:4px;max-height:110px;overflow-y:auto;font-size:12px;margin-top:6px"
+  });
+
+  const oneLinerCode = el("pre", {
+    id: "aicf-ollama-oneliner",
+    class: "mono code-box",
+    style: "margin:6px 0 0;padding:10px 12px;font-size:12px;overflow-x:auto;white-space:pre;border:1px solid var(--bd);border-radius:6px"
+  });
+
+  const actionMsg = el("div", {
+    id: "aicf-ollama-action-msg",
+    style: "font-size:12.5px;font-weight:600;min-height:18px"
+  });
+
+  function updateOSButtons() {
+    for (const [osId, btn] of Object.entries(osBtns)) {
+      if (osId === selectedOS) {
+        btn.classList.add("primary");
+        btn.classList.remove("ghost");
+      } else {
+        btn.classList.remove("primary");
+        btn.classList.add("ghost");
+      }
+    }
+    const tok = getActiveBearer();
+    const isLocalhost = location.hostname === "127.0.0.1" || location.hostname === "localhost";
+    const gw = (selectedOS === "windows" && isLocalhost) ? "http://10.42.0.1:18080" : location.origin;
+    const scriptUrl = `${gw}/api/ollama-emulator/bridge-script?os=${encodeURIComponent(selectedOS)}&gateway=${encodeURIComponent(gw)}${tok ? `&token=${encodeURIComponent(tok)}` : ""}`;
+    if (selectedOS === "windows") {
+      oneLinerCode.textContent = `curl.exe -fsSL "${scriptUrl}" -o "%TEMP%\\aicf-ollama-bridge.bat" && "%TEMP%\\aicf-ollama-bridge.bat"`;
+    } else {
+      oneLinerCode.textContent = `curl -fsSL "${scriptUrl}" | bash`;
+    }
+    dlBtn.onclick = () => {
+      const a = document.createElement("a");
+      a.href = scriptUrl;
+      a.download = selectedOS === "windows" ? "aicf-ollama-bridge.bat" : (selectedOS === "macos" ? "aicf-ollama-bridge.command" : "aicf-ollama-bridge.sh");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      actionMsg.style.color = "#16a34a";
+      actionMsg.textContent = "✓ Đã tải tệp kích hoạt 1-Click (đã nhúng sẵn URL & API Key của bạn). Hãy mở tệp vừa tải để đồng bộ mọi ứng dụng!";
+    };
+  }
+
+  const osBtns = {
+    linux: el("button", { type: "button", class: "sm ghost", onclick: () => { selectedOS = "linux"; updateOSButtons(); } }, "🐧 Linux (.sh)"),
+    macos: el("button", { type: "button", class: "sm ghost", onclick: () => { selectedOS = "macos"; updateOSButtons(); } }, "🍎 macOS (.command)"),
+    windows: el("button", { type: "button", class: "sm ghost", onclick: () => { selectedOS = "windows"; updateOSButtons(); } }, "🪟 Windows (.bat)"),
+  };
+
+  const dlBtn = el("button", {
+    type: "button",
+    id: "aicf-ollama-download-btn",
+    class: "primary sm",
+    style: "font-weight:700;padding:8px 14px"
+  }, "⚡ Tải tệp Kích hoạt 1-Click (Zero-Config)");
+
+  const copyCmdBtn = el("button", {
+    type: "button",
+    id: "aicf-ollama-copy-cmd-btn",
+    class: "sm",
+    onclick: async () => {
+      try {
+        await navigator.clipboard.writeText(oneLinerCode.textContent);
+        actionMsg.style.color = "#16a34a";
+        actionMsg.textContent = "✓ Đã sao chép lệnh kích hoạt 1 dòng vào bộ nhớ tạm!";
+      } catch {
+        actionMsg.style.color = "#d97706";
+        actionMsg.textContent = "⚠️ Hãy bôi đen và sao chép lệnh bên trên.";
+      }
+    }
+  }, "📋 Sao chép lệnh 1 dòng");
+
+  const startServerPortBtn = el("button", {
+    type: "button",
+    id: "aicf-ollama-server-start-btn",
+    class: "sm ghost",
+    onclick: async () => {
+      actionMsg.style.color = "var(--fg-secondary)";
+      actionMsg.textContent = "Đang kích hoạt cổng 11434 trực tiếp trên máy chủ Gateway…";
+      try {
+        const r = await fetch("/api/ollama-emulator/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + getActiveBearer() },
+          body: JSON.stringify({ enabled: true, zero_config_auth: true, listener_action: "start" })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (d.action_error) {
+          actionMsg.style.color = "#d97706";
+          actionMsg.textContent = `⚠️ Cổng 11434 trên Server đang bận (${d.action_error}). Hãy chạy lệnh 1 dòng bên trên để tự động dừng ollama.service gốc và chiếm cổng 11434!`;
+        } else {
+          actionMsg.style.color = "#16a34a";
+          actionMsg.textContent = "✓ Đã mở cổng 11434 trực tiếp trên Server Gateway!";
+        }
+        refreshStatus();
+      } catch (e) {
+        actionMsg.style.color = "#dc2626";
+        actionMsg.textContent = "❌ Không thể gọi API: " + e;
+      }
+    }
+  }, "🖥️ Mở cổng :11434 trên Server");
+
+  async function probeBrowserLocal11434() {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 1200);
+      const r = await fetch("http://127.0.0.1:11434/api/tags", { signal: ctrl.signal });
+      clearTimeout(t);
+      const isAICF = r.headers.get("X-AICF-Ollama-Emulator") === "true";
+      const data = await r.json().catch(() => ({}));
+      const count = (data.models || []).length;
+      if (isAICF) {
+        localProbeBox.style.borderColor = "#16a34a";
+        localProbeBox.innerHTML = `<strong style="color:#16a34a">🟢 ĐÃ KẾT NỐI TỰ ĐỘNG (127.0.0.1:11434)</strong><div style="margin-top:4px;font-size:12px">Máy của bạn đang đồng bộ trực tiếp <b>${count} model</b> từ Cụm GPU AI Compute Fabric. Mở ngay <b>Cursor, Continue, Chatbox, Open WebUI, AnythingLLM</b> là thấy danh sách model mà không cần cấu hình!</div>`;
+      } else {
+        localProbeBox.style.borderColor = "#d97706";
+        localProbeBox.innerHTML = `<strong style="color:#d97706">🟡 CỔNG 11434 ĐANG BỊ DỊCH VỤ OLLAMA GỐC CHIẾM GIỮ</strong><div style="margin-top:4px;font-size:12px">Cổng <code>127.0.0.1:11434</code> trên máy này đang trả về từ Ollama mặc định (${count} model cục bộ). Hãy bấm <b>Tải tệp Kích hoạt 1-Click</b> hoặc chạy lệnh 1 dòng bên dưới để chuyển cổng 11434 sang Cụm GPU 24GB VRAM!</div>`;
+      }
+    } catch {
+      localProbeBox.style.borderColor = "var(--bd)";
+      localProbeBox.innerHTML = `<strong style="color:var(--fg-secondary)">⚪ CỔNG 127.0.0.1:11434 CHƯA BẬT TRÊN MÁY NÀY</strong><div style="margin-top:4px;font-size:12px">Hãy bấm <b>⚡ Tải tệp Kích hoạt 1-Click</b> hoặc dán <b>Lệnh 1 dòng</b> bên dưới vào Terminal/PowerShell để các ứng dụng bên thứ 3 tự động nhận diện model.</div>`;
+    }
+  }
+
+  async function refreshStatus() {
+    updateOSButtons();
+    probeBrowserLocal11434();
+    try {
+      const tok = getActiveBearer();
+      const headers = tok ? { Authorization: "Bearer " + tok } : {};
+      const r = await fetch("/api/ollama-emulator/status", { headers });
+      if (!r.ok) {
+        gwStatusBox.textContent = "ℹ️ Đăng nhập tài khoản để đính kèm API Key tự động vào cầu nối.";
+        return;
+      }
+      const d = await r.json();
+      gwStatusBox.textContent = `Trạng thái Gateway: ${d.enabled ? "🟢 Đang bật bộ dịch giao thức Ollama (/api/tags, /api/chat, /api/show)" : "🔴 Đang tắt"} · ${d.port_11434_detail || ""} · Đã phục vụ: ${d.served_requests || 0} yêu cầu`;
+
+      modelsListEl.replaceChildren();
+      const models = d.ollama_tags || [];
+      if (!models.length) {
+        modelsListEl.append(el("span", { class: "mut", style: "font-size:12px" }, "Chưa có worker model nào đang chạy."));
+      } else {
+        for (const m of models) {
+          modelsListEl.append(el("span", {
+            class: "mono",
+            style: "padding:4px 8px;border-radius:6px;border:1px solid var(--bd);font-size:11.5px;background:rgba(66,133,244,0.12)"
+          }, `📦 ${m.name} (${m.details?.parameter_size || ""} · ${m.details?.quantization_level || ""})`));
+        }
+      }
+
+      clientsListEl.replaceChildren();
+      const clients = d.recent_clients || [];
+      if (!clients.length) {
+        clientsListEl.append(el("div", { class: "mut" }, "Chưa có ứng dụng bên thứ 3 nào truy cập trong phiên này."));
+      } else {
+        for (const c of clients) {
+          clientsListEl.append(el("div", {
+            class: "row",
+            style: "justify-content:space-between;padding:4px 8px;border:1px solid var(--bd);border-radius:5px"
+          },
+            el("span", {}, el("strong", {}, c.client_app), el("span", { class: "mut", style: "margin-left:6px" }, `${c.method} ${c.path}`)),
+            el("span", { class: "mono mut" }, (c.time || "").slice(11, 19))
+          ));
+        }
+      }
+    } catch {}
+  }
+
+  bd.refreshStatus = refreshStatus;
+
+  const card = el("div", {
+    class: "card",
+    role: "dialog",
+    "aria-label": "Giả lập Ollama qua Cổng Mặc định 11434",
+    style: "width:min(640px, 96vw);max-height:90vh;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 50px rgba(0,0,0,0.45)"
+  },
+    el("div", { class: "row", style: "justify-content:space-between;align-items:flex-start" },
+      el("div", {},
+        el("h2", { style: "margin:0;font-size:17px" }, "🔌 Giả lập Ollama qua Cổng Mặc định (127.0.0.1:11434)"),
+        el("div", { class: "mut", style: "font-size:12px;margin-top:3px" }, "Tự động đồng bộ danh sách Model sang Cursor, Continue, Chatbox, Open WebUI, AnythingLLM mà không cần cấu hình URL")
+      ),
+      el("button", { type: "button", class: "sm ghost", onclick: close }, "✕")
+    ),
+    localProbeBox,
+    gwStatusBox,
+    el("div", { style: "border-top:1px solid var(--bd);padding-top:10px" },
+      el("div", { class: "row", style: "justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px" },
+        el("strong", { style: "font-size:13px" }, "1️⃣ Chọn Hệ điều hành & Kích hoạt 1-Click:"),
+        el("div", { class: "row", style: "gap:6px" }, osBtns.linux, osBtns.macos, osBtns.windows)
+      ),
+      el("div", { class: "row", style: "gap:8px;margin-top:10px;flex-wrap:wrap" },
+        dlBtn,
+        copyCmdBtn,
+        startServerPortBtn,
+        el("button", { type: "button", class: "sm ghost", onclick: refreshStatus }, "↻ Kiểm tra lại cổng 11434")
+      ),
+      oneLinerCode,
+      actionMsg
+    ),
+    el("div", { style: "border-top:1px solid var(--bd);padding-top:10px" },
+      el("strong", { style: "font-size:13px" }, "2️⃣ Danh sách Model đang đồng bộ tự động qua /api/tags:"),
+      modelsListEl
+    ),
+    el("div", { style: "border-top:1px solid var(--bd);padding-top:10px" },
+      el("strong", { style: "font-size:13px" }, "3️⃣ Ứng dụng bên thứ 3 vừa tự động nhận diện:"),
+      clientsListEl
+    )
+  );
+
+  bd.append(card);
+  return bd;
+}
+
 async function logoutGlobalSession() {
   const tok = store.get("aicf_admin") || store.get("aicf_sl_api_key");
   if (tok) {
@@ -685,9 +947,17 @@ function renderNav() {
 
   const roleBadge = el("span", { class: "nav-role", id: "nav-role", title: "Vai trò của phiên hiện tại" }, "…");
 
+  const ollamaBtn = el("button", {
+    type: "button",
+    class: "sm ghost",
+    id: "nav-ollama-btn",
+    title: "Giả lập Ollama qua Cổng Mặc định (:11434) — Tự động đồng bộ danh sách Model sang ứng dụng bên thứ 3",
+    onclick: () => openOllamaEmulatorModal()
+  }, "🔌 Ollama :11434");
+
   const topbar = el("header", { class: "app-topbar" },
     el("div", { class: "topbar-left" }, topbarHamburger),
-    el("div", { class: "topbar-actions" }, livePill, roleBadge, authBtn, secBtn, logoutBtn, themeBtn)
+    el("div", { class: "topbar-actions" }, livePill, ollamaBtn, roleBadge, authBtn, secBtn, logoutBtn, themeBtn)
   );
 
   // 4. Wrap <main> inside .app-main-wrap
