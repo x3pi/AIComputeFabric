@@ -121,7 +121,7 @@ $toml = @(('model = "' + $model + '"'), 'model_provider = "aicf"', '', '[model_p
 
 $gjcDir = Join-Path $env:USERPROFILE '.gjc\agent'; $gjcYml = Join-Path $gjcDir 'models.yml'
 if (Test-Path $gjcDir) {
-  $yml = @('# managed by AICF bridge', 'providers:', '  aicf:', "    baseUrl: http://127.0.0.1:$PORT/v1", '    api: openai-completions', '    auth: apiKey', '    apiKeyEnv: AICF_API_KEY', '    discovery:', '      type: openai-models-list') -join $nl
+  $yml = @('# managed by AICF bridge', 'providers:', '  aicf:', "    baseUrl: http://127.0.0.1:$PORT/v1", '    api: openai-completions', '    auth: apiKey', '    apiKey: aicf-bridge', '    discovery:', '      type: openai-models-list', '    models:', "      - id: $model") -join $nl
   if (-not (Test-Path $gjcYml)) { [IO.File]::WriteAllText($gjcYml, $yml + $nl, (New-Object Text.UTF8Encoding($false))); Write-Host "[OK] Da them nha cung cap 'aicf' cho GJC (chay: gjc --model aicf/$model)" -ForegroundColor Green }
   elseif (-not (Select-String -Path $gjcYml -Pattern 'aicf:' -Quiet)) { Write-Host "[Luu y] $gjcYml da co. Them thu cong duoi 'providers:':" -ForegroundColor Yellow; ($yml -split $nl | Select-Object -Skip 2) | ForEach-Object { Write-Host $_ } }
 }

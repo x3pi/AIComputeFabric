@@ -151,11 +151,11 @@ printf 'model = "%s"\nmodel_provider = "aicf"\n\n[model_providers.aicf]\nname = 
 GJC_YML="$HOME/.gjc/agent/models.yml"
 if [ -d "$HOME/.gjc/agent" ]; then
   if [ ! -e "$GJC_YML" ]; then
-    ( umask 077; printf '# managed by AICF bridge\nproviders:\n  aicf:\n    baseUrl: http://%s:%s/v1\n    api: openai-completions\n    auth: apiKey\n    apiKeyEnv: AICF_API_KEY\n    discovery:\n      type: openai-models-list\n' "$LISTEN_HOST" "$LISTEN_PORT" > "$GJC_YML" )
+    ( umask 077; printf '# managed by AICF bridge\nproviders:\n  aicf:\n    baseUrl: http://%s:%s/v1\n    api: openai-completions\n    auth: apiKey\n    apiKey: aicf-bridge\n    discovery:\n      type: openai-models-list\n    models:\n      - id: %s\n' "$LISTEN_HOST" "$LISTEN_PORT" "$MODEL" > "$GJC_YML" )
     echo "[OK] Da them nha cung cap 'aicf' cho GJC: $GJC_YML   (chay: gjc --model aicf/$MODEL)"
   elif ! grep -q 'aicf:' "$GJC_YML"; then
     echo "[Luu y] $GJC_YML da co. Them thu cong duoi 'providers:':"
-    printf '  aicf:\n    baseUrl: http://%s:%s/v1\n    api: openai-completions\n    auth: apiKey\n    apiKeyEnv: AICF_API_KEY\n    discovery:\n      type: openai-models-list\n' "$LISTEN_HOST" "$LISTEN_PORT"
+    printf '  aicf:\n    baseUrl: http://%s:%s/v1\n    api: openai-completions\n    auth: apiKey\n    apiKey: aicf-bridge\n    discovery:\n      type: openai-models-list\n    models:\n      - id: %s\n' "$LISTEN_HOST" "$LISTEN_PORT" "$MODEL"
   fi
 fi
 
