@@ -1,6 +1,7 @@
 // Shared by every page: admin token (kept in sessionStorage only), authenticated fetch,
 // SSE over fetch (EventSource cannot send an Authorization header), theme toggle, and 6-bucket VRAM renderer.
 const NAV = [
+  ["connect.html", "Kích hoạt máy bạn", "🔌", "user"],
   ["serverless.html", "Serverless GPU", "⚡", "user"],
   ["chat.html", "Playground & Tải", "💬", "user"],
   ["studio.html", "AI Studio", "🧪", "user"],

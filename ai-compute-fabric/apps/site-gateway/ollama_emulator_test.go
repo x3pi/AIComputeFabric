@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,11 @@ import (
 func TestOllamaEmulatorProtocolAndDedicatedPort(t *testing.T) {
 	// Fake llama-server upstream that speaks OpenAI /v1/chat/completions (streaming & non-streaming)
 	workerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/responses" { // Codex CLI uses the Responses API (wire_api = "responses")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"object":"response","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}`)
+			return
+		}
 		var req struct {
 			Model  string `json:"model"`
 			Stream bool   `json:"stream"`
@@ -72,6 +78,20 @@ func TestOllamaEmulatorProtocolAndDedicatedPort(t *testing.T) {
 	}
 	if len(tagsReply.Models) != 1 || tagsReply.Models[0].Name != "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf" {
 		t.Fatalf("unexpected /api/tags models: %+v", tagsReply.Models)
+	}
+
+	// 1b. Codex: POST /api/ollama/v1/responses is forwarded to the engine's /v1/responses
+	rreq, _ := http.NewRequest(http.MethodPost, gwSrv.URL+"/api/ollama/v1/responses", strings.NewReader(`{"model":"qwen3-coder:latest","input":"hi"}`))
+	rreq.Header.Set("Content-Type", "application/json")
+	rreq.Header.Set("Authorization", "Bearer "+tenantKey)
+	rresp, err := http.DefaultClient.Do(rreq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rbody, _ := io.ReadAll(rresp.Body)
+	rresp.Body.Close()
+	if rresp.StatusCode != http.StatusOK || !strings.Contains(string(rbody), `"object":"response"`) {
+		t.Fatalf("POST /api/ollama/v1/responses = %d %s", rresp.StatusCode, rbody)
 	}
 
 	// 2. POST /api/show with :latest suffix resolves to the active cluster model

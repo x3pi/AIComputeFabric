@@ -1040,7 +1040,7 @@ func (oe *OllamaEmulator) handleOpenAICompat(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	switch p {
-	case "/v1/chat/completions", "/v1/completions", "/v1/embeddings":
+	case "/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/responses":
 	default:
 		http.NotFound(w, r)
 		return
@@ -1278,11 +1278,17 @@ except Exception as e:
     print("Canh bao: chua doc duoc /api/tags tu cum may:", e)
 d = os.path.expanduser("~/.codex"); os.makedirs(d, exist_ok=True)
 cfg = os.path.join(d, "config.toml")
-if os.path.exists(cfg) and "model_providers.aicf" not in open(cfg).read():
-    shutil.copy(cfg, cfg + ".bak"); print("Da sao luu config cu ->", cfg + ".bak")
-open(cfg, "w").write('model = "%%s"\nmodel_provider = "aicf"\n\n[model_providers.aicf]\nname = "AI Compute Fabric (Cluster GPU)"\nbase_url = "http://%%s:%%s/v1"\nenv_key = "OPENAI_API_KEY"\nwire_api = "chat"\n' %% (model, host, port))
-print("Da cau hinh Codex CLI:", cfg)
-print("Dat bien moi truong truoc khi chay codex:  export OPENAI_API_KEY=%%s" %% (tok or "ollama"))
+BG, EN = "# >>> AICF (managed) >>>", "# <<< AICF <<<"
+if os.path.exists(cfg):  # remove the block written by older versions of this script
+    old = open(cfg).read()
+    if BG in old and EN in old:
+        open(cfg, "w").write((old[:old.index(BG)].rstrip() + old[old.index(EN) + len(EN):]).rstrip() + "\n")
+acfg = os.path.join(d, "aicf.config.toml")
+open(acfg, "w").write('model = "%%s"\nmodel_provider = "aicf"\n\n[model_providers.aicf]\nname = "AI Compute Fabric (Cluster GPU)"\nbase_url = "http://%%s:%%s/v1"\nenv_key = "AICF_API_KEY"\nwire_api = "responses"\n' %% (model, host, port))
+print("Da tao profile 'aicf':", acfg, "(config.toml cua ban khong bi sua)")
+print("Chay Codex voi cum GPU:")
+print("  export AICF_API_KEY=%%s" %% (tok or "ollama"))
+print("  codex --profile aicf")
 CODEXEOF
 
 exec python3 - "${GATEWAY_URL}" "${AICF_TOKEN}" "${LISTEN_HOST}" "${LISTEN_PORT}" << 'PYEOF'
@@ -1428,19 +1434,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$gw = $env:GATEWAY_URL; foreach ($c in $candidates) { try { $r = Invoke-WebRequest -Uri ($c + '/api/tags') -TimeoutSec 2 -UseBasicParsing; if ($r.StatusCode -eq 200) { $gw = $c; break } } catch {} }; " ^
   "$tok = $env:AICF_TOKEN; if (-not $tok -or $tok -like '<*>') { $tok = 'ollama' }; " ^
   "$model = 'Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf'; try { $tags = Invoke-RestMethod -Uri ($gw + '/api/tags') -TimeoutSec 3; if ($tags.models.Count -gt 0) { $model = $tags.models[0].name } } catch {}; " ^
-  "[Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', 'http://127.0.0.1:11434/v1', 'User'); " ^
-  "[Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $tok, 'User'); " ^
+  "[Environment]::SetEnvironmentVariable('AICF_API_KEY', $tok, 'User'); " ^
   "[Environment]::SetEnvironmentVariable('OLLAMA_HOST', 'http://127.0.0.1:11434', 'User'); " ^
   "$codexDir = Join-Path $env:USERPROFILE '.codex'; New-Item -ItemType Directory -Force -Path $codexDir | Out-Null; " ^
   "$codexCfg = Join-Path $codexDir 'config.toml'; " ^
-  "$tomlLines = @('model = \"' + $model + '\"', 'model_provider = \"aicf\"', '', '[model_providers.aicf]', 'name = \"AI Compute Fabric (Cluster GPU)\"', 'base_url = \"http://127.0.0.1:11434/v1\"', 'env_key = \"OPENAI_API_KEY\"', 'wire_api = \"chat\"'); " ^
-  "Set-Content -Path $codexCfg -Value $tomlLines -Encoding UTF8; " ^
+  "$nl = [string][char]10; $bg = '# >>> AICF (managed) >>>'; $en = '# <<< AICF <<<'; $utf8 = New-Object System.Text.UTF8Encoding($false); " ^
+  "if (Test-Path $codexCfg) { $old = [IO.File]::ReadAllText($codexCfg); if ($old.Contains($bg)) { $new = [regex]::Replace($old, '(?s)\s*' + [regex]::Escape($bg) + '.*?' + [regex]::Escape($en), ''); [IO.File]::WriteAllText($codexCfg, $new, $utf8) } }; " ^
+  "$aicfCfg = Join-Path $codexDir 'aicf.config.toml'; " ^
+  "$blk = @(('model = \"' + $model + '\"'), 'model_provider = \"aicf\"', '', '[model_providers.aicf]', 'name = \"AI Compute Fabric (Cluster GPU)\"', 'base_url = \"http://127.0.0.1:11434/v1\"', 'env_key = \"AICF_API_KEY\"', 'wire_api = \"responses\"') -join $nl; " ^
+  "[IO.File]::WriteAllText($aicfCfg, ($blk + $nl), $utf8); " ^
   "Write-Host ('[OK] Da ket noi Cum GPU: ' + $gw) -ForegroundColor Green; " ^
   "Write-Host ('[OK] Model dong bo: ' + $model) -ForegroundColor Cyan; " ^
-  "Write-Host ('[OK] Da cau hinh tu dong OpenAI Codex CLI tai: ' + $codexCfg) -ForegroundColor Green; " ^
-  "$listener = New-Object System.Net.HttpListener; $listener.Prefixes.Add('http://127.0.0.1:11434/'); $listener.Prefixes.Add('http://localhost:11434/'); $listener.Start(); " ^
+  "Write-Host ('[OK] Da tao profile aicf: ' + $aicfCfg + ' (config.toml cua ban khong bi sua). Chay: codex --profile aicf') -ForegroundColor Green; " ^
+  "$listener = New-Object System.Net.HttpListener; $listener.Prefixes.Add('http://127.0.0.1:11434/'); $listener.Prefixes.Add('http://localhost:11434/'); try { $listener.Start() } catch { Write-Host '[LOI] Cong 11434 dang duoc cua so AICF khac hoac chuong trinh khac su dung. Dong cua so cu roi chay lai.' -ForegroundColor Red; exit 1 }; " ^
   "Write-Host '[READY] Cong 127.0.0.1:11434 dang chay! Mo Codex, Cursor, Continue, Chatbox la dung ngay!' -ForegroundColor Yellow; " ^
-  "while ($listener.IsListening) { $ctx = $listener.GetContext(); $req = $ctx.Request; $res = $ctx.Response; $res.Headers.Add('Access-Control-Allow-Origin','*'); $res.Headers.Add('Access-Control-Allow-Methods','GET, POST, OPTIONS, HEAD'); $res.Headers.Add('Access-Control-Allow-Headers','*'); $res.Headers.Add('Access-Control-Allow-Private-Network','true'); $res.Headers.Add('X-AICF-Ollama-Emulator','true'); if ($req.HttpMethod -eq 'OPTIONS') { $res.StatusCode = 204; $res.Close(); continue }; $p = $req.RawUrl; if ($p -eq '/' -or $p -eq '') { $b = [System.Text.Encoding]::UTF8.GetBytes('Ollama is running'); $res.ContentType = 'text/plain'; $res.OutputStream.Write($b,0,$b.Length); $res.Close(); continue }; if ($p.StartsWith('/v1/')) { $p = '/api/ollama' + $p }; $u = $gw + $p; $wr = [System.Net.HttpWebRequest]::Create($u); $wr.Method = $req.HttpMethod; $wr.ContentType = 'application/json'; if ($tok) { $wr.Headers.Add('Authorization', 'Bearer ' + $tok) }; if ($req.HasEntityBody) { $rs = $wr.GetRequestStream(); $req.InputStream.CopyTo($rs); $rs.Close() }; try { $up = $wr.GetResponse(); $res.StatusCode = [int]$up.StatusCode; $res.ContentType = $up.ContentType; $us = $up.GetResponseStream(); $us.CopyTo($res.OutputStream); $up.Close() } catch { $res.StatusCode = 502 }; $res.Close() }"
+  "while ($listener.IsListening) { $ctx = $listener.GetContext(); $req = $ctx.Request; $res = $ctx.Response; $res.Headers.Add('Access-Control-Allow-Origin','*'); $res.Headers.Add('Access-Control-Allow-Methods','GET, POST, OPTIONS, HEAD'); $res.Headers.Add('Access-Control-Allow-Headers','*'); $res.Headers.Add('Access-Control-Allow-Private-Network','true'); $res.Headers.Add('X-AICF-Ollama-Emulator','true'); if ($req.HttpMethod -eq 'OPTIONS') { $res.StatusCode = 204; $res.Close(); continue }; $p = $req.RawUrl; if ($p -eq '/' -or $p -eq '') { $b = [System.Text.Encoding]::UTF8.GetBytes('Ollama is running'); $res.ContentType = 'text/plain'; $res.OutputStream.Write($b,0,$b.Length); $res.Close(); continue }; if ($p.StartsWith('/v1/')) { $p = '/api/ollama' + $p }; $u = $gw + $p; $wr = [System.Net.HttpWebRequest]::Create($u); $wr.Method = $req.HttpMethod; $wr.ContentType = 'application/json'; if ($tok) { $wr.Headers.Add('Authorization', 'Bearer ' + $tok) }; if ($req.HasEntityBody) { $rs = $wr.GetRequestStream(); $req.InputStream.CopyTo($rs); $rs.Close() }; try { $up = $wr.GetResponse(); $res.StatusCode = [int]$up.StatusCode; $res.ContentType = $up.ContentType; $us = $up.GetResponseStream(); $us.CopyTo($res.OutputStream); $up.Close() } catch { $ex = $_.Exception; if ($ex.InnerException -and $ex.InnerException.Response) { $ex = $ex.InnerException }; if ($ex.Response) { $res.StatusCode = [int]$ex.Response.StatusCode; $res.ContentType = $ex.Response.ContentType; $ex.Response.GetResponseStream().CopyTo($res.OutputStream) } else { $res.StatusCode = 502 } }; $res.Close() }"
 pause
 `, gatewayURL, token, lanCSV)
 }

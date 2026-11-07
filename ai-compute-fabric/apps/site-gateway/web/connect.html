@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AICF · Kích hoạt AI trên máy của bạn</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="common.css">
+<style>
+  [hidden] { display: none !important; }
+  body { margin: 0; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  .sub { color: var(--fg2); margin: 0 0 22px; }
+  .step { border: 1px solid var(--bd); background: var(--card); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+  .step.off { opacity: .45; pointer-events: none; }
+  .step h2 { font-size: 16px; margin: 0 0 10px; display: flex; gap: 10px; align-items: center; }
+  .num { width: 26px; height: 26px; border-radius: 50%; background: var(--acc); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; flex: none; }
+  .step.done .num { background: #16a34a; }
+  .tabs { display: inline-flex; border: 1px solid var(--bd); border-radius: 8px; padding: 3px; gap: 3px; margin-bottom: 12px; }
+  .tabs button { border: 0; background: transparent; color: var(--fg2); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+  .tabs button.on { background: var(--acc); color: #fff; }
+  .row { display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
+  input { padding: 10px 12px; border: 1px solid var(--bd); border-radius: 8px; background: var(--bg); color: var(--fg); font-size: 14px; }
+  .big { display: block; width: 100%; padding: 16px; font-size: 18px; font-weight: 700; border: 0; border-radius: 12px; background: var(--acc); color: #fff; cursor: pointer; }
+  .big:hover { background: var(--acc-hover); }
+  .btn2 { padding: 9px 16px; border: 0; border-radius: 8px; background: var(--acc); color: #fff; font-weight: 600; cursor: pointer; }
+  .msg { margin-top: 10px; font-size: 14px; min-height: 18px; }
+  .ok { color: #16a34a; } .bad { color: #dc2626; } .warn { color: #d97706; }
+  pre { background: var(--bg2); border: 1px solid var(--bd); border-radius: 8px; padding: 10px 12px; overflow-x: auto; margin: 6px 0; font-size: 13px; }
+  ol.how { padding-left: 20px; line-height: 1.7; margin: 8px 0; }
+  .status { display: flex; align-items: center; gap: 10px; font-weight: 600; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--bd); }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: #9ca3af; flex: none; }
+  .status.up .dot { background: #16a34a; box-shadow: 0 0 0 4px rgba(22,163,74,.2); }
+  small { color: var(--fg2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔌 Kích hoạt AI trên máy của bạn</h1>
+  <p class="sub">Dùng Codex, Cursor, Continue, Chatbox… với cụm GPU này. Làm 3 bước, mất khoảng 1 phút.</p>
+
+  <section class="step" id="s1">
+    <h2><span class="num">1</span> Tài khoản</h2>
+    <div id="auth-forms"><div class="tabs" id="auth-tabs"><button data-t="login" class="on">Đăng nhập</button><button data-t="signup">Tạo tài khoản</button><button data-t="key">Tôi có khóa API</button></div>
+    <div class="row" id="f-login">
+      <input id="l-id" placeholder="Email hoặc tên tài khoản" autocomplete="username">
+      <input id="l-pw" type="password" placeholder="Mật khẩu" autocomplete="current-password">
+      <button class="btn2" id="b-login">Đăng nhập</button>
+    </div>
+    <div class="row" id="f-signup" hidden>
+      <input id="s-name" placeholder="Tên workspace (chữ, số, - _ .)" autocomplete="username">
+      <input id="s-email" type="email" placeholder="Email" autocomplete="email">
+      <input id="s-pw" type="password" placeholder="Mật khẩu (tối thiểu 12 ký tự)" autocomplete="new-password">
+      <button class="btn2" id="b-signup">Tạo tài khoản</button>
+    </div>
+    <div class="row" id="f-key" hidden>
+      <input id="k-key" placeholder="aicf_..." autocomplete="off">
+      <button class="btn2" id="b-key">Dùng khóa này</button>
+    </div>
+    </div>
+    <div class="msg" id="auth-msg"></div>
+    <div id="logged" hidden><span id="logged-as" class="ok"></span> · <a href="#" id="b-switch">Dùng tài khoản khác</a></div>
+  </section>
+
+  <section class="step off" id="s2">
+    <h2><span class="num">2</span> Kích hoạt trên máy này</h2>
+    <div class="tabs" id="os-tabs"><button data-os="windows">Windows</button><button data-os="macos">macOS</button><button data-os="linux">Ubuntu / Linux</button></div>
+    <button class="big" id="b-activate">⚡ Tải file kích hoạt</button>
+    <small>File đã chứa sẵn địa chỉ cụm máy và khóa của bạn, không cần chỉnh gì thêm. Đừng gửi file này cho người khác.</small>
+    <div id="how" style="margin-top:12px"></div>
+  </section>
+
+  <section class="step off" id="s3">
+    <h2><span class="num">3</span> Kiểm tra</h2>
+    <div class="status" id="status"><span class="dot"></span><span id="status-txt">Đang chờ bạn chạy file ở bước 2…</span></div>
+    <div id="models" class="msg"></div>
+    <div id="next" hidden>
+      <p><b>Dùng với Codex CLI</b> (cài một lần nếu chưa có Node.js):</p>
+      <pre>npm i -g @openai/codex
+codex --profile aicf</pre>
+      <small>Profile <code>aicf</code> nằm trong file riêng <code>~/.codex/aicf.config.toml</code>, cài đặt Codex hiện có của bạn không bị sửa. Mở terminal MỚI sau khi kích hoạt. Trên Linux/macOS chạy thêm lệnh <code>export AICF_API_KEY=…</code> mà script in ra.</small>
+      <p><b>Dùng với app khác</b> (Cursor, Continue, Chatbox, Open WebUI): chọn nhà cung cấp <i>Ollama</i>, địa chỉ <code>http://127.0.0.1:11434</code>. Danh sách model tự hiện.</p>
+    </div>
+  </section>
+</div>
+<script src="connect.js"></script>
+</body>
+</html>

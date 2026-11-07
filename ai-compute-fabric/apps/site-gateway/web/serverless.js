@@ -1731,7 +1731,7 @@ document.getElementById("sl-btn-download-env").onclick = () => {
     : location.origin;
   const key = keyInput.value.trim() || "<AICF_API_KEY>";
   const tid = tenantInput.value.trim() || "demo";
-  const envContent = `AICF_GATEWAY_URL=${gw}\nAICF_TENANT_ID=${tid}\nAICF_API_KEY=${key}\nOPENAI_BASE_URL=${gw}/v1\nOPENAI_API_KEY=${key}\nOLLAMA_HOST=http://127.0.0.1:11434\n`;
+  const envContent = `AICF_GATEWAY_URL=${gw}\nAICF_TENANT_ID=${tid}\nAICF_API_KEY=${key}\nOLLAMA_HOST=http://127.0.0.1:11434\n`;
   const blob = new Blob([envContent], { type: "text/plain;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
