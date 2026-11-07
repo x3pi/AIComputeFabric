@@ -23,11 +23,12 @@ $("auth-tabs").onclick = (e) => {
 const HOW = {
   windows: `<ol class="how"><li>Mở thư mục <b>Downloads</b>, bấm đúp <b>aicf-ollama-bridge.bat</b>.</li>
     <li>Nếu Windows hiện "Windows protected your PC": bấm <b>More info</b> → <b>Run anyway</b>.</li>
-    <li>Để cửa sổ đen đó mở. Trang này sẽ tự báo "Đã kích hoạt".</li></ol>`,
+    <li>Chờ dòng <b>[XONG]</b> rồi đóng cửa sổ. Cầu nối chạy nền và tự bật mỗi lần bạn đăng nhập Windows.</li></ol>
+    <small>Gỡ: chạy <code>aicf-ollama-bridge.bat uninstall</code> trong terminal.</small>`,
   macos: `<ol class="how"><li>Mở <b>Terminal</b> và dán lệnh:</li></ol><pre>bash ~/Downloads/aicf-ollama-bridge.command</pre>
-    <small>Để cửa sổ Terminal mở. Trang này sẽ tự báo "Đã kích hoạt". Cần python3 (macOS sẽ tự gợi ý cài nếu thiếu).</small>`,
+    <small>Cầu nối chạy nền, tự bật khi đăng nhập. Gỡ: thêm <code>uninstall</code> vào cuối lệnh. Cần python3 (macOS sẽ gợi ý cài nếu thiếu).</small>`,
   linux: `<ol class="how"><li>Mở Terminal và dán lệnh:</li></ol><pre>bash ~/Downloads/aicf-ollama-bridge.sh</pre>
-    <small>Nếu báo cổng 11434 đang bị Ollama chiếm: <code>sudo systemctl stop ollama</code> rồi chạy lại.</small>`,
+    <small>Cầu nối chạy nền (systemd --user), tự bật khi đăng nhập. Gỡ: thêm <code>uninstall</code> vào cuối lệnh. Nếu báo cổng 11434 đang bị Ollama chiếm: <code>sudo systemctl stop ollama</code> rồi chạy lại.</small>`,
 };
 
 function setOS(v) {
@@ -96,14 +97,12 @@ $("b-activate").onclick = async () => {
 // Is the bridge on this computer answering on 127.0.0.1:11434 ? (the bridge sends CORS + Private-Network headers)
 async function probe() {
   try {
-    const r = await fetch("http://127.0.0.1:11434/api/tags", { signal: AbortSignal.timeout(2500) });
-    if (!r.ok) throw new Error(r.status);
-    const emu = r.headers.get("X-AICF-Ollama-Emulator");
-    const d = await r.json();
-    const names = (d.models || []).map((m) => m.name);
+    const r = await fetch("http://127.0.0.1:11434/aicf/status", { signal: AbortSignal.timeout(2500) });
+    const d = r.ok ? await r.json() : { emulator: false };
+    const emu = d.emulator === true;
     $("status").classList.add("up");
     $("status-txt").textContent = emu ? "✓ Đã kích hoạt: máy bạn đã nối với cụm GPU" : "Cổng 11434 đang chạy Ollama khác (chưa phải cầu nối AICF)";
-    $("models").textContent = names.length ? "Model có sẵn: " + names.join(", ") : "";
+    $("models").textContent = emu ? `Đã đi qua cầu nối: ${d.requests} request (từ ${String(d.since).replace("T", " ")})` : "";
     $("next").hidden = !emu;
     if (emu) $("s3").classList.add("done");
   } catch {

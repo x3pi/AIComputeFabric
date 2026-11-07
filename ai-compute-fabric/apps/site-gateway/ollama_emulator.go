@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -1210,7 +1211,12 @@ func (oe *OllamaEmulator) serveBridgeScript(w http.ResponseWriter, r *http.Reque
 	if osType == "windows" {
 		w.Header().Set("Content-Type", "application/bat; charset=utf-8")
 		w.Header().Set("Content-Disposition", `attachment; filename="aicf-ollama-bridge.bat"`)
-		_, _ = w.Write([]byte(buildWindowsBridgeScript(gwURL, token)))
+		script, err := buildWindowsBridgeScript(gwURL, token)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(script))
 		return
 	}
 
@@ -1220,237 +1226,38 @@ func (oe *OllamaEmulator) serveBridgeScript(w http.ResponseWriter, r *http.Reque
 	}
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	_, _ = w.Write([]byte(buildUnixBridgeScript(gwURL, token)))
+	script, err := buildUnixBridgeScript(gwURL, token)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_, _ = w.Write([]byte(script))
 }
 
-func buildUnixBridgeScript(gatewayURL, token string) string {
-	return fmt.Sprintf(`#!/usr/bin/env bash
-# ==============================================================================
-# AI Compute Fabric — Zero-Config Ollama Default Port (127.0.0.1:11434) Bridge
-# Hỗ trợ: Linux & macOS (Tự động đồng bộ danh sách model sang mọi ứng dụng thứ 3)
-# ==============================================================================
-set -e
+//go:embed bridge/windows.bat.tmpl
+var windowsBridgeTmpl string
 
-GATEWAY_URL=%q
-AICF_TOKEN=%q
-LISTEN_HOST="${AICF_OLLAMA_HOST:-127.0.0.1}"
-LISTEN_PORT="${AICF_OLLAMA_PORT:-11434}"
+//go:embed bridge/unix.sh.tmpl
+var unixBridgeTmpl string
 
-command -v python3 >/dev/null 2>&1 || { echo "Can python3 (Ubuntu: sudo apt install python3 | macOS: xcode-select --install)"; exit 1; }
+// bridgeValueRe limits what may be substituted into the generated scripts (Host header and token are
+// client-controlled): URL/token characters only, so nothing can break out of the quoted literal.
+var bridgeValueRe = regexp.MustCompile(`^[A-Za-z0-9._~:/@+=-]*$`)
 
-# Tu dong nap aicf.env (cung thu muc script, ~/Downloads hoac thu muc hien tai) neu co
-for f in "$(cd "$(dirname "$0")" 2>/dev/null && pwd)/aicf.env" "$HOME/Downloads/aicf.env" "./aicf.env"; do
-  if [ -f "$f" ]; then
-    v=$(grep -E '^AICF_GATEWAY_URL=' "$f" | head -1 | cut -d= -f2- | tr -d '\r"'"'"''); [ -n "$v" ] && GATEWAY_URL="$v"
-    v=$(grep -E '^AICF_API_KEY=' "$f" | head -1 | cut -d= -f2- | tr -d '\r"'"'"''); [ -n "$v" ] && AICF_TOKEN="$v"
-    echo "Da nap $f"; break
-  fi
-done
-case "$AICF_TOKEN" in ""|"<"*) AICF_TOKEN="";; esac
-
-echo "=================================================================="
-echo "AI Compute Fabric - Gia lap Ollama tai ${LISTEN_HOST}:${LISTEN_PORT}"
-echo "Cum may chu GPU : ${GATEWAY_URL}"
-echo "=================================================================="
-
-# Cong dang bi chiem? (python3 socket: chay duoc tren Linux va macOS)
-if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(0 if s.connect_ex((sys.argv[1],int(sys.argv[2])))==0 else 1)" "$LISTEN_HOST" "$LISTEN_PORT"; then
-  if ! curl -sI "http://${LISTEN_HOST}:${LISTEN_PORT}/api/version" | grep -qi "X-AICF-Ollama-Emulator"; then
-    echo "Cong ${LISTEN_PORT} dang bi Ollama goc (hoac dich vu khac) chiem. Script KHONG tu dung no."
-    echo "  Linux : sudo systemctl stop ollama      (bat lai sau: sudo systemctl start ollama)"
-    echo "  macOS : quit ung dung Ollama o thanh menu, hoac: pkill -x ollama"
-    echo "  Hoac dung cong khac: AICF_OLLAMA_PORT=11500 bash $0"
-    exit 1
-  fi
-fi
-
-# Cau hinh OpenAI Codex CLI (~/.codex/config.toml); ban cu duoc sao luu thanh config.toml.bak
-python3 - "${GATEWAY_URL}" "${AICF_TOKEN}" "${LISTEN_HOST}" "${LISTEN_PORT}" << 'CODEXEOF'
-import sys, os, json, shutil, urllib.request
-gw, tok, host, port = sys.argv[1].rstrip("/"), sys.argv[2], sys.argv[3], sys.argv[4]
-model = "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"
-try:
-    with urllib.request.urlopen(gw + "/api/tags", timeout=4) as r:
-        ms = json.load(r).get("models") or []
-        if ms: model = ms[0]["name"]
-        print("Model dong bo:", model)
-except Exception as e:
-    print("Canh bao: chua doc duoc /api/tags tu cum may:", e)
-d = os.path.expanduser("~/.codex"); os.makedirs(d, exist_ok=True)
-cfg = os.path.join(d, "config.toml")
-BG, EN = "# >>> AICF (managed) >>>", "# <<< AICF <<<"
-if os.path.exists(cfg):  # remove the block written by older versions of this script
-    old = open(cfg).read()
-    if BG in old and EN in old:
-        open(cfg, "w").write((old[:old.index(BG)].rstrip() + old[old.index(EN) + len(EN):]).rstrip() + "\n")
-acfg = os.path.join(d, "aicf.config.toml")
-open(acfg, "w").write('model = "%%s"\nmodel_provider = "aicf"\n\n[model_providers.aicf]\nname = "AI Compute Fabric (Cluster GPU)"\nbase_url = "http://%%s:%%s/v1"\nenv_key = "AICF_API_KEY"\nwire_api = "responses"\n' %% (model, host, port))
-print("Da tao profile 'aicf':", acfg, "(config.toml cua ban khong bi sua)")
-print("Chay Codex voi cum GPU:")
-print("  export AICF_API_KEY=%%s" %% (tok or "ollama"))
-print("  codex --profile aicf")
-CODEXEOF
-
-exec python3 - "${GATEWAY_URL}" "${AICF_TOKEN}" "${LISTEN_HOST}" "${LISTEN_PORT}" << 'PYEOF'
-import sys, urllib.request, urllib.error
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-GATEWAY = sys.argv[1].rstrip("/")
-TOKEN   = sys.argv[2]
-HOST    = sys.argv[3]
-PORT    = int(sys.argv[4])
-
-class OllamaBridgeHandler(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
-    def log_message(self, fmt, *args):
-        sys.stdout.write(f"[AICF-11434] {self.address_string()} - {fmt %% args}\n")
-        sys.stdout.flush()
-
-    def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, HEAD, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID, X-Requested-With, Accept, Origin")
-        self.send_header("Access-Control-Allow-Private-Network", "true")
-        self.send_header("Access-Control-Expose-Headers", "X-AICF-Ollama-Emulator, X-AICF-Worker, X-AICF-Agent")
-        self.send_header("X-AICF-Ollama-Emulator", "true")
-
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self._cors()
-        self.send_header("Content-Length", "0")
-        self.end_headers()
-
-    def _proxy(self):
-        path = self.path
-        if path in ("/", ""):
-            body = b"Ollama is running"
-            self.send_response(200)
-            self._cors()
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            if self.command != "HEAD":
-                self.wfile.write(body)
-            return
-
-        if path.startswith("/v1/"):
-            target_path = "/api/ollama" + path
-        else:
-            target_path = path
-
-        length = int(self.headers.get("Content-Length", 0))
-        req_body = self.rfile.read(length) if length > 0 else None
-
-        headers = {
-            "Content-Type": self.headers.get("Content-Type", "application/json"),
-            "User-Agent": self.headers.get("User-Agent", "OllamaBridge/1.0"),
-        }
-        if TOKEN:
-            headers["Authorization"] = f"Bearer {TOKEN}"
-        elif self.headers.get("Authorization"):
-            headers["Authorization"] = self.headers.get("Authorization")
-
-        req = urllib.request.Request(GATEWAY + target_path, data=req_body, headers=headers, method=self.command)
-        try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                self.send_response(resp.status)
-                self._cors()
-                ctype = resp.headers.get("Content-Type", "application/json")
-                self.send_header("Content-Type", ctype)
-                self.send_header("Connection", "close")
-                self.end_headers()
-                while True:
-                    chunk = resp.read(4096)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
-                    self.wfile.flush()
-        except urllib.error.HTTPError as e:
-            err_body = e.read()
-            self.send_response(e.code)
-            self._cors()
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(err_body)))
-            self.end_headers()
-            self.wfile.write(err_body)
-        except Exception as e:
-            msg = ('{"error":"' + str(e).replace('"', "'") + '"}').encode("utf-8")
-            self.send_response(502)
-            self._cors()
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(msg)))
-            self.end_headers()
-            self.wfile.write(msg)
-
-    do_GET  = _proxy
-    do_POST = _proxy
-    do_HEAD = _proxy
-
-srv = ThreadingHTTPServer((HOST, PORT), OllamaBridgeHandler)
-print(f"✅ ĐÃ KÍCH HOẠT: http://{HOST}:{PORT} -> {GATEWAY}")
-print("👉 Mọi ứng dụng (Cursor, Continue, Chatbox, Open WebUI...) hiện đã tự động nhận diện danh sách Model!")
-print("   (Nhấn Ctrl+C để dừng cầu nối)")
-try:
-    srv.serve_forever()
-except KeyboardInterrupt:
-    pass
-PYEOF
-`, gatewayURL, token)
+func renderBridge(tmpl, gatewayURL, token string) (string, error) {
+	if !bridgeValueRe.MatchString(gatewayURL) || !bridgeValueRe.MatchString(token) {
+		return "", fmt.Errorf("gateway URL or token contains characters that are not allowed in the bridge script")
+	}
+	return strings.NewReplacer("@@GW@@", gatewayURL, "@@TOKEN@@", token).Replace(tmpl), nil
 }
 
-func buildWindowsBridgeScript(gatewayURL, token string) string {
-	lanURLs := detectServerLANURLs("18080")
-	lanCSV := strings.Join(lanURLs, ",")
-	return fmt.Sprintf(`@echo off
-chcp 65001 >nul
-title AI Compute Fabric - Dong bo Model Ollama (11434) va OpenAI Codex
-set "GATEWAY_URL=%s"
-set "AICF_TOKEN=%s"
-set "LAN_CANDIDATES=%s"
-set "LISTEN_PORT=11434"
+func buildUnixBridgeScript(gatewayURL, token string) (string, error) {
+	return renderBridge(unixBridgeTmpl, gatewayURL, token)
+}
 
-:: Tu dong nap aicf.env neu nguoi dung da tai ve cung thu muc hoac trong Downloads
-if exist "%%~dp0aicf.env" (
-  for /f "usebackq tokens=1,* delims==" %%%%A in ("%%~dp0aicf.env") do (
-    if "%%%%A"=="AICF_GATEWAY_URL" set "GATEWAY_URL=%%%%B"
-    if "%%%%A"=="AICF_API_KEY" set "AICF_TOKEN=%%%%B"
-  )
-) else if exist "%%USERPROFILE%%\Downloads\aicf.env" (
-  for /f "usebackq tokens=1,* delims==" %%%%A in ("%%USERPROFILE%%\Downloads\aicf.env") do (
-    if "%%%%A"=="AICF_GATEWAY_URL" set "GATEWAY_URL=%%%%B"
-    if "%%%%A"=="AICF_API_KEY" set "AICF_TOKEN=%%%%B"
-  )
-)
-
-echo ==================================================================
-echo [AICF] Kich hoat Dong bo Model tu dong: Ollama (:11434) + Codex CLI
-echo ==================================================================
-
-taskkill /F /IM "ollama app.exe" >nul 2>&1
-taskkill /F /IM "ollama.exe" >nul 2>&1
-
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$candidates = @($env:GATEWAY_URL) + ($env:LAN_CANDIDATES -split ',') + @('http://10.42.0.1:18080','http://192.168.1.40:18080','http://127.0.0.1:18080') | Where-Object { $_ -ne '' } | Select-Object -Unique; " ^
-  "$gw = $env:GATEWAY_URL; foreach ($c in $candidates) { try { $r = Invoke-WebRequest -Uri ($c + '/api/tags') -TimeoutSec 2 -UseBasicParsing; if ($r.StatusCode -eq 200) { $gw = $c; break } } catch {} }; " ^
-  "$tok = $env:AICF_TOKEN; if (-not $tok -or $tok -like '<*>') { $tok = 'ollama' }; " ^
-  "$model = 'Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf'; try { $tags = Invoke-RestMethod -Uri ($gw + '/api/tags') -TimeoutSec 3; if ($tags.models.Count -gt 0) { $model = $tags.models[0].name } } catch {}; " ^
-  "[Environment]::SetEnvironmentVariable('AICF_API_KEY', $tok, 'User'); " ^
-  "[Environment]::SetEnvironmentVariable('OLLAMA_HOST', 'http://127.0.0.1:11434', 'User'); " ^
-  "$codexDir = Join-Path $env:USERPROFILE '.codex'; New-Item -ItemType Directory -Force -Path $codexDir | Out-Null; " ^
-  "$codexCfg = Join-Path $codexDir 'config.toml'; " ^
-  "$nl = [string][char]10; $bg = '# >>> AICF (managed) >>>'; $en = '# <<< AICF <<<'; $utf8 = New-Object System.Text.UTF8Encoding($false); " ^
-  "if (Test-Path $codexCfg) { $old = [IO.File]::ReadAllText($codexCfg); if ($old.Contains($bg)) { $new = [regex]::Replace($old, '(?s)\s*' + [regex]::Escape($bg) + '.*?' + [regex]::Escape($en), ''); [IO.File]::WriteAllText($codexCfg, $new, $utf8) } }; " ^
-  "$aicfCfg = Join-Path $codexDir 'aicf.config.toml'; " ^
-  "$blk = @(('model = \"' + $model + '\"'), 'model_provider = \"aicf\"', '', '[model_providers.aicf]', 'name = \"AI Compute Fabric (Cluster GPU)\"', 'base_url = \"http://127.0.0.1:11434/v1\"', 'env_key = \"AICF_API_KEY\"', 'wire_api = \"responses\"') -join $nl; " ^
-  "[IO.File]::WriteAllText($aicfCfg, ($blk + $nl), $utf8); " ^
-  "Write-Host ('[OK] Da ket noi Cum GPU: ' + $gw) -ForegroundColor Green; " ^
-  "Write-Host ('[OK] Model dong bo: ' + $model) -ForegroundColor Cyan; " ^
-  "Write-Host ('[OK] Da tao profile aicf: ' + $aicfCfg + ' (config.toml cua ban khong bi sua). Chay: codex --profile aicf') -ForegroundColor Green; " ^
-  "$listener = New-Object System.Net.HttpListener; $listener.Prefixes.Add('http://127.0.0.1:11434/'); $listener.Prefixes.Add('http://localhost:11434/'); try { $listener.Start() } catch { Write-Host '[LOI] Cong 11434 dang duoc cua so AICF khac hoac chuong trinh khac su dung. Dong cua so cu roi chay lai.' -ForegroundColor Red; exit 1 }; " ^
-  "Write-Host '[READY] Cong 127.0.0.1:11434 dang chay! Mo Codex, Cursor, Continue, Chatbox la dung ngay!' -ForegroundColor Yellow; " ^
-  "while ($listener.IsListening) { $ctx = $listener.GetContext(); $req = $ctx.Request; $res = $ctx.Response; $res.Headers.Add('Access-Control-Allow-Origin','*'); $res.Headers.Add('Access-Control-Allow-Methods','GET, POST, OPTIONS, HEAD'); $res.Headers.Add('Access-Control-Allow-Headers','*'); $res.Headers.Add('Access-Control-Allow-Private-Network','true'); $res.Headers.Add('X-AICF-Ollama-Emulator','true'); if ($req.HttpMethod -eq 'OPTIONS') { $res.StatusCode = 204; $res.Close(); continue }; $p = $req.RawUrl; if ($p -eq '/' -or $p -eq '') { $b = [System.Text.Encoding]::UTF8.GetBytes('Ollama is running'); $res.ContentType = 'text/plain'; $res.OutputStream.Write($b,0,$b.Length); $res.Close(); continue }; if ($p.StartsWith('/v1/')) { $p = '/api/ollama' + $p }; $u = $gw + $p; $wr = [System.Net.HttpWebRequest]::Create($u); $wr.Method = $req.HttpMethod; $wr.ContentType = 'application/json'; if ($tok) { $wr.Headers.Add('Authorization', 'Bearer ' + $tok) }; if ($req.HasEntityBody) { $rs = $wr.GetRequestStream(); $req.InputStream.CopyTo($rs); $rs.Close() }; try { $up = $wr.GetResponse(); $res.StatusCode = [int]$up.StatusCode; $res.ContentType = $up.ContentType; $us = $up.GetResponseStream(); $us.CopyTo($res.OutputStream); $up.Close() } catch { $ex = $_.Exception; if ($ex.InnerException -and $ex.InnerException.Response) { $ex = $ex.InnerException }; if ($ex.Response) { $res.StatusCode = [int]$ex.Response.StatusCode; $res.ContentType = $ex.Response.ContentType; $ex.Response.GetResponseStream().CopyTo($res.OutputStream) } else { $res.StatusCode = 502 } }; $res.Close() }"
-pause
-`, gatewayURL, token, lanCSV)
+func buildWindowsBridgeScript(gatewayURL, token string) (string, error) {
+	out, err := renderBridge(windowsBridgeTmpl, gatewayURL, token)
+	return strings.ReplaceAll(strings.ReplaceAll(out, "\r\n", "\n"), "\n", "\r\n"), err
 }
 
 func (oe *OllamaEmulator) Shutdown(ctx context.Context) {

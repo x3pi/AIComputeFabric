@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# AI Compute Fabric - ket noi may nay voi cum GPU (Ollama :11434 + Codex). Linux & macOS.
+#   bash aicf-ollama-bridge.sh            cai dat va chay nen (tu bat khi dang nhap)
+#   bash aicf-ollama-bridge.sh status|uninstall|run
+set -e
+GATEWAY_URL='@@GW@@'
+AICF_TOKEN='@@TOKEN@@'
+ACTION="${1:-install}"
+LISTEN_HOST="${AICF_OLLAMA_HOST:-127.0.0.1}"
+LISTEN_PORT="${AICF_OLLAMA_PORT:-11434}"
+DIR="${XDG_DATA_HOME:-$HOME/.local/share}/aicf"
+BRIDGE="$DIR/bridge.py"
+CONF="$DIR/bridge.conf"
+CODEX_DIR="$HOME/.codex"
+UNIT="$HOME/.config/systemd/user/aicf-bridge.service"
+PLIST="$HOME/Library/LaunchAgents/cloud.aicf.bridge.plist"
+OS="$(uname -s)"
+
+command -v python3 >/dev/null 2>&1 || { echo "Can python3 (Ubuntu: sudo apt install python3 | macOS: xcode-select --install)"; exit 1; }
+
+probe() { curl -s -m 2 "http://${LISTEN_HOST}:${LISTEN_PORT}/aicf/status" 2>/dev/null | grep -Eq '"emulator": ?true'; }
+
+write_bridge() {
+cat > "$BRIDGE" <<'PYEOF'
+import sys, json, time, threading, urllib.request, urllib.error
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+conf = json.load(open(sys.argv[1]))
+GATEWAY, TOKEN, HOST, PORT = conf["gateway"].rstrip("/"), conf.get("token", ""), conf["host"], int(conf["port"])
+STATS = {"requests": 0, "since": time.strftime("%Y-%m-%dT%H:%M:%S")}
+LOCK = threading.Lock()
+
+class H(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    def log_message(self, fmt, *a):
+        pass
+    def _cors(self):
+        for k, v in (("Access-Control-Allow-Origin", "*"), ("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD"),
+                     ("Access-Control-Allow-Headers", "*"), ("Access-Control-Allow-Private-Network", "true"),
+                     ("Access-Control-Expose-Headers", "X-AICF-Ollama-Emulator"), ("X-AICF-Ollama-Emulator", "true")):
+            self.send_header(k, v)
+    def _small(self, code, ctype, body):
+        self.send_response(code); self._cors()
+        self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(body))); self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+    def do_OPTIONS(self):
+        self._small(204, "text/plain", b"")
+    def _proxy(self):
+        path = self.path
+        if path in ("/", ""):
+            return self._small(200, "text/plain; charset=utf-8", b"Ollama is running")
+        if path == "/aicf/status":
+            return self._small(200, "application/json", json.dumps({"emulator": True, "requests": STATS["requests"], "since": STATS["since"], "gateway": GATEWAY}).encode())
+        with LOCK:
+            STATS["requests"] += 1
+        if path.startswith("/v1/"):
+            path = "/api/ollama" + path
+        n = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(n) if n else None
+        hd = {"Content-Type": self.headers.get("Content-Type", "application/json"), "User-Agent": self.headers.get("User-Agent", "AICF-Bridge/2")}
+        if TOKEN:
+            hd["Authorization"] = "Bearer " + TOKEN
+        req = urllib.request.Request(GATEWAY + path, data=body, headers=hd, method=self.command)
+        try:
+            try:
+                resp = urllib.request.urlopen(req, timeout=900)
+            except urllib.error.HTTPError as e:
+                resp = e
+            self.send_response(resp.status if hasattr(resp, "status") else resp.code); self._cors()
+            self.send_header("Content-Type", resp.headers.get("Content-Type", "application/json"))
+            self.send_header("Transfer-Encoding", "chunked"); self.end_headers()
+            while True:
+                chunk = resp.read1(8192) if hasattr(resp, "read1") else resp.read(8192)
+                if not chunk:
+                    break
+                self.wfile.write(b"%x\r\n" % len(chunk) + chunk + b"\r\n"); self.wfile.flush()
+            self.wfile.write(b"0\r\n\r\n")
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+        except Exception as e:
+            self._small(502, "application/json", json.dumps({"error": "AICF bridge: " + str(e)}).encode())
+    do_GET = do_POST = do_HEAD = _proxy
+
+ThreadingHTTPServer.daemon_threads = True
+ThreadingHTTPServer((HOST, PORT), H).serve_forever()
+PYEOF
+}
+
+case "$ACTION" in
+run)
+  exec python3 "$BRIDGE" "$CONF" ;;
+status)
+  if probe; then echo "[OK] Cau noi AICF dang chay tai ${LISTEN_HOST}:${LISTEN_PORT}"; curl -s "http://${LISTEN_HOST}:${LISTEN_PORT}/aicf/status"; echo
+  else echo "[--] Cau noi AICF KHONG chay"; exit 1; fi
+  exit 0 ;;
+uninstall)
+  if [ "$OS" = "Darwin" ]; then launchctl unload "$PLIST" 2>/dev/null || true; rm -f "$PLIST"
+  else systemctl --user disable --now aicf-bridge.service 2>/dev/null || true; rm -f "$UNIT"; systemctl --user daemon-reload 2>/dev/null || true; fi
+  [ -f "$DIR/bridge.pid" ] && kill "$(cat "$DIR/bridge.pid")" 2>/dev/null || true
+  rm -f "$CODEX_DIR/aicf.config.toml"; rm -rf "$DIR"
+  echo "[OK] Da go cau noi AICF. Cai dat Codex cua ban khong bi thay doi."
+  exit 0 ;;
+install) ;;
+*) echo "Dung: $0 [install|status|uninstall|run]"; exit 2 ;;
+esac
+
+# ---- install ----
+echo "=================================================================="
+echo " AI Compute Fabric - ket noi may nay voi cum GPU"
+echo " Cum may chu: ${GATEWAY_URL}"
+echo "=================================================================="
+
+if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1); sys.exit(0 if s.connect_ex((sys.argv[1],int(sys.argv[2])))==0 else 1)" "$LISTEN_HOST" "$LISTEN_PORT"; then
+  if ! probe; then
+    echo "[LOI] Cong ${LISTEN_PORT} dang bi Ollama goc (hoac dich vu khac) chiem. Script KHONG tu dung no."
+    echo "  Linux : sudo systemctl stop ollama      (bat lai sau: sudo systemctl start ollama)"
+    echo "  macOS : thoat ung dung Ollama o thanh menu, hoac: pkill -x ollama"
+    echo "  Hoac dung cong khac: AICF_OLLAMA_PORT=11500 bash $0"
+    exit 1
+  fi
+fi
+
+mkdir -p "$DIR" "$CODEX_DIR"; chmod 700 "$DIR"
+MODEL=$(python3 - "$GATEWAY_URL" <<'PY'
+import sys, json, urllib.request
+try:
+    ms = json.load(urllib.request.urlopen(sys.argv[1].rstrip("/") + "/api/tags", timeout=5)).get("models") or []
+    print(ms[0]["name"] if ms else "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf")
+except Exception:
+    print("")
+PY
+)
+[ -n "$MODEL" ] || { echo "[LOI] Khong ket noi duoc ${GATEWAY_URL}. Kiem tra mang roi chay lai."; exit 1; }
+echo "[OK] Model tren cum: $MODEL"
+
+( umask 077; python3 - "$CONF" "$GATEWAY_URL" "$AICF_TOKEN" "$LISTEN_HOST" "$LISTEN_PORT" <<'PY'
+import sys, json
+json.dump({"gateway": sys.argv[2], "token": sys.argv[3], "host": sys.argv[4], "port": sys.argv[5]}, open(sys.argv[1], "w"))
+PY
+)
+write_bridge
+printf 'model = "%s"\nmodel_provider = "aicf"\n\n[model_providers.aicf]\nname = "AI Compute Fabric (Cluster GPU)"\nbase_url = "http://%s:%s/v1"\nenv_key = "AICF_API_KEY"\nwire_api = "responses"\n' "$MODEL" "$LISTEN_HOST" "$LISTEN_PORT" > "$CODEX_DIR/aicf.config.toml"
+
+PYBIN="$(command -v python3)"
+if [ -f "$DIR/bridge.pid" ]; then kill "$(cat "$DIR/bridge.pid")" 2>/dev/null || true; rm -f "$DIR/bridge.pid"; sleep 1; fi
+if [ "${AICF_NO_SERVICE:-0}" = "1" ]; then
+  nohup "$PYBIN" "$BRIDGE" "$CONF" >"$DIR/bridge.log" 2>&1 < /dev/null & echo $! > "$DIR/bridge.pid"
+elif [ "$OS" = "Darwin" ]; then
+  mkdir -p "$(dirname "$PLIST")"
+  cat > "$PLIST" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>cloud.aicf.bridge</string>
+<key>ProgramArguments</key><array><string>$PYBIN</string><string>$BRIDGE</string><string>$CONF</string></array>
+<key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+<key>StandardErrorPath</key><string>$DIR/bridge.log</string><key>StandardOutPath</key><string>$DIR/bridge.log</string>
+</dict></plist>
+PL
+  launchctl unload "$PLIST" 2>/dev/null || true; launchctl load "$PLIST"
+elif command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  mkdir -p "$(dirname "$UNIT")"
+  printf '[Unit]\nDescription=AI Compute Fabric bridge (Ollama :%s)\n\n[Service]\nExecStart=%s %s %s\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=default.target\n' "$LISTEN_PORT" "$PYBIN" "$BRIDGE" "$CONF" > "$UNIT"
+  systemctl --user daemon-reload; systemctl --user enable --now aicf-bridge.service
+else
+  nohup "$PYBIN" "$BRIDGE" "$CONF" >"$DIR/bridge.log" 2>&1 < /dev/null & echo $! > "$DIR/bridge.pid"
+  echo "[Luu y] Khong co systemd --user: cau noi chay nen nhung KHONG tu bat lai sau khi khoi dong may."
+fi
+
+for _ in $(seq 1 15); do probe && break; sleep 1; done
+probe || { echo "[LOI] Cau noi chua len. Xem $DIR/bridge.log"; exit 1; }
+echo
+echo "[XONG] Da kich hoat! Cau noi chay nen."
+echo "  Dung Codex (terminal moi):"
+echo "    export AICF_API_KEY='${AICF_TOKEN:-ollama}'"
+echo "    codex --profile aicf"
+echo "  Cursor / Continue / Chatbox: chon Ollama, dia chi http://${LISTEN_HOST}:${LISTEN_PORT}"
+echo "  Kiem tra: bash $0 status      Go: bash $0 uninstall"

@@ -1,0 +1,130 @@
+@echo off
+rem AI Compute Fabric - ket noi may nay voi cum GPU (Ollama :11434 + Codex). Bam dup de cai; "aicf-ollama-bridge.bat uninstall" de go.
+chcp 65001 >nul
+set "AICF_ACTION=%~1"
+if "%AICF_ACTION%"=="" set "AICF_ACTION=install"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$t=[IO.File]::ReadAllText('%~f0',[Text.Encoding]::UTF8); $p=$t.Substring($t.IndexOf('#PS_'+'BEGIN')+9); iex $p"
+if "%~1"=="" pause
+exit /b
+#PS_BEGIN
+$GW   = '@@GW@@'
+$TOK  = '@@TOKEN@@'
+$PORT = 11434
+$ErrorActionPreference = 'Stop'
+$action = if ($args.Count -gt 0) { $args[0] } elseif ($env:AICF_ACTION) { $env:AICF_ACTION } else { 'install' }
+$dir    = Join-Path $env:LOCALAPPDATA 'AICF'
+$self   = Join-Path $dir 'bridge.ps1'
+$state  = Join-Path $dir 'state.json'
+$vbs    = Join-Path ([Environment]::GetFolderPath('Startup')) 'AICF Bridge.vbs'
+$codexDir = Join-Path $env:USERPROFILE '.codex'
+$aicfCfg  = Join-Path $codexDir 'aicf.config.toml'
+
+function Test-Bridge {
+  try { $r = Invoke-WebRequest -Uri "http://127.0.0.1:$PORT/aicf/status" -UseBasicParsing -TimeoutSec 2; return ($r.Content -like '*"emulator":true*') } catch { return $false }
+}
+function Stop-Bridge {
+  Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -like '*AICF*bridge.ps1*' -and $_.ProcessId -ne $PID } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+}
+
+if ($action -eq 'run') {
+  $listener = New-Object System.Net.HttpListener
+  $listener.Prefixes.Add("http://127.0.0.1:$PORT/"); $listener.Prefixes.Add("http://localhost:$PORT/")
+  $listener.Start()
+  $counter = [hashtable]::Synchronized(@{ n = 0 })
+  $since = (Get-Date).ToString('s')
+  $worker = {
+    param($listener, $gw, $tok, $counter, $since)
+    $cors = @{ 'Access-Control-Allow-Origin'='*'; 'Access-Control-Allow-Methods'='GET, POST, OPTIONS, HEAD'; 'Access-Control-Allow-Headers'='*'; 'Access-Control-Allow-Private-Network'='true'; 'Access-Control-Expose-Headers'='X-AICF-Ollama-Emulator'; 'X-AICF-Ollama-Emulator'='true' }
+    while ($listener.IsListening) {
+      try { $ctx = $listener.GetContext() } catch { break }
+      $req = $ctx.Request; $res = $ctx.Response
+      try {
+        foreach ($k in $cors.Keys) { $res.Headers.Set($k, $cors[$k]) }
+        $p = $req.RawUrl
+        if ($req.HttpMethod -eq 'OPTIONS') { $res.StatusCode = 204; $res.Close(); continue }
+        if ($p -eq '/' -or $p -eq '') {
+          $b = [Text.Encoding]::UTF8.GetBytes('Ollama is running'); $res.ContentType = 'text/plain'; $res.OutputStream.Write($b, 0, $b.Length); $res.Close(); continue
+        }
+        if ($p -eq '/aicf/status') {
+          $b = [Text.Encoding]::UTF8.GetBytes('{"emulator":true,"requests":' + $counter.n + ',"since":"' + $since + '","gateway":"' + $gw + '"}')
+          $res.ContentType = 'application/json'; $res.OutputStream.Write($b, 0, $b.Length); $res.Close(); continue
+        }
+        [Threading.Monitor]::Enter($counter.SyncRoot); try { $counter.n++ } finally { [Threading.Monitor]::Exit($counter.SyncRoot) }
+        if ($p.StartsWith('/v1/')) { $p = '/api/ollama' + $p }
+        $wr = [Net.HttpWebRequest]::Create($gw + $p)
+        $wr.Method = $req.HttpMethod; $wr.Timeout = 900000; $wr.ReadWriteTimeout = 900000; $wr.AllowAutoRedirect = $false
+        $wr.ContentType = if ($req.ContentType) { $req.ContentType } else { 'application/json' }
+        if ($tok) { $wr.Headers.Add('Authorization', 'Bearer ' + $tok) }
+        if ($req.HasEntityBody) { $wr.ContentLength = $req.ContentLength64; $rs = $wr.GetRequestStream(); $req.InputStream.CopyTo($rs); $rs.Close() }
+        try { $up = $wr.GetResponse() } catch [Net.WebException] { $up = $_.Exception.Response; if (-not $up) { throw } }
+        $res.StatusCode = [int]$up.StatusCode
+        if ($up.ContentType) { $res.ContentType = $up.ContentType }
+        $res.SendChunked = $true
+        $us = $up.GetResponseStream(); $buf = New-Object byte[] 8192
+        while (($n = $us.Read($buf, 0, $buf.Length)) -gt 0) { $res.OutputStream.Write($buf, 0, $n); $res.OutputStream.Flush() }
+        $up.Close(); $res.Close()
+      } catch {
+        try { $res.StatusCode = 502; $m = [Text.Encoding]::UTF8.GetBytes('{"error":"AICF bridge: ' + ($_.Exception.Message -replace '["\\\r\n]', ' ') + '"}'); $res.ContentType = 'application/json'; $res.OutputStream.Write($m, 0, $m.Length) } catch {}
+        try { $res.Close() } catch {}
+      }
+    }
+  }
+  $pool = [RunspaceFactory]::CreateRunspacePool(1, 6); $pool.Open()
+  1..6 | ForEach-Object { $ps = [PowerShell]::Create(); $ps.RunspacePool = $pool; [void]$ps.AddScript($worker).AddArgument($listener).AddArgument($GW).AddArgument($TOK).AddArgument($counter).AddArgument($since); [void]$ps.BeginInvoke() }
+  while ($listener.IsListening) { Start-Sleep -Seconds 5 }
+  exit 0
+}
+
+if ($action -eq 'status') {
+  if (Test-Bridge) { Write-Host '[OK] Cau noi AICF dang chay tai 127.0.0.1:11434' -ForegroundColor Green; (Invoke-WebRequest -Uri "http://127.0.0.1:$PORT/aicf/status" -UseBasicParsing).Content } else { Write-Host '[--] Cau noi AICF KHONG chay' -ForegroundColor Yellow }
+  exit 0
+}
+
+if ($action -eq 'uninstall') {
+  Stop-Bridge
+  Remove-Item $vbs -ErrorAction SilentlyContinue
+  Remove-Item $aicfCfg -ErrorAction SilentlyContinue
+  [Environment]::SetEnvironmentVariable('AICF_API_KEY', $null, 'User'); [Environment]::SetEnvironmentVariable('OLLAMA_HOST', $null, 'User')
+  if (Test-Path $state) {
+    $st = Get-Content $state -Raw | ConvertFrom-Json
+    if ($st.ollama -and (Test-Path $st.ollama)) { Start-Process $st.ollama; Write-Host '[OK] Da bat lai Ollama goc' -ForegroundColor Green }
+  }
+  Remove-Item $self, $state -ErrorAction SilentlyContinue
+  Write-Host '[OK] Da go cau noi AICF. Cai dat Codex cua ban khong bi thay doi.' -ForegroundColor Green
+  exit 0
+}
+
+# ---- install (default: double click) ----
+Write-Host '=================================================================='
+Write-Host ' AI Compute Fabric - ket noi may nay voi cum GPU' -ForegroundColor Cyan
+Write-Host " Cum may chu: $GW"
+Write-Host '=================================================================='
+try { $tags = Invoke-RestMethod -Uri ($GW + '/api/tags') -TimeoutSec 5 } catch { Write-Host "[LOI] Khong ket noi duoc $GW . Kiem tra mang/cap noi roi chay lai." -ForegroundColor Red; exit 1 }
+$model = if ($tags.models.Count -gt 0) { $tags.models[0].name } else { 'Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf' }
+Write-Host "[OK] Model tren cum: $model" -ForegroundColor Green
+
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+Stop-Bridge
+$ollamaExe = $null
+Get-Process -Name 'ollama app', 'ollama' -ErrorAction SilentlyContinue | ForEach-Object { if (-not $ollamaExe -and $_.Path) { $ollamaExe = $_.Path }; Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+if ($ollamaExe) { $app = Join-Path (Split-Path $ollamaExe) 'ollama app.exe'; if (Test-Path $app) { $ollamaExe = $app }; Write-Host '[OK] Da tam dung Ollama goc (go cai dat se bat lai)' -ForegroundColor Yellow }
+if (-not (Test-Path $state) -or $ollamaExe) { @{ ollama = $ollamaExe } | ConvertTo-Json | Set-Content $state -Encoding UTF8 }
+
+[IO.File]::WriteAllText($self, $p, (New-Object Text.UTF8Encoding($true)))
+$nl = [string][char]10
+New-Item -ItemType Directory -Force -Path $codexDir | Out-Null
+$toml = @(('model = "' + $model + '"'), 'model_provider = "aicf"', '', '[model_providers.aicf]', 'name = "AI Compute Fabric (Cluster GPU)"', "base_url = `"http://127.0.0.1:$PORT/v1`"", 'env_key = "AICF_API_KEY"', 'wire_api = "responses"') -join $nl
+[IO.File]::WriteAllText($aicfCfg, $toml + $nl, (New-Object Text.UTF8Encoding($false)))
+[Environment]::SetEnvironmentVariable('AICF_API_KEY', $(if ($TOK) { $TOK } else { 'ollama' }), 'User')
+[Environment]::SetEnvironmentVariable('OLLAMA_HOST', "http://127.0.0.1:$PORT", 'User')
+
+$vb = 'CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""' + $self + '"" run", 0, False'
+[IO.File]::WriteAllText($vbs, $vb, [Text.Encoding]::ASCII)
+Start-Process wscript.exe -ArgumentList ('"' + $vbs + '"')
+$ok = $false; 1..15 | ForEach-Object { if (-not $ok) { Start-Sleep -Seconds 1; $ok = Test-Bridge } }
+if (-not $ok) { Write-Host '[LOI] Cau noi chua len. Chay lai file nay hoac xem cong 11434 co bi chiem khong.' -ForegroundColor Red; exit 1 }
+Write-Host ''
+Write-Host '[XONG] Da kich hoat! Cau noi chay nen va tu bat khi ban dang nhap Windows.' -ForegroundColor Green
+Write-Host '       Mo terminal MOI roi chay:  codex --profile aicf' -ForegroundColor Yellow
+Write-Host '       Cursor / Continue / Chatbox: chon Ollama, dia chi http://127.0.0.1:11434'
+Write-Host '       Go cai dat:  aicf-ollama-bridge.bat uninstall'

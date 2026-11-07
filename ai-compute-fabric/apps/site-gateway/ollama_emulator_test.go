@@ -178,3 +178,27 @@ func TestOllamaEmulatorProtocolAndDedicatedPort(t *testing.T) {
 		t.Fatalf("dedicated port GET / status = %d", rootResp.StatusCode)
 	}
 }
+
+func TestBridgeScriptsRenderAndRejectInjection(t *testing.T) {
+	for name, build := range map[string]func(string, string) (string, error){"windows": buildWindowsBridgeScript, "unix": buildUnixBridgeScript} {
+		out, err := build("http://192.168.1.40:18080", "aicf_abc123")
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if strings.Contains(out, "@@GW@@") || strings.Contains(out, "@@TOKEN@@") || !strings.Contains(out, "aicf_abc123") || !strings.Contains(out, "192.168.1.40:18080") {
+			t.Fatalf("%s: placeholders not substituted", name)
+		}
+		for _, bad := range []string{"http://x'; Remove-Item C:\\ #", "http://x\" ; rm -rf ~ ; \"", "http://x$(id)", "http://x\n"} {
+			if _, err := build(bad, "tok"); err == nil {
+				t.Fatalf("%s: gateway %q must be rejected", name, bad)
+			}
+			if _, err := build("http://ok", bad); err == nil {
+				t.Fatalf("%s: token %q must be rejected", name, bad)
+			}
+		}
+	}
+	win, _ := buildWindowsBridgeScript("http://h:1", "t")
+	if !strings.Contains(win, "\r\n") || strings.Contains(strings.ReplaceAll(win, "\r\n", ""), "\n") {
+		t.Fatal("windows bridge must use CRLF line endings only")
+	}
+}
