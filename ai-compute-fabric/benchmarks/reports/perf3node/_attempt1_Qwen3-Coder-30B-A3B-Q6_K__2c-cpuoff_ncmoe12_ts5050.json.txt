@@ -1,0 +1,15 @@
+{
+ "model": "Qwen3-Coder-30B-A3B-Q6_K",
+ "config": "2c-cpuoff",
+ "cards": 2,
+ "split": "50,50",
+ "size_gb": 25.09,
+ "links": {
+  "win5070": "RTX 5070 (Windows) - Ethernet 2.5 GbE"
+ },
+ "idle_nic_Bps": {
+  "win5070": 13685
+ },
+ "error": "engine failed to become healthy",
+ "log_tail": "lama_context: flash_attn            = enabled\n0.58.606.024 I llama_context: kv_unified            = false\n0.58.606.026 I llama_context: freq_base             = 10000000.0\n0.58.606.091 I llama_context: freq_scale            = 1\n0.58.606.092 I llama_context: n_rs_seq              = 0\n0.58.606.092 I llama_context: n_outputs_max         = 4\n0.58.606.092 I llama_context: n_outputs_max_per_seq = 1\n0.58.606.093 I llama_context: n_ctx_seq (4096) < n_ctx_train (262144) -- the full capacity of the model will not be utilized\n0.58.629.686 I llama_context:  CUDA_Host  output buffer size =     2.32 MiB\n0.58.636.330 E ggml_backend_cuda_buffer_type_alloc_buffer: allocating 736.00 MiB on device 0: cudaMalloc failed: out of memory\n0.58.636.342 E ggml_backend_buft_alloc_buffer_n_default: failed to allocate CUDA0 buffer of size 771751936\n0.58.641.898 E llama_init_from_model: failed to initialize the context: failed to allocate buffer for kv cache\n0.58.641.926 E cmn  common_init_: failed to create context with model '/mnt/Data/aicf-3node/models/Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf'\n0.58.641.936 E cmn  common_init_: failed to create context with model '/mnt/Data/aicf-3node/models/Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf'\n0.58.642.892 E srv    load_model: failed to create_context with model '/mnt/Data/aicf-3node/models/Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf'\n0.58.643.018 I srv    operator(): operator(): cleaning up before exit...\n0.58.645.975 E srv  server_run_i: exiting due to model loading error\n"
+}

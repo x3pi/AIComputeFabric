@@ -1,0 +1,76 @@
+{
+ "model": "Qwen3.8-27B",
+ "config": "2c-wifiemu",
+ "cards": 2,
+ "split": "52,48",
+ "size_gb": 16.46,
+ "links": {
+  "win5070w": "RTX 5070 (Windows) - Ethernet bi ep thanh Wi-Fi (mo phong)"
+ },
+ "idle_nic_Bps": {
+  "win5070w": 1405
+ },
+ "load_s": 232.5,
+ "load_net": {
+  "win5070w": {
+   "tx_MB": 7567.0,
+   "rx_MB": 21.3,
+   "tx_MBps_avg": 32.6
+  }
+ },
+ "model_buffers_MiB": {
+  "CUDA0": 7471.2,
+  "RPC0": 7203.25
+ },
+ "vram_used_MiB": {
+  "linux3060": 8567,
+  "win5070w": 9225
+ },
+ "prefill": {
+  "prompt_tok": 730,
+  "tok_s_median": 107.79,
+  "ttft_ms_median": 9509.25,
+  "net_bytes_per_prompt_tok": {
+   "win5070w": 488004
+  }
+ },
+ "prefill_long": {
+  "prompt_tok": 2079,
+  "tok_s_median": 198.38,
+  "ttft_ms_median": 13798.53,
+  "net_bytes_per_prompt_tok": {
+   "win5070w": 243330
+  },
+  "net_avg_Mbps": {
+   "win5070w": 293.3
+  }
+ },
+ "decode_single": {
+  "tok_s_median": 20.22,
+  "tpot_ms_median": 49.45,
+  "ttft_ms_median": 4878.22,
+  "token_gap_ms": {
+   "p50": 49.1,
+   "p95": 51.7,
+   "p99": 60.1,
+   "max": 81.2
+  },
+  "gpu_power_W": {
+   "linux3060": 87.6,
+   "win5070w": 51.4
+  },
+  "joule_per_out_tok": 10.728,
+  "net_bytes_per_out_tok": {
+   "win5070w": 1230360
+  },
+  "net_avg_Mbps": {
+   "win5070w": 127.54
+  }
+ },
+ "throughput_c2_tok_s": 13.78,
+ "throughput_c4_tok_s": 17.56,
+ "vram_peak_MiB": {
+  "linux3060": 8587,
+  "win5070w": 9251
+ }
+}

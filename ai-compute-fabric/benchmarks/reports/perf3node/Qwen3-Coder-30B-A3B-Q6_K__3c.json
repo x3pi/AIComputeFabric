@@ -1,0 +1,91 @@
+{
+ "model": "Qwen3-Coder-30B-A3B-Q6_K",
+ "config": "3c",
+ "cards": 3,
+ "split": "36,32,32",
+ "size_gb": 25.09,
+ "links": {
+  "win5070": "RTX 5070 (Windows) - Ethernet 2.5 GbE",
+  "win3060": "RTX 3060 (Windows, fi-ai03) - Wi-Fi"
+ },
+ "idle_nic_Bps": {
+  "win5070": 1273,
+  "win3060": 15904
+ },
+ "load_s": 247.5,
+ "load_net": {
+  "win5070": {
+   "tx_MB": 9225.1,
+   "rx_MB": 23.0,
+   "tx_MBps_avg": 37.3
+  },
+  "win3060": {
+   "tx_MB": 8568.9,
+   "rx_MB": 52.4,
+   "tx_MBps_avg": 34.6
+  }
+ },
+ "model_buffers_MiB": {
+  "CUDA0": 7079.39,
+  "RPC0": 7812.52
+ },
+ "vram_used_MiB": {
+  "linux3060": 7783,
+  "win5070": 10416,
+  "win3060": 8875
+ },
+ "prefill": {
+  "prompt_tok": 730,
+  "tok_s_median": 1149.57,
+  "ttft_ms_median": 1335.11,
+  "net_bytes_per_prompt_tok": {
+   "win5070": 62561,
+   "win3060": 43985
+  }
+ },
+ "prefill_long": {
+  "prompt_tok": 2079,
+  "tok_s_median": 1073.76,
+  "ttft_ms_median": 3254.5,
+  "net_bytes_per_prompt_tok": {
+   "win5070": 62695,
+   "win3060": 44979
+  },
+  "net_avg_Mbps": {
+   "win5070": 320.3,
+   "win3060": 229.8
+  }
+ },
+ "decode_single": {
+  "tok_s_median": 49.61,
+  "tpot_ms_median": 20.16,
+  "ttft_ms_median": 596.83,
+  "token_gap_ms": {
+   "p50": 19.5,
+   "p95": 23.5,
+   "p99": 35.6,
+   "max": 42.9
+  },
+  "gpu_power_W": {
+   "linux3060": 53.0,
+   "win5070": 30.2,
+   "win3060": 46.0
+  },
+  "joule_per_out_tok": 3.264,
+  "net_bytes_per_out_tok": {
+   "win5070": 223308,
+   "win3060": 189262
+  },
+  "net_avg_Mbps": {
+   "win5070": 70.71,
+   "win3060": 59.93
+  }
+ },
+ "throughput_c2_tok_s": 46.56,
+ "throughput_c4_tok_s": 60.34,
+ "vram_peak_MiB": {
+  "linux3060": 7807,
+  "win5070": 10526,
+  "win3060": 8913
+ }
+}

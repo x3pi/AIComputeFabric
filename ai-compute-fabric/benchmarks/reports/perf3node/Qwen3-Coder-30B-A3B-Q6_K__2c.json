@@ -1,0 +1,15 @@
+{
+ "model": "Qwen3-Coder-30B-A3B-Q6_K",
+ "config": "2c",
+ "cards": 2,
+ "split": "52,48",
+ "size_gb": 25.09,
+ "links": {
+  "win5070": "RTX 5070 (Windows) - Ethernet 2.5 GbE"
+ },
+ "idle_nic_Bps": {
+  "win5070": 926
+ },
+ "error": "engine failed to become healthy",
+ "log_tail": "Seek V4 HC pre enabled\n1.45.388.161 I resolve_fused_ops: fused DeepSeek V4 HC comb enabled\n1.45.390.595 I resolve_fused_ops: fused DeepSeek V4 HC post enabled\n1.45.397.845 E ggml_backend_cuda_buffer_type_alloc_buffer: allocating 112.04 MiB on device 0: cudaMalloc failed: out of memory\n1.45.397.850 E ggml_gallocr_reserve_n_impl: failed to allocate CUDA0 buffer of size 117481984\n1.45.397.851 E graph_reserve: failed to allocate compute buffers\n1.45.397.855 W sched_reserve: compute buffer allocation failed, retrying without pipeline parallelism\n1.45.411.756 E ggml_backend_cuda_buffer_type_alloc_buffer: allocating 88.01 MiB on device 0: cudaMalloc failed: out of memory\n1.45.411.758 E ggml_gallocr_reserve_n_impl: failed to allocate CUDA0 buffer of size 92285056\n1.45.411.759 E graph_reserve: failed to allocate compute buffers\n1.45.414.473 E llama_init_from_model: failed to initialize the context: failed to allocate compute pp buffers\n1.45.414.568 E cmn  common_init_: failed to create context with model '/mnt/Data/aicf-3node/models/Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf'\n1.45.414.573 E cmn  common_init_: failed to create context with model '/mnt/Data/aicf-3node/models/Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf'\n1.45.415.231 E srv    load_model: failed to create_context with model '/mnt/Data/aicf-3node/models/Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf'\n1.45.415.322 I srv    operator(): operator(): cleaning up before exit...\n1.45.417.918 E srv  server_run_i: exiting due to model loading error\n"
+}

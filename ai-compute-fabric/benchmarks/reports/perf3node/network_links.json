@@ -1,0 +1,35 @@
+{
+ "win5070": {
+  "label": "RTX 5070 (Windows) - Ethernet 2.5 GbE",
+  "host": "10.42.0.225",
+  "nic_on_master": "enp133s0",
+  "rtt_min_ms": 0.13,
+  "rtt_avg_ms": 0.315,
+  "rtt_max_ms": 0.663,
+  "loss_pct": 0.0,
+  "linux_to_node_MBps": 296.6,
+  "node_to_linux_MBps": 296.6
+ },
+ "win3060": {
+  "label": "RTX 3060 (Windows, fi-ai03) - Wi-Fi",
+  "host": "192.168.1.175",
+  "nic_on_master": "wlp132s0",
+  "rtt_min_ms": 2.941,
+  "rtt_avg_ms": 4.916,
+  "rtt_max_ms": 20.307,
+  "loss_pct": 0.0,
+  "linux_to_node_MBps": 36.7,
+  "node_to_linux_MBps": 50.6
+ },
+ "win5070r": {
+  "label": "RTX 5070 (Windows) - Wi-Fi that (802.11ax)",
+  "host": "192.168.1.78",
+  "nic_on_master": "wlp132s0",
+  "rtt_min_ms": 1.743,
+  "rtt_avg_ms": 3.966,
+  "rtt_max_ms": 19.209,
+  "loss_pct": 0.0,
+  "linux_to_node_MBps": 25.0,
+  "node_to_linux_MBps": 29.5
+ }
+}

@@ -1,0 +1,76 @@
+{
+ "model": "Qwen3-Coder-30B-A3B",
+ "config": "2c-wifi",
+ "cards": 2,
+ "split": "50,50",
+ "size_gb": 18.56,
+ "links": {
+  "win3060": "RTX 3060 (Windows, fi-ai03) - Wi-Fi"
+ },
+ "idle_nic_Bps": {
+  "win3060": 6839
+ },
+ "load_s": 214.4,
+ "load_net": {
+  "win3060": {
+   "tx_MB": 9842.5,
+   "rx_MB": 17.8,
+   "tx_MBps_avg": 45.9
+  }
+ },
+ "model_buffers_MiB": {
+  "CUDA0": 8548.79,
+  "RPC0": 8975.64
+ },
+ "vram_used_MiB": {
+  "linux3060": 9541,
+  "win3060": 10361
+ },
+ "prefill": {
+  "prompt_tok": 730,
+  "tok_s_median": 711.33,
+  "ttft_ms_median": 2319.3,
+  "net_bytes_per_prompt_tok": {
+   "win3060": 75641
+  }
+ },
+ "prefill_long": {
+  "prompt_tok": 2079,
+  "tok_s_median": 826.95,
+  "ttft_ms_median": 4274.01,
+  "net_bytes_per_prompt_tok": {
+   "win3060": 75769
+  },
+  "net_avg_Mbps": {
+   "win3060": 294.8
+  }
+ },
+ "decode_single": {
+  "tok_s_median": 53.33,
+  "tpot_ms_median": 18.75,
+  "ttft_ms_median": 694.98,
+  "token_gap_ms": {
+   "p50": 18.0,
+   "p95": 21.9,
+   "p99": 29.5,
+   "max": 42.5
+  },
+  "gpu_power_W": {
+   "linux3060": 57.6,
+   "win3060": 52.9
+  },
+  "joule_per_out_tok": 2.835,
+  "net_bytes_per_out_tok": {
+   "win3060": 297757
+  },
+  "net_avg_Mbps": {
+   "win3060": 92.85
+  }
+ },
+ "throughput_c2_tok_s": 30.17,
+ "throughput_c4_tok_s": 83.37,
+ "vram_peak_MiB": {
+  "linux3060": 9569,
+  "win3060": 10407
+ }
+}
