@@ -15,9 +15,23 @@ func main() {
 	hosts := flag.String("gateway-hosts", "127.0.0.1,localhost", "comma list of gateway IPs/DNS names")
 	workers := flag.String("workers", "pc-001", "comma list of worker ids to issue client certs for")
 	days := flag.Int("days", 90, "validity of leaf certificates")
+	rotate := flag.Bool("rotate", false, "rotate leaf certificates under existing CA if needed")
+	renewWithinDays := flag.Int("renew-within-days", 30, "when -rotate is set, only rotate if gateway.crt expires within this many days (0 = force)")
 	flag.Parse()
 	ws := strings.Split(*workers, ",")
-	if err := pki.Generate(*dir, strings.Split(*hosts, ","), ws, time.Duration(*days)*24*time.Hour); err != nil {
+	valid := time.Duration(*days) * 24 * time.Hour
+	if *rotate {
+		gwCert := *dir + "/gateway.crt"
+		if *renewWithinDays > 0 && !pki.NeedsRotation(gwCert, time.Duration(*renewWithinDays)*24*time.Hour) {
+			return
+		}
+		if err := pki.RotateLeaves(*dir, strings.Split(*hosts, ","), ws, valid); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("rotated gateway and %d worker leaf certificates under CA in %s", len(ws), *dir)
+		return
+	}
+	if err := pki.Generate(*dir, strings.Split(*hosts, ","), ws, valid); err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("wrote CA, gateway and %d worker certificates to %s", len(ws), *dir)

@@ -119,3 +119,45 @@ func TestMTLSVerifiesWorkerIDMatchesCertificateCN(t *testing.T) {
 		t.Fatalf("matching Heartbeat failed: %v", err)
 	}
 }
+
+func TestMTLSLiveCertRotation(t *testing.T) {
+	dir := t.TempDir()
+	if err := pki.Generate(dir, []string{"127.0.0.1", "localhost"}, []string{"pc-001"}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	gwCert := filepath.Join(dir, "gateway.crt")
+	if !pki.NeedsRotation(gwCert, 2*time.Hour) {
+		t.Fatal("1h cert must need rotation when renewWithin=2h")
+	}
+	if pki.NeedsRotation(gwCert, 30*time.Minute) {
+		t.Fatal("1h cert must not need rotation when renewWithin=30m")
+	}
+	addr, _ := mtlsServer(t, dir)
+	ca := filepath.Join(dir, "ca.crt")
+
+	oldPEM, _ := os.ReadFile(gwCert)
+	if err := pki.RotateLeaves(dir, []string{"127.0.0.1", "localhost"}, []string{"pc-001", "pc-002"}, 48*time.Hour); err != nil {
+		t.Fatalf("RotateLeaves failed: %v", err)
+	}
+	newPEM, _ := os.ReadFile(gwCert)
+	if string(oldPEM) == string(newPEM) {
+		t.Fatal("gateway leaf certificate was not rotated")
+	}
+	if pki.NeedsRotation(gwCert, 2*time.Hour) {
+		t.Fatal("rotated 48h cert should not need rotation within 2h")
+	}
+	// Newly enrolled worker pc-002 and rotated pc-001 must both connect without restarting the gRPC server.
+	if err := register(addr, clientCreds(t, ca, filepath.Join(dir, "pc-001.crt"), filepath.Join(dir, "pc-001.key"))); err != nil {
+		t.Fatalf("rotated pc-001 refused: %v", err)
+	}
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(clientCreds(t, ca, filepath.Join(dir, "pc-002.crt"), filepath.Join(dir, "pc-002.key"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, err := pb.NewFleetGatewayClient(conn).Register(ctx, &pb.RegisterRequest{WorkerId: "pc-002"}); err != nil {
+		t.Fatalf("newly rotated pc-002 refused: %v", err)
+	}
+}

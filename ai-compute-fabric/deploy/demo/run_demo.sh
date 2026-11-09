@@ -22,22 +22,29 @@ mkdir -p "$D/bin" "$D/logs" "$D/studio"
 (cd "$ROOT/apps/site-gateway" && go build -o "$D/bin/site-gateway" . && go build -o "$D/bin/pki" ./cmd/pki)
 (cd "$ROOT/apps/worker-guard" && go build -o "$D/bin/worker-guard" .)
 (cd "$ROOT/apps/global-control-plane" && go build -o "$D/bin/gcp-server" ./cmd/gcp-server)
-[ -f "$D/pki/ca.crt" ] && [ -f "$D/pki/pc-win-01.crt" ] || "$D/bin/pki" -out "$D/pki" -workers pc-001,pc-win-01 -gateway-hosts 127.0.0.1,localhost,192.168.1.40,10.42.0.1
+if [ -f "$D/pki/ca.crt" ] && [ -f "$D/pki/pc-win-01.crt" ]; then
+  "$D/bin/pki" -rotate -renew-within-days 30 -out "$D/pki" -workers pc-001,pc-win-01 -gateway-hosts 127.0.0.1,localhost,192.168.1.40,10.42.0.1
+else
+  "$D/bin/pki" -out "$D/pki" -workers pc-001,pc-win-01 -gateway-hosts 127.0.0.1,localhost,192.168.1.40,10.42.0.1
+fi
 
 GRPC_PORT="${GRPC_PORT:-17443}"; GRPC_HOST="${GRPC_HOST:-0.0.0.0}"; HTTP_PORT="${HTTP_PORT:-18080}"; HTTP_HOST="${HTTP_HOST:-127.0.0.1}"
 SIDECAR_PORT="${SIDECAR_PORT:-18095}"; DAG_PORT="${DAG_PORT:-18096}"; STUDIO_PORT="${STUDIO_PORT:-18098}"; BESTOFN_PORT="${BESTOFN_PORT:-18099}"
 SL_PORT="${SL_PORT:-18110}"; SL_CTRL_PORT="${SL_CTRL_PORT:-18111}"
 EMBED_PORT="${EMBED_PORT:-18091}"; RERANK_PORT="${RERANK_PORT:-18092}"
-if [ "$HTTP_HOST" != "127.0.0.1" ] && [ "$HTTP_HOST" != "localhost" ] && [ "$HTTP_HOST" != "::1" ]; then
-  if [ -z "${AICF_ADMIN_TOKEN:-}" ] || [ "${AICF_ADMIN_TOKEN}" = "demo-admin-token" ]; then
-    [ -f "$D/admin.token" ] || (umask 077 && echo "adm_$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 28)" >"$D/admin.token")
-    chmod 600 "$D/admin.token"
-    AICF_ADMIN_TOKEN="$(cat "$D/admin.token")"
-  fi
+if [ -z "${AICF_ADMIN_TOKEN:-}" ]; then
+  [ -f "$D/admin.token" ] || (umask 077 && echo "adm_$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 28)" >"$D/admin.token")
+  chmod 600 "$D/admin.token"
+  AICF_ADMIN_TOKEN="$(cat "$D/admin.token")"
 fi
-export AICF_ADMIN_TOKEN="${AICF_ADMIN_TOKEN:-demo-admin-token}"
+if [ -z "${AICF_ADMIN_PASSWORD:-}" ]; then
+  [ -f "$D/admin.password" ] || (umask 077 && echo "Adm!$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 16)" >"$D/admin.password")
+  chmod 600 "$D/admin.password"
+  AICF_ADMIN_PASSWORD="$(cat "$D/admin.password")"
+fi
+export AICF_ADMIN_TOKEN
 export AICF_ADMIN_USER="${AICF_ADMIN_USER:-admin}"
-export AICF_ADMIN_PASSWORD="${AICF_ADMIN_PASSWORD:-Admin@AICF2026!}"
+export AICF_ADMIN_PASSWORD
 export PYTHONPATH="$ROOT"
 LD="$(dirname "$LLAMA")"; export LD_LIBRARY_PATH="$LD:${LD_LIBRARY_PATH:-}"
 
