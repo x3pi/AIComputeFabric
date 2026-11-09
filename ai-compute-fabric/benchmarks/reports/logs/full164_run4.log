@@ -1,0 +1,91 @@
+
+>>> DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf | split | ncmoe=0 | reasoning
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  loaded 24.719s offload=49/49 cuda0=8148.38 rpc0=0.0
+  [20/164] pass=19 (95.0%) elapsed=890s
+  [40/164] pass=37 (92.5%) elapsed=1941s
+  [60/164] pass=52 (86.7%) elapsed=3028s
+  ENGINE DIED at HumanEval/68 (death #1) -> log saved
+  [80/164] pass=68 (85.0%) elapsed=4174s
+  [100/164] pass=78 (78.0%) elapsed=5632s
+  [120/164] pass=93 (77.5%) elapsed=6971s
+  ENGINE DIED at HumanEval/122 (death #2) -> log saved
+  [140/164] pass=105 (75.0%) elapsed=8340s
+  [160/164] pass=118 (73.8%) elapsed=9796s
+  => pass 121/164 (73.78%) decode=34.31 tok/s J/tok=4.9774 trunc=41
+
+>>> DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf | merged | ncmoe=0 | reasoning
+  loaded 44.385s offload=49/49 cuda0=4083.3 rpc0=4065.09
+  [20/164] pass=17 (85.0%) elapsed=816s
+  [40/164] pass=33 (82.5%) elapsed=1764s
+  [60/164] pass=48 (80.0%) elapsed=2695s
+  [80/164] pass=64 (80.0%) elapsed=3807s
+  [100/164] pass=76 (76.0%) elapsed=4988s
+  [120/164] pass=87 (72.5%) elapsed=6186s
+  [140/164] pass=101 (72.1%) elapsed=7396s
+  [160/164] pass=115 (71.9%) elapsed=8580s
+  => pass 118/164 (71.95%) decode=40.55 tok/s J/tok=5.3439 trunc=44
+
+>>> GLM-4.7-Flash-Q4_K_M.gguf | merged | ncmoe=0 | hybrid
+  loaded 78.244s offload=48/48 cuda0=8443.79 rpc0=8841.05
+  [20/164] pass=19 (95.0%) elapsed=37s
+  [40/164] pass=36 (90.0%) elapsed=77s
+  [60/164] pass=55 (91.7%) elapsed=112s
+  [80/164] pass=72 (90.0%) elapsed=161s
+  [100/164] pass=87 (87.0%) elapsed=216s
+  [120/164] pass=101 (84.2%) elapsed=275s
+  [140/164] pass=113 (80.7%) elapsed=335s
+  [160/164] pass=128 (80.0%) elapsed=384s
+  => pass 130/164 (79.27%) decode=94.71 tok/s J/tok=1.9803 trunc=0
+
+>>> GLM-4.7-Flash-Q4_K_M.gguf | smart_1gpu | ncmoe=26 | hybrid
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  loaded 19.724s offload=48/48 cuda0=8640.34 rpc0=0.0
+  [20/164] pass=20 (100.0%) elapsed=95s
+  [40/164] pass=38 (95.0%) elapsed=192s
+  [60/164] pass=57 (95.0%) elapsed=278s
+  [80/164] pass=75 (93.8%) elapsed=396s
+  [100/164] pass=90 (90.0%) elapsed=524s
+  [120/164] pass=105 (87.5%) elapsed=663s
+  [140/164] pass=117 (83.6%) elapsed=803s
+  [160/164] pass=133 (83.1%) elapsed=928s
+  => pass 135/164 (82.32%) decode=39.35 tok/s J/tok=2.2422 trunc=0
+
+>>> GLM-4-9B-0414-Q4_K_M.gguf | split | ncmoe=0 | direct
+  loaded 15.943s offload=41/41 cuda0=5539.01 rpc0=0.0
+  [20/164] pass=19 (95.0%) elapsed=48s
+  [40/164] pass=37 (92.5%) elapsed=97s
+  [60/164] pass=56 (93.3%) elapsed=125s
+  [80/164] pass=71 (88.8%) elapsed=159s
+  [100/164] pass=87 (87.0%) elapsed=207s
+  [120/164] pass=103 (85.8%) elapsed=248s
+  [140/164] pass=113 (80.7%) elapsed=293s
+  [160/164] pass=130 (81.2%) elapsed=341s
+  => pass 132/164 (80.49%) decode=51.43 tok/s J/tok=3.4341 trunc=0
+
+>>> GLM-4-9B-0414-Q4_K_M.gguf | merged | ncmoe=0 | direct
+  loaded 39.483s offload=41/41 cuda0=2779.98 rpc0=2759.03
+  [20/164] pass=19 (95.0%) elapsed=43s
+  [40/164] pass=37 (92.5%) elapsed=85s
+  [60/164] pass=56 (93.3%) elapsed=113s
+  [80/164] pass=73 (91.2%) elapsed=144s
+  [100/164] pass=89 (89.0%) elapsed=186s
+  [120/164] pass=106 (88.3%) elapsed=223s
+  [140/164] pass=116 (82.9%) elapsed=263s
+  [160/164] pass=134 (83.8%) elapsed=307s
+  => pass 136/164 (82.93%) decode=59.6 tok/s J/tok=3.6387 trunc=0
+
+>>> GLM-4-32B-0414-Q4_K_M.gguf | merged | ncmoe=0 | direct
+  loaded 80.311s offload=62/62 cuda0=8818.96 rpc0=9440.96
+  [20/164] pass=20 (100.0%) elapsed=153s
+  [40/164] pass=39 (97.5%) elapsed=314s
+  [60/164] pass=57 (95.0%) elapsed=461s
+  [80/164] pass=76 (95.0%) elapsed=679s
+  [100/164] pass=96 (96.0%) elapsed=901s
+  [120/164] pass=113 (94.2%) elapsed=1140s
+  [140/164] pass=129 (92.1%) elapsed=1370s
+  [160/164] pass=147 (91.9%) elapsed=1602s
+  => pass 150/164 (91.46%) decode=20.69 tok/s J/tok=11.1815 trunc=0
+
+restoring production default (Coder-30B merged 48:52)
+ALL DONE

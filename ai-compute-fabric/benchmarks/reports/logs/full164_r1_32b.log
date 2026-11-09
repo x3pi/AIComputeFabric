@@ -1,0 +1,7 @@
+
+>>> DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf | merged | ncmoe=0 | reasoning
+  CONFIG FAILED: timed out
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+
+restoring production default (Coder-30B merged 48:52)
+ALL DONE

@@ -1,0 +1,20 @@
+
+>>> DeepSeek-V2-Lite-Chat.Q4_K_M.gguf | smart_1gpu | nrestore failed: <urlopen error [Errno 111] Connection refused>
+ALL DONE
+Qwen3-4B-Q4_K_M.gguf...
+  loaded 18.177s offload=28/28 cuda0=5290.98 rpc0=0.0
+  [20/164] pass=15 (75.0%) elapsed=89s
+  [40/164] pass=28 (70.0%) elapsed=179s
+  [60/164] pass=45 (75.0%) elapsed=263s
+  [80/164] pass=54 (67.5%) elapsed=344s
+  [100/164] pass=66 (66.0%) elapsed=434s
+  [120/164] pass=71 (59.2%) elapsed=573s
+  [140/164] pass=76 (54.3%) elapsed=676s
+  [160/164] pass=85 (53.1%) elapsed=759s
+  => pass 86/164 (52.44%) decode=29.09 tok/s J/tok=2.4906 trunc=1
+
+>>> DeepSeek-V2-Lite-Chat.Q4_K_M.gguf | merged | ncmoe=0 | direct
+  CONFIG FAILED: timed out
+
+restoring production default (Coder-30B merged 48:52)
+ALL DONE

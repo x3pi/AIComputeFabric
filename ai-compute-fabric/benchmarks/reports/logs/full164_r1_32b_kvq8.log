@@ -1,0 +1,6 @@
+
+>>> DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf | merged | ncmoe=0 | reasoning
+  loaded 39.429s offload=65/65 cuda0=9035.47 rpc0=9472.88
+  ENGINE DIED at HumanEval/1 (death #1) -> log saved
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  [20/164] pass=0 (0.0%) elapsed=3286s

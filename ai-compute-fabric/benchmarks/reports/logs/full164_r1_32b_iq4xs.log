@@ -1,0 +1,15 @@
+
+>>> DeepSeek-R1-Distill-Qwen-32B-IQ4_XS.gguf | merged | ncmoe=0 | reasoning
+  loaded 87.402s offload=65/65 cuda0=8045.47 rpc0=8427.88
+  [20/164] pass=19 (95.0%) elapsed=1349s
+  [40/164] pass=35 (87.5%) elapsed=2973s
+  [60/164] pass=51 (85.0%) elapsed=4538s
+  [80/164] pass=67 (83.8%) elapsed=6243s
+  [100/164] pass=77 (77.0%) elapsed=8345s
+  [120/164] pass=92 (76.7%) elapsed=10330s
+  [140/164] pass=105 (75.0%) elapsed=12324s
+  [160/164] pass=120 (75.0%) elapsed=14340s
+  => pass 123/164 (75.0%) decode=22.37 tok/s J/tok=9.8764 trunc=40
+
+restoring production default (Coder-30B merged 48:52)
+ALL DONE

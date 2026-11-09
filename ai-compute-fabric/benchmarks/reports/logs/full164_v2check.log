@@ -1,0 +1,15 @@
+
+>>> Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf | merged | ncmoe=0 | direct
+  loaded 27.801s offload=49/49 cuda0=8213.65 rpc0=9310.78
+  [20/164] pass=20 (100.0%) elapsed=30s
+  [40/164] pass=39 (97.5%) elapsed=70s
+  [60/164] pass=59 (98.3%) elapsed=99s
+  [80/164] pass=78 (97.5%) elapsed=139s
+  [100/164] pass=98 (98.0%) elapsed=183s
+  [120/164] pass=116 (96.7%) elapsed=224s
+  [140/164] pass=133 (95.0%) elapsed=290s
+  [160/164] pass=152 (95.0%) elapsed=338s
+  => pass 154/164 (93.9%) decode=123.05 tok/s J/tok=1.6345 trunc=2
+
+restoring production default (Coder-30B merged 48:52)
+ALL DONE

@@ -1,0 +1,89 @@
+evaluator sanity: {'total': 164, 'canonical_pass': 164, 'canonical_fail_ids': [], 'stub_pass_mutation': 0}
+
+>>> deepseek-coder-6.7b-instruct.Q4_K_M.gguf | split | ncmoe=0 | direct
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  loaded 12.927s offload=33/33 cuda0=3821.76 rpc0=0.0
+  [20/164] pass=18 (90.0%) elapsed=57s
+  [40/164] pass=36 (90.0%) elapsed=123s
+  [60/164] pass=52 (86.7%) elapsed=183s
+  [80/164] pass=67 (83.8%) elapsed=251s
+  [100/164] pass=81 (81.0%) elapsed=312s
+  [120/164] pass=98 (81.7%) elapsed=368s
+  [140/164] pass=108 (77.1%) elapsed=435s
+  [160/164] pass=125 (78.1%) elapsed=498s
+  => pass 128/164 (78.05%) decode=70.69 tok/s J/tok=2.5363 trunc=0
+
+>>> deepseek-coder-6.7b-instruct.Q4_K_M.gguf | merged | ncmoe=0 | direct
+  loaded 29.154s offload=33/33 cuda0=1745.38 rpc0=2076.38
+  [20/164] pass=18 (90.0%) elapsed=63s
+  [40/164] pass=36 (90.0%) elapsed=131s
+  [60/164] pass=53 (88.3%) elapsed=192s
+  [80/164] pass=68 (85.0%) elapsed=260s
+  [100/164] pass=83 (83.0%) elapsed=319s
+  [120/164] pass=100 (83.3%) elapsed=382s
+  [140/164] pass=109 (77.9%) elapsed=451s
+  [160/164] pass=126 (78.8%) elapsed=519s
+  => pass 129/164 (78.66%) decode=83.92 tok/s J/tok=2.8255 trunc=0
+
+>>> DeepSeek-V2-Lite-Chat.Q3_K_M.gguf | smart_1gpu | ncmoe=10 | direct
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  loaded 21.694s offload=28/28 cuda0=5210.15 rpc0=0.0
+  [20/164] pass=12 (60.0%) elapsed=110s
+  [40/164] pass=25 (62.5%) elapsed=255s
+  [60/164] pass=39 (65.0%) elapsed=375s
+  [80/164] pass=48 (60.0%) elapsed=543s
+  [100/164] pass=52 (52.0%) elapsed=721s
+  [120/164] pass=55 (45.8%) elapsed=868s
+  [140/164] pass=59 (42.1%) elapsed=1156s
+  [160/164] pass=65 (40.6%) elapsed=1374s
+  => pass 66/164 (40.24%) decode=25.86 tok/s J/tok=2.4474 trunc=3
+
+>>> DeepSeek-V2-Lite-Chat.Q3_K_M.gguf | merged | ncmoe=0 | direct
+  CONFIG FAILED: timed out
+
+>>> Qwen3.8-27B-UD-Q4_K_M.gguf | merged | ncmoe=0 | direct
+  loaded 58.977s offload=66/66 cuda0=7471.2 rpc0=7203.25
+  [20/164] pass=20 (100.0%) elapsed=166s
+  [40/164] pass=40 (100.0%) elapsed=356s
+  [60/164] pass=60 (100.0%) elapsed=514s
+  [80/164] pass=80 (100.0%) elapsed=751s
+  [100/164] pass=100 (100.0%) elapsed=995s
+  [120/164] pass=119 (99.2%) elapsed=1303s
+  [140/164] pass=136 (97.1%) elapsed=1664s
+  [160/164] pass=154 (96.2%) elapsed=1942s
+  => pass 158/164 (96.34%) decode=23.65 tok/s J/tok=9.6992 trunc=4
+
+>>> Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_M.gguf | split | ncmoe=0 | reasoning
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  loaded 17.73s offload=34/34 cuda0=4812.25 rpc0=0.0
+  [20/164] pass=18 (90.0%) elapsed=276s
+  [40/164] pass=35 (87.5%) elapsed=745s
+  [60/164] pass=50 (83.3%) elapsed=1167s
+  [80/164] pass=67 (83.8%) elapsed=1569s
+  [100/164] pass=82 (82.0%) elapsed=2114s
+  [120/164] pass=96 (80.0%) elapsed=2641s
+  [140/164] pass=110 (78.6%) elapsed=3223s
+  [160/164] pass=127 (79.4%) elapsed=3690s
+  => pass 129/164 (78.66%) decode=56.46 tok/s J/tok=3.0314 trunc=26
+
+>>> Qwen3.5-9B-Kimi-k3-Distilled.Q4_K_M.gguf | merged | ncmoe=0 | reasoning
+  loaded 42.189s offload=34/34 cuda0=2569.39 rpc0=2242.86
+  [20/164] pass=18 (90.0%) elapsed=269s
+  [40/164] pass=36 (90.0%) elapsed=616s
+  [60/164] pass=53 (88.3%) elapsed=927s
+  [80/164] pass=70 (87.5%) elapsed=1292s
+  [100/164] pass=85 (85.0%) elapsed=1762s
+  [120/164] pass=101 (84.2%) elapsed=2230s
+  [140/164] pass=115 (82.1%) elapsed=2838s
+  [160/164] pass=130 (81.2%) elapsed=3296s
+  => pass 133/164 (81.1%) decode=63.3 tok/s J/tok=3.2685 trunc=22
+
+>>> DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf | split | ncmoe=0 | reasoning
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  loaded 29.592s offload=49/49 cuda0=8148.38 rpc0=0.0
+  [20/164] pass=19 (95.0%) elapsed=891s
+  engine dead -> abort config
+  => pass 20/23 (86.96%) decode=34.51 tok/s J/tok=4.9498 trunc=1
+
+>>> DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf | merged | ncmoe=0 | reasoning
+  loaded 47.394s offload=49/49 cuda0=4083.3 rpc0=4065.09

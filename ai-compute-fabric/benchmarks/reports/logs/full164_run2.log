@@ -1,0 +1,103 @@
+
+>>> Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf | smart_1gpu | ncmoe=26 | direct
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  loaded 13.164s offload=49/49 cuda0=8506.43 rpc0=0.0
+  [20/164] pass=20 (100.0%) elapsed=96s
+  [40/164] pass=40 (100.0%) elapsed=206s
+  [60/164] pass=60 (100.0%) elapsed=296s
+  [80/164] pass=80 (100.0%) elapsed=415s
+  [100/164] pass=100 (100.0%) elapsed=545s
+  [120/164] pass=117 (97.5%) elapsed=679s
+  [140/164] pass=133 (95.0%) elapsed=876s
+  [160/164] pass=152 (95.0%) elapsed=1029s
+  => pass 154/164 (93.9%) decode=39.45 tok/s J/tok=1.8642 trunc=2
+
+>>> Qwen3-30B-A3B-Q4_K_M.gguf | merged | ncmoe=0 | direct
+  loaded 71.89s offload=49/49 cuda0=8213.65 rpc0=9310.78
+  [20/164] pass=20 (100.0%) elapsed=27s
+  [40/164] pass=38 (95.0%) elapsed=58s
+  [60/164] pass=57 (95.0%) elapsed=86s
+  [80/164] pass=77 (96.2%) elapsed=120s
+  [100/164] pass=96 (96.0%) elapsed=158s
+  [120/164] pass=112 (93.3%) elapsed=201s
+  [140/164] pass=127 (90.7%) elapsed=252s
+  [160/164] pass=145 (90.6%) elapsed=291s
+  => pass 147/164 (89.63%) decode=126.27 tok/s J/tok=1.6209 trunc=0
+
+>>> Qwen3-30B-A3B-Q4_K_M.gguf | smart_1gpu | ncmoe=26 | direct
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  loaded 22.713s offload=49/49 cuda0=8506.43 rpc0=0.0
+  [20/164] pass=19 (95.0%) elapsed=82s
+  [40/164] pass=38 (95.0%) elapsed=178s
+  [60/164] pass=56 (93.3%) elapsed=265s
+  [80/164] pass=76 (95.0%) elapsed=374s
+  [100/164] pass=94 (94.0%) elapsed=484s
+  [120/164] pass=110 (91.7%) elapsed=611s
+  [140/164] pass=125 (89.3%) elapsed=742s
+  [160/164] pass=144 (90.0%) elapsed=867s
+  => pass 146/164 (89.02%) decode=40.57 tok/s J/tok=1.8929 trunc=0
+
+>>> Qwen3-4B-Q4_K_M.gguf | split | ncmoe=0 | direct
+  loaded 15.121s offload=37/37 cuda0=2375.91 rpc0=0.0
+  [20/164] pass=17 (85.0%) elapsed=29s
+  [40/164] pass=34 (85.0%) elapsed=71s
+  [60/164] pass=52 (86.7%) elapsed=100s
+  [80/164] pass=68 (85.0%) elapsed=136s
+  [100/164] pass=85 (85.0%) elapsed=179s
+  [120/164] pass=99 (82.5%) elapsed=219s
+  [140/164] pass=109 (77.9%) elapsed=261s
+  [160/164] pass=125 (78.1%) elapsed=303s
+  => pass 128/164 (78.05%) decode=100.24 tok/s J/tok=1.736 trunc=0
+
+>>> Qwen3-4B-Q4_K_M.gguf | merged | ncmoe=0 | direct
+  loaded 28.697s offload=37/37 cuda0=1231.78 rpc0=1144.13
+  [20/164] pass=16 (80.0%) elapsed=27s
+  [40/164] pass=33 (82.5%) elapsed=69s
+  [60/164] pass=51 (85.0%) elapsed=96s
+  [80/164] pass=66 (82.5%) elapsed=129s
+  [100/164] pass=81 (81.0%) elapsed=169s
+  [120/164] pass=95 (79.2%) elapsed=208s
+  [140/164] pass=107 (76.4%) elapsed=255s
+  [160/164] pass=122 (76.2%) elapsed=294s
+  => pass 125/164 (76.22%) decode=111.75 tok/s J/tok=1.8206 trunc=1
+
+>>> Qwen3-8B-Q4_K_M.gguf | split | ncmoe=0 | direct
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  loaded 20.67s offload=37/37 cuda0=4455.34 rpc0=0.0
+  [20/164] pass=19 (95.0%) elapsed=47s
+  [40/164] pass=37 (92.5%) elapsed=101s
+  [60/164] pass=56 (93.3%) elapsed=148s
+  [80/164] pass=74 (92.5%) elapsed=192s
+  [100/164] pass=89 (89.0%) elapsed=236s
+  [120/164] pass=102 (85.0%) elapsed=289s
+  [140/164] pass=116 (82.9%) elapsed=348s
+  [160/164] pass=132 (82.5%) elapsed=396s
+  => pass 134/164 (81.71%) decode=63.0 tok/s J/tok=2.7903 trunc=0
+
+>>> Qwen3-8B-Q4_K_M.gguf | merged | ncmoe=0 | direct
+  loaded 37.798s offload=37/37 cuda0=2264.04 rpc0=2191.3
+  [20/164] pass=19 (95.0%) elapsed=44s
+  [40/164] pass=37 (92.5%) elapsed=94s
+  [60/164] pass=56 (93.3%) elapsed=138s
+  [80/164] pass=75 (93.8%) elapsed=181s
+  [100/164] pass=90 (90.0%) elapsed=223s
+  [120/164] pass=103 (85.8%) elapsed=271s
+  [140/164] pass=117 (83.6%) elapsed=327s
+  [160/164] pass=133 (83.1%) elapsed=371s
+  => pass 135/164 (82.32%) decode=72.19 tok/s J/tok=3.0064 trunc=0
+
+>>> deepseek-coder-6.7b-instruct.Q4_K_M.gguf | split | ncmoe=0 | direct
+  [Topology] Dissolving merged group to split mode via Qwen3-4B-Q4_K_M.gguf...
+  loaded 14.655s offload=33/33 cuda0=3821.76 rpc0=0.0
+  [20/164] pass=14 (70.0%) elapsed=271s
+  [40/164] pass=28 (70.0%) elapsed=576s
+  [60/164] pass=39 (65.0%) elapsed=886s
+  [80/164] pass=50 (62.5%) elapsed=1182s
+  [100/164] pass=61 (61.0%) elapsed=1471s
+  [120/164] pass=77 (64.2%) elapsed=1759s
+  [140/164] pass=84 (60.0%) elapsed=2038s
+  [160/164] pass=96 (60.0%) elapsed=2330s
+  => pass 98/164 (59.76%) decode=68.06 tok/s J/tok=2.5329 trunc=57
+
+>>> deepseek-coder-6.7b-instruct.Q4_K_M.gguf | merged | ncmoe=0 | direct
+  loaded 28.801s offload=33/33 cuda0=1745.38 rpc0=2076.38
