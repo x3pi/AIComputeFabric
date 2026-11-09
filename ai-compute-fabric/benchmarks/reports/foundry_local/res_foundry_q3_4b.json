@@ -1,0 +1,42 @@
+{
+ "label": "foundry_q3_4b",
+ "model": "qwen3-4b-generic-gpu:2",
+ "prefill_short": {
+  "prompt_tok": 464,
+  "ttft_ms_median": 274.52,
+  "prefill_tok_s": 1690.2
+ },
+ "prefill_long": {
+  "prompt_tok": 1328,
+  "ttft_ms_median": 802.66,
+  "prefill_tok_s": 1654.5
+ },
+ "decode_single": {
+  "tok_s_median": 113.99,
+  "out_tok": [
+   192,
+   192,
+   192
+  ],
+  "ttft_ms_median": 115.62,
+  "token_gap_ms": {
+   "p50": 8.76,
+   "p95": 8.96,
+   "p99": 9.21,
+   "max": 9.83
+  },
+  "gpu_power_W": 172.9,
+  "joule_per_out_tok": 1.517
+ },
+ "throughput_c2": {
+  "agg_tok_s": 109.27,
+  "per_stream_decode_tok_s": 57.03,
+  "ttft_ms_max": 182.0
+ },
+ "throughput_c4": {
+  "agg_tok_s": 109.74,
+  "per_stream_decode_tok_s": 28.63,
+  "ttft_ms_max": 360.6
+ },
+ "vram_peak_MiB": 5717.0
+}

@@ -1,0 +1,42 @@
+{
+ "label": "foundry_q3_4b_cuda",
+ "model": "qwen3-4b-cuda-gpu:2",
+ "prefill_short": {
+  "prompt_tok": 464,
+  "ttft_ms_median": 138.8,
+  "prefill_tok_s": 3342.9
+ },
+ "prefill_long": {
+  "prompt_tok": 1328,
+  "ttft_ms_median": 255.83,
+  "prefill_tok_s": 5190.9
+ },
+ "decode_single": {
+  "tok_s_median": 142.47,
+  "out_tok": [
+   192,
+   192,
+   192
+  ],
+  "ttft_ms_median": 103.42,
+  "token_gap_ms": {
+   "p50": 7.04,
+   "p95": 7.25,
+   "p99": 7.31,
+   "max": 7.34
+  },
+  "gpu_power_W": 154.6,
+  "joule_per_out_tok": 1.085
+ },
+ "throughput_c2": {
+  "agg_tok_s": 135.76,
+  "per_stream_decode_tok_s": 71.55,
+  "ttft_ms_max": 172.2
+ },
+ "throughput_c4": {
+  "agg_tok_s": 135.68,
+  "per_stream_decode_tok_s": 35.47,
+  "ttft_ms_max": 366.7
+ },
+ "vram_peak_MiB": 5904.0
+}

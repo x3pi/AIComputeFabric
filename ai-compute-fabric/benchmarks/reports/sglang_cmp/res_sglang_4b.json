@@ -1,0 +1,44 @@
+{
+ "label": "sglang_4b",
+ "model": "sgl",
+ "prefill_short": {
+  "prompt_tok": 464,
+  "ttft_ms_median": 163.03,
+  "prefill_tok_s": 2846.1
+ },
+ "prefill_long": {
+  "prompt_tok": 1328,
+  "ttft_ms_median": 317.45,
+  "prefill_tok_s": 4183.3
+ },
+ "decode_single": {
+  "tok_s_median": 107.68,
+  "out_tok": [
+   192,
+   192,
+   192
+  ],
+  "ttft_ms_median": 52.67,
+  "token_gap_ms": {
+   "p50": 9.3,
+   "p95": 9.84,
+   "p99": 10.1,
+   "max": 10.46
+  },
+  "gpu_power_W": 151.5,
+  "joule_per_out_tok": 1.407
+ },
+ "throughput_c2": {
+  "agg_tok_s": 209.05,
+  "per_stream_decode_tok_s": 105.79,
+  "ttft_ms_max": 30.1
+ },
+ "throughput_c4": {
+  "agg_tok_s": 404.7,
+  "per_stream_decode_tok_s": 102.07,
+  "ttft_ms_max": 25.1
+ },
+ "vram_peak_MiB": 9767.0,
+ "load_s": 22.0,
+ "cmd": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/venv-sglang/bin/python -m sglang.launch_server --model-path Qwen/Qwen3-4B-AWQ --served-model-name sgl --host 127.0.0.1 --port 18190 --context-length 16384 --max-running-requests 20 --mem-fraction-static 0.80 --dtype float16 --attention-backend triton --sampling-backend pytorch --cuda-graph-max-bs-decode 8 --disable-prefill-cuda-graph"
+}

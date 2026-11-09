@@ -1,0 +1,42 @@
+{
+ "label": "llamacpp_q3_4b",
+ "model": "x",
+ "prefill_short": {
+  "prompt_tok": 464,
+  "ttft_ms_median": 84.76,
+  "prefill_tok_s": 5474.3
+ },
+ "prefill_long": {
+  "prompt_tok": 1328,
+  "ttft_ms_median": 157.57,
+  "prefill_tok_s": 8428.0
+ },
+ "decode_single": {
+  "tok_s_median": 174.78,
+  "out_tok": [
+   192,
+   192,
+   192
+  ],
+  "ttft_ms_median": 60.31,
+  "token_gap_ms": {
+   "p50": 5.7,
+   "p95": 5.84,
+   "p99": 6.15,
+   "max": 8.21
+  },
+  "gpu_power_W": 162.8,
+  "joule_per_out_tok": 0.931
+ },
+ "throughput_c2": {
+  "agg_tok_s": 127.01,
+  "per_stream_decode_tok_s": 63.87,
+  "ttft_ms_max": 68.6
+ },
+ "throughput_c4": {
+  "agg_tok_s": 530.22,
+  "per_stream_decode_tok_s": 135.24,
+  "ttft_ms_max": 50.5
+ },
+ "vram_peak_MiB": 5682.0
+}

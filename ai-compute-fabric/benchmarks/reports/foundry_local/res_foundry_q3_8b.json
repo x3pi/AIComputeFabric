@@ -1,0 +1,42 @@
+{
+ "label": "foundry_q3_8b",
+ "model": "qwen3-8b-generic-gpu:2",
+ "prefill_short": {
+  "prompt_tok": 464,
+  "ttft_ms_median": 474.25,
+  "prefill_tok_s": 978.4
+ },
+ "prefill_long": {
+  "prompt_tok": 1328,
+  "ttft_ms_median": 1334.96,
+  "prefill_tok_s": 994.8
+ },
+ "decode_single": {
+  "tok_s_median": 75.61,
+  "out_tok": [
+   192,
+   192,
+   192
+  ],
+  "ttft_ms_median": 158.12,
+  "token_gap_ms": {
+   "p50": 13.14,
+   "p95": 13.5,
+   "p99": 13.65,
+   "max": 13.74
+  },
+  "gpu_power_W": 195.8,
+  "joule_per_out_tok": 2.59
+ },
+ "throughput_c2": {
+  "agg_tok_s": 72.96,
+  "per_stream_decode_tok_s": 38.18,
+  "ttft_ms_max": 285.6
+ },
+ "throughput_c4": {
+  "agg_tok_s": 72.91,
+  "per_stream_decode_tok_s": 19.03,
+  "ttft_ms_max": 586.4
+ },
+ "vram_peak_MiB": 8514.0
+}

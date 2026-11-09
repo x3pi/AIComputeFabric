@@ -1,0 +1,44 @@
+{
+ "label": "llamacpp_4b",
+ "model": "x",
+ "prefill_short": {
+  "prompt_tok": 464,
+  "ttft_ms_median": 175.0,
+  "prefill_tok_s": 2651.4
+ },
+ "prefill_long": {
+  "prompt_tok": 1328,
+  "ttft_ms_median": 350.59,
+  "prefill_tok_s": 3787.9
+ },
+ "decode_single": {
+  "tok_s_median": 100.68,
+  "out_tok": [
+   192,
+   192,
+   192
+  ],
+  "ttft_ms_median": 92.92,
+  "token_gap_ms": {
+   "p50": 9.93,
+   "p95": 10.22,
+   "p99": 10.52,
+   "max": 11.14
+  },
+  "gpu_power_W": 163.3,
+  "joule_per_out_tok": 1.622
+ },
+ "throughput_c2": {
+  "agg_tok_s": 92.67,
+  "per_stream_decode_tok_s": 46.97,
+  "ttft_ms_max": 118.8
+ },
+ "throughput_c4": {
+  "agg_tok_s": 268.59,
+  "per_stream_decode_tok_s": 69.78,
+  "ttft_ms_max": 148.5
+ },
+ "vram_peak_MiB": 4915.0,
+ "load_s": 3.0,
+ "cmd": "/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bin/llama-server -m /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/Qwen3-4B-Q4_K_M.gguf -c 16384 -np 4 -ngl 99 -fa on -ctk f16 -ctv f16 --no-warmup --fit off --host 127.0.0.1 --port 18190"
+}

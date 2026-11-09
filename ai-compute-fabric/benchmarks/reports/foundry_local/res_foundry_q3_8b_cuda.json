@@ -1,0 +1,42 @@
+{
+ "label": "foundry_q3_8b_cuda",
+ "model": "qwen3-8b-cuda-gpu:2",
+ "prefill_short": {
+  "prompt_tok": 464,
+  "ttft_ms_median": 183.91,
+  "prefill_tok_s": 2523.0
+ },
+ "prefill_long": {
+  "prompt_tok": 1328,
+  "ttft_ms_median": 408.82,
+  "prefill_tok_s": 3248.4
+ },
+ "decode_single": {
+  "tok_s_median": 92.04,
+  "out_tok": [
+   192,
+   192,
+   192
+  ],
+  "ttft_ms_median": 114.66,
+  "token_gap_ms": {
+   "p50": 10.89,
+   "p95": 11.07,
+   "p99": 11.14,
+   "max": 11.32
+  },
+  "gpu_power_W": 179.8,
+  "joule_per_out_tok": 1.953
+ },
+ "throughput_c2": {
+  "agg_tok_s": 88.91,
+  "per_stream_decode_tok_s": 45.78,
+  "ttft_ms_max": 211.3
+ },
+ "throughput_c4": {
+  "agg_tok_s": 88.68,
+  "per_stream_decode_tok_s": 22.93,
+  "ttft_ms_max": 500.1
+ },
+ "vram_peak_MiB": 8254.0
+}
