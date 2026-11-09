@@ -1,0 +1,7 @@
+{
+ "label": "cpu_under_decode",
+ "embed_60tok_ms_median": 176.1,
+ "embed_500tok_ms_median": 250.8,
+ "embed_2000tok_ms_median": 486.8,
+ "rerank_20docs_ms_median": 1415.5
+}

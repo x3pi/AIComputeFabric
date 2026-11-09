@@ -1,0 +1,11 @@
+{
+ "decode_alone": 23.68222477948007,
+ "decode_with_embed_rerank_running": 21.852448903091112,
+ "embed_rerank_under_decode": {
+  "label": "cpu_under_decode",
+  "embed_60tok_ms_median": 205.3,
+  "embed_500tok_ms_median": 274.1,
+  "embed_2000tok_ms_median": 484.9,
+  "rerank_20docs_ms_median": 1438.6
+ }
+}

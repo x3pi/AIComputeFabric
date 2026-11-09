@@ -1,0 +1,7 @@
+{
+ "label": "cpu_idle",
+ "embed_60tok_ms_median": 74.6,
+ "embed_500tok_ms_median": 114.0,
+ "embed_2000tok_ms_median": 253.5,
+ "rerank_20docs_ms_median": 635.3
+}

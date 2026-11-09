@@ -1,0 +1,134 @@
+[
+ {
+  "task_id": "HumanEval/0",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 374,
+  "think_chars": 959,
+  "seconds": 21.4,
+  "decode_tok_s": 23.8,
+  "nothink_out_tok": 173
+ },
+ {
+  "task_id": "HumanEval/14",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 404,
+  "think_chars": 1436,
+  "seconds": 18.6,
+  "decode_tok_s": 23.8,
+  "nothink_out_tok": 84
+ },
+ {
+  "task_id": "HumanEval/28",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 122,
+  "think_chars": 254,
+  "seconds": 21.2,
+  "decode_tok_s": 23.7,
+  "nothink_out_tok": 70
+ },
+ {
+  "task_id": "HumanEval/42",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 349,
+  "think_chars": 639,
+  "seconds": 32.4,
+  "decode_tok_s": 23.8,
+  "nothink_out_tok": 132
+ },
+ {
+  "task_id": "HumanEval/56",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 355,
+  "think_chars": 1288,
+  "seconds": 16.7,
+  "decode_tok_s": 23.6,
+  "nothink_out_tok": 157
+ },
+ {
+  "task_id": "HumanEval/70",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 558,
+  "think_chars": 1256,
+  "seconds": 25.3,
+  "decode_tok_s": 23.6,
+  "nothink_out_tok": 216
+ },
+ {
+  "task_id": "HumanEval/84",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 460,
+  "think_chars": 938,
+  "seconds": 21.2,
+  "decode_tok_s": 23.7,
+  "nothink_out_tok": 180
+ },
+ {
+  "task_id": "HumanEval/98",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 387,
+  "think_chars": 957,
+  "seconds": 24.8,
+  "decode_tok_s": 23.7,
+  "nothink_out_tok": 126
+ },
+ {
+  "task_id": "HumanEval/112",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 186,
+  "think_chars": 454,
+  "seconds": 9.6,
+  "decode_tok_s": 23.6,
+  "nothink_out_tok": 218
+ },
+ {
+  "task_id": "HumanEval/126",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 785,
+  "think_chars": 1630,
+  "seconds": 35.1,
+  "decode_tok_s": 23.6,
+  "nothink_out_tok": 350
+ },
+ {
+  "task_id": "HumanEval/140",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 1563,
+  "think_chars": 5550,
+  "seconds": 67.3,
+  "decode_tok_s": 23.9,
+  "nothink_out_tok": 245
+ },
+ {
+  "task_id": "HumanEval/154",
+  "passed_think": true,
+  "passed_nothink": true,
+  "finish": "stop",
+  "out_tok": 607,
+  "think_chars": 1739,
+  "seconds": 27.5,
+  "decode_tok_s": 23.7,
+  "nothink_out_tok": 188
+ }
+]

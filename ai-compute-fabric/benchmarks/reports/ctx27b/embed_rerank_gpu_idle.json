@@ -1,0 +1,7 @@
+{
+ "label": "gpu_idle",
+ "embed_60tok_ms_median": 12.7,
+ "embed_500tok_ms_median": 35.2,
+ "embed_2000tok_ms_median": 110.0,
+ "rerank_20docs_ms_median": 244.5
+}

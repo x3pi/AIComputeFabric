@@ -1,0 +1,126 @@
+{
+ "label": "c32k_f16",
+ "n_ctx": 32768,
+ "ts": "2026-11-09T11:17:07+0700",
+ "short": {
+  "decode_tok_s_median": 23.89,
+  "prefill_tok_s_median": 165.4
+ },
+ "vram_idle_after_short": {
+  "linux_MiB": 10763,
+  "win_MiB": 9622
+ },
+ "needle": [
+  {
+   "fill_target": 4000,
+   "depth": 0.1,
+   "prompt_tokens": 4033,
+   "answer": "672900",
+   "got": "672900",
+   "correct": true,
+   "prefill_tok_s": 912.9,
+   "decode_tok_s": 22.2,
+   "wall_s": 5.2
+  },
+  {
+   "fill_target": 4000,
+   "depth": 0.5,
+   "prompt_tokens": 4033,
+   "answer": "272419",
+   "got": "272419",
+   "correct": true,
+   "prefill_tok_s": 953.5,
+   "decode_tok_s": 22.5,
+   "wall_s": 5.6,
+   "vram": {
+    "linux_MiB": 10771,
+    "win_MiB": 9632
+   }
+  },
+  {
+   "fill_target": 4000,
+   "depth": 0.9,
+   "prompt_tokens": 4033,
+   "answer": "771938",
+   "got": "771938",
+   "correct": true,
+   "prefill_tok_s": 953.3,
+   "decode_tok_s": 22.0,
+   "wall_s": 5.6
+  },
+  {
+   "fill_target": 16000,
+   "depth": 0.1,
+   "prompt_tokens": 16028,
+   "answer": "752090",
+   "got": "752090",
+   "correct": true,
+   "prefill_tok_s": 1184.9,
+   "decode_tok_s": 22.2,
+   "wall_s": 14.9
+  },
+  {
+   "fill_target": 16000,
+   "depth": 0.5,
+   "prompt_tokens": 16028,
+   "answer": "351609",
+   "got": "351609",
+   "correct": true,
+   "prefill_tok_s": 1182.3,
+   "decode_tok_s": 21.6,
+   "wall_s": 16.8,
+   "vram": {
+    "linux_MiB": 10773,
+    "win_MiB": 9632
+   }
+  },
+  {
+   "fill_target": 16000,
+   "depth": 0.9,
+   "prompt_tokens": 16028,
+   "answer": "851128",
+   "got": "851128",
+   "correct": true,
+   "prefill_tok_s": 1182.9,
+   "decode_tok_s": 21.5,
+   "wall_s": 16.8
+  },
+  {
+   "fill_target": 30000,
+   "depth": 0.1,
+   "prompt_tokens": 30011,
+   "answer": "831280",
+   "got": "831280",
+   "correct": true,
+   "prefill_tok_s": 1138.5,
+   "decode_tok_s": 21.0,
+   "wall_s": 29.6
+  },
+  {
+   "fill_target": 30000,
+   "depth": 0.5,
+   "prompt_tokens": 30011,
+   "answer": "430799",
+   "got": "430799",
+   "correct": true,
+   "prefill_tok_s": 1142.5,
+   "decode_tok_s": 20.8,
+   "wall_s": 31.7,
+   "vram": {
+    "linux_MiB": 10773,
+    "win_MiB": 9632
+   }
+  },
+  {
+   "fill_target": 30000,
+   "depth": 0.9,
+   "prompt_tokens": 30011,
+   "answer": "930318",
+   "got": "930318",
+   "correct": true,
+   "prefill_tok_s": 1142.8,
+   "decode_tok_s": 20.2,
+   "wall_s": 31.7
+  }
+ ]
+}
