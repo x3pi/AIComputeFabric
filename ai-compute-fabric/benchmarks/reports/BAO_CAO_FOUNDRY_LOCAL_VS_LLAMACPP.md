@@ -62,5 +62,5 @@ Thời gian nạp model lên GPU: llama.cpp 2,7 s (file đã nằm trong bộ nh
 
 - Chỉ đo GPU NVIDIA trên Windows với hai model Qwen3 (4B, 8B). Chưa đo CPU, NPU, Linux hay model lớn hơn; catalog của Foundry Local chỉ có model đến khoảng 20B (gpt-oss-20b, Phi-4, Qwen3-14B), không có Qwen3.8-27B hay Coder-30B.
 - Foundry Local dùng ONNX int4 còn llama.cpp dùng GGUF Q4_K_M, nên lượng tử hóa không hoàn toàn giống nhau; chất lượng đầu ra chưa được so sánh.
-- Ở llama.cpp, thông lượng 2 luồng (127 và 93 tok/s) thấp hơn một luồng đơn trong cả hai lần đo; chưa tìm ra nguyên nhân. Kết luận không phụ thuộc vào điểm này vì 4 luồng cho kết quả bình thường.
+- Ở llama.cpp, thông lượng 2 luồng (127 và 93 tok/s) thấp hơn một luồng đơn trong cả hai lần đo. Trên RTX 3060 Linux nguyên nhân là hai luồng rơi vào hai slot không kề nhau (xem báo cáo `BAO_CAO_LLAMACPP_THONG_LUONG_2_LUONG`); trên RTX 5070 chưa kiểm tra theo cặp slot. Kết luận không phụ thuộc vào điểm này vì 4 luồng cho kết quả bình thường.
 - Mỗi cấu hình chỉ chạy một lượt (3 lần lặp mỗi phép đo). Cài CUDA 12/cuDNN 9 bằng gói pip là một cách thử, không phải cài đặt chính thức của Foundry Local.

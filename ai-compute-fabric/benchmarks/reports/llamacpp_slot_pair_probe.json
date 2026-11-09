@@ -1,0 +1,55 @@
+{
+ "note": "llama-server 2 concurrent streams, aggregate decode tok/s by slot pair (id_slot), RTX 3060, -c 16384 -np 4, KV f16, fa on, one run per pair after a warm-up pass",
+ "qwen3_4b_default_np4": {
+  "(0,1)": 177.7,
+  "(0,2)": 89.9,
+  "(0,3)": 90.0,
+  "(1,2)": 177.8,
+  "(1,3)": 89.7,
+  "(2,3)": 178.2
+ },
+ "qwen3_4b_no_kv_unified": {
+  "(0,1)": 177.5,
+  "(0,2)": 89.8,
+  "(0,3)": 90.2,
+  "(1,2)": 177.5,
+  "(1,3)": 90.0,
+  "(2,3)": 177.5
+ },
+ "qwen3_4b_kv_unified": {
+  "(0,1)": 167.7,
+  "(0,2)": 168.2,
+  "(0,3)": 167.3,
+  "(1,2)": 167.1,
+  "(1,3)": 167.6,
+  "(2,3)": 168.0
+ },
+ "qwen3_4b_kv_unified_bench": {
+  "decode_single": 101.23,
+  "c2_agg": 168.66,
+  "c3_agg_runs": [
+   196.1,
+   207.4,
+   207.1,
+   206.1
+  ],
+  "c4_agg": 240.31,
+  "ttft_ms_max_c4": 414.3
+ },
+ "qwen3_4b_default_bench": {
+  "decode_single": 100.79,
+  "c2_agg": 92.26,
+  "c4_agg": 268.39,
+  "ttft_ms_max_c4": 127.7
+ },
+ "qwen3_8b_default_np4": {
+  "(0,1)": 112.9,
+  "(0,2)": 58.1,
+  "(2,3)": 113.2
+ },
+ "qwen3_8b_kv_unified": {
+  "(0,1)": 108.6,
+  "(0,2)": 108.9,
+  "(2,3)": 108.8
+ }
+}
