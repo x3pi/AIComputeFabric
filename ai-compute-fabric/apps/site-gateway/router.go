@@ -220,7 +220,7 @@ func (r *Router) pickPreferLocked(q Req, prefer string) (Route, bool) {
 		}
 	}
 	var best Route
-	bestLoad, found := 1<<30, false
+	bestScore, found := 1e18, false
 	now := r.now()
 	for _, rt := range r.routes {
 		if !routeMatchesReq(rt, q) || (q.Skip != "" && rt.ID == q.Skip) {
@@ -236,8 +236,15 @@ func (r *Router) pickPreferLocked(q Req, prefer string) (Route, bool) {
 		if l >= rt.Slots {
 			continue
 		}
-		if l < bestLoad {
-			best, bestLoad, found = rt, l, true
+		// Cost-aware score: expected completion factor (inflight + 1) / ReferenceTokS
+		// When ReferenceTokS is equal, this reduces strictly to least-inflight (preserving tie-break order).
+		tokS := ReferenceTokS(rt.Model, "single", "", rt.URL)
+		if tokS <= 0 {
+			tokS = 35.0
+		}
+		score := float64(l+1) / tokS
+		if !found || score < bestScore {
+			best, bestScore, found = rt, score, true
 		}
 	}
 	return best, found

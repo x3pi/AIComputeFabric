@@ -51,7 +51,7 @@ func validateCPURange(label, spec string, numCPU int) error {
 // Local* track only the local CUDA device(s) so a merged master does not count remote RPC
 // buffers against its own single-GPU 6-bucket bar.
 type Buffers struct {
-	ModelMiB, KVMiB, ComputeMiB             float64
+	ModelMiB, KVMiB, ComputeMiB                float64
 	LocalModelMiB, LocalKVMiB, LocalComputeMiB float64
 }
 

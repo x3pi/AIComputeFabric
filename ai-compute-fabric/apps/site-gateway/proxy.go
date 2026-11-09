@@ -36,7 +36,7 @@ func NewInference(r *Router, l *Limiter) *Inference {
 	// connection": 24 of 88 requests failed at 8 concurrent clients, 0 of 72 with keep-alive
 	// disabled, same throughput). A fresh LAN connection costs well under a millisecond.
 	tr := &http.Transport{DisableKeepAlives: true, ResponseHeaderTimeout: 120 * time.Second}
-	return &Inference{R: r, L: l, Client: &http.Client{Transport: tr}, MaxBody: 1 << 20}
+	return &Inference{R: r, L: l, Client: &http.Client{Transport: tr}, MaxBody: 32 << 20}
 }
 
 func reject(w http.ResponseWriter, code int, retry time.Duration, msg string) {
@@ -74,7 +74,7 @@ func (in *Inference) listModels(w http.ResponseWriter) {
 	for _, rt := range in.R.reg.Routable() {
 		if rt.Model != "" && !seen[rt.Model] {
 			seen[rt.Model] = true
-			data = append(data, map[string]any{"id": rt.Model, "object": "model", "owned_by": "aicf"})
+			data = append(data, BuildOpenAIModelEntries(rt.Model)...)
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -97,7 +97,7 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch strings.TrimSuffix(r.URL.Path, "/") {
-	case "/v1/chat/completions", "/v1/completions", "/v1/embeddings":
+	case "/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/responses":
 	default:
 		http.NotFound(w, r)
 		return
@@ -133,6 +133,22 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if json.Unmarshal(body, &probe) != nil {
 		reject(w, http.StatusBadRequest, 0, "body must be JSON")
 		return
+	}
+	var thinkState *bool
+	if p := strings.TrimSuffix(r.URL.Path, "/"); p == "/v1/chat/completions" || p == "/v1/responses" {
+		rewritten, cleanModel, ts := ApplyThinkingControl(body, r.Header.Get("X-AICF-Thinking"))
+		body = rewritten
+		thinkState = ts
+		if cleanModel != "" {
+			probe.Model = cleanModel
+		}
+		if thinkState != nil {
+			if *thinkState {
+				w.Header().Set("X-AICF-Thinking-Mode", "on")
+			} else {
+				w.Header().Set("X-AICF-Thinking-Mode", "off")
+			}
+		}
 	}
 
 	agentPin := strings.TrimSpace(r.Header.Get("X-AICF-Agent"))
@@ -186,7 +202,7 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		granted := time.Now()
-		done, retry := in.forward(w, r, rt, body)
+		done, retry := in.forward(w, r, rt, body, thinkState)
 		in.R.Release(rt, tenant, !done, time.Since(granted))
 		skip = rt.ID
 		if done || !retry {
@@ -198,7 +214,7 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // forward proxies one attempt. done=true means a response was delivered (success or
 // client-side end). retry=true means nothing was sent to the client yet.
-func (in *Inference) forward(w http.ResponseWriter, r *http.Request, rt Route, body []byte) (done, retry bool) {
+func (in *Inference) forward(w http.ResponseWriter, r *http.Request, rt Route, body []byte, thinkState *bool) (done, retry bool) {
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, rt.URL+r.URL.Path, bytes.NewReader(body))
 	if err != nil {
 		return false, true
@@ -224,6 +240,17 @@ func (in *Inference) forward(w http.ResponseWriter, r *http.Request, rt Route, b
 	}
 	w.Header().Set("X-AICF-Worker", rt.ID)
 	w.Header().Set("X-AICF-Agent", rt.ID)
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	if strings.Contains(ct, "application/json") && strings.TrimSuffix(r.URL.Path, "/") == "/v1/chat/completions" {
+		rawResp, rerr := io.ReadAll(resp.Body)
+		if rerr != nil {
+			return false, false
+		}
+		normResp := NormalizeOpenAIChatResponse(rawResp, thinkState)
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(normResp)
+		return true, false
+	}
 	w.WriteHeader(resp.StatusCode)
 	fl, _ := w.(http.Flusher)
 	buf := make([]byte, 8192)

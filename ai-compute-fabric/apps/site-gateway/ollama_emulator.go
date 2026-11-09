@@ -43,12 +43,13 @@ type OllamaModelDetails struct {
 
 // OllamaModelTag matches one item in GET /api/tags (`{"models": [...]}`).
 type OllamaModelTag struct {
-	Name       string             `json:"name"`
-	Model      string             `json:"model"`
-	ModifiedAt string             `json:"modified_at"`
-	Size       uint64             `json:"size"`
-	Digest     string             `json:"digest"`
-	Details    OllamaModelDetails `json:"details"`
+	Name         string             `json:"name"`
+	Model        string             `json:"model"`
+	ModifiedAt   string             `json:"modified_at"`
+	Size         uint64             `json:"size"`
+	Digest       string             `json:"digest"`
+	Details      OllamaModelDetails `json:"details"`
+	Capabilities []string           `json:"capabilities,omitempty"`
 }
 
 // OllamaRunningModel matches one item in GET /api/ps (`{"models": [...]}`).
@@ -105,9 +106,9 @@ func setOllamaCORS(w http.ResponseWriter) {
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
 	h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, HEAD, OPTIONS")
-	h.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID, X-Requested-With, Accept, Origin")
+	h.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Tenant-ID, X-AICF-Thinking, X-Requested-With, Accept, Origin")
 	h.Set("Access-Control-Allow-Private-Network", "true")
-	h.Set("Access-Control-Expose-Headers", "X-AICF-Ollama-Emulator, X-AICF-Worker, X-AICF-Agent")
+	h.Set("Access-Control-Expose-Headers", "X-AICF-Ollama-Emulator, X-AICF-Worker, X-AICF-Agent, X-AICF-Thinking-Mode")
 	h.Set("X-AICF-Ollama-Emulator", "true")
 }
 
@@ -296,7 +297,7 @@ func (oe *OllamaEmulator) collectModels() []string {
 // resolveModel maps an Ollama client model name (which may include `:latest`, omit `.gguf`, or use a short alias)
 // to the actual routable model name on the cluster.
 func (oe *OllamaEmulator) resolveModel(want string) string {
-	want = strings.TrimSpace(want)
+	want, _ = StripThinkingAlias(want)
 	models := oe.collectModels()
 	if len(models) == 0 {
 		return strings.TrimSuffix(want, ":latest")
@@ -564,12 +565,13 @@ func (oe *OllamaEmulator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for _, m := range models {
 			det, sz := inferOllamaDetails(m)
 			tags = append(tags, OllamaModelTag{
-				Name:       m,
-				Model:      m,
-				ModifiedAt: now,
-				Size:       sz,
-				Digest:     modelDigest(m),
-				Details:    det,
+				Name:         m,
+				Model:        m,
+				ModifiedAt:   now,
+				Size:         sz,
+				Digest:       modelDigest(m),
+				Details:      det,
+				Capabilities: OllamaModelCapabilities(m),
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"models": tags})
@@ -612,16 +614,20 @@ func (oe *OllamaEmulator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		resolved := oe.resolveModel(want)
 		oe.recordClient(r, resolved)
 		det, _ := inferOllamaDetails(resolved)
+		supportsThink, supportsToggle, thinkMode := ModelThinkingProfile(resolved)
 		ctxLen := 16384
 		writeJSON(w, http.StatusOK, map[string]any{
 			"modelfile":    fmt.Sprintf("# Modelfile managed by AI Compute Fabric\nFROM %s\nPARAMETER num_ctx %d\n", resolved, ctxLen),
 			"parameters":   fmt.Sprintf("num_ctx %d", ctxLen),
 			"template":     "{{ .Prompt }}",
 			"details":      det,
-			"capabilities": []string{"completion", "tools"},
+			"capabilities": OllamaModelCapabilities(resolved),
 			"model_info": map[string]any{
 				"general.architecture": det.Family,
 				"llama.context_length": ctxLen,
+				"aicf.thinking":        supportsThink,
+				"aicf.thinking_toggle": supportsToggle,
+				"aicf.thinking_mode":   thinkMode,
 			},
 		})
 	case "/api/chat":
@@ -636,11 +642,13 @@ func (oe *OllamaEmulator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type ollamaChatReq struct {
-	Model    string            `json:"model"`
-	Messages []json.RawMessage `json:"messages"`
-	Stream   *bool             `json:"stream"`
-	Tools    json.RawMessage   `json:"tools,omitempty"`
-	Options  map[string]any    `json:"options,omitempty"`
+	Model          string            `json:"model"`
+	Messages       []json.RawMessage `json:"messages"`
+	Stream         *bool             `json:"stream"`
+	Think          any               `json:"think,omitempty"`
+	EnableThinking *bool             `json:"enable_thinking,omitempty"`
+	Tools          json.RawMessage   `json:"tools,omitempty"`
+	Options        map[string]any    `json:"options,omitempty"`
 }
 
 func (oe *OllamaEmulator) handleOllamaChat(w http.ResponseWriter, r *http.Request) {
@@ -663,6 +671,10 @@ func (oe *OllamaEmulator) handleOllamaChat(w http.ResponseWriter, r *http.Reques
 		reject(w, http.StatusBadRequest, 0, "body must be JSON")
 		return
 	}
+	var rawMap map[string]any
+	_ = json.Unmarshal(body, &rawMap)
+	thinkState := ExtractThinkingDirective(rawMap, r.Header.Get("X-AICF-Thinking"))
+
 	resolvedModel := oe.resolveModel(in.Model)
 	replyModel := in.Model
 	if replyModel == "" {
@@ -680,6 +692,9 @@ func (oe *OllamaEmulator) handleOllamaChat(w http.ResponseWriter, r *http.Reques
 		"messages": in.Messages,
 		"stream":   stream,
 	}
+	if thinkState != nil {
+		oaiPayload["enable_thinking"] = *thinkState
+	}
 	if len(in.Tools) > 0 && string(in.Tools) != "null" {
 		oaiPayload["tools"] = in.Tools
 	}
@@ -695,15 +710,18 @@ func (oe *OllamaEmulator) handleOllamaChat(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	oaiBytes, _ := json.Marshal(oaiPayload)
-	oe.dispatchAndTranslate(w, r, tenant, resolvedModel, replyModel, oaiBytes, stream, false)
+	oaiBytes, _, thinkState = ApplyThinkingControl(oaiBytes, r.Header.Get("X-AICF-Thinking"))
+	oe.dispatchAndTranslate(w, r, tenant, resolvedModel, replyModel, oaiBytes, stream, false, thinkState)
 }
 
 type ollamaGenerateReq struct {
-	Model   string         `json:"model"`
-	Prompt  string         `json:"prompt"`
-	System  string         `json:"system"`
-	Stream  *bool          `json:"stream"`
-	Options map[string]any `json:"options,omitempty"`
+	Model          string         `json:"model"`
+	Prompt         string         `json:"prompt"`
+	System         string         `json:"system"`
+	Stream         *bool          `json:"stream"`
+	Think          any            `json:"think,omitempty"`
+	EnableThinking *bool          `json:"enable_thinking,omitempty"`
+	Options        map[string]any `json:"options,omitempty"`
 }
 
 func (oe *OllamaEmulator) handleOllamaGenerate(w http.ResponseWriter, r *http.Request) {
@@ -726,6 +744,10 @@ func (oe *OllamaEmulator) handleOllamaGenerate(w http.ResponseWriter, r *http.Re
 		reject(w, http.StatusBadRequest, 0, "body must be JSON")
 		return
 	}
+	var rawMap map[string]any
+	_ = json.Unmarshal(body, &rawMap)
+	thinkState := ExtractThinkingDirective(rawMap, r.Header.Get("X-AICF-Thinking"))
+
 	resolvedModel := oe.resolveModel(in.Model)
 	replyModel := in.Model
 	if replyModel == "" {
@@ -748,6 +770,9 @@ func (oe *OllamaEmulator) handleOllamaGenerate(w http.ResponseWriter, r *http.Re
 		"messages": msgs,
 		"stream":   stream,
 	}
+	if thinkState != nil {
+		oaiPayload["enable_thinking"] = *thinkState
+	}
 	if in.Options != nil {
 		if temp, ok := in.Options["temperature"]; ok {
 			oaiPayload["temperature"] = temp
@@ -757,10 +782,11 @@ func (oe *OllamaEmulator) handleOllamaGenerate(w http.ResponseWriter, r *http.Re
 		}
 	}
 	oaiBytes, _ := json.Marshal(oaiPayload)
-	oe.dispatchAndTranslate(w, r, tenant, resolvedModel, replyModel, oaiBytes, stream, true)
+	oaiBytes, _, thinkState = ApplyThinkingControl(oaiBytes, r.Header.Get("X-AICF-Thinking"))
+	oe.dispatchAndTranslate(w, r, tenant, resolvedModel, replyModel, oaiBytes, stream, true, thinkState)
 }
 
-func (oe *OllamaEmulator) dispatchAndTranslate(w http.ResponseWriter, r *http.Request, tenant, resolvedModel, replyModel string, oaiBytes []byte, stream, isGenerate bool) {
+func (oe *OllamaEmulator) dispatchAndTranslate(w http.ResponseWriter, r *http.Request, tenant, resolvedModel, replyModel string, oaiBytes []byte, stream, isGenerate bool, thinkState *bool) {
 	if oe.router == nil {
 		reject(w, http.StatusServiceUnavailable, 5*time.Second, "router not initialized")
 		return
@@ -775,11 +801,11 @@ func (oe *OllamaEmulator) dispatchAndTranslate(w http.ResponseWriter, r *http.Re
 		return
 	}
 	start := time.Now()
-	done := oe.forwardTranslated(w, r, rt, replyModel, oaiBytes, stream, isGenerate, start)
+	done := oe.forwardTranslated(w, r, rt, replyModel, oaiBytes, stream, isGenerate, start, thinkState)
 	oe.router.Release(rt, tenant, !done, time.Since(start))
 }
 
-func (oe *OllamaEmulator) forwardTranslated(w http.ResponseWriter, r *http.Request, rt Route, replyModel string, oaiBytes []byte, stream, isGenerate bool, start time.Time) bool {
+func (oe *OllamaEmulator) forwardTranslated(w http.ResponseWriter, r *http.Request, rt Route, replyModel string, oaiBytes []byte, stream, isGenerate bool, start time.Time, thinkState *bool) bool {
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, rt.URL+"/v1/chat/completions", bytes.NewReader(oaiBytes))
 	if err != nil {
 		return false
@@ -794,6 +820,13 @@ func (oe *OllamaEmulator) forwardTranslated(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("X-AICF-Worker", rt.ID)
 	w.Header().Set("X-AICF-Agent", rt.ID)
+	if thinkState != nil {
+		if *thinkState {
+			w.Header().Set("X-AICF-Thinking-Mode", "on")
+		} else {
+			w.Header().Set("X-AICF-Thinking-Mode", "off")
+		}
+	}
 
 	if !stream {
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -804,9 +837,10 @@ func (oe *OllamaEmulator) forwardTranslated(w http.ResponseWriter, r *http.Reque
 		var oaiResp struct {
 			Choices []struct {
 				Message struct {
-					Role      string          `json:"role"`
-					Content   string          `json:"content"`
-					ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
+					Role             string          `json:"role"`
+					Content          string          `json:"content"`
+					ReasoningContent string          `json:"reasoning_content"`
+					ToolCalls        json.RawMessage `json:"tool_calls,omitempty"`
 				} `json:"message"`
 				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
@@ -817,19 +851,25 @@ func (oe *OllamaEmulator) forwardTranslated(w http.ResponseWriter, r *http.Reque
 		}
 		_ = json.Unmarshal(raw, &oaiResp)
 		content := ""
+		thinking := ""
 		var toolCalls json.RawMessage
 		finish := "stop"
 		if len(oaiResp.Choices) > 0 {
 			content = oaiResp.Choices[0].Message.Content
+			thinking = oaiResp.Choices[0].Message.ReasoningContent
 			toolCalls = oaiResp.Choices[0].Message.ToolCalls
 			if oaiResp.Choices[0].FinishReason != "" {
 				finish = oaiResp.Choices[0].FinishReason
 			}
 		}
+		if thinkState != nil && !*thinkState {
+			content = CleanDisabledThinkingContent(content)
+			thinking = ""
+		}
 		dur := time.Since(start).Nanoseconds()
 		nowStr := time.Now().UTC().Format(time.RFC3339Nano)
 		if isGenerate {
-			writeJSON(w, http.StatusOK, map[string]any{
+			out := map[string]any{
 				"model":             replyModel,
 				"created_at":        nowStr,
 				"response":          content,
@@ -838,10 +878,17 @@ func (oe *OllamaEmulator) forwardTranslated(w http.ResponseWriter, r *http.Reque
 				"total_duration":    dur,
 				"prompt_eval_count": oaiResp.Usage.PromptTokens,
 				"eval_count":        oaiResp.Usage.CompletionTokens,
-			})
+			}
+			if thinking != "" {
+				out["thinking"] = thinking
+			}
+			writeJSON(w, http.StatusOK, out)
 			return true
 		}
 		msgObj := map[string]any{"role": "assistant", "content": content}
+		if thinking != "" {
+			msgObj["thinking"] = thinking
+		}
 		if len(toolCalls) > 0 && string(toolCalls) != "null" {
 			msgObj["tool_calls"] = toolCalls
 		}
@@ -889,24 +936,40 @@ func (oe *OllamaEmulator) forwardTranslated(w http.ResponseWriter, r *http.Reque
 			continue
 		}
 		delta := chunk.Choices[0].Delta.Content
-		if delta == "" && chunk.Choices[0].Delta.ReasoningContent != "" {
-			delta = chunk.Choices[0].Delta.ReasoningContent
+		reasoning := chunk.Choices[0].Delta.ReasoningContent
+		if thinkState != nil && !*thinkState {
+			reasoning = ""
 		}
-		if delta == "" && len(chunk.Choices[0].Delta.ToolCalls) == 0 {
+		if delta == "" && reasoning == "" && len(chunk.Choices[0].Delta.ToolCalls) == 0 {
 			continue
 		}
 		evalCount++
 		nowStr := time.Now().UTC().Format(time.RFC3339Nano)
 		var outLine []byte
 		if isGenerate {
-			outLine, _ = json.Marshal(map[string]any{
+			genDelta := delta
+			if genDelta == "" && reasoning != "" {
+				genDelta = reasoning
+			}
+			frame := map[string]any{
 				"model":      replyModel,
 				"created_at": nowStr,
-				"response":   delta,
+				"response":   genDelta,
 				"done":       false,
-			})
+			}
+			if reasoning != "" {
+				frame["thinking"] = reasoning
+			}
+			outLine, _ = json.Marshal(frame)
 		} else {
-			msg := map[string]any{"role": "assistant", "content": delta}
+			msgContent := delta
+			if msgContent == "" && reasoning != "" {
+				msgContent = reasoning
+			}
+			msg := map[string]any{"role": "assistant", "content": msgContent}
+			if reasoning != "" {
+				msg["thinking"] = reasoning
+			}
 			if len(chunk.Choices[0].Delta.ToolCalls) > 0 {
 				msg["tool_calls"] = chunk.Choices[0].Delta.ToolCalls
 			}
@@ -1029,9 +1092,9 @@ func (oe *OllamaEmulator) handleOpenAICompat(w http.ResponseWriter, r *http.Requ
 	if r.Method == http.MethodGet && p == "/v1/models" {
 		oe.recordClient(r, "")
 		models := oe.collectModels()
-		data := make([]map[string]any, 0, len(models))
+		data := make([]map[string]any, 0, len(models)*3)
 		for _, m := range models {
-			data = append(data, map[string]any{"id": m, "object": "model", "owned_by": "aicf"})
+			data = append(data, BuildOpenAIModelEntries(m)...)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": data})
 		return
@@ -1061,6 +1124,26 @@ func (oe *OllamaEmulator) handleOpenAICompat(w http.ResponseWriter, r *http.Requ
 	payload["model"] = resolved
 	oe.recordClient(r, resolved)
 	rewritten, _ := json.Marshal(payload)
+	var thinkState *bool
+	if p == "/v1/chat/completions" || p == "/v1/responses" {
+		// Preserve model suffix directive (:no_think / :think) from the original wantModel before resolveModel stripped it
+		if _, aliasThink := StripThinkingAlias(wantModel); aliasThink != nil && ExtractThinkingDirective(payload, r.Header.Get("X-AICF-Thinking")) == nil {
+			if *aliasThink {
+				rewritten, _, thinkState = ApplyThinkingControl(rewritten, "true")
+			} else {
+				rewritten, _, thinkState = ApplyThinkingControl(rewritten, "false")
+			}
+		} else {
+			rewritten, _, thinkState = ApplyThinkingControl(rewritten, r.Header.Get("X-AICF-Thinking"))
+		}
+	}
+	if thinkState != nil {
+		if *thinkState {
+			w.Header().Set("X-AICF-Thinking-Mode", "on")
+		} else {
+			w.Header().Set("X-AICF-Thinking-Mode", "off")
+		}
+	}
 
 	rt, err := oe.router.Acquire(Req{Model: resolved, Tenant: tenant, Prio: PrioInteractive}, r.Context().Done())
 	if err != nil {
@@ -1091,6 +1174,15 @@ func (oe *OllamaEmulator) handleOpenAICompat(w http.ResponseWriter, r *http.Requ
 	setOllamaCORS(w)
 	w.Header().Set("X-AICF-Worker", rt.ID)
 	w.Header().Set("X-AICF-Agent", rt.ID)
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	if strings.Contains(ct, "application/json") && p == "/v1/chat/completions" {
+		rawResp, _ := io.ReadAll(resp.Body)
+		normResp := NormalizeOpenAIChatResponse(rawResp, thinkState)
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(normResp)
+		oe.router.Release(rt, tenant, false, time.Since(start))
+		return
+	}
 	w.WriteHeader(resp.StatusCode)
 	fl, _ := w.(http.Flusher)
 	buf := make([]byte, 8192)

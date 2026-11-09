@@ -141,3 +141,20 @@ func TestSessionKeyIsStableAcrossTurnsAndScopedToTheTenant(t *testing.T) {
 		t.Fatal("conversations without a system prompt must also be stable")
 	}
 }
+
+func TestCostAwareRoutingPrefersFasterHardwareCurve(t *testing.T) {
+	reg := NewRegistry(time.Hour)
+	rt := NewRouter(RouterConfig{MaxQueue: 8, MaxWait: time.Second}, reg)
+	// Same model Qwen3-8B, but w1 is on 192.168.1.40 (RTX 3060, 43.8 tok/s) and w2 is on 192.168.1.49 (RTX 5070, 82.2 tok/s).
+	addWorker(reg, "pc-001", "http://192.168.1.40:18090", "Qwen3-8B-Q4_K_M.gguf", 2)
+	addWorker(reg, "pc-win-01", "http://192.168.1.49:18090", "Qwen3-8B-Q4_K_M.gguf", 2)
+	rt.Refresh()
+	got, err := rt.Acquire(Req{Model: "Qwen3-8B-Q4_K_M.gguf"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != "pc-win-01" {
+		t.Fatalf("expected faster RTX 5070 worker pc-win-01 (82.2 tok/s vs 43.8 tok/s), got %s", got.ID)
+	}
+	rt.Release(got, "", false)
+}

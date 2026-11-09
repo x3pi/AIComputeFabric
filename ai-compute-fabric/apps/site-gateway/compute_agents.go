@@ -129,7 +129,7 @@ func ReferenceTokS(model, kind, gpuName, engineURL string) float64 {
 	}
 	m := strings.ToLower(strings.TrimSpace(model))
 	g := strings.ToLower(gpuName)
-	is5070 := strings.Contains(g, "5070")
+	is5070 := strings.Contains(g, "5070") || strings.Contains(engineURL, "192.168.1.49")
 	switch {
 	case strings.Contains(m, "qwen3-coder-30b-a3b"):
 		if kind == "group" {

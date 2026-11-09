@@ -17,12 +17,11 @@ import json
 import os
 import re
 import sys
-import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade"}
 STATIC = {"/chat.html", "/common.css", "/common.js", "/chat.js", "/favicon.ico", "/serverless.html", "/serverless.js", "/connect.html", "/connect.js"}
-MAX_BODY = 4 * 1024 * 1024
+MAX_BODY = 32 * 1024 * 1024  # base64 images in chat requests
 LOGIN_PATHS = {"/api/auth/login", "/api/serverless/v1/auth/login"}  # where an admin user name is refused
 
 # (method, exact path or compiled regex)

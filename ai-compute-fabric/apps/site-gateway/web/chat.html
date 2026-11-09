@@ -217,6 +217,25 @@ details.think summary {
       </div>
 
       <div>
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+          <label for="model" style="margin:0">Mô hình đang chạy (/v1/models)</label>
+          <span class="pill sm" id="think-cap-badge">Đang dò…</span>
+        </div>
+        <select id="model" style="width:100%">
+          <option value="">Tự động chọn model trên cụm</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="think-mode">Chế độ Suy luận (Thinking Mode)</label>
+        <select id="think-mode" style="width:100%">
+          <option value="auto">Tự động theo Model mặc định</option>
+          <option value="off">⚡ Tắt Thinking (/no_think — Trả lời thẳng, cực nhanh)</option>
+          <option value="on">💭 Bật Thinking (/think — Suy luận từng bước)</option>
+        </select>
+      </div>
+
+      <div>
         <label for="prio">Lớp Ưu tiên (X-Priority)</label>
         <select id="prio" style="width:100%">
           <option value="">Interactive — Tương tác trực tiếp (Ưu tiên cao)</option>
