@@ -1,43 +1,43 @@
-# ZeRO-3 / FSDP so với chế độ ghép GPU hiện tại (llama.cpp GGML RPC `merged`)
+# ZeRO-3 / FSDP trên cụm Linux + Windows: không chạy được, không có số đo so sánh
 
-Ngày 08/11/2026. Cụm: Linux RTX 3060 12 GB + Windows RTX 5070 12 GB, LAN 2,5 GbE (đo thực 291 MB/s). Số liệu về tốc độ FSDP là ước tính từ băng thông đo được, được gắn [ƯỚC TÍNH]; các số còn lại là số đo thực.
+Ngày 08/11/2026 (sửa 09/11/2026). Cụm: Linux RTX 3060 12 GB + Windows RTX 5070 12 GB, LAN 2,5 GbE (đo thực 291 MB/s).
+
+**Báo cáo này không có số liệu tốc độ của FSDP.** ZeRO-3 và FSDP là kỹ thuật huấn luyện, không phải engine suy luận; phép thử là dùng cách chia trọng số của chúng để chạy suy luận trên hai máy. Phép thử không chạy được, nên không có số đo so sánh với chế độ ghép GPU hiện tại (llama.cpp GGML RPC `merged`).
 
 ## 1. Kết luận
 
 1. **FSDP/ZeRO-3 không chạy được trên cụm Linux + Windows này.** Thư viện `gloo` của PyTorch không ghép nối được giữa hai hệ điều hành (lỗi `address.cc:27 ... 136 vs 190`: cấu trúc địa chỉ nội bộ của bản Windows và bản Linux khác nhau). Windows không có NCCL, và WSL2 bị NAT chặn.
-2. **Dù chạy được, FSDP sẽ chậm hơn `merged` khoảng 19–220 lần** [ƯỚC TÍNH], vì mỗi bước giải mã phải chuyển khoảng một nửa model qua LAN, trong khi `merged` chỉ chuyển khoảng 0,3 MB mỗi token.
-3. **FSDP không đem lại cải thiện nào so với cách ghép hiện tại;** `merged` RPC vẫn là phương án phù hợp.
+2. **Không có số tok/s của FSDP để so sánh,** vì thế báo cáo không đưa ra nhận định "nhanh hơn" hay "chậm hơn".
+3. **Về cơ chế, FSDP không phù hợp với mạng LAN của cụm này** (mục 3); đây là nhận xét về thiết kế, không phải kết quả đo.
 
-## 2. So sánh nguyên nhân
+## 2. Đã thử gì
+
+| Bước | Kết quả |
+|---|---|
+| Cài PyTorch trên Linux và Windows (bản CUDA), tải trọng số Qwen3-Coder-30B | Thực hiện được |
+| Khởi tạo nhóm tiến trình `gloo` giữa Linux và Windows (`benchmarks/hardware/fsdp_gloo_probe.py`) | Lỗi: kích thước cấu trúc địa chỉ khác nhau giữa hai hệ điều hành (136 so với 190) |
+| NCCL trên Windows | Không có bản NCCL cho Windows |
+| Chạy trong WSL2 để cùng hệ Linux | Mạng NAT của WSL2 chặn kết nối từ máy kia |
+| DeepSpeed ZeRO-3 | Không chạy được liên hệ điều hành |
+
+Chỉ Qwen3-Coder-30B được thử khởi tạo; ba model còn lại (Qwen3.8-27B, GLM-4-32B, Qwen3-30B-A3B) chưa thử.
+
+## 3. Khác biệt cơ chế (không phải số đo FSDP)
 
 | | `merged` (GGML RPC, hiện tại) | ZeRO-3 / FSDP |
 |---|---|---|
 | Cách chia | Chia model theo tầng; trọng số đứng yên trên từng card | Mỗi card giữ một mảnh của mọi tầng, gom đủ trọng số từng tầng trước khi tính |
-| Dữ liệu qua mạng mỗi token | ~0,3 MB (Coder-30B) đến ~1,2 MB (Qwen3.8-27B) | ~8–9 GB (một nửa model 4-bit) |
-| Chạy trên Linux + Windows | Có (đang chạy production) | Không |
-| Định dạng | GGUF Q4_K_M đã dùng sẵn | Cần trọng số HF; bf16 (55–65 GB) không vừa 2×12 GB nên phải hạ xuống 4-bit |
+| Thứ chuyển qua mạng mỗi token | Activation: **đo được** khoảng 0,3 MB/token (Coder-30B) và 1,2 MB/token (Qwen3.8-27B) | Trọng số của các tầng (theo thiết kế của thuật toán) |
+| Chạy trên Linux + Windows | Có (đang chạy production) | Không (mục 2) |
+| Định dạng | GGUF Q4_K_M đã dùng sẵn (Coder-30B 18,6 GB; Qwen3.8-27B 16,5 GB) | Cần trọng số HF; bản bf16 (55–65 GB) không vừa 2×12 GB |
 | Phù hợp khi | Mạng chậm, model vừa tổng VRAM | Huấn luyện, mạng NVLink/InfiniBand |
 
-Cơ chế khác biệt là thứ được chuyển qua mạng: `merged` chuyển activation (nhỏ), FSDP chuyển trọng số (lớn gấp khoảng 27.000 lần ở Coder-30B).
+Số `merged` đo thật trên cụm này (Ethernet, 2 card): Qwen3-Coder-30B decode 125,8 tok/s; Qwen3.8-27B decode 23,8 tok/s (báo cáo `BAO_CAO_GOP_GPU_2_CARD_VS_3_CARD`).
 
-## 3. Ước tính tốc độ nếu FSDP chạy được [ƯỚC TÍNH]
-
-Giả định nhẹ nhất cho FSDP: 4-bit, truyền chồng lấn hoàn hảo với tính toán, chỉ tính thời gian truyền trọng số.
-
-| Model | `merged` (đo thật) | FSDP: thời gian mỗi bước | FSDP: tok/s (8 chuỗi mỗi card) | Chậm hơn `merged` | FSDP: tok/s (16 chuỗi mỗi card) | Chậm hơn `merged` |
-|---|---|---|---|---|---|---|
-| Qwen3.8-27B (dense) | 23,65 tok/s | 25,4 s | 0,63 | ~38× | 1,26 | ~19× |
-| Qwen3-Coder-30B-A3B (MoE) | 124,67 tok/s | 27,9 s | 0,57 | ~218× | 1,15 | ~109× |
-| GLM-4-32B (dense) | 20,69 tok/s | 29,8 s | 0,54 | ~38× | 1,08 | ~19× |
-| Qwen3-30B-A3B (MoE) | 126,27 tok/s | 27,9 s | 0,57 | ~220× | 1,15 | ~110× |
-
-- Một chuỗi đơn trên Coder-30B: khoảng 28 giây mỗi token với FSDP, so với 8 ms với `merged`.
-- Chạy 164 bài HumanEval trên Coder-30B: `merged` mất 342 giây; FSDP tối thiểu 9–18 giờ.
-- Model MoE chịu thiệt nhiều nhất vì `merged` chỉ kích hoạt khoảng 3 tỷ tham số mỗi token, còn FSDP vẫn phải gom toàn bộ trọng số.
-- Để FSDP ngang `merged` ở Coder-30B cần khoảng 31 GB/s mỗi chiều, gấp khoảng 108 lần LAN hiện tại (cỡ PCIe 4.0 x16 hoặc NVLink). Nâng lên 10 GbE vẫn chậm hơn khoảng 26 lần.
+Cơ chế khác nhau ở thứ phải đi qua mạng: `merged` chuyển activation (cỡ vài trăm KB mỗi token), còn FSDP phải gom trọng số các tầng từ card kia (cỡ GB) trước khi tính mỗi tầng. Với băng thông LAN 291 MB/s, thiết kế này không phù hợp cho suy luận; tuy nhiên báo cáo không đo hay tính ra tốc độ cụ thể.
 
 ## 4. Giới hạn
 
-- Chưa có số tok/s FSDP đo thật vì FSDP không khởi tạo được; các con số ở mục 3 là cận dưới tính từ băng thông, thực tế có thể còn chậm hơn.
-- Chất lượng HumanEval của bản 4-bit dưới FSDP chưa được đo (khác Q4_K_M). Chỉ Coder-30B được thử khởi tạo; ba model còn lại chỉ ngoại suy theo kích thước.
-- ZeRO-3 và FSDP FULL_SHARD cùng một thuật toán, nên báo cáo gộp chung; DeepSpeed không chạy được liên hệ điều hành.
+- Không có bất kỳ số đo tốc độ, thông lượng hay độ trễ nào của FSDP.
+- Chưa thử trên cụm cùng hệ điều hành (Linux-Linux) hoặc có NCCL, nơi FSDP có thể khởi tạo được; kết luận ở mục 1 chỉ áp dụng cho cụm Linux + Windows hiện tại.
+- ZeRO-3 và FSDP FULL_SHARD cùng một thuật toán nên báo cáo gộp chung.
