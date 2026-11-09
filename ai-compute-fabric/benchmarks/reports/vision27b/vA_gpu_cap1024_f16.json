@@ -1,0 +1,172 @@
+{
+ "label": "vA_gpu_cap1024_f16",
+ "correct": 16,
+ "total": 16,
+ "errors": 0,
+ "vram_peak_MiB": {
+  "linux": 11717,
+  "win": 10672
+ },
+ "rows": [
+  {
+   "answer": "48213",
+   "prompt_tokens": 218,
+   "seconds": 1.6,
+   "prefill_tok_s": 244.7,
+   "png_bytes": 17661,
+   "size": "512x384",
+   "case": "text_invoice",
+   "correct": true
+  },
+  {
+   "answer": "7",
+   "prompt_tokens": 221,
+   "seconds": 1.43,
+   "prefill_tok_s": 251.5,
+   "png_bytes": 2882,
+   "size": "512x384",
+   "case": "count_red",
+   "correct": true
+  },
+  {
+   "answer": "4",
+   "prompt_tokens": 221,
+   "seconds": 0.95,
+   "prefill_tok_s": 252.4,
+   "png_bytes": 2882,
+   "size": "512x384",
+   "case": "count_blue",
+   "correct": true
+  },
+  {
+   "answer": "GREEN",
+   "prompt_tokens": 220,
+   "seconds": 1.44,
+   "prefill_tok_s": 250.8,
+   "png_bytes": 2014,
+   "size": "512x384",
+   "case": "position",
+   "correct": true
+  },
+  {
+   "answer": "48213",
+   "prompt_tokens": 794,
+   "seconds": 2.59,
+   "prefill_tok_s": 424.1,
+   "png_bytes": 38659,
+   "size": "1024x768",
+   "case": "text_invoice",
+   "correct": true
+  },
+  {
+   "answer": "7",
+   "prompt_tokens": 797,
+   "seconds": 2.48,
+   "prefill_tok_s": 436.2,
+   "png_bytes": 6899,
+   "size": "1024x768",
+   "case": "count_red",
+   "correct": true
+  },
+  {
+   "answer": "4",
+   "prompt_tokens": 797,
+   "seconds": 1.89,
+   "prefill_tok_s": 437.8,
+   "png_bytes": 6899,
+   "size": "1024x768",
+   "case": "count_blue",
+   "correct": true
+  },
+  {
+   "answer": "GREEN",
+   "prompt_tokens": 796,
+   "seconds": 2.47,
+   "prefill_tok_s": 437.6,
+   "png_bytes": 5067,
+   "size": "1024x768",
+   "case": "position",
+   "correct": true
+  },
+  {
+   "answer": "48213",
+   "prompt_tokens": 1034,
+   "seconds": 3.11,
+   "prefill_tok_s": 456.0,
+   "png_bytes": 75442,
+   "size": "1920x1080",
+   "case": "text_invoice",
+   "correct": true
+  },
+  {
+   "answer": "7",
+   "prompt_tokens": 1037,
+   "seconds": 2.95,
+   "prefill_tok_s": 462.8,
+   "png_bytes": 13481,
+   "size": "1920x1080",
+   "case": "count_red",
+   "correct": true
+  },
+  {
+   "answer": "4",
+   "prompt_tokens": 1037,
+   "seconds": 2.32,
+   "prefill_tok_s": 462.5,
+   "png_bytes": 13481,
+   "size": "1920x1080",
+   "case": "count_blue",
+   "correct": true
+  },
+  {
+   "answer": "GREEN",
+   "prompt_tokens": 1036,
+   "seconds": 2.95,
+   "prefill_tok_s": 463.3,
+   "png_bytes": 10146,
+   "size": "1920x1080",
+   "case": "position",
+   "correct": true
+  },
+  {
+   "answer": "48213",
+   "prompt_tokens": 1034,
+   "seconds": 3.18,
+   "prefill_tok_s": 460.7,
+   "png_bytes": 168210,
+   "size": "3840x2160",
+   "case": "text_invoice",
+   "correct": true
+  },
+  {
+   "answer": "7",
+   "prompt_tokens": 1037,
+   "seconds": 2.97,
+   "prefill_tok_s": 463.3,
+   "png_bytes": 39689,
+   "size": "3840x2160",
+   "case": "count_red",
+   "correct": true
+  },
+  {
+   "answer": "4",
+   "prompt_tokens": 1037,
+   "seconds": 2.36,
+   "prefill_tok_s": 461.8,
+   "png_bytes": 39689,
+   "size": "3840x2160",
+   "case": "count_blue",
+   "correct": true
+  },
+  {
+   "answer": "GREEN",
+   "prompt_tokens": 1036,
+   "seconds": 2.99,
+   "prefill_tok_s": 461.5,
+   "png_bytes": 32725,
+   "size": "3840x2160",
+   "case": "position",
+   "correct": true
+  }
+ ]
+}

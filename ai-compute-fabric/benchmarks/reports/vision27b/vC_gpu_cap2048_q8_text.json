@@ -1,0 +1,89 @@
+{
+ "label": "vC_gpu_cap2048_q8_text",
+ "n_ctx": 65536,
+ "ts": "2026-11-09T17:43:16+0700",
+ "short": {
+  "decode_tok_s_median": 23.08,
+  "prefill_tok_s_median": 165.0
+ },
+ "vram_idle_after_short": {
+  "linux_MiB": 11135,
+  "win_MiB": 9925
+ },
+ "needle": [
+  {
+   "fill_target": 4000,
+   "depth": 0.1,
+   "prompt_tokens": 4033,
+   "answer": "672900",
+   "got": "672900",
+   "correct": true,
+   "prefill_tok_s": 945.9,
+   "decode_tok_s": 22.2,
+   "wall_s": 5.0
+  },
+  {
+   "fill_target": 4000,
+   "depth": 0.5,
+   "prompt_tokens": 4033,
+   "answer": "272419",
+   "got": "272419",
+   "correct": true,
+   "prefill_tok_s": 947.7,
+   "decode_tok_s": 21.8,
+   "wall_s": 5.4,
+   "vram": {
+    "linux_MiB": 11135,
+    "win_MiB": 9925
+   }
+  },
+  {
+   "fill_target": 4000,
+   "depth": 0.9,
+   "prompt_tokens": 4033,
+   "answer": "771938",
+   "got": "771938",
+   "correct": true,
+   "prefill_tok_s": 948.2,
+   "decode_tok_s": 21.7,
+   "wall_s": 5.4
+  },
+  {
+   "fill_target": 32000,
+   "depth": 0.1,
+   "prompt_tokens": 32004,
+   "answer": "752090",
+   "got": "752090",
+   "correct": true,
+   "prefill_tok_s": 1125.6,
+   "decode_tok_s": 19.4,
+   "wall_s": 29.6
+  },
+  {
+   "fill_target": 32000,
+   "depth": 0.5,
+   "prompt_tokens": 32004,
+   "answer": "351609",
+   "got": "351609",
+   "correct": true,
+   "prefill_tok_s": 1124.0,
+   "decode_tok_s": 18.9,
+   "wall_s": 32.2,
+   "vram": {
+    "linux_MiB": 11135,
+    "win_MiB": 9925
+   }
+  },
+  {
+   "fill_target": 32000,
+   "depth": 0.9,
+   "prompt_tokens": 32004,
+   "answer": "851128",
+   "got": "851128",
+   "correct": true,
+   "prefill_tok_s": 1128.1,
+   "decode_tok_s": 18.9,
+   "wall_s": 31.8
+  }
+ ]
+}

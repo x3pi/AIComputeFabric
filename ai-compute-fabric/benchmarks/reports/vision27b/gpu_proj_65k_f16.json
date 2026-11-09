@@ -1,0 +1,120 @@
+{
+ "label": "gpu_proj_65k_f16",
+ "correct": 8,
+ "total": 12,
+ "errors": 4,
+ "vram_peak_MiB": {
+  "linux": 11881,
+  "win": 10672
+ },
+ "rows": [
+  {
+   "answer": "48213",
+   "prompt_tokens": 218,
+   "seconds": 1.62,
+   "prefill_tok_s": 245.7,
+   "png_bytes": 17661,
+   "size": "512x384",
+   "case": "text_invoice",
+   "correct": true
+  },
+  {
+   "answer": "7",
+   "prompt_tokens": 221,
+   "seconds": 1.45,
+   "prefill_tok_s": 252.3,
+   "png_bytes": 2882,
+   "size": "512x384",
+   "case": "count_red",
+   "correct": true
+  },
+  {
+   "answer": "4",
+   "prompt_tokens": 221,
+   "seconds": 0.93,
+   "prefill_tok_s": 253.4,
+   "png_bytes": 2882,
+   "size": "512x384",
+   "case": "count_blue",
+   "correct": true
+  },
+  {
+   "answer": "GREEN",
+   "prompt_tokens": 220,
+   "seconds": 1.43,
+   "prefill_tok_s": 252.5,
+   "png_bytes": 2014,
+   "size": "512x384",
+   "case": "position",
+   "correct": true
+  },
+  {
+   "answer": "48213",
+   "prompt_tokens": 794,
+   "seconds": 2.6,
+   "prefill_tok_s": 426.3,
+   "png_bytes": 38659,
+   "size": "1024x768",
+   "case": "text_invoice",
+   "correct": true
+  },
+  {
+   "answer": "7",
+   "prompt_tokens": 797,
+   "seconds": 2.46,
+   "prefill_tok_s": 437.8,
+   "png_bytes": 6899,
+   "size": "1024x768",
+   "case": "count_red",
+   "correct": true
+  },
+  {
+   "answer": "4",
+   "prompt_tokens": 797,
+   "seconds": 1.88,
+   "prefill_tok_s": 440.1,
+   "png_bytes": 6899,
+   "size": "1024x768",
+   "case": "count_blue",
+   "correct": true
+  },
+  {
+   "answer": "GREEN",
+   "prompt_tokens": 796,
+   "seconds": 2.47,
+   "prefill_tok_s": 437.8,
+   "png_bytes": 5067,
+   "size": "1024x768",
+   "case": "position",
+   "correct": true
+  },
+  {
+   "error": "Remote end closed connection without response",
+   "png_bytes": 75442,
+   "size": "1920x1080",
+   "case": "text_invoice",
+   "correct": false
+  },
+  {
+   "error": "<urlopen error [Errno 111] Connection refused>",
+   "png_bytes": 13481,
+   "size": "1920x1080",
+   "case": "count_red",
+   "correct": false
+  },
+  {
+   "error": "<urlopen error [Errno 111] Connection refused>",
+   "png_bytes": 13481,
+   "size": "1920x1080",
+   "case": "count_blue",
+   "correct": false
+  },
+  {
+   "error": "<urlopen error [Errno 111] Connection refused>",
+   "png_bytes": 10146,
+   "size": "1920x1080",
+   "case": "position",
+   "correct": false
+  }
+ ]
+}
