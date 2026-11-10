@@ -50,10 +50,17 @@ document.getElementById("btn-burst-tasks").onclick = () => runBusDemo("action=bu
 document.getElementById("btn-run-bon-wf").onclick = () => runBusDemo("action=workflow", "Chạy Workflow Best-of-N mẫu");
 document.getElementById("btn-reset-fleet").onclick = () => runBusDemo("action=reset", "Khôi phục 4 Agent mặc định");
 
+// Re-render only when the data really changed (heartbeat timestamps ignored; ages refresh every 10 s), otherwise the 2 s poll flickers.
+const lastSig = { ov: "", list: "", one: "" };
+const sigOf = (v, bucket) => JSON.stringify(v, (k, x) => (k === "updated_at" || k === "last_heartbeat" ? undefined : x)) + (bucket ? "|" + Math.floor(Date.now() / 10000) : "");
+
 async function loadBusOverview() {
   const r = await api("/api/agents/bus/overview");
   if (!r || !r.ok) return;
   const ov = await r.json();
+  const sig = sigOf(ov, true);
+  if (sig === lastSig.ov) return;
+  lastSig.ov = sig;
   const connPill = document.getElementById("bus-conn-pill");
   if (!ov.connected) {
     connPill.textContent = "NATS Bus: Chưa cấu hình (--nats-url)";
@@ -301,6 +308,10 @@ async function loadList() {
   if (!r || !r.ok) { msg(r && r.status === 502 ? "Chưa kết nối được dịch vụ xem agent (gateway --agents-url)." : "Không tải được danh sách workflow."); return; }
   msg("");
   const list = await r.json();
+  const sig = sigOf(list) + "|" + current;
+  document.getElementById("stamp").textContent = "cập nhật " + new Date().toLocaleTimeString("vi-VN");
+  if (sig === lastSig.list) return;
+  lastSig.list = sig;
   updateKPI(list, null);
   const box = document.getElementById("wf-list");
   box.replaceChildren();
@@ -319,6 +330,9 @@ async function loadOne() {
   const r = await api("/api/agents/workflows/" + encodeURIComponent(current));
   if (!r || !r.ok) return;
   const snap = await r.json();
+  const sig = sigOf(snap) + "|" + current + "|" + selected;
+  if (sig === lastSig.one) return;
+  lastSig.one = sig;
   updateKPI(null, snap);
   document.getElementById("wf-title").textContent = snap.workflow;
   const st = document.getElementById("wf-state");
