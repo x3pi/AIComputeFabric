@@ -223,3 +223,61 @@ func TestModelSupportsVision(t *testing.T) {
 		t.Errorf("capabilities.vision missing for the vision model: %v", caps)
 	}
 }
+
+func TestDefaultThinkingPolicy(t *testing.T) {
+	off := false
+	DefaultThinking = &off
+	defer func() { DefaultThinking = nil }()
+	enabled := func(body string) (string, *bool) {
+		out, _, st := ApplyThinkingControl([]byte(body), "")
+		return string(out), st
+	}
+	const msg = `"messages":[{"role":"user","content":"hi"}]`
+
+	// hybrid model, no directive -> off, soft switch injected
+	out, st := enabled(`{"model":"Qwen3.8-27B-UD-Q4_K_M.gguf",` + msg + `}`)
+	if st == nil || *st || !strings.Contains(out, `"enable_thinking":false`) || !strings.Contains(out, "/no_think") {
+		t.Errorf("hybrid default not applied: %v %s", st, out)
+	}
+	// explicit client choice wins over the default
+	if _, st := enabled(`{"model":"Qwen3.8-27B-UD-Q4_K_M.gguf","enable_thinking":true,` + msg + `}`); st == nil || !*st {
+		t.Error("explicit enable_thinking:true was overridden")
+	}
+	if _, st := enabled(`{"model":"Qwen3.8-27B-UD-Q4_K_M.gguf:think",` + msg + `}`); st == nil || !*st {
+		t.Error(":think alias was overridden")
+	}
+	// models that always / never think are left alone
+	for _, m := range []string{"DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf", "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"} {
+		body := `{"model":"` + m + `",` + msg + `}`
+		if out, st := enabled(body); st != nil || out != body {
+			t.Errorf("%s was changed: %v %s", m, st, out)
+		}
+	}
+	// no model named: template kwarg only, the prompt is not edited
+	out, st = enabled(`{` + msg + `}`)
+	if st == nil || *st || strings.Contains(out, "/no_think") || !strings.Contains(out, `"enable_thinking":false`) {
+		t.Errorf("empty-model default wrong: %v %s", st, out)
+	}
+	// policy "model" -> nothing happens
+	DefaultThinking = nil
+	body := `{"model":"Qwen3.8-27B-UD-Q4_K_M.gguf",` + msg + `}`
+	if out, st := enabled(body); st != nil || out != body {
+		t.Errorf("no policy but body changed: %v %s", st, out)
+	}
+}
+
+func TestParseDefaultThinking(t *testing.T) {
+	for in, want := range map[string]string{"model": "nil", "": "nil", "off": "false", "ON": "true"} {
+		got, err := ParseDefaultThinking(in)
+		s := "nil"
+		if got != nil {
+			s = map[bool]string{true: "true", false: "false"}[*got]
+		}
+		if err != nil || s != want {
+			t.Errorf("%q -> %s, %v", in, s, err)
+		}
+	}
+	if _, err := ParseDefaultThinking("maybe"); err == nil {
+		t.Error("bad value accepted")
+	}
+}

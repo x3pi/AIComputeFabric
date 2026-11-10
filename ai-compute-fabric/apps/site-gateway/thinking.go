@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -299,6 +300,26 @@ func ExtractThinkingDirective(payload map[string]any, headerVal string) *bool {
 // ApplyThinkingControl normalizes any client thinking toggle in a JSON chat/completion payload
 // into llama-server's native chat_template_kwargs + soft-switch prompt tag (/no_think or /think)
 // without reloading the model.
+// DefaultThinking is the gateway-wide policy applied when a request carries no thinking directive at all
+// (nil = leave it to the model's own default). It only touches hybrid (toggleable) models, or requests that
+// name no model; models that always think or never think are left alone. Set by -default-thinking.
+var DefaultThinking *bool
+
+// ParseDefaultThinking maps the -default-thinking flag value: "model" (no policy), "off" or "on".
+func ParseDefaultThinking(v string) (*bool, error) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "model", "auto":
+		return nil, nil
+	case "off", "false", "no", "0":
+		b := false
+		return &b, nil
+	case "on", "true", "yes", "1":
+		b := true
+		return &b, nil
+	}
+	return nil, fmt.Errorf("-default-thinking must be model, off or on, got %q", v)
+}
+
 func ApplyThinkingControl(body []byte, headerVal string) (rewritten []byte, cleanModel string, thinkState *bool) {
 	var payload map[string]any
 	if json.Unmarshal(body, &payload) != nil || payload == nil {
@@ -309,6 +330,19 @@ func ApplyThinkingControl(body []byte, headerVal string) (rewritten []byte, clea
 	thinkState = ExtractThinkingDirective(payload, headerVal)
 	if thinkState == nil {
 		thinkState = aliasOverride
+	}
+	softSwitch := true
+	if thinkState == nil && DefaultThinking != nil {
+		_, _, mode := ModelThinkingProfile(cleanModel)
+		if mode == "hybrid" {
+			v := *DefaultThinking
+			thinkState = &v
+		} else if strings.TrimSpace(cleanModel) == "" {
+			// no model named: the worker picks one, so only set the template kwarg and do not edit the prompt
+			v := *DefaultThinking
+			thinkState = &v
+			softSwitch = false
+		}
 	}
 	if thinkState == nil && cleanModel == rawModel {
 		return body, cleanModel, nil
@@ -330,7 +364,9 @@ func ApplyThinkingControl(body []byte, headerVal string) (rewritten []byte, clea
 		}
 		// Inject Qwen3 soft-switch token (/no_think or /think) into the last user message
 		// so GGUF templates that check message text obey the toggle immediately.
-		injectSoftSwitchTag(payload, en)
+		if softSwitch {
+			injectSoftSwitchTag(payload, en)
+		}
 	}
 	out, err := json.Marshal(payload)
 	if err != nil {

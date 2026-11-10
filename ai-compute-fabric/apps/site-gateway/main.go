@@ -25,6 +25,7 @@ func main() {
 	offline := flag.Duration("offline-after", 3*time.Second, "mark a worker offline after this long without heartbeat")
 	maxQueue := flag.Int("max-queue", 64, "requests allowed to wait for a slot")
 	maxWait := flag.Duration("max-wait", 10*time.Second, "longest a request waits for a slot")
+	defThink := flag.String("default-thinking", "model", "thinking when a request does not say: model (model's own default), off or on; only hybrid models are affected")
 	rate := flag.Float64("tenant-rate", 0, "requests/s per tenant (0 = unlimited)")
 	burst := flag.Int("tenant-burst", 20, "token bucket burst per tenant")
 	fair := flag.Bool("fair", true, "weighted fair queuing per tenant (false = one shared FIFO)")
@@ -56,6 +57,11 @@ func main() {
 	signupAutoApprove := flag.Bool("signup-auto-approve", false, "auto-approve public signups instead of placing them in pending state (demo/dev only)")
 	vramSidecarFlag := flag.String("vram-sidecar-url", "", "GGUF facts service (python -m core.vram_sidecar), enables POST /api/v1/models/estimate-vram")
 	flag.Parse()
+	dt, err := ParseDefaultThinking(*defThink)
+	if err != nil {
+		log.Fatal(err)
+	}
+	DefaultThinking = dt
 	if *topologyFile != "" {
 		DefaultTopologyFile = *topologyFile
 	} else if *tenantsFile != "" {
