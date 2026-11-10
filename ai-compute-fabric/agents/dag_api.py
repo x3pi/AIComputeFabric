@@ -450,7 +450,7 @@ def _build_overview(
         }
     snap = metrics_collector.collect()
     sup = supervisor or ElasticSupervisor(propose_only=True)
-    recs = sup.evaluate(snap)
+    recs = sup.evaluate(snap, commit=False)
     rec_by_type = {r.task_type: asdict(r) for r in recs}
 
     queues = []
@@ -531,7 +531,7 @@ def make_handler(
                 return self._send_text(200, metrics_collector.render_prometheus())
             if path == "/supervisor/recommendations" and metrics_collector is not None:
                 sup = supervisor or ElasticSupervisor(propose_only=True)
-                recs = sup.evaluate(metrics_collector.collect())
+                recs = sup.evaluate(metrics_collector.collect(), commit=False)
                 return self._send(200, [asdict(r) for r in recs])
             if path == "/bus/overview":
                 return self._send(200, _build_overview(metrics_collector, supervisor))

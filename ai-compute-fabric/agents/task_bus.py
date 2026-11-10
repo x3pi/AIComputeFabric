@@ -1492,7 +1492,10 @@ class ElasticSupervisor:
         snap: BusMetricsSnapshot,
         task_types: Optional[list[TaskType | str]] = None,
         now: Optional[float] = None,
+        commit: bool = True,
     ) -> list[ScaleRecommendation]:
+        """commit=False is a read-only view: it does not start the cooldown, so polling a GET endpoint
+        returns a stable recommendation instead of alternating proposal / "cooldown active" every call."""
         cur_now = now if now is not None else time.time()
         targets = [_norm_type(t) for t in task_types] if task_types else sorted(snap.queue_depth_by_type.keys())
         out: list[ScaleRecommendation] = []
@@ -1508,7 +1511,8 @@ class ElasticSupervisor:
                 needed = max(live + 1, (q + self.tasks_per_agent_target - 1) // self.tasks_per_agent_target)
                 rec_agents = min(self.max_agents_per_type, max(1, needed))
                 if rec_agents > live:
-                    self._last_change_at[tp] = cur_now
+                    if commit:
+                        self._last_change_at[tp] = cur_now
                     delta = rec_agents - live
                     cmd = (
                         f"# [PROPOSE ONLY] Start {delta} additional BusWorker instance(s) for {tp}"
@@ -1533,7 +1537,8 @@ class ElasticSupervisor:
 
             if not in_cooldown and q <= self.scale_down_queue_depth and wait_s <= self.scale_down_wait_s and live > max(1, self.min_agents_per_type):
                 rec_agents = max(self.min_agents_per_type, live - 1)
-                self._last_change_at[tp] = cur_now
+                if commit:
+                    self._last_change_at[tp] = cur_now
                 out.append(
                     ScaleRecommendation(
                         task_type=tp,
