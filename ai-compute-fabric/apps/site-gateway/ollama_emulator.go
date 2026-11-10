@@ -1180,31 +1180,7 @@ func (oe *OllamaEmulator) handleOpenAICompat(w http.ResponseWriter, r *http.Requ
 		reject(w, http.StatusBadGateway, time.Second, "worker connection failed")
 		return
 	}
-	defer func() { resp.Body.Close() }()
-	if p == "/v1/chat/completions" && resp.StatusCode == http.StatusBadRequest {
-		// Same conversation compaction as the gateway data plane: only when the engine says the prompt is too long.
-		cOpts, cbody := compactOptionsFor(r.Header, rewritten)
-		buf, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
-		resp.Body = io.NopCloser(bytes.NewReader(buf))
-		if nCtx, _, isOv := parseOverflow(buf); isOv && cOpts.Mode != CompactOff {
-			cin := &Inference{Client: oe.client}
-			res, cerr := cin.compactBody(r.Context(), rt, cbody, cOpts, tenant, nCtx)
-			if cerr == nil {
-				compactOverflowN.Add(1)
-				setCompactHeaders(w, res, "overflow")
-				if req2, e2 := http.NewRequestWithContext(r.Context(), http.MethodPost, rt.URL+p, bytes.NewReader(res.Body)); e2 == nil {
-					req2.Header.Set("Content-Type", "application/json")
-					if resp2, e3 := oe.client.Do(req2); e3 == nil {
-						resp = resp2
-					}
-				}
-			} else {
-				compactFailedN.Add(1)
-				w.Header().Set("X-AICF-Compact-Failed", cerr.Error())
-			}
-		}
-	}
+	defer resp.Body.Close()
 	for k, v := range resp.Header {
 		if k == "Content-Length" {
 			continue
