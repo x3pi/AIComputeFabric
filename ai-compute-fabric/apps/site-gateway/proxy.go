@@ -74,7 +74,7 @@ func (in *Inference) listModels(w http.ResponseWriter) {
 	for _, rt := range in.R.reg.Routable() {
 		if rt.Model != "" && !seen[rt.Model] {
 			seen[rt.Model] = true
-			data = append(data, BuildOpenAIModelEntries(rt.Model)...)
+			data = append(data, withContextLength(BuildOpenAIModelEntries(rt.Model), cachedEngineContext(rt.URL))...)
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

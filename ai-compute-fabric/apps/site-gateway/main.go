@@ -142,6 +142,7 @@ func main() {
 		log.Fatal(err)
 	}
 	inf := NewInference(router, NewLimiter(*rate, *burst))
+	StartEngineContextProbe(inf.Client, router.reg)
 	inf.Tenants, inf.AuthRequired = store, *tenantsFile != ""
 	if !inf.AuthRequired {
 		log.Print("WARNING: no --tenants-file: tenants are taken from the unauthenticated X-Tenant-ID header (dev mode)")
