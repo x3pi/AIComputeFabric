@@ -123,6 +123,13 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reject(w, http.StatusRequestEntityTooLarge, 0, "request body too large or unreadable")
 		return
 	}
+	if strings.TrimSuffix(r.URL.Path, "/") == "/v1/chat/completions" {
+		var imgErr error
+		if body, imgErr = NormalizeImageInputs(r.Context(), body); imgErr != nil {
+			reject(w, http.StatusBadRequest, 0, imgErr.Error())
+			return
+		}
+	}
 	var probe struct {
 		Model    string `json:"model"`
 		Messages []struct {

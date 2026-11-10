@@ -661,7 +661,7 @@ func (oe *OllamaEmulator) handleOllamaChat(w http.ResponseWriter, r *http.Reques
 		reject(w, http.StatusUnauthorized, 0, "missing or invalid API key (enable Zero-Config Auth in Ollama Emulator settings)")
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<20))
 	if err != nil {
 		reject(w, http.StatusRequestEntityTooLarge, 0, "request body too large")
 		return
@@ -689,7 +689,7 @@ func (oe *OllamaEmulator) handleOllamaChat(w http.ResponseWriter, r *http.Reques
 
 	oaiPayload := map[string]any{
 		"model":    resolvedModel,
-		"messages": in.Messages,
+		"messages": ollamaImagesToParts(in.Messages),
 		"stream":   stream,
 	}
 	if thinkState != nil {
@@ -718,6 +718,7 @@ type ollamaGenerateReq struct {
 	Model          string         `json:"model"`
 	Prompt         string         `json:"prompt"`
 	System         string         `json:"system"`
+	Images         []string       `json:"images,omitempty"`
 	Stream         *bool          `json:"stream"`
 	Think          any            `json:"think,omitempty"`
 	EnableThinking *bool          `json:"enable_thinking,omitempty"`
@@ -734,7 +735,7 @@ func (oe *OllamaEmulator) handleOllamaGenerate(w http.ResponseWriter, r *http.Re
 		reject(w, http.StatusUnauthorized, 0, "missing or invalid API key")
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<20))
 	if err != nil {
 		reject(w, http.StatusRequestEntityTooLarge, 0, "request body too large")
 		return
@@ -759,11 +760,19 @@ func (oe *OllamaEmulator) handleOllamaGenerate(w http.ResponseWriter, r *http.Re
 	if in.Stream != nil {
 		stream = *in.Stream
 	}
-	msgs := []map[string]string{}
+	msgs := []any{}
 	if strings.TrimSpace(in.System) != "" {
 		msgs = append(msgs, map[string]string{"role": "system", "content": in.System})
 	}
-	msgs = append(msgs, map[string]string{"role": "user", "content": in.Prompt})
+	if len(in.Images) > 0 {
+		parts := []any{map[string]any{"type": "text", "text": in.Prompt}}
+		for _, im := range in.Images {
+			parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]any{"url": base64ImageDataURL(im)}})
+		}
+		msgs = append(msgs, map[string]any{"role": "user", "content": parts})
+	} else {
+		msgs = append(msgs, map[string]string{"role": "user", "content": in.Prompt})
+	}
 
 	oaiPayload := map[string]any{
 		"model":    resolvedModel,
@@ -1109,7 +1118,7 @@ func (oe *OllamaEmulator) handleOpenAICompat(w http.ResponseWriter, r *http.Requ
 		http.NotFound(w, r)
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<20))
 	if err != nil {
 		reject(w, http.StatusRequestEntityTooLarge, 0, "request body too large")
 		return
@@ -1124,6 +1133,13 @@ func (oe *OllamaEmulator) handleOpenAICompat(w http.ResponseWriter, r *http.Requ
 	payload["model"] = resolved
 	oe.recordClient(r, resolved)
 	rewritten, _ := json.Marshal(payload)
+	if p == "/v1/chat/completions" {
+		var imgErr error
+		if rewritten, imgErr = NormalizeImageInputs(r.Context(), rewritten); imgErr != nil {
+			reject(w, http.StatusBadRequest, 0, imgErr.Error())
+			return
+		}
+	}
 	var thinkState *bool
 	if p == "/v1/chat/completions" || p == "/v1/responses" {
 		// Preserve model suffix directive (:no_think / :think) from the original wantModel before resolveModel stripped it

@@ -115,6 +115,16 @@ func BuildOpenAIModelEntry(model string) map[string]any {
 			"vision":          ModelSupportsVision(model),
 		},
 	}
+	if ModelSupportsVision(model) {
+		// OpenRouter / LiteLLM-style discovery fields, next to capabilities.vision and "vision"
+		entry["architecture"] = map[string]any{
+			"modality":          "text+image->text",
+			"input_modalities":  []string{"text", "image"},
+			"output_modalities": []string{"text"},
+		}
+		entry["input_modalities"] = []string{"text", "image"}
+		entry["supports_vision"] = true
+	}
 	if aliasOverride != nil {
 		entry["is_alias"] = true
 		entry["parent_model"] = baseModel
