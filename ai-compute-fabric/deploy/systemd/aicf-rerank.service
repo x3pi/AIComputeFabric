@@ -1,0 +1,24 @@
+[Unit]
+Description=AICF Reranker server (CPU)
+After=network-online.target docker.service 
+Wants=network-online.target 
+PartOf=aicf.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric
+EnvironmentFile=/etc/aicf/aicf.env
+Environment=PYTHONPATH=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric
+Environment=LD_LIBRARY_PATH=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bin
+CPUAffinity=14-19
+ExecStart=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bin/llama-server -m /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bge-reranker-v2-m3-Q8_0.gguf --reranking -c 4096 -ngl 0 -t 6 --host 127.0.0.1 --port 18092
+Restart=always
+RestartSec=5
+# Outside user@1000.service, so systemd-oomd's user-session kills (e.g. a Chromium scope) cannot take it down.
+ManagedOOMPreference=avoid
+OOMScoreAdjust=-300
+
+[Install]
+WantedBy=aicf.target

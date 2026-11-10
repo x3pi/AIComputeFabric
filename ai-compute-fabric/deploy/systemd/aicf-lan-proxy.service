@@ -1,0 +1,23 @@
+[Unit]
+Description=AICF Wi-Fi LAN chat proxy (192.168.1.40:18080)
+After=network-online.target docker.service aicf-gateway.service
+Wants=network-online.target 
+PartOf=aicf.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric
+EnvironmentFile=/etc/aicf/aicf.env
+Environment=PYTHONPATH=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric
+Environment=LD_LIBRARY_PATH=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bin
+ExecStart=/usr/bin/python3 /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/deploy/demo/lan_chat_proxy.py --listen 192.168.1.40:18080
+Restart=always
+RestartSec=5
+# Outside user@1000.service, so systemd-oomd's user-session kills (e.g. a Chromium scope) cannot take it down.
+ManagedOOMPreference=avoid
+OOMScoreAdjust=-300
+
+[Install]
+WantedBy=aicf.target

@@ -1,0 +1,6 @@
+[Unit]
+Description=AI Compute Fabric (all services)
+Wants=aicf-sidecar.service aicf-dagapi.service aicf-embed.service aicf-rerank.service aicf-studio.service aicf-bestofn.service aicf-serverless.service aicf-gateway.service aicf-guard.service aicf-merged-apply.service aicf-lan-proxy.service aicf-cable-relay.service
+
+[Install]
+WantedBy=multi-user.target

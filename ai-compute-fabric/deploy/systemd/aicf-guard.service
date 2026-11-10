@@ -1,0 +1,24 @@
+[Unit]
+Description=AICF worker-guard pc-001 (restores the merged engine from its state file)
+After=network-online.target docker.service aicf-gateway.service aicf-serverless.service
+Wants=network-online.target 
+PartOf=aicf.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric
+EnvironmentFile=/etc/aicf/aicf.env
+Environment=PYTHONPATH=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric
+Environment=LD_LIBRARY_PATH=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bin
+TimeoutStopSec=90
+ExecStart=/mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/bin/worker-guard --llama-server /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/bin/llama-server-vision --model /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/.aicf-work/Qwen3-4B-Q4_K_M.gguf --parallel 1 --ctx 65536 --headroom-mib 512 --engine-log /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/logs/engine-pc001.log --engine-start-timeout 600s --engine-port 18090 --engine-host 127.0.0.1 --advertise-host 127.0.0.1 --models-dir /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/models --adapters-dir /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/adapters --state-file /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/worker-state-pc-001.json --gateway 127.0.0.1:17443 --worker-id pc-001 --tls-ca /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/pki/ca.crt --tls-cert /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/pki/pc-001.crt --tls-key /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/pki/pc-001.key --tls-server-name localhost --serverless-evict-url http://127.0.0.1:18111 --serverless-secret-file /mnt/2d4726e7-046b-47c7-b9a9-d2a9cc0cfc8d/Work/AIComputeFabric/ai-compute-fabric/.demo/serverless.secret --threads 8 --cpu-range 0-7 --cpu-strict
+Restart=always
+RestartSec=5
+# Outside user@1000.service, so systemd-oomd's user-session kills (e.g. a Chromium scope) cannot take it down.
+ManagedOOMPreference=avoid
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=aicf.target
