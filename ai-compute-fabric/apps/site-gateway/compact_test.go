@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -357,5 +358,36 @@ func TestCompactFoldsAgainWhenKeptMessagesAreStillTooLong(t *testing.T) {
 	}
 	if got := lastChat(t, fe); got[len(got)-1].Content != "câu hỏi cuối cùng" {
 		t.Error("latest user message lost")
+	}
+}
+
+func TestCompactCachePersistsAcrossRestart(t *testing.T) {
+	path := t.TempDir() + "/c.json"
+	c := &summaryCache{m: map[string]cacheItem{}}
+	if err := c.Persist(path); err != nil {
+		t.Fatal(err)
+	}
+	c.put("k1", "note one")
+	c.put("old", "stale")
+	c.mu.Lock()
+	c.m["old"] = cacheItem{"stale", time.Now().Add(-2 * sumCacheTTL)}
+	c.mu.Unlock()
+	c.save() // do not wait for the debounce
+	if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("stat %v %v", st, err)
+	}
+	c2 := &summaryCache{m: map[string]cacheItem{}}
+	if err := c2.Persist(path); err != nil {
+		t.Fatal(err)
+	}
+	if s, ok := c2.get("k1"); !ok || s != "note one" {
+		t.Fatalf("fresh entry not restored: %q %v", s, ok)
+	}
+	if _, ok := c2.get("old"); ok {
+		t.Error("expired entry restored")
+	}
+	os.WriteFile(path, []byte("{broken"), 0o600)
+	if err := (&summaryCache{m: map[string]cacheItem{}}).Persist(path); err == nil {
+		t.Error("corrupt file should be reported, not crash")
 	}
 }

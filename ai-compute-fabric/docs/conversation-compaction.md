@@ -21,5 +21,5 @@ Response headers: `X-AICF-Compacted: <n> messages -> memory note (~<t> tokens), 
 Metrics: `aicf_compactions_total{trigger}`, `aicf_compactions_failed_total`, `aicf_compaction_cache_hits_total`.
 
 Limits: the summary is lossy (exact numbers/ids are asked to be kept verbatim, not guaranteed); a compacting request
-costs an extra summarisation pass (measured: 83.7k-token history -> 117 s on the 27B merged setup); the cache is in
-memory and lost on gateway restart; `/v1/responses` and `/api/chat` (Ollama native) are not compacted.
+costs an extra summarisation pass (measured: 83.7k-token history -> 117 s on the 27B merged setup); the cache survives restarts only when
+`-compact-cache-file PATH` is set (prod: `.demo/compact_cache.json`, mode 0600, holds conversation summaries, 1 h TTL); `/v1/responses` and `/api/chat` (Ollama native) are not compacted.

@@ -28,7 +28,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -260,12 +262,14 @@ func transcriptOf(msgs []chatMsg) []string {
 // ---- summary cache (prefix-keyed) ----
 
 type summaryCache struct {
-	mu sync.Mutex
-	m  map[string]cacheItem
+	mu      sync.Mutex
+	m       map[string]cacheItem
+	path    string // "" = memory only
+	pending bool   // a debounced save is scheduled
 }
 type cacheItem struct {
-	summary string
-	at      time.Time
+	Summary string    `json:"s"`
+	At      time.Time `json:"t"`
 }
 
 var sumCache = &summaryCache{m: map[string]cacheItem{}}
@@ -290,11 +294,11 @@ func (c *summaryCache) get(key string) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	it, ok := c.m[key]
-	if !ok || time.Since(it.at) > sumCacheTTL {
+	if !ok || time.Since(it.At) > sumCacheTTL {
 		delete(c.m, key)
 		return "", false
 	}
-	return it.summary, true
+	return it.Summary, true
 }
 
 func (c *summaryCache) put(key, s string) {
@@ -303,13 +307,72 @@ func (c *summaryCache) put(key, s string) {
 	if len(c.m) >= sumCacheMax {
 		oldestK, oldestT := "", time.Now()
 		for k, v := range c.m {
-			if v.at.Before(oldestT) {
-				oldestK, oldestT = k, v.at
+			if v.At.Before(oldestT) {
+				oldestK, oldestT = k, v.At
 			}
 		}
 		delete(c.m, oldestK)
 	}
 	c.m[key] = cacheItem{s, time.Now()}
+	if c.path != "" && !c.pending {
+		c.pending = true
+		time.AfterFunc(2*time.Second, c.save)
+	}
+}
+
+// Enable persistence: load what is still fresh from path and keep it updated. The file holds summaries of users'
+// conversations, so it is written 0600 and replaced atomically.
+func (c *summaryCache) Persist(path string) error {
+	c.mu.Lock()
+	c.path = path
+	c.mu.Unlock()
+	b, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var m map[string]cacheItem
+	if err := json.Unmarshal(b, &m); err != nil {
+		return fmt.Errorf("ignoring unreadable compaction cache %s: %w", path, err)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k, v := range m {
+		if time.Since(v.At) <= sumCacheTTL && len(c.m) < sumCacheMax {
+			c.m[k] = v
+		}
+	}
+	return nil
+}
+
+func (c *summaryCache) save() {
+	c.mu.Lock()
+	c.pending = false
+	path := c.path
+	snap := make(map[string]cacheItem, len(c.m))
+	for k, v := range c.m {
+		if time.Since(v.At) <= sumCacheTTL {
+			snap[k] = v
+		}
+	}
+	c.mu.Unlock()
+	if path == "" {
+		return
+	}
+	b, err := json.Marshal(snap)
+	if err != nil {
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		log.Printf("compaction cache: %v", err)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		log.Printf("compaction cache: %v", err)
+	}
 }
 
 // ---- counters (exported on /metrics) ----
