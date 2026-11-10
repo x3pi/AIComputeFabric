@@ -480,6 +480,9 @@ func (in *Inference) compactBody(ctx context.Context, rt Route, body []byte, o c
 	if err != nil {
 		return compactResult{}, err
 	}
+	if hit {
+		compactCacheHitN.Add(1)
+	}
 	return compactResult{Body: nb, Compacted: len(old), SummaryTok: len(summary) / 3, CacheHit: hit}, nil
 }
 

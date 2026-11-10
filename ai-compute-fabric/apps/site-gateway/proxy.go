@@ -243,7 +243,21 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				compactOverflowN.Add(1)
 				setCompactHeaders(w, res, "overflow")
 				body = res.Body
-				done, retry = in.forward(w, r, rt, body, thinkState, nil)
+				// Still too long (e.g. huge recent messages): fold once more, keeping only the last two messages.
+				ov2 := &overflowInfo{}
+				done, retry = in.forward(w, r, rt, body, thinkState, ov2)
+				if ov2.hit {
+					o2 := cOpts
+					o2.Keep = 2
+					if res2, e2 := in.compactBody(r.Context(), rt, body, o2, tenant, ov2.nCtx); e2 == nil && cOpts.Keep > 2 {
+						setCompactHeaders(w, res2, "overflow")
+						body = res2.Body
+						done, retry = in.forward(w, r, rt, body, thinkState, nil)
+					} else {
+						ov2.replay(w)
+						done, retry = true, false
+					}
+				}
 			} else {
 				compactFailedN.Add(1)
 				w.Header().Set("X-AICF-Compact-Failed", cerr.Error())
@@ -345,6 +359,7 @@ func (in *Inference) Metrics(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprintf(w, "aicf_compactions_total{trigger=\"overflow\"} %d\n", compactOverflowN.Load())
 	fmt.Fprintf(w, "aicf_compactions_total{trigger=\"auto\"} %d\n", compactAutoN.Load())
 	fmt.Fprintf(w, "aicf_compactions_failed_total %d\n", compactFailedN.Load())
+	fmt.Fprintf(w, "aicf_compaction_cache_hits_total %d\n", compactCacheHitN.Load())
 	fmt.Fprintf(w, "# TYPE aicf_rejected_total counter\n")
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"queue_full\"} %d\n", s.RejectedQueueFull)
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"tenant_queue_full\"} %d\n", s.RejectedTenantQueue)
