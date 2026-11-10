@@ -176,7 +176,7 @@ async function ask(question, images = []) {
 
   const reqBody = {
     stream: true,
-    max_tokens: 400,
+    max_tokens: Math.min(32768, Math.max(16, +($("maxtok") && $("maxtok").value) || 4096)),
     messages: [{ role: "user", content: images.length
       ? [{ type: "text", text: question }, ...images.map(u => ({ type: "image_url", image_url: { url: u } }))]
       : question }],
@@ -193,7 +193,7 @@ async function ask(question, images = []) {
   }
 
   const t0 = performance.now();
-  let first = 0, n = 0;
+  let first = 0, n = 0, finish = "";
   try {
     const r = await fetch("/v1/chat/completions", {
       method: "POST",
@@ -222,7 +222,9 @@ async function ask(question, images = []) {
         buf = buf.slice(i + 2);
         if (!ev.startsWith("data: ") || ev.startsWith("data: [DONE]")) continue;
         let d;
-        try { d = JSON.parse(ev.slice(6)).choices[0].delta; } catch { continue; }
+        let ch;
+        try { ch = JSON.parse(ev.slice(6)).choices[0]; d = ch.delta || {}; } catch { continue; }
+        if (ch.finish_reason) finish = ch.finish_reason;
         if (d.reasoning_content) {
           think.hidden = false;
           thinkText.textContent += d.reasoning_content;
@@ -234,6 +236,9 @@ async function ask(question, images = []) {
         }
         if (n && !first) first = performance.now() - t0;
       }
+    }
+    if (finish === "length") {
+      answer.append(el("div", { class: "err", style: "margin-top:8px" }, "⚠ Câu trả lời bị cắt vì chạm giới hạn max_tokens. Tăng \"Độ dài tối đa\" ở cột trái rồi hỏi lại."));
     }
     const total = (performance.now() - t0) / 1000;
     stats.append(

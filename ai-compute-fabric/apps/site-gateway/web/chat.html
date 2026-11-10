@@ -245,6 +245,12 @@ details.think summary {
       </div>
 
       <div>
+        <label for="maxtok">Độ dài tối đa của câu trả lời (max_tokens)</label>
+        <input id="maxtok" type="number" min="16" max="32768" step="64" value="4096" style="width:100%">
+        <div class="mut" style="font-size:11.5px;margin-top:4px">Gồm cả phần suy nghĩ nếu bật Thinking. Trả lời dài (JSON, mã) cần số lớn.</div>
+      </div>
+
+      <div>
         <label for="prio">Lớp Ưu tiên (X-Priority)</label>
         <select id="prio" style="width:100%">
           <option value="">Interactive — Tương tác trực tiếp (Ưu tiên cao)</option>
