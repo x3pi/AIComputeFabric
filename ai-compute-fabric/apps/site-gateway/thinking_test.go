@@ -206,3 +206,20 @@ func TestThinkingCapabilityDiscoveryAndToggleAcrossAPIs(t *testing.T) {
 		t.Fatalf("expected thinking 'step 1' when think=true, got %q", oChatOn.Message.Thinking)
 	}
 }
+
+func TestModelSupportsVision(t *testing.T) {
+	for model, want := range map[string]bool{
+		"Qwen3.8-27B-UD-Q4_K_M.gguf":               true,
+		"Qwen3.8-27B-UD-Q4_K_M.gguf:no_think":      true,
+		"Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf": false,
+		"Qwen3-Embedding-0.6B-Q8_0.gguf":           false,
+		"rpc://50052":                              false,
+	} {
+		if got := ModelSupportsVision(model); got != want {
+			t.Errorf("ModelSupportsVision(%q) = %v, want %v", model, got, want)
+		}
+	}
+	if caps, _ := BuildOpenAIModelEntry("Qwen3.8-27B-UD-Q4_K_M.gguf")["capabilities"].(map[string]any); caps["vision"] != true {
+		t.Errorf("capabilities.vision missing for the vision model: %v", caps)
+	}
+}

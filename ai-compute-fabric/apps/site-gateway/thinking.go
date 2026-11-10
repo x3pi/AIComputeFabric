@@ -42,6 +42,17 @@ func ModelThinkingProfile(model string) (supportsThinking, supportsToggle bool, 
 	return false, false, "none"
 }
 
+// ModelSupportsVision reports whether the model accepts image input. Mirrors the engine launcher
+// (.aicf-work/bin/llama-server-vision), which attaches the vision projector only to Qwen3.8-27B.
+func ModelSupportsVision(model string) bool {
+	clean, _ := StripThinkingAlias(model)
+	m := strings.ToLower(strings.TrimSpace(clean))
+	if strings.Contains(m, "embed") || strings.Contains(m, "rerank") || strings.Contains(m, "bge") {
+		return false
+	}
+	return strings.Contains(m, "qwen3.8")
+}
+
 // OllamaModelCapabilities returns the Ollama v0.9+ capabilities list for /api/show and /api/tags.
 // Including "thinking" causes Open WebUI, Chatbox, Page Assist, AnythingLLM, Cline, and Ollama CLI
 // to automatically render the Thinking toggle button.
@@ -49,6 +60,9 @@ func OllamaModelCapabilities(model string) []string {
 	caps := []string{"completion", "tools"}
 	if think, _, _ := ModelThinkingProfile(model); think {
 		caps = append(caps, "thinking")
+	}
+	if ModelSupportsVision(model) {
+		caps = append(caps, "vision")
 	}
 	return caps
 }
@@ -89,6 +103,7 @@ func BuildOpenAIModelEntry(model string) map[string]any {
 		"thinking":             think,
 		"thinking_toggle":      toggle,
 		"thinking_mode":        mode,
+		"vision":               ModelSupportsVision(model),
 		"supported_parameters": supportedParams,
 		"capabilities": map[string]any{
 			"completion":      true,
@@ -97,6 +112,7 @@ func BuildOpenAIModelEntry(model string) map[string]any {
 			"reasoning":       think,
 			"thinking":        think,
 			"thinking_toggle": toggle,
+			"vision":          ModelSupportsVision(model),
 		},
 	}
 	if aliasOverride != nil {

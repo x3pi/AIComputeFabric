@@ -52,13 +52,73 @@ async function loadModels() {
     }
     if (prev && modelMetaMap[prev]) modelSel.value = prev;
     updateThinkCapBadge();
+    updateVisionUI();
   } catch {}
 }
-if ($("model")) $("model").addEventListener("change", updateThinkCapBadge);
+if ($("model")) $("model").addEventListener("change", () => { updateThinkCapBadge(); updateVisionUI(); });
 if ($("think-mode")) {
   $("think-mode").addEventListener("change", () => store.set("aicf_think_mode", $("think-mode").value));
 }
 loadModels();
+
+// ---- Image attachments (shown only when the selected model reports capabilities.vision) ----
+const MAX_IMAGES = 4, MAX_EDGE = 1568;
+let attachments = [];   // data URLs (JPEG/PNG, longest edge <= MAX_EDGE)
+
+function modelHasVision() {
+  const sel = $("model");
+  const m = (sel && sel.value) || Object.keys(modelMetaMap)[0] || "";
+  const info = modelMetaMap[m];
+  return !!(info && (info.vision || (info.capabilities && info.capabilities.vision)));
+}
+function updateVisionUI() {
+  const ok = modelHasVision();
+  if ($("btn-attach")) $("btn-attach").hidden = !ok;
+  if (!ok && attachments.length) { attachments = []; renderAttachments(); }
+}
+function renderAttachments() {
+  const row = $("attach-row");
+  row.replaceChildren(...attachments.map((u, i) => el("div", { class: "thumb" },
+    el("img", { src: u, alt: "ảnh " + (i + 1) }),
+    el("button", { type: "button", class: "sm", title: "Bỏ ảnh", onclick: () => { attachments.splice(i, 1); renderAttachments(); } }, "×"))));
+}
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, MAX_EDGE / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(img.width * k));
+      c.height = Math.max(1, Math.round(img.height * k));
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", 0.9));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("không đọc được ảnh")); };
+    img.src = url;
+  });
+}
+async function addImages(files) {
+  if (!modelHasVision()) return;
+  for (const f of files) {
+    if (!f.type.startsWith("image/")) continue;
+    if (attachments.length >= MAX_IMAGES) { $("chat-status-pill").textContent = "Tối đa " + MAX_IMAGES + " ảnh mỗi câu hỏi"; break; }
+    try { attachments.push(await fileToDataURL(f)); } catch (e) { $("chat-status-pill").textContent = "Lỗi ảnh: " + e.message; }
+  }
+  renderAttachments();
+}
+if ($("btn-attach")) {
+  $("btn-attach").onclick = () => $("img-file").click();
+  $("img-file").onchange = async e => { await addImages([...e.target.files]); e.target.value = ""; };
+  $("q").addEventListener("paste", e => {
+    const files = [...(e.clipboardData ? e.clipboardData.files : [])].filter(f => f.type.startsWith("image/"));
+    if (files.length && modelHasVision()) { e.preventDefault(); addImages(files); }
+  });
+  const box = $("f");
+  box.addEventListener("dragover", e => { if (modelHasVision()) { e.preventDefault(); box.classList.add("dragover"); } });
+  box.addEventListener("dragleave", () => box.classList.remove("dragover"));
+  box.addEventListener("drop", e => { box.classList.remove("dragover"); if (modelHasVision() && e.dataTransfer.files.length) { e.preventDefault(); addImages([...e.dataTransfer.files]); } });
+}
 
 function clearChat() {
   const log = $("log");
@@ -90,9 +150,10 @@ function addMsg(cls, text) {
   return d;
 }
 
-async function ask(question) {
+async function ask(question, images = []) {
   store.set("aicf_key", $("key").value);
-  addMsg("user", question);
+  const um = addMsg("user", question);
+  if (images.length) um.prepend(el("div", { class: "msg-imgs" }, ...images.map(u => el("img", { src: u, alt: "ảnh đính kèm" }))));
   const bot = addMsg("bot", "");
   const think = el("details", { class: "think" }, el("summary", {}, "💭 Suy nghĩ của mô hình (Reasoning)")),
         thinkText = el("div"),
@@ -116,7 +177,9 @@ async function ask(question) {
   const reqBody = {
     stream: true,
     max_tokens: 400,
-    messages: [{ role: "user", content: question }],
+    messages: [{ role: "user", content: images.length
+      ? [{ type: "text", text: question }, ...images.map(u => ({ type: "image_url", image_url: { url: u } }))]
+      : question }],
   };
   if ($("model") && $("model").value) {
     reqBody.model = $("model").value;
@@ -193,10 +256,13 @@ $("f").onsubmit = async e => {
   $("send").disabled = true;
   $("stop").disabled = false;
   const q = $("q").value.trim();
+  const imgs = attachments.slice();
+  attachments = [];
+  renderAttachments();
   if ($("burst").checked) {
-    await Promise.all(Array.from({ length: 8 }, (_, i) => ask(q + " (#" + (i + 1) + ")")));
+    await Promise.all(Array.from({ length: 8 }, (_, i) => ask(q + " (#" + (i + 1) + ")", imgs)));
   } else {
-    await ask(q);
+    await ask(q, imgs);
   }
   $("send").disabled = false;
   $("stop").disabled = true;
