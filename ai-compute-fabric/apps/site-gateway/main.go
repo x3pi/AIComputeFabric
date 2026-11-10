@@ -26,6 +26,7 @@ func main() {
 	maxQueue := flag.Int("max-queue", 64, "requests allowed to wait for a slot")
 	maxWait := flag.Duration("max-wait", 10*time.Second, "longest a request waits for a slot")
 	defThink := flag.String("default-thinking", "model", "thinking when a request does not say: model (model's own default), off or on; only hybrid models are affected")
+	compactDef := flag.String("compact-default", "overflow", "conversation compaction when a /v1/chat/completions request exceeds the context window: off, overflow (only after the engine refused it) or auto (also before sending, at 70% of the window); per request: X-AICF-Compact header")
 	rate := flag.Float64("tenant-rate", 0, "requests/s per tenant (0 = unlimited)")
 	burst := flag.Int("tenant-burst", 20, "token bucket burst per tenant")
 	fair := flag.Bool("fair", true, "weighted fair queuing per tenant (false = one shared FIFO)")
@@ -62,6 +63,11 @@ func main() {
 		log.Fatal(err)
 	}
 	DefaultThinking = dt
+	cm, err := ParseCompactMode(*compactDef)
+	if err != nil {
+		log.Fatal(err)
+	}
+	DefaultCompact = cm
 	if *topologyFile != "" {
 		DefaultTopologyFile = *topologyFile
 	} else if *tenantsFile != "" {

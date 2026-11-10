@@ -158,6 +158,13 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	isChat := strings.TrimSuffix(r.URL.Path, "/") == "/v1/chat/completions"
+	cOpts := compactOpts{Mode: CompactOff}
+	if isChat {
+		cOpts, body = compactOptionsFor(r.Header, body)
+	}
+	compacted := false
+
 	agentPin := strings.TrimSpace(r.Header.Get("X-AICF-Agent"))
 	labelReq := strings.TrimSpace(r.Header.Get("X-AICF-Label"))
 	session := r.Header.Get("X-Session-ID")
@@ -209,7 +216,41 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		granted := time.Now()
-		done, retry := in.forward(w, r, rt, body, thinkState)
+		if cOpts.Mode == CompactAuto && !compacted {
+			var msgs []chatMsg
+			var root map[string]json.RawMessage
+			if json.Unmarshal(body, &root) == nil && json.Unmarshal(root["messages"], &msgs) == nil {
+				if n := cachedEngineContext(rt.URL); n > 0 && float64(estimateTokens(msgs)) > cOpts.Threshold*float64(n) {
+					if res, cerr := in.compactBody(r.Context(), rt, body, cOpts, tenant, n); cerr == nil {
+						body, compacted = res.Body, true
+						compactAutoN.Add(1)
+						setCompactHeaders(w, res, "auto")
+					} else {
+						compactFailedN.Add(1)
+					}
+				}
+			}
+		}
+		var ov *overflowInfo
+		if cOpts.Mode != CompactOff && !compacted {
+			ov = &overflowInfo{}
+		}
+		done, retry := in.forward(w, r, rt, body, thinkState, ov)
+		if ov != nil && ov.hit {
+			// The engine refused the request as too long. Compact on the same worker and retry once.
+			if res, cerr := in.compactBody(r.Context(), rt, body, cOpts, tenant, ov.nCtx); cerr == nil {
+				compacted = true
+				compactOverflowN.Add(1)
+				setCompactHeaders(w, res, "overflow")
+				body = res.Body
+				done, retry = in.forward(w, r, rt, body, thinkState, nil)
+			} else {
+				compactFailedN.Add(1)
+				w.Header().Set("X-AICF-Compact-Failed", cerr.Error())
+				ov.replay(w)
+				done, retry = true, false
+			}
+		}
 		in.R.Release(rt, tenant, !done, time.Since(granted))
 		skip = rt.ID
 		if done || !retry {
@@ -221,7 +262,7 @@ func (in *Inference) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // forward proxies one attempt. done=true means a response was delivered (success or
 // client-side end). retry=true means nothing was sent to the client yet.
-func (in *Inference) forward(w http.ResponseWriter, r *http.Request, rt Route, body []byte, thinkState *bool) (done, retry bool) {
+func (in *Inference) forward(w http.ResponseWriter, r *http.Request, rt Route, body []byte, thinkState *bool, ov *overflowInfo) (done, retry bool) {
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, rt.URL+r.URL.Path, bytes.NewReader(body))
 	if err != nil {
 		return false, true
@@ -238,6 +279,16 @@ func (in *Inference) forward(w http.ResponseWriter, r *http.Request, rt Route, b
 	if resp.StatusCode >= 500 {
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		return false, true
+	}
+	if ov != nil && resp.StatusCode == http.StatusBadRequest {
+		// Read the (small) error body: if it is "context window exceeded" hand control back to the caller before
+		// any byte reaches the client; otherwise put the body back and continue exactly as before.
+		buf, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if nCtx, nPrompt, isOv := parseOverflow(buf); isOv {
+			*ov = overflowInfo{hit: true, status: resp.StatusCode, header: resp.Header.Clone(), body: buf, nCtx: nCtx, nPrompt: nPrompt}
+			return false, false
+		}
+		resp.Body = io.NopCloser(bytes.NewReader(buf))
 	}
 	for k, v := range resp.Header {
 		if k == "Content-Length" {
@@ -290,6 +341,10 @@ func (in *Inference) Metrics(w http.ResponseWriter, _ *http.Request) {
 	p("aicf_requests_total", "counter", "Inference requests received", s.Requests)
 	p("aicf_served_total", "counter", "Requests completed", s.Served)
 	p("aicf_failovers_total", "counter", "Attempts that failed on a worker", s.Failovers)
+	fmt.Fprintf(w, "# TYPE aicf_compactions_total counter\n")
+	fmt.Fprintf(w, "aicf_compactions_total{trigger=\"overflow\"} %d\n", compactOverflowN.Load())
+	fmt.Fprintf(w, "aicf_compactions_total{trigger=\"auto\"} %d\n", compactAutoN.Load())
+	fmt.Fprintf(w, "aicf_compactions_failed_total %d\n", compactFailedN.Load())
 	fmt.Fprintf(w, "# TYPE aicf_rejected_total counter\n")
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"queue_full\"} %d\n", s.RejectedQueueFull)
 	fmt.Fprintf(w, "aicf_rejected_total{reason=\"tenant_queue_full\"} %d\n", s.RejectedTenantQueue)
