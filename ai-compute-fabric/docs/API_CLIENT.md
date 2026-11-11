@@ -1,7 +1,7 @@
 # AI Compute Fabric — Tài liệu API cho bên tích hợp
 
 API tương thích **OpenAI Chat Completions** (cũng có cổng tương thích Ollama). Mô hình hiện chạy: `Qwen3.8-27B-UD-Q4_K_M.gguf`
-(chữ + ảnh vào, chữ ra; context **65 536 token**). Dùng bất kỳ SDK OpenAI nào: chỉ đổi `base_url` và `api_key`.
+(chữ + ảnh vào, chữ ra; context **98 304 token**). Dùng bất kỳ SDK OpenAI nào: chỉ đổi `base_url` và `api_key`.
 
 ## 1. Kết nối
 
@@ -56,7 +56,7 @@ Model có chế độ suy nghĩ. **Mặc định của hệ thống: TẮT** (tr
 ## 5. Hội thoại dài và giới hạn context
 
 API là *stateless*: client gửi lại toàn bộ `messages` ở mỗi lượt và **tự quản lý lịch sử**. Khi prompt vượt context của
-model (**65 536 token**), engine trả lỗi 400 `exceed_context_size_error`. Gateway **không** tự nén hay cắt hội thoại: client cần
+model (**98 304 token**), engine trả lỗi 400 `exceed_context_size_error`. Gateway **không** tự nén hay cắt hội thoại: client cần
 tự rút gọn (cắt bớt lượt cũ hoặc tự tóm tắt) trước khi gửi. Thông tin bắt buộc không được quên nên đặt trong system prompt.
 
 ## 6. Mã lỗi
@@ -65,7 +65,7 @@ Lỗi trả dạng `{"error":{"message":"...","code":N}}`.
 
 | HTTP | Ý nghĩa | Xử lý |
 |---|---|---|
-| 400 | Request sai; hoặc `exceed_context_size_error` (prompt vượt 65 536 token) | Sửa request / rút gọn lịch sử |
+| 400 | Request sai; hoặc `exceed_context_size_error` (prompt vượt 98 304 token) | Sửa request / rút gọn lịch sử |
 | 401 | Thiếu hoặc sai API key | Kiểm tra key |
 | 429 | Hàng đợi đầy / ước tính chờ quá lâu / quá nhiều request đang chờ của key | Đọc `Retry-After` (giây), thử lại |
 | 502 / 503 | Worker lỗi hoặc không có chỗ trong thời gian chờ tối đa (60 s) | Thử lại sau `Retry-After` |
