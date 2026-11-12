@@ -290,3 +290,50 @@ def test_three_topology_modes_and_midflight_agent_drop_same_code() -> None:
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+def test_verilog_eda_evaluation_and_selection() -> None:
+    """Verify Best-of-N Verilog/SystemVerilog EDA evaluation (Verilator + Icarus Verilog + Yosys)."""
+    pool = SandboxPool(pool_size=2, timeout_s=8.0)
+    tb = """`timescale 1ns/1ps
+module tb_pulse;
+    reg [7:0] a, b;
+    wire [8:0] sum;
+    adder8 dut(.a(a), .b(b), .sum(sum));
+    initial begin
+        a = 8'd100; b = 8'd200; #1;
+        if (sum !== 9'd300) begin
+            $display("FAIL: got %0d", sum);
+            $finish;
+        end
+        $display("PASS: sum=%0d", sum);
+        $finish;
+    end
+endmodule
+"""
+    c_bad_syntax = pool.evaluate_one(
+        0, "ag-1", "Qwen3.8-27B", "direct", 0.0, 12.0,
+        "```verilog\nmodule adder8(input [7:0] a, b, output [8:0] sum)\n assign sum = a + b\nendmodule\n```",
+        [tb], entry_point="adder8", language="verilog",
+    )
+    assert not c_bad_syntax.compile_ok
+
+    c_wrong_logic = pool.evaluate_one(
+        1, "ag-1", "Qwen3.8-27B", "edge", 0.4, 12.0,
+        "```verilog\nmodule adder8(input [7:0] a, input [7:0] b, output [8:0] sum);\n  assign sum = a - b;\nendmodule\n```",
+        [tb], entry_point="adder8", language="verilog",
+    )
+    assert c_wrong_logic.compile_ok and c_wrong_logic.passed_tests == 0
+
+    c_good_rtl = pool.evaluate_one(
+        2, "ag-1", "Qwen3.8-27B", "minimal", 0.6, 12.0,
+        "```verilog\nmodule adder8(input [7:0] a, input [7:0] b, output [8:0] sum);\n  assign sum = a + b;\nendmodule\n```",
+        [tb], entry_point="adder8", language="verilog",
+    )
+    assert c_good_rtl.compile_ok and c_good_rtl.passed_tests == 1
+    assert "[Yosys Synthesis]" in c_good_rtl.stdout
+
+    sel = select_best_candidate([c_bad_syntax, c_wrong_logic, c_good_rtl])
+    assert sel.selected is not None
+    assert sel.selected.sample_index == 2
+

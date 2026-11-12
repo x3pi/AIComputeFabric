@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from agents.sandbox import SandboxError, SandboxLimits, SandboxUnavailable, pick_sandbox
+from bestofn.eda_verilog import (
+    evaluate_verilog_candidate,
+    extract_verilog_block,
+    normalize_verilog_structure,
+)
 
 RUNNER_HELPER_SCRIPT = """\
 import hashlib
@@ -207,7 +212,57 @@ class SandboxPool:
         test_suites: list[str],
         setup_code: str = "",
         entry_point: str = "",
+        language: str = "python",
     ) -> CandidateEval:
+        lang = (language or "python").strip().lower()
+        if lang in ("verilog", "systemverilog", "sv", "rtl"):
+            code = extract_verilog_block(raw_text=raw_content, top_module=entry_point)
+            norm = normalize_verilog_structure(code)
+            code_hash = hashlib.sha256(norm.encode("utf-8")).hexdigest()[:16]
+            t0 = time.perf_counter()
+            res = evaluate_verilog_candidate(
+                candidate_code=code,
+                test_suites=test_suites,
+                setup_code=setup_code,
+                top_module=entry_point,
+                timeout_s=self.timeout_s,
+                max_output_bytes=self.max_output_bytes // 2,
+            )
+            sb_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+            total_t = max(1, int(res.get("total_tests", len(test_suites))))
+            passed_t = int(res.get("passed_tests", 0))
+            compile_ok = bool(res.get("compile_ok", False))
+            err_type = str(res.get("compile_error_type", ""))
+            err_msg = str(res.get("compile_error", ""))
+            if compile_ok and passed_t < len(test_suites):
+                for sr in res.get("suite_results", []):
+                    if not sr.get("passed", False):
+                        err_type = str(sr.get("error_type", "SimulationMismatch"))
+                        err_msg = str(sr.get("error", ""))
+                        break
+            return CandidateEval(
+                sample_index=sample_index,
+                agent_id=agent_id,
+                model=model,
+                strategy_id=strategy_id,
+                temperature=temperature,
+                code=code,
+                code_hash=code_hash,
+                compile_ok=compile_ok,
+                passed_tests=passed_t,
+                total_tests=len(test_suites),
+                pass_rate=round(passed_t / total_t, 4) if test_suites else (1.0 if compile_ok else 0.0),
+                pass_vector=str(res.get("pass_vector", "")),
+                suite_results=res.get("suite_results", []),
+                exec_ms=float(res.get("exec_ms", 0.0)),
+                sandbox_ms=sb_ms,
+                gen_ms=gen_ms,
+                error_type=err_type,
+                error=err_msg,
+                stdout=str(res.get("stdout", "")),
+                output_truncated=bool(res.get("output_truncated", False)),
+            )
+
         code = extract_code_block(raw_text=raw_content, entry_point=entry_point)
         norm = normalize_code_structure(code)
         code_hash = hashlib.sha256(norm.encode("utf-8")).hexdigest()[:16]
@@ -309,6 +364,7 @@ class SandboxPool:
         test_suites: list[str],
         setup_code: str = "",
         entry_point: str = "",
+        language: str = "python",
     ) -> tuple[list[CandidateEval], dict[str, Any]]:
         t0 = time.perf_counter()
         valid_samples = [s for s in samples if getattr(s, "ok", False)]
@@ -330,6 +386,7 @@ class SandboxPool:
                     test_suites,
                     setup_code,
                     entry_point,
+                    language,
                 )
                 for s in valid_samples
             ]

@@ -79,6 +79,7 @@ class BestOfNOrchestrator:
         m_test_suites: int = 3,
         allow_multi_model: bool = False,
         max_share_per_agent: float = 0.70,
+        language: str = "python",
     ) -> dict[str, Any]:
         if n < 1 or n > MAX_BON_N:
             raise ValueError(f"bon.n must be between 1 and {MAX_BON_N}, got {n}")
@@ -135,6 +136,7 @@ class BestOfNOrchestrator:
             test_suites=test_suites,
             setup_code=setup_code,
             entry_point=ep,
+            language=language,
         )
 
         kept_gen_tests = len(test_suites)
@@ -154,7 +156,8 @@ class BestOfNOrchestrator:
 
         winner = sel.selected
         selected_code = winner.code if winner else ""
-        formatted_content = f"```python\n{selected_code}\n```" if selected_code else ""
+        fence_lang = "verilog" if str(language).lower() in ("verilog", "systemverilog", "sv", "rtl") else "python"
+        formatted_content = f"```{fence_lang}\n{selected_code}\n```" if selected_code else ""
         total_prompt_tokens = sum(s.prompt_tokens for s in samples if s.ok)
         total_comp_tokens = sum(s.completion_tokens for s in samples if s.ok)
 
@@ -266,9 +269,9 @@ def make_handler(orchestrator: BestOfNOrchestrator):
                 return
 
             language = str(bon_cfg.get("language", "python")).lower()
-            if language != "python":
+            if language not in ("python", "verilog", "systemverilog", "sv", "rtl"):
                 self._send_json(400, {
-                    "error": {"message": f"unsupported language {language!r}; only 'python' is enabled", "code": 400}
+                    "error": {"message": f"unsupported language {language!r}; only 'python' and 'verilog' are enabled", "code": 400}
                 })
                 return
 
@@ -298,6 +301,7 @@ def make_handler(orchestrator: BestOfNOrchestrator):
                     generate_tests=bool(bon_cfg.get("generate_tests", False)),
                     m_test_suites=int(bon_cfg.get("m_test_suites", 3)),
                     allow_multi_model=bool(bon_cfg.get("allow_multi_model", False)),
+                    language=language,
                 )
             except SandboxUnavailable as exc:
                 self._send_json(503, {"error": {"message": str(exc), "code": 503}})
