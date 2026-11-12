@@ -94,6 +94,12 @@ type Router struct {
 	svcEWMA   float64           // seconds one request holds a slot (EWMA of successful requests)
 	lastWait  time.Duration     // estimate behind the most recent ErrWouldMiss
 	sessions  map[string]sessionEntry
+	recent    []activity // arrival times for the status page, bounded
+}
+
+type activity struct {
+	at     time.Time
+	tenant string
 }
 
 type sessionEntry struct {
@@ -378,10 +384,12 @@ func (r *Router) beforeLocked(a, b *waiter) bool {
 // Acquire returns a slot or an admission error. cancel is closed when the caller
 // goes away (client disconnect) so a dead request never keeps a place in the queue.
 func (r *Router) Acquire(q Req, cancel <-chan struct{}) (Route, error) {
+	who := q.Tenant
 	q.Tenant = r.key(q.Tenant)
 	r.mu.Lock()
 	if q.Skip == "" {
 		r.stats.Requests++ // a retry is not a new request
+		r.noteActivityLocked(who)
 	}
 	// Strict pinned-agent semantics (§2B.3 & Check Pass c): never fall back to another agent.
 	if q.Agent != "" {
@@ -625,4 +633,63 @@ func (l *Limiter) Allow(tenant string) (bool, time.Duration) {
 		return true, 0
 	}
 	return false, time.Duration((1 - b.tokens) / l.rate * float64(time.Second))
+}
+
+const maxRecentActivity = 20000
+
+func (r *Router) noteActivityLocked(tenant string) {
+	r.recent = append(r.recent, activity{at: r.now(), tenant: tenant})
+	if n := len(r.recent); n > maxRecentActivity {
+		r.recent = append(r.recent[:0:0], r.recent[n-maxRecentActivity/2:]...)
+	}
+}
+
+// Usage is a coarse, anonymous picture of load for the public status page.
+type Usage struct {
+	Slots          int   `json:"slots"`           // concurrent requests the routable workers accept
+	Inflight       int   `json:"inflight"`        // requests running now
+	Queued         int   `json:"queued"`          // requests waiting for a slot
+	UsersBusy      int   `json:"users_busy"`      // tenants with a request running or queued
+	UsersRecent    int   `json:"users_recent"`    // distinct tenants that sent a request within the window
+	RequestsRecent int   `json:"requests_recent"` // requests received within the window
+	WindowSeconds  int   `json:"window_seconds"`
+	LastRequest    int64 `json:"last_request_unix"` // 0 = none since the gateway started
+	Now            int64 `json:"now_unix"`
+}
+
+// Usage never exposes tenant names or keys, only counts.
+func (r *Router) Usage(window time.Duration) Usage {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := r.now()
+	u := Usage{WindowSeconds: int(window / time.Second), Now: now.Unix()}
+	for _, rt := range r.routes {
+		u.Slots += rt.Slots
+	}
+	for _, v := range r.inflight {
+		u.Inflight += v
+	}
+	busy := map[string]bool{}
+	for _, w := range r.queue {
+		if !w.done {
+			u.Queued++
+			busy[w.Tenant] = true
+		}
+	}
+	for t, n := range r.tInflight {
+		if n > 0 {
+			busy[t] = true
+		}
+	}
+	u.UsersBusy = len(busy)
+	seen := map[string]bool{}
+	for _, a := range r.recent {
+		u.LastRequest = a.at.Unix()
+		if now.Sub(a.at) <= window {
+			u.RequestsRecent++
+			seen[a.tenant] = true
+		}
+	}
+	u.UsersRecent = len(seen)
+	return u
 }

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trạng thái hệ thống AI</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  body { display:flex; justify-content:center; padding:24px 16px; }
+  .wrap { width:100%; max-width:640px; }
+  h1 { font-size:18px; margin:0 0 14px; }
+  .state { border-radius:16px; padding:28px 20px; text-align:center; border:1px solid var(--bd); background:var(--card); }
+  .state .emoji { font-size:44px; line-height:1; }
+  .state .label { font-size:26px; font-weight:700; margin-top:10px; }
+  .state .sub { color:var(--mut); margin-top:6px; font-size:14px; }
+  .state.idle { border-color:#34a853; }
+  .state.busy { border-color:#f9ab00; }
+  .state.full { border-color:#d93025; }
+  .state.down { border-color:var(--bd-strong); }
+  .slots { display:flex; gap:10px; justify-content:center; margin:18px 0 4px; flex-wrap:wrap; }
+  .slot { width:34px; height:34px; border-radius:50%; border:2px solid var(--bd-strong); background:transparent; }
+  .slot.on { background:#f9ab00; border-color:#f9ab00; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-top:14px; }
+  .cell { background:var(--card); border:1px solid var(--bd); border-radius:12px; padding:14px; }
+  .cell .n { font-size:28px; font-weight:700; }
+  .cell .t { color:var(--mut); font-size:13px; margin-top:2px; }
+  .foot { color:var(--mut); font-size:12px; margin-top:14px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Trạng thái hệ thống AI</h1>
+  <div id="state" class="state down">
+    <div class="emoji" id="emoji">…</div>
+    <div class="label" id="label">Đang tải</div>
+    <div class="sub" id="sub"></div>
+    <div class="slots" id="slots"></div>
+  </div>
+  <div class="grid">
+    <div class="cell"><div class="n" id="busy">–</div><div class="t">người đang dùng ngay lúc này</div></div>
+    <div class="cell"><div class="n" id="queued">–</div><div class="t">yêu cầu đang chờ trong hàng đợi</div></div>
+    <div class="cell"><div class="n" id="recent">–</div><div class="t" id="recentT">người dùng trong 5 phút qua</div></div>
+    <div class="cell"><div class="n" id="reqs">–</div><div class="t" id="reqsT">yêu cầu trong 5 phút qua</div></div>
+  </div>
+  <div class="foot" id="foot"></div>
+</div>
+<script src="status.js"></script>
+</body>
+</html>

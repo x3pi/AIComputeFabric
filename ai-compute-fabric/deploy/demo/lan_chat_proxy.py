@@ -20,13 +20,14 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade"}
-STATIC = {"/chat.html", "/common.css", "/common.js", "/chat.js", "/favicon.ico", "/serverless.html", "/serverless.js", "/connect.html", "/connect.js"}
+STATIC = {"/chat.html", "/common.css", "/common.js", "/chat.js", "/favicon.ico", "/serverless.html", "/serverless.js", "/connect.html", "/connect.js", "/status.html", "/status.js"}
 MAX_BODY = 32 * 1024 * 1024  # base64 images in chat requests
 LOGIN_PATHS = {"/api/auth/login", "/api/serverless/v1/auth/login"}  # where an admin user name is refused
 
 # (method, exact path or compiled regex)
 API = [
     ("GET", "/api/whoami"),
+    ("GET", "/api/usage"),  # anonymous counts for status.html (no tenant names)
     ("POST", "/api/auth/login"),
     ("POST", "/api/auth/logout"),
     ("POST", "/api/auth/change-password"),

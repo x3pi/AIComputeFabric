@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // NewAPI wraps the fleet API with admin authentication and adds tenant management.
@@ -332,6 +333,15 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 				workers = len(ws)
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"status": "ready", "service": "site-gateway", "running_workers": workers})
+			return
+		}
+		if r.URL.Path == "/api/usage" && r.Method == http.MethodGet {
+			if rt == nil {
+				http.Error(w, "router not available", http.StatusServiceUnavailable)
+				return
+			}
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, http.StatusOK, rt.Usage(5*time.Minute))
 			return
 		}
 		if r.URL.Path == "/api/whoami" && r.Method == http.MethodGet {
