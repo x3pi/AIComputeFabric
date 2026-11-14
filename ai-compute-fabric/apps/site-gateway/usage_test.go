@@ -40,7 +40,7 @@ func TestUsageCountsSlotsBusyAndRecentUsers(t *testing.T) {
 	}
 }
 
-func TestUsageEndpointIsPublicAndNamesNoTenant(t *testing.T) {
+func TestUsageEndpointIsAdminOnlyAndNamesNoTenant(t *testing.T) {
 	reg := NewRegistry(time.Hour)
 	rt := NewRouter(RouterConfig{MaxQueue: 8, MaxWait: time.Second, Fair: true}, reg)
 	addWorker(reg, "w1", "http://x", "m", 2)
@@ -51,8 +51,22 @@ func TestUsageEndpointIsPublicAndNamesNoTenant(t *testing.T) {
 	h := NewAPIServerless(NewFleet(reg), nil, NewAuth("tok"), nil, nil, nil, nil, nil, rt)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/usage", nil)) // no credentials
+	if rec.Code != 401 {
+		t.Fatalf("status data must require admin, anonymous got %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/usage", nil)
+	req.Header.Set("Authorization", "Bearer wrong-token")
+	h.ServeHTTP(rec, req)
+	if rec.Code != 401 {
+		t.Fatalf("a wrong token must not read status data, got %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/usage", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	h.ServeHTTP(rec, req)
 	if rec.Code != 200 {
-		t.Fatalf("status page data must be public, got %d", rec.Code)
+		t.Fatalf("admin must read status data, got %d", rec.Code)
 	}
 	if strings.Contains(rec.Body.String(), "secret-tenant-name") || !strings.Contains(rec.Body.String(), `"inflight":1`) {
 		t.Fatalf("body: %s", rec.Body.String())

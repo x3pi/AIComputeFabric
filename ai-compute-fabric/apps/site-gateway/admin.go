@@ -336,6 +336,20 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 			return
 		}
 		if r.URL.Path == "/api/usage" && r.Method == http.MethodGet {
+			// Admin only (owner request 2026-11-14): the load numbers are no longer public.
+			if auth != nil && !auth.Open() {
+				tok := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+				p, ok := auth.Identify(tok)
+				if !ok {
+					w.Header().Set("WWW-Authenticate", `Bearer realm="aicf-admin"`)
+					http.Error(w, "admin token required", http.StatusUnauthorized)
+					return
+				}
+				if p.Role != RoleAdmin {
+					http.Error(w, "admin only", http.StatusForbidden)
+					return
+				}
+			}
 			if rt == nil {
 				http.Error(w, "router not available", http.StatusServiceUnavailable)
 				return

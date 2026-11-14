@@ -12,22 +12,30 @@ Stop:   kill <pid>   (nothing is persisted)
 from __future__ import annotations
 
 import argparse
+import hashlib
 import http.client
 import json
 import os
 import re
+import socket
+import ssl
 import sys
+import threading
+import time
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade"}
-STATIC = {"/chat.html", "/common.css", "/common.js", "/chat.js", "/favicon.ico", "/serverless.html", "/serverless.js", "/connect.html", "/connect.js", "/status.html", "/status.js"}
+STATIC = {"/chat.html", "/common.css", "/common.js", "/chat.js", "/favicon.ico", "/serverless.html", "/serverless.js"}
+# Remote admin (owner decision 2026-11-14, risk accepted): while this file exists next to the script the proxy relays ANY path
+# and stops refusing admin credentials. Delete the file to close it again (takes effect on the next request, no restart).
+ADMIN_FLAG = Path(__file__).with_name("admin_remote.enabled")
 MAX_BODY = 32 * 1024 * 1024  # base64 images in chat requests
 LOGIN_PATHS = {"/api/auth/login", "/api/serverless/v1/auth/login"}  # where an admin user name is refused
 
 # (method, exact path or compiled regex)
 API = [
     ("GET", "/api/whoami"),
-    ("GET", "/api/usage"),  # anonymous counts for status.html (no tenant names)
     ("POST", "/api/auth/login"),
     ("POST", "/api/auth/logout"),
     ("POST", "/api/auth/change-password"),
@@ -55,7 +63,90 @@ API = [
 ]
 
 
-def allowed(method: str, path: str) -> bool:
+def admin_remote_enabled() -> bool:
+    try:
+        return ADMIN_FLAG.exists()
+    except OSError:
+        return False
+
+
+class AuthFailLimiter:
+    """Blocks an IP for `block_s` after `max_fail` HTTP 401 answers within `window_s` (token / password guessing)."""
+
+    def __init__(self, max_fail: int = 60, window_s: float = 300.0, block_s: float = 300.0, clock=time.monotonic) -> None:
+        self.max_fail, self.window_s, self.block_s, self.clock = max_fail, window_s, block_s, clock
+        self._fails: dict[str, list[float]] = {}
+        self._blocked: dict[str, float] = {}
+        self._mu = threading.Lock()
+
+    def blocked(self, ip: str) -> bool:
+        with self._mu:
+            until = self._blocked.get(ip, 0.0)
+            if until and self.clock() < until:
+                return True
+            self._blocked.pop(ip, None)
+            return False
+
+    def record_401(self, ip: str) -> None:
+        now = self.clock()
+        with self._mu:
+            xs = [t for t in self._fails.get(ip, []) if now - t < self.window_s] + [now]
+            self._fails[ip] = xs
+            if len(xs) >= self.max_fail:
+                self._blocked[ip] = now + self.block_s
+                self._fails[ip] = []
+
+
+LIMITER = AuthFailLimiter()
+
+# 3D Foundry web UI (foundry3d.gallery_server --enable-create on localhost). Remote use needs the admin flag AND a valid
+# admin Bearer token on every /api/foundry3d/ call (the static page itself holds no data and no secrets).
+GALLERY_UPSTREAM = ("127.0.0.1", 18130)
+GALLERY_PAGES = {"/foundry3d.html", "/foundry3d.js"}
+GALLERY_API_PREFIX = "/api/foundry3d/"
+
+
+def is_gallery_path(path: str) -> bool:
+    return path in GALLERY_PAGES or path.startswith(GALLERY_API_PREFIX)
+
+
+class AdminTokenCache:
+    """Asks the gateway (/api/whoami) whether a Bearer token is an admin; positive answers are cached for `ttl` seconds."""
+
+    def __init__(self, ttl: float = 30.0, clock=time.monotonic) -> None:
+        self.ttl, self.clock = ttl, clock
+        self._ok: dict[str, float] = {}
+        self._mu = threading.Lock()
+
+    def is_admin(self, authorization: str, upstream: tuple[str, int]) -> bool:
+        tok = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
+        if not tok:
+            return False
+        key = hashlib.sha256(tok.encode()).hexdigest()
+        now = self.clock()
+        with self._mu:
+            if self._ok.get(key, 0.0) > now:
+                return True
+        try:
+            c = http.client.HTTPConnection(*upstream, timeout=5)
+            c.request("GET", "/api/whoami", headers={"Authorization": authorization})
+            r = c.getresponse()
+            ok = r.status == 200 and json.loads(r.read().decode("utf-8")).get("role") == "admin"
+            c.close()
+        except (OSError, ValueError):
+            return False
+        if ok:
+            with self._mu:
+                self._ok[key] = now + self.ttl
+        return ok
+
+
+ADMIN_CACHE = AdminTokenCache()
+
+
+def allowed(method: str, path: str, admin_remote: bool = False) -> bool:
+    if admin_remote:
+        return method in ("GET", "HEAD", "POST", "PUT", "DELETE", "PATCH")
     if method in ("GET", "HEAD") and (path in STATIC or path.startswith("/vendor/")):
         return True
     for m, p in API:
@@ -86,13 +177,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle(self) -> None:
         path = self.path.split("?", 1)[0]
-        if self.command in ("GET", "HEAD") and path in ("/", "/index.html"):
+        # "/" always lands on the chat page; the admin dashboard (/index.html) is reachable only while remote admin is on.
+        if self.command in ("GET", "HEAD") and (path == "/" or (path == "/index.html" and not admin_remote_enabled())):
             self.send_response(302)
-            self.send_header("Location", "/connect.html")
+            self.send_header("Location", "/chat.html")
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
-        if not allowed(self.command, path):
+        admin_remote = admin_remote_enabled()
+        if admin_remote and path == "/index.html":
+            self.path = "/"  # Go's file server 301-redirects /index.html to /; fetch the dashboard directly instead
+        if admin_remote and LIMITER.blocked(self.client_address[0]):
+            return self._deny(429, "Quá nhiều lần xác thực sai. Thử lại sau 15 phút.")
+        upstream = self.upstream
+        if is_gallery_path(path):
+            if not admin_remote:
+                return self._deny(403, "Trang 3D chưa được mở từ xa.")
+            if path.startswith(GALLERY_API_PREFIX) and not ADMIN_CACHE.is_admin(self.headers.get("Authorization") or "", self.upstream):
+                LIMITER.record_401(self.client_address[0])
+                return self._deny(401, "Cần đăng nhập admin để dùng 3D.")
+            upstream = GALLERY_UPSTREAM
+        elif not allowed(self.command, path, admin_remote):
             return self._deny(403, "Đường dẫn này không được mở trên mạng LAN. Chỉ có trang chat và API /v1.")
         if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
             return self._deny(411, "Content-Length required")
@@ -101,9 +206,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._deny(413, "Body too large")
         body = self.rfile.read(n) if n else b""
         blob = (str(self.headers) + body.decode("utf-8", "ignore")).lower()
-        if any(s and s.lower() in blob for s in self.secrets):
+        if not admin_remote and any(s and s.lower() in blob for s in self.secrets):
             return self._deny(403, "Thông tin quản trị không được dùng qua cổng LAN này.")
-        if self.command == "POST" and path.startswith("/api/") and body.strip():
+        if not admin_remote and self.command == "POST" and path.startswith("/api/") and body.strip():
             # The gateway JSON-decodes the body (\\uXXXX escapes!), so compare DECODED string values, never the raw text.
             try:
                 doc = json.loads(body.decode("utf-8"))
@@ -128,12 +233,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._deny(403, "Tài khoản/token quản trị không dùng được qua cổng LAN này.")
 
         headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP and k.lower() != "host"}
-        headers["Host"] = self.headers.get("Host") or f"{self.upstream[0]}:{self.upstream[1]}"
+        headers["Host"] = self.headers.get("Host") or f"{upstream[0]}:{upstream[1]}"
         headers["X-Forwarded-For"] = self.client_address[0]
-        conn = http.client.HTTPConnection(*self.upstream, timeout=600)
+        conn = http.client.HTTPConnection(*upstream, timeout=600)
         try:
             conn.request(self.command, self.path, body=body or None, headers=headers)
             resp = conn.getresponse()
+            # Only a 401 for a request that CARRIED credentials (Bearer header or a login POST) counts as a failed guess;
+            # an anonymous page load (/api/whoami without a token -> 401) is normal and must not lock the visitor out.
+            if admin_remote and resp.status == 401 and (self.headers.get("Authorization") or (self.command == "POST" and path in LOGIN_PATHS)):
+                LIMITER.record_401(self.client_address[0])
             clen = resp.getheader("Content-Length")
             self.send_response(resp.status)
             for k, v in resp.getheaders():
@@ -180,10 +289,60 @@ class Handler(BaseHTTPRequestHandler):
         self._deny(403, "CORS not available on this port")
 
 
+class SniffTLSServer(ThreadingHTTPServer):
+    """One port, two protocols: a connection whose first byte is 0x16 (TLS ClientHello) is TLS-wrapped, anything else stays plain HTTP.
+    The sniff happens in the per-connection worker thread, so a silent client cannot stall the accept loop."""
+
+    ssl_ctx: ssl.SSLContext | None = None
+
+    def finish_request(self, request, client_address):
+        wrapped = None
+        try:
+            request.settimeout(10)
+            first = request.recv(1, socket.MSG_PEEK)
+            if not first:
+                return
+            if first == b"\x16" and self.ssl_ctx is not None:
+                wrapped = self.ssl_ctx.wrap_socket(request, server_side=True)
+                request = wrapped
+            request.settimeout(None)
+            super().finish_request(request, client_address)
+        except (OSError, ssl.SSLError):
+            pass
+        finally:
+            if wrapped is not None:
+                try:
+                    wrapped.close()
+                except OSError:
+                    pass
+
+
+def make_tls_context(cert: str, key: str) -> ssl.SSLContext:
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.load_cert_chain(cert, key)
+    return ctx
+
+
+def make_tls_server(host: str, port: int, cert: str, key: str) -> ThreadingHTTPServer:
+    """Same Handler (same allowlist, limiter and admin rules) behind TLS 1.2+; the cert is read once at start."""
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.load_cert_chain(cert, key)
+    srv = ThreadingHTTPServer((host, port), Handler)
+    srv.daemon_threads = True
+    srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+    return srv
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--listen", required=True, help="ip:port to bind (use the LAN IP, not 0.0.0.0)")
     ap.add_argument("--upstream", default="127.0.0.1:18080")
+    ap.add_argument("--tls-listen", default="", help="optional extra HTTPS listener ip:port (same rules as --listen)")
+    ap.add_argument("--tls-sniff", action="store_true", help="also accept TLS on the --listen port itself (HTTP keeps working there)")
+    ap.add_argument("--tls-cert", default="", help="PEM certificate chain (leaf first) for --tls-listen")
+    ap.add_argument("--tls-key", default="", help="PEM private key for --tls-listen")
     ap.add_argument("--gateway-pid", type=int, default=0, help="read AICF_ADMIN_TOKEN/USER from this process env (so they can be blocked)")
     a = ap.parse_args()
     host, port = a.listen.rsplit(":", 1)
@@ -201,8 +360,21 @@ def main() -> None:
     secrets += ["demo-admin-token"]
     Handler.secrets = [s for s in dict.fromkeys(secrets) if len(s) >= 8]
     Handler.admin_users = [u for u in dict.fromkeys(users + ["admin"]) if u]
-    srv = ThreadingHTTPServer((host, int(port)), Handler)
+    if a.tls_sniff:
+        if not (a.tls_cert and a.tls_key):
+            sys.exit("--tls-sniff needs --tls-cert and --tls-key")
+        srv = SniffTLSServer((host, int(port)), Handler)
+        srv.ssl_ctx = make_tls_context(a.tls_cert, a.tls_key)
+    else:
+        srv = ThreadingHTTPServer((host, int(port)), Handler)
     srv.daemon_threads = True
+    if a.tls_listen:
+        if not (a.tls_cert and a.tls_key):
+            sys.exit("--tls-listen needs --tls-cert and --tls-key")
+        th, tp = a.tls_listen.rsplit(":", 1)
+        tsrv = make_tls_server(th, int(tp), a.tls_cert, a.tls_key)
+        threading.Thread(target=tsrv.serve_forever, daemon=True).start()
+        print(f"https listening on {th}:{tp} (TLS>=1.2)", flush=True)
     print(f"listening on {host}:{port} -> {a.upstream}; blocking {len(Handler.secrets)} token strings and admin users {Handler.admin_users}", flush=True)
     srv.serve_forever()
 

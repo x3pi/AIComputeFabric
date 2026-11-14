@@ -23,3 +23,4 @@ dist/
 
 # agent session state
 .gjc/
+deploy/demo/admin_remote.enabled

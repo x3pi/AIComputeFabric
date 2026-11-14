@@ -6,9 +6,7 @@
 <title>Trạng thái hệ thống AI</title>
 <link rel="stylesheet" href="common.css">
 <style>
-  body { display:flex; justify-content:center; padding:24px 16px; }
-  .wrap { width:100%; max-width:640px; }
-  h1 { font-size:18px; margin:0 0 14px; }
+  .wrap { width:100%; max-width:680px; margin:0 auto; }
   .state { border-radius:16px; padding:28px 20px; text-align:center; border:1px solid var(--bd); background:var(--card); }
   .state .emoji { font-size:44px; line-height:1; }
   .state .label { font-size:26px; font-weight:700; margin-top:10px; }
@@ -28,8 +26,10 @@
 </style>
 </head>
 <body>
+<script src="common.js"></script>
+<main>
 <div class="wrap">
-  <h1>Trạng thái hệ thống AI</h1>
+  <div class="page-header"><div><h1>📊 Trạng thái hệ thống AI</h1></div></div>
   <div id="state" class="state down">
     <div class="emoji" id="emoji">…</div>
     <div class="label" id="label">Đang tải</div>
@@ -44,6 +44,7 @@
   </div>
   <div class="foot" id="foot"></div>
 </div>
+</main>
 <script src="status.js"></script>
 </body>
 </html>

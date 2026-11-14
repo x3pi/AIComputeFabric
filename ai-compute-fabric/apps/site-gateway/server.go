@@ -139,6 +139,15 @@ func HTTPHandler(f *Fleet) http.Handler {
 	})
 	registerEstimatorAndStatsRoutes(mux, f, nil, nil)
 	sub, _ := fs.Sub(webFS, "web")
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	fileSrv := http.FileServer(http.FS(sub))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The "activate your machine" page is withdrawn from the public site (owner request 2026-11-14).
+		switch r.URL.Path {
+		case "/connect.html", "/connect.js":
+			http.NotFound(w, r)
+			return
+		}
+		fileSrv.ServeHTTP(w, r)
+	}))
 	return mux
 }

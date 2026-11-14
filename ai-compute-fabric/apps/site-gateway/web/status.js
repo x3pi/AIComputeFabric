@@ -42,11 +42,29 @@
     $("state").className = "state down"; $("emoji").textContent = "⚠️";
     $("label").textContent = "Không đọc được trạng thái"; $("sub").textContent = "Gateway không phản hồi.";
   }
+  var asked = false;
+  function needLogin(code) {
+    // Neutral placeholder (not an error page): the login dialog from common.js is what the visitor should act on.
+    $("state").className = "state idle"; $("emoji").textContent = "🔐";
+    $("label").textContent = code === 403 ? "Chỉ dành cho quản trị viên" : "Cần đăng nhập quản trị";
+    $("sub").textContent = code === 403 ? "Tài khoản hiện tại không có quyền admin." : "Đăng nhập bằng tài khoản admin để xem trạng thái hệ thống.";
+    $("slots").textContent = "";
+    $("foot").textContent = "";
+  }
   function tick() {
+    if (!store.get("aicf_admin")) {
+      needLogin(401);
+      if (!asked) { asked = true; api("/api/usage").catch(function () {}); } // opens the login dialog once
+      return;
+    }
     var c = new AbortController(), t = setTimeout(function () { c.abort(); }, 4000);
-    fetch("/api/usage", { cache: "no-store", signal: c.signal })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(render, fail)
+    api("/api/usage", { cache: "no-store", signal: c.signal })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 403) { needLogin(r.status); return null; }
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      })
+      .then(function (u) { if (u) render(u); }, fail)
       .then(function () { clearTimeout(t); });
   }
   tick(); setInterval(tick, 3000);

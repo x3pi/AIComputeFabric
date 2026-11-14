@@ -1,16 +1,17 @@
 // Shared by every page: admin token (kept in sessionStorage only), authenticated fetch,
 // SSE over fetch (EventSource cannot send an Authorization header), theme toggle, and 6-bucket VRAM renderer.
 const NAV = [
-  ["connect.html", "Kích hoạt máy bạn", "🔌", "user"],
+  ["status.html", "Trạng thái hệ thống", "📊", "admin"],
   ["serverless.html", "Serverless GPU", "⚡", "user"],
   ["chat.html", "Playground & Tải", "💬", "user"],
   ["studio.html", "AI Studio", "🧪", "user"],
+  ["foundry3d.html", "3D Foundry", "🧊", "user"],
   ["audio.html", "Audio AI", "🎙️", "user"],
   ["index.html", "Cụm GPU & VRAM", "🖥️", "admin"],
   ["tenants.html", "Tenants & Khóa API", "🔑", "admin"],
   ["agents.html", "AI Agent (DAG)", "🕸️", "admin"],
 ];
-const ADMIN_PAGES = ["index.html", "tenants.html", "agents.html"];
+const ADMIN_PAGES = ["index.html", "tenants.html", "agents.html", "status.html"];
 
 const BUCKET_GROUPS = [
   ["OSUser", "OS & người dùng", "--b-os"],
@@ -86,6 +87,9 @@ function openAuthModal(opts = {}) {
     msgEl.textContent = opts.message || "";
     msgEl.style.color = opts.message ? "#dc2626" : "var(--fg-secondary)";
   }
+  bd.dataset.locked = opts.locked ? "1" : "";
+  const xBtn = document.getElementById("aicf-auth-close");
+  if (xBtn) xBtn.style.display = opts.locked ? "none" : "";
   bd.hidden = false;
   setTimeout(() => {
     const u = document.getElementById("aicf-auth-user");
@@ -94,7 +98,7 @@ function openAuthModal(opts = {}) {
 }
 
 function buildAuthModal() {
-  const close = () => { bd.hidden = true; };
+  const close = () => { if (bd.dataset.locked === "1") return; bd.hidden = true; };
   const bd = el("div", {
     class: "drawer-backdrop",
     id: "aicf-auth-modal",
@@ -180,7 +184,8 @@ function buildAuthModal() {
       msgEl.style.color = "#16a34a";
       msgEl.textContent = `✓ Đăng nhập thành công: ${d.name || d.email} (${d.role})!`;
       passInp.value = "";
-      close();
+      bd.dataset.locked = "";  // login succeeded: the locked popup may close now
+      bd.hidden = true;
       if (!isStaffLogin && ADMIN_PAGES.includes(currentPage())) {
         location.href = "serverless.html";
       } else {
@@ -259,7 +264,7 @@ function buildAuthModal() {
         el("h2", { style: "margin:0;font-size:17px" }, "🔐 Đăng nhập AI Compute Fabric"),
         el("div", { class: "mut", style: "font-size:12px;margin-top:3px" }, "Xác thực tập trung Cloud IAM · Argon2id & Phiên Revocable Session")
       ),
-      el("button", { type: "button", class: "sm ghost", onclick: close }, "✕")
+      el("button", { type: "button", id: "aicf-auth-close", class: "sm ghost", onclick: close }, "✕")
     ),
     form,
     msgEl,
@@ -730,7 +735,7 @@ async function logoutGlobalSession() {
   if (currentPage() === "serverless.html") {
     location.reload();
   } else {
-    openAuthModal({ message: "Đã đăng xuất và thu hồi phiên làm việc." });
+    openAuthModal({ message: "Đã đăng xuất và thu hồi phiên làm việc.", locked: true });
   }
 }
 
@@ -850,7 +855,10 @@ function renderNav() {
   }, "👤 Không gian Người dùng");
   navList.append(userGroupHdr);
 
-  for (const [href, label, icon, scope] of NAV.filter(x => x[3] === "user")) {
+  // Pages the public proxy (lan_chat_proxy.py) refuses: show them only when browsing the gateway locally.
+  const LOCAL_ONLY = ["studio.html", "audio.html", "foundry3d.html"];
+  const onLocalhost = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(location.hostname);
+  for (const [href, label, icon, scope] of NAV.filter(x => x[3] === "user" && (onLocalhost || !LOCAL_ONLY.includes(x[0]) || (x[0] === "foundry3d.html" && store.get("aicf_admin"))))) {
     const a = el("a", {
       href,
       class: "nav-tab",
@@ -870,13 +878,14 @@ function renderNav() {
   const adminGroupHdr = el("div", {
     id: "nav-group-admin",
     class: "mut",
-    style: "font-size:10.5px;font-weight:700;letter-spacing:0.06em;padding:12px 12px 4px;margin-top:4px;border-top:1px solid var(--bd);text-transform:uppercase"
+    style: "display:none;font-size:10.5px;font-weight:700;letter-spacing:0.06em;padding:12px 12px 4px;margin-top:4px;border-top:1px solid var(--bd);text-transform:uppercase"
   }, "🛡️ Quản trị Cụm (Admin)");
   navList.append(adminGroupHdr);
 
   for (const [href, label, icon, scope] of NAV.filter(x => x[3] === "admin")) {
     const a = el("a", {
       href,
+      style: "display:none",
       class: "nav-tab",
       "data-nav-scope": scope,
       title: label,
@@ -1375,6 +1384,7 @@ window.AICF_READY = (async () => {
       };
     }
   } catch {}
+  window.AICF_RESOLVED = true;  // only now do we know whether the visitor is signed in
   applyRole();
 })();
 
@@ -1382,6 +1392,14 @@ function applyRole() {
   const { role, site, name, tenant_id, open } = window.AICF;
   const isStaff = role === "admin" || role === "operator" || role === "viewer";
   document.body.dataset.role = role || "none";
+
+  // Not signed in -> a login popup that cannot be dismissed (no close button, backdrop click ignored) until login succeeds.
+  if (!role && !open && window.AICF_RESOLVED) {
+    openAuthModal({ locked: true });
+  } else {
+    const lm = document.getElementById("aicf-auth-modal");
+    if (lm) { lm.dataset.locked = ""; lm.hidden = true; }
+  }
 
   // Hide Admin sidebar section and all Admin nav tabs when logged in as a regular User (tenant) or unauthenticated
   const adminHdr = document.getElementById("nav-group-admin");
