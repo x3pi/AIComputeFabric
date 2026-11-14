@@ -1,0 +1,511 @@
+{
+  "suite": "articulated12_m1",
+  "version": 2,
+  "mode": "M1",
+  "target_engine": "godot4",
+  "items": [
+    {
+      "id": "a01_hinged_door",
+      "archetype": "articulated_prop",
+      "prompt": "Wooden room door inside rectangular wooden door frame, hinged along left edge X=-0.45, door panel swings open 90 degrees toward -Y",
+      "dimensions_m": [
+        1.0,
+        0.25,
+        2.1
+      ],
+      "poly_budget_lod0": 4000,
+      "parts": [
+        {
+          "id": "door_frame",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "door_panel",
+          "anchor_to": "door_frame"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_door",
+          "part_id": "door_panel",
+          "parent_part_id": "door_frame",
+          "joint_type": "hinge",
+          "origin": [
+            -0.42,
+            0.0,
+            1.0
+          ],
+          "axis": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "min_angle_deg": 0.0,
+          "max_angle_deg": 90.0
+        }
+      ]
+    },
+    {
+      "id": "a02_treasure_chest_lid",
+      "archetype": "articulated_prop",
+      "prompt": "Treasure chest with static wooden lower box on Z=0 and hinged top lid pivoting at rear top edge Y=+0.25, Z=0.40 opening 90 degrees",
+      "dimensions_m": [
+        0.9,
+        0.5,
+        0.6
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "chest_base",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "chest_lid",
+          "anchor_to": "chest_base"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_lid",
+          "part_id": "chest_lid",
+          "parent_part_id": "chest_base",
+          "joint_type": "hinge",
+          "origin": [
+            0.0,
+            0.25,
+            0.4
+          ],
+          "axis": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "min_angle_deg": 0.0,
+          "max_angle_deg": 90.0
+        }
+      ]
+    },
+    {
+      "id": "a03_wooden_cart_wheel",
+      "archetype": "articulated_prop",
+      "prompt": "Two-wheeled wooden hand cart resting on Z=0 with static wooden bed frame and front wheel spinning around its axle",
+      "dimensions_m": [
+        0.9,
+        1.4,
+        0.8
+      ],
+      "poly_budget_lod0": 6000,
+      "parts": [
+        {
+          "id": "cart_frame",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "wheel_right",
+          "anchor_to": "cart_frame"
+        }
+      ],
+      "joints": [
+        {
+          "name": "axle_right",
+          "part_id": "wheel_right",
+          "parent_part_id": "cart_frame",
+          "joint_type": "wheel",
+          "origin": [
+            0.46,
+            0.0,
+            0.3
+          ],
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "min_angle_deg": 0.0,
+          "max_angle_deg": 180.0
+        }
+      ]
+    },
+    {
+      "id": "a04_sliding_drawer_desk",
+      "archetype": "articulated_prop",
+      "prompt": "Wooden office cabinet on Z=0 with hollow front bay and front sliding drawer moving forward along -Y by 0.25m",
+      "dimensions_m": [
+        0.7,
+        0.5,
+        0.8
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "cabinet_body",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "top_drawer",
+          "anchor_to": "cabinet_body"
+        }
+      ],
+      "joints": [
+        {
+          "name": "slide_drawer",
+          "part_id": "top_drawer",
+          "parent_part_id": "cabinet_body",
+          "joint_type": "slider",
+          "origin": [
+            0.0,
+            -0.05,
+            0.62
+          ],
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "max_slide_m": 0.25
+        }
+      ]
+    },
+    {
+      "id": "a05_gate_barrier",
+      "archetype": "articulated_prop",
+      "prompt": "Parking checkpoint barrier with vertical yellow steel post on Z=0 and striped barrier arm pivoting upward 80 degrees",
+      "dimensions_m": [
+        2.2,
+        0.35,
+        1.1
+      ],
+      "poly_budget_lod0": 4000,
+      "parts": [
+        {
+          "id": "barrier_post",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "barrier_arm",
+          "anchor_to": "barrier_post"
+        }
+      ],
+      "joints": [
+        {
+          "name": "pivot_arm",
+          "part_id": "barrier_arm",
+          "parent_part_id": "barrier_post",
+          "joint_type": "hinge",
+          "origin": [
+            -0.9,
+            0.0,
+            0.9
+          ],
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "min_angle_deg": 0.0,
+          "max_angle_deg": 80.0
+        }
+      ]
+    },
+    {
+      "id": "a06_wall_lever",
+      "archetype": "articulated_prop",
+      "prompt": "Industrial lever pedestal on Z=0 with base housing and iron handle lever rotating 70 degrees forward",
+      "dimensions_m": [
+        0.35,
+        0.35,
+        1.1
+      ],
+      "poly_budget_lod0": 3500,
+      "parts": [
+        {
+          "id": "lever_pedestal",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "lever_arm",
+          "anchor_to": "lever_pedestal"
+        }
+      ],
+      "joints": [
+        {
+          "name": "lever_pivot",
+          "part_id": "lever_arm",
+          "parent_part_id": "lever_pedestal",
+          "joint_type": "hinge",
+          "origin": [
+            0.0,
+            0.0,
+            0.85
+          ],
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "min_angle_deg": 0.0,
+          "max_angle_deg": 70.0
+        }
+      ]
+    },
+    {
+      "id": "a07_windmill_tower",
+      "archetype": "articulated_prop",
+      "prompt": "Stone windmill tower resting on Z=0 with four-blade wooden rotor hub mounted on front (-Y) upper wall spinning 360 degrees",
+      "dimensions_m": [
+        1.6,
+        1.6,
+        3.0
+      ],
+      "poly_budget_lod0": 6000,
+      "parts": [
+        {
+          "id": "tower_body",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "rotor_blades",
+          "anchor_to": "tower_body"
+        }
+      ],
+      "joints": [
+        {
+          "name": "rotor_spin",
+          "part_id": "rotor_blades",
+          "parent_part_id": "tower_body",
+          "joint_type": "wheel",
+          "origin": [
+            0.0,
+            -0.78,
+            2.3
+          ],
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "min_angle_deg": 0.0,
+          "max_angle_deg": 180.0
+        }
+      ]
+    },
+    {
+      "id": "a08_awning_window",
+      "archetype": "articulated_prop",
+      "prompt": "Architectural wall window unit on Z=0 with outer frame and top-hinged glass sash swinging outward toward -Y 45 degrees",
+      "dimensions_m": [
+        1.2,
+        0.25,
+        1.4
+      ],
+      "poly_budget_lod0": 4000,
+      "parts": [
+        {
+          "id": "window_frame",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "window_sash",
+          "anchor_to": "window_frame"
+        }
+      ],
+      "joints": [
+        {
+          "name": "top_hinge",
+          "part_id": "window_sash",
+          "parent_part_id": "window_frame",
+          "joint_type": "hinge",
+          "origin": [
+            0.0,
+            -0.08,
+            1.32
+          ],
+          "axis": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "min_angle_deg": 0.0,
+          "max_angle_deg": 45.0
+        }
+      ]
+    },
+    {
+      "id": "a09_double_locker",
+      "archetype": "articulated_prop",
+      "prompt": "Metal storage cabinet on Z=0 with left door hinged at X=-0.45 and right door hinged at X=+0.45 opening outward 90 degrees",
+      "dimensions_m": [
+        0.95,
+        0.45,
+        1.6
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "locker_carcass",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "door_left",
+          "anchor_to": "locker_carcass"
+        },
+        {
+          "id": "door_right",
+          "anchor_to": "locker_carcass"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_left",
+          "part_id": "door_left",
+          "parent_part_id": "locker_carcass",
+          "joint_type": "hinge",
+          "origin": [
+            -0.45,
+            -0.22,
+            0.8
+          ],
+          "axis": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "min_angle_deg": 0.0,
+          "max_angle_deg": 90.0
+        },
+        {
+          "name": "hinge_right",
+          "part_id": "door_right",
+          "parent_part_id": "locker_carcass",
+          "joint_type": "hinge",
+          "origin": [
+            0.45,
+            -0.22,
+            0.8
+          ],
+          "axis": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "min_angle_deg": 0.0,
+          "max_angle_deg": 90.0
+        }
+      ]
+    },
+    {
+      "id": "a10_seesaw_plank",
+      "archetype": "articulated_prop",
+      "prompt": "Playground wooden seesaw with central A-frame fulcrum on Z=0 and horizontal balance beam pivoting +-20 degrees",
+      "dimensions_m": [
+        2.4,
+        0.5,
+        0.7
+      ],
+      "poly_budget_lod0": 3500,
+      "parts": [
+        {
+          "id": "fulcrum_stand",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "seesaw_beam",
+          "anchor_to": "fulcrum_stand"
+        }
+      ],
+      "joints": [
+        {
+          "name": "center_pivot",
+          "part_id": "seesaw_beam",
+          "parent_part_id": "fulcrum_stand",
+          "joint_type": "hinge",
+          "origin": [
+            0.0,
+            0.0,
+            0.52
+          ],
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "min_angle_deg": -20.0,
+          "max_angle_deg": 20.0
+        }
+      ]
+    },
+    {
+      "id": "a11_mailbox_flap",
+      "archetype": "articulated_prop",
+      "prompt": "Post-mounted metal mailbox on Z=0 with front flap hinged along bottom front edge opening downward 85 degrees",
+      "dimensions_m": [
+        0.35,
+        0.55,
+        1.2
+      ],
+      "poly_budget_lod0": 4000,
+      "parts": [
+        {
+          "id": "mailbox_post_body",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "front_flap",
+          "anchor_to": "mailbox_post_body"
+        }
+      ],
+      "joints": [
+        {
+          "name": "flap_hinge",
+          "part_id": "front_flap",
+          "parent_part_id": "mailbox_post_body",
+          "joint_type": "hinge",
+          "origin": [
+            0.0,
+            -0.26,
+            0.95
+          ],
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "min_angle_deg": 0.0,
+          "max_angle_deg": 85.0
+        }
+      ]
+    },
+    {
+      "id": "a12_modular_room_kit",
+      "archetype": "modular_kit",
+      "prompt": "Modular stone dungeon room corner assembly: 2m x 2m floor tile on Z=0, snapped left wall, back wall with pillar post, and doorway arch snapped seamlessly",
+      "dimensions_m": [
+        2.0,
+        2.0,
+        2.6
+      ],
+      "poly_budget_lod0": 6000,
+      "parts": [
+        {
+          "id": "floor_tile_2m",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "wall_back",
+          "anchor_to": "floor_tile_2m"
+        },
+        {
+          "id": "wall_left_arch",
+          "anchor_to": "floor_tile_2m"
+        },
+        {
+          "id": "corner_pillar",
+          "anchor_to": "floor_tile_2m"
+        }
+      ],
+      "joints": []
+    }
+  ],
+  "changelog_v2": "Sửa 5 bài có hướng quay SAI VẬT LÝ theo quy tắc bàn tay phải (axis x r): a02 (nắp quay xuống vào thân), a05 (cần chắn quay xuống đất), a08 (cánh cửa sổ mở vào trong thay vì ra ngoài), a09 (2 cửa tủ đều mở vào trong), a11 (nắp thư mở vào trong). Bản gốc giữ ở articulated12_suite_v1.json. Không đổi ngưỡng cổng, không đổi prompt, không đổi kích thước."
+}

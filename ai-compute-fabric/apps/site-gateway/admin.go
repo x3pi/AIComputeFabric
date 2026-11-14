@@ -132,6 +132,11 @@ func NewAPIBestOfN(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agent
 
 // NewAPIServerless is NewAPIBestOfN plus an optional handler mounted at /api/serverless/ (nil = answers 503: disabled).
 func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents, studio, bestofn, serverless http.Handler, routers ...*Router) http.Handler {
+	return NewAPIFoundry3D(f, ts, auth, audit, agents, studio, bestofn, serverless, nil, routers...)
+}
+
+// NewAPIFoundry3D is NewAPIServerless plus an optional handler mounted at /api/foundry3d/ (nil = answers 503: disabled).
+func NewAPIFoundry3D(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, agents, studio, bestofn, serverless, foundry3d http.Handler, routers ...*Router) http.Handler {
 	inner := HTTPHandler(f)
 	mux := http.NewServeMux()
 	var rt *Router
@@ -202,6 +207,10 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 		serverless = serverlessDisabled
 	}
 	mux.Handle(serverlessPrefix, serverless)
+	if foundry3d == nil {
+		foundry3d = foundry3dDisabled
+	}
+	mux.Handle(foundry3dPrefix, foundry3d)
 	mux.HandleFunc("/api/tenants", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -889,8 +898,8 @@ func NewAPIServerless(f *Fleet, ts *TenantStore, auth *Auth, audit *AuditLog, ag
 		r.Header.Del("X-Aicf-Proxy-Secret")
 		bearer := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 
-		// /api/bestofn/* and /api/serverless/* always require a valid tenant API key (or admin/operator token when configured).
-		if strings.HasPrefix(r.URL.Path, "/api/bestofn/") || strings.HasPrefix(r.URL.Path, serverlessPrefix) {
+		// /api/bestofn/*, /api/serverless/* and /api/foundry3d/* always require a valid tenant API key (or admin/operator token when configured).
+		if strings.HasPrefix(r.URL.Path, "/api/bestofn/") || strings.HasPrefix(r.URL.Path, serverlessPrefix) || strings.HasPrefix(r.URL.Path, foundry3dPrefix) {
 			if ts != nil {
 				if t, ok := ts.Authenticate(bearer); ok {
 					r.Header.Set("X-Aicf-Tenant", t.ID)

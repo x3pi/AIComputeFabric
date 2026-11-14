@@ -1,0 +1,256 @@
+{
+  "timestamp": "2026-11-13T17:16:05+0700",
+  "live_vlm_model": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "warm_probe_30_loops": {
+    "cold_start_ms": 3211.03,
+    "warm_ping_p50_ms": 0.7,
+    "warm_ping_p95_ms": 1.58,
+    "warm_ping_max_ms": 1.89,
+    "render_6views_512_p50_ms": 2075.7,
+    "peak_rss_mb": 347.43
+  },
+  "ten_case_confusion": {
+    "total": 10,
+    "correct": 9,
+    "accuracy": 0.9,
+    "cases": [
+      {
+        "id": "good_table",
+        "expected_pass": true,
+        "defect_type": "none",
+        "pass_5a": true,
+        "pass_5b": true,
+        "predicted_pass": true,
+        "correct": true,
+        "failure_reasons_5a": [],
+        "vlm": {
+          "pass": true,
+          "semantic_score": 5,
+          "proportion_score": 5,
+          "front_axis_correct": true,
+          "texture_clean": true,
+          "failed_stage": null,
+          "fix_instruction": "Tài sản đạt yêu cầu. Bàn có 4 chân, mặt bàn phẳng, tay nắm ngăn kéo nằm đúng mặt trước (-Y) nhìn thấy rõ ở Ảnh 1 và Ảnh 4. Kích thước và tỷ lệ phù hợp với thông số mục tiêu.",
+          "raw_response": "{\n\"pass\": true,\n\"semantic_score\": 5,\n\"proportion_score\": 5,\n\"front_axis_correct\": true,\n\"texture_clean\": true,\n\"failed_stage\": null,\n\"fix_instruction\": \"Tài sản đạt yêu cầu. Bàn có 4 chân, mặt bàn phẳng, tay nắm ngăn kéo nằm đúng mặt trước (-Y) nhìn thấy rõ ở Ảnh 1 và Ảnh 4. Kích thước và tỷ lệ phù hợp với thông số mục tiêu.\"\n}"
+        },
+        "render_6views_ms": 2673.87,
+        "peak_rss_mb": 307.86,
+        "validator_errors": 0
+      },
+      {
+        "id": "good_chair",
+        "expected_pass": true,
+        "defect_type": "none",
+        "pass_5a": true,
+        "pass_5b": true,
+        "predicted_pass": true,
+        "correct": true,
+        "failure_reasons_5a": [],
+        "vlm": {
+          "pass": true,
+          "semantic_score": 5,
+          "proportion_score": 5,
+          "front_axis_correct": true,
+          "texture_clean": true,
+          "failed_stage": null,
+          "fix_instruction": "Tài sản đạt yêu cầu. Ghế có đủ bộ phận (4 chân, mặt ngồi, tựa lưng), kích thước đúng chuẩn (0.5x0.5x0.9m), trục hướng đúng (mặt ngồi mở về phía trước -Y, tựa lưng ở phía sau +Y), bề mặt sạch và không biến dạng.",
+          "raw_response": "{\n\"pass\": true,\n\"semantic_score\": 5,\n\"proportion_score\": 5,\n\"front_axis_correct\": true,\n\"texture_clean\": true,\n\"failed_stage\": null,\n\"fix_instruction\": \"Tài sản đạt yêu cầu. Ghế có đủ bộ phận (4 chân, mặt ngồi, tựa lưng), kích thước đúng chuẩn (0.5x0.5x0.9m), trục hướng đúng (mặt ngồi mở về phía trước -Y, tựa lưng ở phía sau +Y), bề mặt sạch và không biến dạng.\"\n}"
+        },
+        "render_6views_ms": 1866.8,
+        "peak_rss_mb": 318.86,
+        "validator_errors": 0
+      },
+      {
+        "id": "good_chest",
+        "expected_pass": true,
+        "defect_type": "none",
+        "pass_5a": false,
+        "pass_5b": true,
+        "predicted_pass": false,
+        "correct": false,
+        "failure_reasons_5a": [
+          "[G3_IllegalOverlap] Đâm xuyên chest_lid<->hinge_left (25.0%)"
+        ],
+        "vlm": null,
+        "render_6views_ms": 2765.41,
+        "peak_rss_mb": 318.86,
+        "validator_errors": 0
+      },
+      {
+        "id": "good_pillar",
+        "expected_pass": true,
+        "defect_type": "none",
+        "pass_5a": true,
+        "pass_5b": true,
+        "predicted_pass": true,
+        "correct": true,
+        "failure_reasons_5a": [],
+        "vlm": {
+          "pass": true,
+          "semantic_score": 5,
+          "proportion_score": 5,
+          "front_axis_correct": true,
+          "texture_clean": true,
+          "failed_stage": null,
+          "fix_instruction": "Tài sản đạt yêu cầu. Trụ đá cổ điển có đủ 3 bộ phận chính (plinth, shaft, capital), kích thước và trục đứng +Z chính xác, bề mặt sạch, wireframe gọn gàng phù hợp low-poly.",
+          "raw_response": "{\n\"pass\": true,\n\"semantic_score\": 5,\n\"proportion_score\": 5,\n\"front_axis_correct\": true,\n\"texture_clean\": true,\n\"failed_stage\": null,\n\"fix_instruction\": \"Tài sản đạt yêu cầu. Trụ đá cổ điển có đủ 3 bộ phận chính (plinth, shaft, capital), kích thước và trục đứng +Z chính xác, bề mặt sạch, wireframe gọn gàng phù hợp low-poly.\"\n}"
+        },
+        "render_6views_ms": 1951.25,
+        "peak_rss_mb": 321.74,
+        "validator_errors": 0
+      },
+      {
+        "id": "good_leg_rig",
+        "expected_pass": true,
+        "defect_type": "none",
+        "pass_5a": true,
+        "pass_5b": true,
+        "predicted_pass": true,
+        "correct": true,
+        "failure_reasons_5a": [],
+        "vlm": {
+          "pass": true,
+          "semantic_score": 4,
+          "proportion_score": 5,
+          "front_axis_correct": true,
+          "texture_clean": true,
+          "failed_stage": null,
+          "fix_instruction": "Tài sản đạt yêu cầu. Hình khối chân (thigh, calf, foot) đúng công năng, trục đứng thẳng +Z, mũi chân hướng -Y (thấy rõ ở view Right và Iso). Bề mặt sạch, không biến dạng.",
+          "raw_response": "{\n\"pass\": true,\n\"semantic_score\": 4,\n\"proportion_score\": 5,\n\"front_axis_correct\": true,\n\"texture_clean\": true,\n\"failed_stage\": null,\n\"fix_instruction\": \"Tài sản đạt yêu cầu. Hình khối chân (thigh, calf, foot) đúng công năng, trục đứng thẳng +Z, mũi chân hướng -Y (thấy rõ ở view Right và Iso). Bề mặt sạch, không biến dạng.\"\n}"
+        },
+        "render_6views_ms": 1999.11,
+        "peak_rss_mb": 329.99,
+        "validator_errors": 0
+      },
+      {
+        "id": "defect_floating_15cm",
+        "expected_pass": false,
+        "defect_type": "floating_part_15cm",
+        "pass_5a": false,
+        "pass_5b": true,
+        "predicted_pass": false,
+        "correct": true,
+        "failure_reasons_5a": [
+          "[G2_TransformAndGround] Bộ phận bay lơ lửng: seat (hở 150.0mm)",
+          "[G4_MeshAndUVHealth] uv_overlap=100.00% >= 2%"
+        ],
+        "vlm": null,
+        "render_6views_ms": 1912.13,
+        "peak_rss_mb": 334.74,
+        "validator_errors": 0
+      },
+      {
+        "id": "defect_overlap_40pct",
+        "expected_pass": false,
+        "defect_type": "illegal_overlap_40pct",
+        "pass_5a": false,
+        "pass_5b": true,
+        "predicted_pass": false,
+        "correct": true,
+        "failure_reasons_5a": [
+          "[G3_IllegalOverlap] Đâm xuyên crate_a<->crate_b (40.0%)",
+          "[G4_MeshAndUVHealth] uv_overlap=100.00% >= 2%"
+        ],
+        "vlm": null,
+        "render_6views_ms": 2770.13,
+        "peak_rss_mb": 337.03,
+        "validator_errors": 0
+      },
+      {
+        "id": "defect_flipped_backwards",
+        "expected_pass": false,
+        "defect_type": "flipped_front_back_axis",
+        "pass_5a": true,
+        "pass_5b": false,
+        "predicted_pass": false,
+        "correct": true,
+        "failure_reasons_5a": [],
+        "vlm": {
+          "pass": false,
+          "semantic_score": 4,
+          "proportion_score": 4,
+          "front_axis_correct": false,
+          "texture_clean": true,
+          "failed_stage": 2,
+          "fix_instruction": "Ghế đang bị quay ngược 180 độ: mặt trước (-Y) hiện đang bị chặn bởi tấm tựa lưng (Ảnh 1). Hãy xoay đối tượng 180 độ quanh trục Z (hoặc lật trục Y) để mặt ngồi mở hướng về phía camera -Y và tựa lưng nằm ở phía sau +Y.",
+          "raw_response": "{\n  \"pass\": false,\n  \"semantic_score\": 4,\n  \"proportion_score\": 4,\n  \"front_axis_correct\": false,\n  \"texture_clean\": true,\n  \"failed_stage\": 2,\n  \"fix_instruction\": \"Ghế đang bị quay ngược 180 độ: mặt trước (-Y) hiện đang bị chặn bởi tấm tựa lưng (Ảnh 1). Hãy xoay đối tượng 180 độ quanh trục Z (hoặc lật trục Y) để mặt ngồi mở hướng về phía camera -Y và tựa lưng nằm ở phía sau +Y.\"\n}"
+        },
+        "render_6views_ms": 1854.82,
+        "peak_rss_mb": 345.26,
+        "validator_errors": 0
+      },
+      {
+        "id": "defect_black_material",
+        "expected_pass": false,
+        "defect_type": "all_black_basecolor",
+        "pass_5a": false,
+        "pass_5b": true,
+        "predicted_pass": false,
+        "correct": true,
+        "failure_reasons_5a": [
+          "[G4_MeshAndUVHealth] basecolor_mean_luminance=0.0000 <= 0.02 (đen đặc)"
+        ],
+        "vlm": null,
+        "render_6views_ms": 2963.66,
+        "peak_rss_mb": 346.75,
+        "validator_errors": 0
+      },
+      {
+        "id": "defect_knee_spike",
+        "expected_pass": false,
+        "defect_type": "knee_weight_spike_60deg",
+        "pass_5a": false,
+        "pass_5b": true,
+        "predicted_pass": false,
+        "correct": true,
+        "failure_reasons_5a": [
+          "[G5_RigDeformationStress] unweighted=0, max_bones/v=1, max_edge_stretch=4.87 (bone=calf)"
+        ],
+        "vlm": null,
+        "render_6views_ms": 2152.3,
+        "peak_rss_mb": 347.43,
+        "validator_errors": 0
+      }
+    ]
+  },
+  "disk_before_kb": {
+    "root": {
+      "total_kb": 324084752,
+      "used_kb": 308151992,
+      "avail_kb": 2670960
+    },
+    "workspace": {
+      "total_kb": 346725364,
+      "used_kb": 326471424,
+      "avail_kb": 2567980
+    },
+    "mnt_data": {
+      "total_kb": 287253792,
+      "used_kb": 160080564,
+      "avail_kb": 112508476
+    }
+  },
+  "disk_after_kb": {
+    "root": {
+      "total_kb": 324084752,
+      "used_kb": 308449908,
+      "avail_kb": 2373044
+    },
+    "workspace": {
+      "total_kb": 346725364,
+      "used_kb": 326471732,
+      "avail_kb": 2567672
+    },
+    "mnt_data": {
+      "total_kb": 287253792,
+      "used_kb": 160080600,
+      "avail_kb": 112508440
+    }
+  },
+  "check_pass": {
+    "root_free_ge_1_8_gib": true,
+    "workspace_free_ge_2_2_gib": true,
+    "peak_rss_le_1536_mb": true,
+    "accuracy_ge_9_of_10": true
+  }
+}

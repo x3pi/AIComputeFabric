@@ -1,0 +1,521 @@
+{
+  "suite": "articulated_train12_m1",
+  "version": 1,
+  "mode": "M1",
+  "target_engine": "godot4",
+  "note": "Bộ HUẤN LUYỆN tách rời khỏi bộ đánh giá articulated12 (không trùng prompt/đồ vật). Mọi khớp đã kiểm hướng quay bằng quy tắc bàn tay phải.",
+  "items": [
+    {
+      "id": "t01_cabinet_door",
+      "archetype": "articulated_prop",
+      "prompt": "Wooden kitchen cabinet on Z=0 with one front door hinged at right edge X=+0.38 swinging outward toward -Y",
+      "dimensions_m": [
+        0.8,
+        0.4,
+        1.0
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "cabinet_body",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "cabinet_door",
+          "anchor_to": "cabinet_body"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_cab",
+          "part_id": "cabinet_door",
+          "parent_part_id": "cabinet_body",
+          "joint_type": "hinge",
+          "origin": [
+            0.38,
+            -0.2,
+            0.5
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "min_angle_deg": 0,
+          "max_angle_deg": 100
+        }
+      ]
+    },
+    {
+      "id": "t02_toolbox_lid",
+      "archetype": "articulated_prop",
+      "prompt": "Metal toolbox on Z=0 with lid hinged at rear top edge Y=+0.125 Z=0.2 opening upward 110 degrees",
+      "dimensions_m": [
+        0.5,
+        0.25,
+        0.2
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "toolbox_base",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "toolbox_lid",
+          "anchor_to": "toolbox_base"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_tb",
+          "part_id": "toolbox_lid",
+          "parent_part_id": "toolbox_base",
+          "joint_type": "hinge",
+          "origin": [
+            0,
+            0.125,
+            0.2
+          ],
+          "axis": [
+            -1,
+            0,
+            0
+          ],
+          "min_angle_deg": 0,
+          "max_angle_deg": 110
+        }
+      ]
+    },
+    {
+      "id": "t03_barn_sliding_door",
+      "archetype": "articulated_prop",
+      "prompt": "Barn wall section on Z=0 with a wooden sliding door on a front rail, sliding along +X by 0.9 m",
+      "dimensions_m": [
+        2.2,
+        0.3,
+        2.2
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "barn_wall",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "sliding_door",
+          "anchor_to": "barn_wall"
+        }
+      ],
+      "joints": [
+        {
+          "name": "slide_barn",
+          "part_id": "sliding_door",
+          "parent_part_id": "barn_wall",
+          "joint_type": "slider",
+          "origin": [
+            -0.5,
+            -0.14,
+            1.0
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "max_slide_m": 0.9
+        }
+      ]
+    },
+    {
+      "id": "t04_floor_trapdoor",
+      "archetype": "articulated_prop",
+      "prompt": "Wooden floor slab on Z=0 with a square trapdoor hinged at its rear edge Y=+0.4 opening upward 90 degrees",
+      "dimensions_m": [
+        1.0,
+        1.0,
+        0.1
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "floor_slab",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "trapdoor",
+          "anchor_to": "floor_slab"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_trap",
+          "part_id": "trapdoor",
+          "parent_part_id": "floor_slab",
+          "joint_type": "hinge",
+          "origin": [
+            0,
+            0.4,
+            0.1
+          ],
+          "axis": [
+            -1,
+            0,
+            0
+          ],
+          "min_angle_deg": 0,
+          "max_angle_deg": 90
+        }
+      ]
+    },
+    {
+      "id": "t05_water_wheel",
+      "archetype": "articulated_prop",
+      "prompt": "Stone mill house on Z=0 with a wooden water wheel mounted on its right side spinning around a horizontal axle",
+      "dimensions_m": [
+        2.4,
+        1.2,
+        1.8
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "mill_house",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "water_wheel",
+          "anchor_to": "mill_house"
+        }
+      ],
+      "joints": [
+        {
+          "name": "axle_wheel",
+          "part_id": "water_wheel",
+          "parent_part_id": "mill_house",
+          "joint_type": "wheel",
+          "origin": [
+            1.0,
+            0,
+            1.0
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "min_angle_deg": 0,
+          "max_angle_deg": 360
+        }
+      ]
+    },
+    {
+      "id": "t06_crane_boom",
+      "archetype": "articulated_prop",
+      "prompt": "Construction crane tower on Z=0 with a boom hinged at the tower top Z=1.0 extending forward +Y and raising 60 degrees",
+      "dimensions_m": [
+        0.4,
+        1.6,
+        1.3
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "crane_tower",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "crane_boom",
+          "anchor_to": "crane_tower"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_boom",
+          "part_id": "crane_boom",
+          "parent_part_id": "crane_tower",
+          "joint_type": "hinge",
+          "origin": [
+            0,
+            0,
+            1.0
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "min_angle_deg": 0,
+          "max_angle_deg": 60
+        }
+      ]
+    },
+    {
+      "id": "t07_drawbridge",
+      "archetype": "articulated_prop",
+      "prompt": "Stone gatehouse on Z=0 with a wooden drawbridge lying flat in front, hinged at its bottom edge Y=-0.3 Z=0.1 and lifting up 70 degrees",
+      "dimensions_m": [
+        1.2,
+        1.4,
+        1.4
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "gatehouse",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "drawbridge",
+          "anchor_to": "gatehouse"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_bridge",
+          "part_id": "drawbridge",
+          "parent_part_id": "gatehouse",
+          "joint_type": "hinge",
+          "origin": [
+            0,
+            -0.3,
+            0.1
+          ],
+          "axis": [
+            -1,
+            0,
+            0
+          ],
+          "min_angle_deg": 0,
+          "max_angle_deg": 70
+        }
+      ]
+    },
+    {
+      "id": "t08_oven_door",
+      "archetype": "articulated_prop",
+      "prompt": "Kitchen oven on Z=0 with a front door hinged at its bottom edge Z=0.2 Y=-0.3 folding down forward 85 degrees",
+      "dimensions_m": [
+        0.6,
+        0.6,
+        0.7
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "oven_body",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "oven_door",
+          "anchor_to": "oven_body"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_oven",
+          "part_id": "oven_door",
+          "parent_part_id": "oven_body",
+          "joint_type": "hinge",
+          "origin": [
+            0,
+            -0.3,
+            0.2
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "min_angle_deg": 0,
+          "max_angle_deg": 85
+        }
+      ]
+    },
+    {
+      "id": "t09_signpost",
+      "archetype": "articulated_prop",
+      "prompt": "Wooden signpost on Z=0 with a sign board arm that can rotate around the vertical post +-45 degrees",
+      "dimensions_m": [
+        0.8,
+        0.2,
+        1.8
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "sign_post",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "sign_board",
+          "anchor_to": "sign_post"
+        }
+      ],
+      "joints": [
+        {
+          "name": "pivot_sign",
+          "part_id": "sign_board",
+          "parent_part_id": "sign_post",
+          "joint_type": "hinge",
+          "origin": [
+            0,
+            0,
+            1.5
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "min_angle_deg": -45,
+          "max_angle_deg": 45
+        }
+      ]
+    },
+    {
+      "id": "t10_saloon_doors",
+      "archetype": "articulated_prop",
+      "prompt": "Wooden saloon double swing doors in a frame on Z=0, left door hinged at X=-0.4 and right door hinged at X=+0.4, both opening outward toward -Y 90 degrees",
+      "dimensions_m": [
+        0.95,
+        0.2,
+        1.7
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "saloon_frame",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "door_left",
+          "anchor_to": "saloon_frame"
+        },
+        {
+          "id": "door_right",
+          "anchor_to": "saloon_frame"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_l",
+          "part_id": "door_left",
+          "parent_part_id": "saloon_frame",
+          "joint_type": "hinge",
+          "origin": [
+            -0.4,
+            0,
+            0.9
+          ],
+          "axis": [
+            0,
+            0,
+            -1
+          ],
+          "min_angle_deg": 0,
+          "max_angle_deg": 90
+        },
+        {
+          "name": "hinge_r",
+          "part_id": "door_right",
+          "parent_part_id": "saloon_frame",
+          "joint_type": "hinge",
+          "origin": [
+            0.4,
+            0,
+            0.9
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "min_angle_deg": 0,
+          "max_angle_deg": 90
+        }
+      ]
+    },
+    {
+      "id": "t11_keyboard_tray",
+      "archetype": "articulated_prop",
+      "prompt": "Office desk on Z=0 with a slide-out keyboard tray under the desktop moving forward along -Y by 0.2 m",
+      "dimensions_m": [
+        1.2,
+        0.6,
+        0.75
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "desk_body",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "keyboard_tray",
+          "anchor_to": "desk_body"
+        }
+      ],
+      "joints": [
+        {
+          "name": "slide_tray",
+          "part_id": "keyboard_tray",
+          "parent_part_id": "desk_body",
+          "joint_type": "slider",
+          "origin": [
+            0,
+            -0.05,
+            0.65
+          ],
+          "axis": [
+            0,
+            -1,
+            0
+          ],
+          "max_slide_m": 0.2
+        }
+      ]
+    },
+    {
+      "id": "t12_car_hood",
+      "archetype": "articulated_prop",
+      "prompt": "Simple toy car on Z=0 with a hood hinged at its rear edge Y=+0.3 Z=0.3 opening upward 60 degrees",
+      "dimensions_m": [
+        0.5,
+        1.0,
+        0.4
+      ],
+      "poly_budget_lod0": 5000,
+      "parts": [
+        {
+          "id": "car_body",
+          "anchor_to": "ground"
+        },
+        {
+          "id": "car_hood",
+          "anchor_to": "car_body"
+        }
+      ],
+      "joints": [
+        {
+          "name": "hinge_hood",
+          "part_id": "car_hood",
+          "parent_part_id": "car_body",
+          "joint_type": "hinge",
+          "origin": [
+            0,
+            0.3,
+            0.3
+          ],
+          "axis": [
+            -1,
+            0,
+            0
+          ],
+          "min_angle_deg": 0,
+          "max_angle_deg": 60
+        }
+      ]
+    }
+  ]
+}

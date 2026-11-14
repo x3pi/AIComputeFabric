@@ -713,6 +713,60 @@ paths:
         "200": {description: zip (safetensors) or octet-stream (gguf), content: {application/zip: {schema: {type: string, format: binary}}, application/octet-stream: {schema: {type: string, format: binary}}}}
         "503": {description: GGUF export not configured or conversion failed}
         "409": {description: the job has no adapter}
+  /api/ollama-emulator/config:
+    post:
+      summary: Configure Ollama zero-config emulator listener and auth defaults
+      requestBody: {required: true, content: {application/json: {schema: {type: object}}}}
+      responses:
+        "200": {description: ok}
+        "400": {description: bad JSON}
+  /api/foundry3d/v1/status:
+    get:
+      summary: Foundry 3D service status and active tenant job counts (503 when disabled)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Foundry3DStatus"}}}}
+        "503": {description: foundry3d disabled}
+  /api/foundry3d/v1/jobs:
+    get:
+      summary: List tenant-scoped 3D generation jobs
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, required: [jobs], properties: {jobs: {type: array, items: {$ref: "#/components/schemas/Foundry3DJob"}}}}}}}
+        "503": {description: foundry3d disabled}
+    post:
+      summary: Submit a new 3D asset generation job (operator/tenant)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/Foundry3DJobCreate"}}}}
+      responses:
+        "201": {description: queued, content: {application/json: {schema: {$ref: "#/components/schemas/Foundry3DJob"}}}}
+        "429": {description: tenant concurrency cap reached}
+        "503": {description: foundry3d disabled}
+  /api/foundry3d/v1/jobs/{job}:
+    get:
+      summary: Get one 3D job owned by caller tenant
+      parameters: [{name: job, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Foundry3DJob"}}}}
+        "404": {description: job not found}
+    delete:
+      summary: Cancel and delete a 3D job owned by caller tenant
+      parameters: [{name: job, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: deleted}
+        "404": {description: job not found}
+  /api/foundry3d/v1/jobs/{job}/events:
+    get:
+      summary: SSE stream of 3D job progress events
+      parameters: [{name: job, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: SSE event stream, content: {text/event-stream: {schema: {type: string}}}}
+        "404": {description: job not found}
+  /api/foundry3d/v1/jobs/{job}/artifacts/{filename}:
+    get:
+      summary: Download a tenant-scoped 3D job artifact (asset.glb, asset.fbx, source.blend, qa_report.json, PNG previews)
+      parameters: [{name: job, in: path, required: true, schema: {type: string}}, {name: filename, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: binary artifact}
+        "403": {description: security violation}
+        "404": {description: artifact or job not found}
 components:
   securitySchemes:
     bearer: {type: http, scheme: bearer}
@@ -972,3 +1026,45 @@ components:
         labels: {type: array, items: {type: string}}
         tok_s_ref: {type: number, minimum: 0}
         members: {type: array, items: {type: string}}
+    Foundry3DStatus:
+      type: object
+      required: [service, status, mode, tenant_id, tenant_active_jobs, total_active_jobs]
+      properties:
+        service: {type: string}
+        status: {type: string}
+        mode: {type: string}
+        tenant_id: {type: string}
+        tenant_active_jobs: {type: integer}
+        total_active_jobs: {type: integer}
+        max_active_per_tenant: {type: integer}
+        artifacts_bytes: {type: integer}
+    Foundry3DJobCreate:
+      type: object
+      required: [prompt]
+      properties:
+        prompt: {type: string}
+        archetype: {type: string, enum: [static_prop, articulated_prop, modular_kit, humanoid_char, creature_char]}
+        dimensions_m: {type: array, items: {type: number}}
+        poly_budget_lod0: {type: integer}
+        target_engine: {type: string, enum: [godot4, unity, ue5, web_glb]}
+        mode: {type: string, enum: [M1, M2, M3]}
+        enable_vlm_critic: {type: boolean}
+        bake_pbr: {type: boolean}
+        max_repairs: {type: integer}
+    Foundry3DJob:
+      type: object
+      required: [job_id, tenant_id, status, current_stage]
+      properties:
+        job_id: {type: string}
+        tenant_id: {type: string}
+        status: {type: string}
+        current_stage: {type: string}
+        prompt: {type: string}
+        archetype: {type: string}
+        target_engine: {type: string}
+        mode: {type: string}
+        repair_count: {type: integer}
+        error: {type: string}
+        created_at: {type: number}
+        updated_at: {type: number}
+        artifacts: {type: array, items: {type: object}}

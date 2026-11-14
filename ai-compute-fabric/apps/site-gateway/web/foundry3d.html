@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AICF 3D Asset Foundry — Blender + QA WebGL2</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="common.css">
+<style>
+.f3d-grid { display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.f3d-grid > * { min-width: 0; }
+.jobs-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.jobs-head input[type=search] { flex: 1 1 140px; min-width: 0; font-size: 12.5px; }
+.jobs-head select { font-size: 12.5px; max-width: 100%; }
+#jobs-list { max-height: calc(100vh - 220px); min-height: 200px; overflow-y: auto; overflow-x: hidden; padding-right: 2px; }
+.job-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 1px solid var(--bd);
+  border-radius: var(--radius-sm); background: var(--bg-elevated); cursor: pointer; color: inherit; font: inherit; }
+.job-item:hover { border-color: var(--accent, #4f8cff); }
+.job-item.sel { border-color: var(--accent, #4f8cff); box-shadow: 0 0 0 1px var(--accent, #4f8cff) inset; }
+.job-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.job-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.job-badge { flex: none; font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--bd); }
+.job-badge.ok { color: #1a9d4b; border-color: #1a9d4b; }
+.job-badge.run { color: #2f6fdd; border-color: #2f6fdd; }
+.job-badge.bad { color: #c77a00; border-color: #c77a00; }
+.job-badge.idle { color: var(--fg-secondary, #888); border-style: dashed; }
+.job-why { font-size: 11px; color: #c77a00; margin-top: 2px; overflow-wrap: anywhere; }
+.job-sub { margin-top: 3px; font-size: 11.5px; color: var(--mut, #8a93a3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job-prompt { margin-top: 3px; font-size: 11.5px; color: var(--fg-secondary, #aab); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 960px) { .f3d-grid { grid-template-columns: 1fr; } }
+.stack > * + * { margin-top: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fg-secondary); }
+.field input, .field select, .field textarea { width: 100%; font-size: 13px; }
+.row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.viewer-wrap {
+  position: relative;
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-md);
+  background: #12161f;
+  overflow: hidden;
+}
+#glb-canvas { width: 100%; height: 420px; display: block; cursor: grab; }
+#glb-canvas:active { cursor: grabbing; }
+.viewer-bar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
+  padding: 10px 12px; background: var(--bg-elevated); border-top: 1px solid var(--bd); font-size: 12px;
+}
+.views-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px;
+}
+.view-card {
+  background: var(--bg-elevated); border: 1px solid var(--bd); border-radius: var(--radius-sm);
+  padding: 6px; font-size: 11px; color: var(--mut); text-align: center;
+}
+.view-card img { width: 100%; height: auto; border-radius: 4px; display: block; margin-bottom: 4px; }
+.gate-row {
+  display: flex; justify-content: space-between; gap: 10px; padding: 6px 10px;
+  border-bottom: 1px solid var(--bd); font-size: 12.5px;
+}
+.gate-row:last-child { border-bottom: none; }
+</style>
+</head>
+<body>
+<script src="common.js"></script>
+<main>
+  <div class="page-header">
+    <div>
+      <h1>AICF 3D Asset Foundry — Dựng hình Blender 4.2 &amp; Bàn cân QA</h1>
+    </div>
+    <div class="row" style="gap:10px">
+      <span id="f3d-health" class="pill">Đang kiểm tra…</span>
+      <a href="studio.html" class="mut" style="font-size:12.5px">← AI Studio</a>
+    </div>
+  </div>
+
+  <div class="f3d-grid">
+    <section class="card stack">
+      <div id="create-box" class="stack">
+      <h2 style="margin:0;font-size:15px">1. Yêu cầu tạo tài sản 3D (Mode M1)</h2>
+      <label class="field">
+        Mô tả tài sản
+        <textarea id="f-prompt" rows="3" placeholder="Ví dụ: Wooden dining chair with backrest at +Y facing -Y...">Wooden treasure chest with iron straps and front brass lock facing -Y</textarea>
+      </label>
+      <div class="row3">
+        <label class="field">Loại tài sản
+          <select id="f-archetype">
+            <option value="static_prop">static_prop</option>
+            <option value="articulated_prop">articulated_prop</option>
+            <option value="modular_kit">modular_kit</option>
+          </select>
+        </label>
+        <label class="field">Engine đích
+          <select id="f-engine">
+            <option value="godot4">Godot 4</option>
+            <option value="unity">Unity</option>
+            <option value="ue5">Unreal 5</option>
+            <option value="web_glb">Web GLB</option>
+          </select>
+        </label>
+        <label class="field">Ngân sách LOD0
+          <input id="f-budget" type="number" min="100" max="50000" value="5000">
+        </label>
+      </div>
+      <div class="row3">
+        <label class="field">Rộng X (m) <input id="f-dx" type="number" step="0.05" value="0.9"></label>
+        <label class="field">Sâu Y (m) <input id="f-dy" type="number" step="0.05" value="0.55"></label>
+        <label class="field">Cao Z (m) <input id="f-dz" type="number" step="0.05" value="0.6"></label>
+      </div>
+      <div class="row" style="gap:14px;font-size:12.5px">
+        <label><input id="f-vlm" type="checkbox" checked> VLM 6-View Critic</label>
+        <label><input id="f-bake" type="checkbox"> Bake PBR + ORM</label>
+      </div>
+      <div class="row" style="gap:8px">
+        <button id="btn-submit" type="button">Tạo tài sản 3D</button>
+        <button id="btn-refresh" type="button" class="secondary">Làm mới danh sách</button>
+      </div>
+      <div id="f3d-msg" class="mut" style="font-size:12.5px"></div>
+      </div>
+
+      <div class="jobs-head">
+        <h3 style="margin:0;font-size:14px;flex:none">Lịch sử Job <span id="jobs-count" class="mut" style="font-weight:400"></span></h3>
+        <button id="btn-refresh2" type="button" class="secondary" style="margin-left:auto;padding:2px 8px;font-size:12px">Làm mới</button>
+      </div>
+      <div class="jobs-head">
+        <input id="jobs-q" type="search" placeholder="Tìm theo tên / mô tả…">
+        <select id="jobs-filter">
+          <option value="all">Tất cả</option>
+          <option value="completed">Đạt</option>
+          <option value="needs_human_review">Chưa đạt</option>
+          <option value="interrupted">Bị gián đoạn</option>
+          <option value="running">Đang chạy</option>
+        </select>
+      </div>
+      <div id="jobs-list" class="stack"></div>
+    </section>
+
+    <section class="stack">
+      <div class="card viewer-wrap">
+        <canvas id="glb-canvas" width="900" height="420"></canvas>
+        <div class="viewer-bar">
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <label>Lớp hiển thị:
+              <select id="v-layer">
+                <option value="all">Tất cả</option>
+                <option value="lod0" selected>LOD0 (Chính)</option>
+                <option value="lod1">LOD1</option>
+                <option value="lod2">LOD2</option>
+                <option value="ucx">UCX_Collider</option>
+              </select>
+            </label>
+            <label><input id="v-wire" type="checkbox"> Wireframe</label>
+            <button id="v-play" type="button" class="secondary">▶ Thử khớp / NLA</button>
+            <input id="v-anim-t" type="range" min="0" max="1" step="0.02" value="0" style="width:110px">
+          </div>
+          <div id="dl-links" class="row" style="gap:8px;flex-wrap:wrap"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px;font-size:14px">Báo cáo Bàn cân 3D (Tầng 5A + 5B VLM)</h3>
+        <div id="qa-summary" class="mut" style="font-size:12.5px">Chọn 1 job hoặc kéo thả tệp .glb cục bộ để xem trước.</div>
+        <div id="qa-gates" style="margin-top:8px"></div>
+        <div id="views-grid" class="views-grid"></div>
+      </div>
+    </section>
+  </div>
+</main>
+<script src="foundry3d.js"></script>
+</body>
+</html>
+

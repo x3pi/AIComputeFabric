@@ -43,6 +43,10 @@ func main() {
 	serverlessURL := flag.String("serverless-url", "", "serverless GPU/Python service (python -m serverless), served at /api/serverless/ (off when empty)")
 	serverlessSecretFile := flag.String("serverless-secret-file", "", "file with the secret shared with the serverless service (X-Aicf-Proxy-Secret); required with --serverless-url")
 	bestofnURL := flag.String("bestofn-url", "", "Best-of-N code generation service (python -m bestofn.service), served at /api/bestofn/")
+	foundry3dEnabled := flag.Bool("foundry3d-enabled", false, "enable AICF 3D Asset Foundry proxy at /api/foundry3d/ (default false)")
+	foundry3dURL := flag.String("foundry3d-url", "", "AICF 3D Foundry service (python -m foundry3d.service), served at /api/foundry3d/")
+	foundry3dSecretFile := flag.String("foundry3d-secret-file", "", "shared secret file for foundry3d service (X-Aicf-Proxy-Secret)")
+	foundry3dMaxInflight := flag.Int("foundry3d-max-inflight", 2, "max concurrent /api/foundry3d/ requests per tenant")
 	flag.IntVar(&WorkerControlPort, "worker-control-port", 8099, "port of the worker-guard control API (worker-guard --listen) used by POST /api/cluster/topology; 0 = same as the worker engine_url")
 	topologyFile := flag.String("topology-file", "", "JSON file to persist cluster topology state across restarts (default: <dir-of-tenants-file>/topology.json when -tenants-file is set)")
 	auditPath := flag.String("audit-log", "", "append-only hash-chained audit log of admin actions")
@@ -178,7 +182,17 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	mux.Handle("/", NewAPIServerless(fleet, store, auth, audit, agents, studio, bestofn, serverless, router))
+	var foundry3d http.Handler
+	if *foundry3dEnabled && *foundry3dURL != "" {
+		fSecret, ferr := ReadSecretFile(*foundry3dSecretFile)
+		if ferr != nil {
+			log.Fatalf("-foundry3d-secret-file: %v", ferr)
+		}
+		if foundry3d, err = Foundry3DProxy(*foundry3dURL, fSecret, MaxFoundry3DBody, *foundry3dMaxInflight); err != nil {
+			log.Fatal(err)
+		}
+	}
+	mux.Handle("/", NewAPIFoundry3D(fleet, store, auth, audit, agents, studio, bestofn, serverless, foundry3d, router))
 	httpSrv := newHTTPServer(*httpAddr, mux, defaultTimeouts)
 	if *httpTLSCert != "" || *httpTLSKey != "" {
 		log.Fatal(httpSrv.ListenAndServeTLS(*httpTLSCert, *httpTLSKey))

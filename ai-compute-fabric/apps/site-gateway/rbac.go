@@ -545,6 +545,10 @@ func Allowed(p Principal, r *http.Request, siteOf func(string) string) bool {
 		(r.Method == http.MethodPost && r.URL.Path == "/api/serverless/v1/admin/state")) {
 		return true
 	}
+	// Foundry 3D: an operator may submit or cancel/delete 3D asset jobs under /api/foundry3d/.
+	if p.Role == RoleOperator && (r.Method == http.MethodPost || r.Method == http.MethodDelete) && strings.HasPrefix(r.URL.Path, "/api/foundry3d/") {
+		return true
+	}
 	if p.Role == RoleOperator && r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/workers/") {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/workers/"), "/")
 		if len(parts) == 2 && (parts[1] == "pause" || parts[1] == "resume") {

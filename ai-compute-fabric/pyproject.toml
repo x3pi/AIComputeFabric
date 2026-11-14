@@ -51,4 +51,4 @@ select = ["E9", "F", "B006", "B008", "B023", "B904"]
 [tool.mypy]
 ignore_missing_imports = true
 explicit_package_bases = true
-files = ["agents", "audio", "training", "core", "studio", "serverless", "sdk/python/aicf"]
+files = ["agents", "audio", "training", "core", "studio", "serverless", "foundry3d", "sdk/python/aicf"]
