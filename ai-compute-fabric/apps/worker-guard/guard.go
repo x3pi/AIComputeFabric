@@ -25,14 +25,16 @@ const (
 
 // Config is the policy (plan D07: headroom 1536 MB business hours, 512 MB off hours).
 type Config struct {
-	HeadroomMiB   uint64
-	ResumeStable  time.Duration // GPU must stay free this long before the engine restarts
-	Poll          time.Duration // normal cadence
-	FastPoll      time.Duration // cadence when free VRAM is within NearMarginMiB of the headroom (0 = same as Poll)
-	NearMarginMiB uint64
-	FreedFraction float64 // fraction of the engine's VRAM that must disappear to call it "freed"
-	FreedTimeout  time.Duration
-	StateFile     string // optional JSON file where runtime mode/model/pause state is saved across restarts
+	HeadroomMiB    uint64
+	ResumeStable   time.Duration // GPU must stay free this long before the engine restarts
+	Poll           time.Duration // normal cadence
+	FastPoll       time.Duration // cadence when free VRAM is within NearMarginMiB of the headroom (0 = same as Poll)
+	NearMarginMiB  uint64
+	FreedFraction  float64 // fraction of the engine's VRAM that must disappear to call it "freed"
+	FreedTimeout   time.Duration
+	HealthInterval time.Duration // engine /health revalidation period (0 = 5 s, negative = off)
+	HealthFailures int           // consecutive failures before the guard reports "unhealthy" (0 = 3)
+	StateFile      string        // optional JSON file where runtime mode/model/pause state is saved across restarts
 
 	// Serverless co-tenancy (ADR-003 D10). nil Evictor = feature off = behaviour identical to before.
 	Evictor      Evictor
@@ -72,25 +74,28 @@ type Snapshot struct {
 	TensorSplit   string      `json:"tensor_split,omitempty"`
 	RPCPort       int         `json:"rpc_port,omitempty"`
 	Switching     bool        `json:"switching"`
+	Unhealthy     bool        `json:"unhealthy,omitempty"`      // engine process alive but /health keeps failing
 	ServerlessMiB uint64      `json:"serverless_mib,omitempty"` // VRAM held by Serverless guests on this GPU (omitted when the feature is off)
 	Updated       time.Time   `json:"updated"`
 }
 
 type Guard struct {
-	cfg       Config
-	smp       Sampler
-	eng       Engine
-	now       func() time.Time
-	mu        sync.Mutex
-	st        State
-	last      GPUSample
-	own       uint64 // engine VRAM seen at last running sample
-	lastOwn   uint64
-	freeSince time.Time
-	procs     []Proc
-	procsAt   time.Time
-	events    []Event
-	switching bool // a model/adapter change was requested and the engine has not started with it yet
+	cfg         Config
+	smp         Sampler
+	eng         Engine
+	now         func() time.Time
+	mu          sync.Mutex
+	st          State
+	last        GPUSample
+	own         uint64 // engine VRAM seen at last running sample
+	lastOwn     uint64
+	freeSince   time.Time
+	procs       []Proc
+	procsAt     time.Time
+	events      []Event
+	healthFails int  // consecutive failed /health probes while running
+	unhealthy   bool // healthFails reached the threshold; reported in the heartbeat only
+	switching   bool // a model/adapter change was requested and the engine has not started with it yet
 
 	serverlessMiB uint64 // VRAM held by Serverless guests (reported by the Evictor); not "another user"
 }
@@ -442,7 +447,7 @@ func (g *Guard) Snapshot() Snapshot {
 		Buckets: est.NewBuckets(g.last.TotalMiB*mib, osUser, w, kv, c, g.cfg.HeadroomMiB*mib),
 		Events:  ev, Headroom: g.cfg.HeadroomMiB, Updated: g.now(), Model: baseName(model), Lora: baseName(lora),
 		Mode: mode, RPCServers: rpcServers, TensorSplit: tensorSplit, RPCPort: rpcPort,
-		Switching: g.switching, ServerlessMiB: g.serverlessMiB,
+		Switching: g.switching, Unhealthy: g.unhealthy && g.st == StRunning, ServerlessMiB: g.serverlessMiB,
 	}
 }
 
@@ -457,6 +462,7 @@ func min64(a, b uint64) uint64 {
 // to the headroom (see NextInterval).
 func (g *Guard) Run(stop <-chan struct{}) {
 	go g.pollServerless(stop)
+	go g.pollHealth(stop)
 	failing := false
 	for {
 		// A failed GPU sample is logged when it starts and when it ends, not once per tick.

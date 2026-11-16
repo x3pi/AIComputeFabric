@@ -50,8 +50,12 @@ func (r *Reporter) Step(ctx context.Context) error {
 	}
 	s := r.G.Snapshot()
 	b := s.Buckets
+	state := string(s.State)
+	if s.Unhealthy { // engine process alive but its /health fails: the gateway must not route here
+		state = string(StUnhealthy)
+	}
 	hb := &pb.HeartbeatRequest{
-		State: string(s.State), Model: servedModel(s, r.Model), Lora: s.Lora, Switching: s.Switching, GpuTempC: uint32(s.Sample.TempC),
+		State: state, Model: servedModel(s, r.Model), Lora: s.Lora, Switching: s.Switching, GpuTempC: uint32(s.Sample.TempC),
 		Capacity: &pb.WorkerCapacity{
 			WorkerId: r.WorkerID, SiteId: r.SiteID, VramFreeBytes: s.Sample.FreeMiB() << 20,
 			SupportedEngines: []string{"llama.cpp"},

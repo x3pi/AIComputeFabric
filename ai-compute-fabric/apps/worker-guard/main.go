@@ -51,6 +51,8 @@ func serve(stop <-chan struct{}) {
 		ngl           = flag.Int("ngl", 99, "GPU layers")
 		headroom      = flag.Uint64("headroom-mib", 1536, "free VRAM that must stay available to the user (D07)")
 		stable        = flag.Duration("resume-stable", 10*time.Second, "GPU must stay free this long before restart")
+		healthEvery   = flag.Duration("health-interval", 0, "engine /health revalidation period while running (0 = 5s, negative = off)")
+		healthFails   = flag.Int("health-failures", 0, "consecutive /health failures before reporting unhealthy (0 = 3)")
 		poll          = flag.Duration("poll", 500*time.Millisecond, "normal control-loop period")
 		fastPoll      = flag.Duration("fast-poll", 100*time.Millisecond, "period when free VRAM is near the headroom")
 		near          = flag.Uint64("near-margin-mib", 2048, "\"near\" = free VRAM below headroom + this")
@@ -100,7 +102,7 @@ func serve(stop <-chan struct{}) {
 		RPCServerBin: *rpcServerBin,
 		Threads:      *threads, ThreadsBatch: *threadsBatch, CPURange: *cpuRange, CPURangeBatch: *cpuRangeBatch, CPUStrict: *cpuStrict, LoadMode: *loadMode,
 	}
-	cfg := Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near, StateFile: sf}
+	cfg := Config{HeadroomMiB: *headroom, ResumeStable: *stable, Poll: *poll, FastPoll: *fastPoll, NearMarginMiB: *near, StateFile: sf, HealthInterval: *healthEvery, HealthFailures: *healthFails}
 	if *slEvictURL != "" {
 		if runtime.GOOS == "windows" {
 			log.Printf("ADR-003 D-WIN: Windows node runs in LLM-only mode in v1.0; ignoring --serverless-evict-url (%s)", *slEvictURL)
