@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -51,7 +52,10 @@ func (g *GRPC) Register(ctx context.Context, r *pb.RegisterRequest) (*pb.Registe
 	if err := verifyWorkerPeer(ctx, r.GetWorkerId()); err != nil {
 		return nil, err
 	}
-	g.Reg.Register(r)
+	if err := g.Reg.Register(r); err != nil {
+		log.Printf("gateway: register refused: %v", err)
+		return nil, status.Error(codes.AlreadyExists, err.Error())
+	}
 	return &pb.RegisterReply{HeartbeatIntervalMs: 1000}, nil
 }
 

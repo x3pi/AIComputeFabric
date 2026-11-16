@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -52,10 +54,22 @@ func NewRegistry(offlineAfter time.Duration) *Registry {
 	return &Registry{workers: map[string]*Worker{}, now: time.Now, OfflineAfter: offlineAfter}
 }
 
-func (r *Registry) Register(req *pb.RegisterRequest) {
+// ErrWorkerIDInUse means another machine is already online under this worker_id.
+var ErrWorkerIDInUse = errors.New("worker_id is online from another host")
+
+// Register adds or refreshes a worker. It refuses a second machine claiming a worker_id that is still
+// heartbeating from a different host: without this the two guards overwrite each other's engine URL,
+// model and state on every heartbeat and the router follows whichever spoke last. The same host
+// re-registering (guard restart) is always accepted, and so is a takeover once the old one has been
+// silent for OfflineAfter. Hosts are compared only when both sides report one.
+func (r *Registry) Register(req *pb.RegisterRequest) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	w := r.workers[req.WorkerId]
+	if w != nil && w.Hostname != "" && req.Hostname != "" && w.Hostname != req.Hostname &&
+		r.now().Sub(w.LastSeen) <= r.OfflineAfter {
+		return fmt.Errorf("%w: %s is held by %q, refused %q", ErrWorkerIDInUse, req.WorkerId, w.Hostname, req.Hostname)
+	}
 	if w == nil {
 		w = &Worker{}
 		r.workers[req.WorkerId] = w
@@ -63,6 +77,7 @@ func (r *Registry) Register(req *pb.RegisterRequest) {
 	w.WorkerID, w.SiteID, w.Hostname, w.GPUName = req.WorkerId, req.SiteId, req.Hostname, req.GpuName
 	w.VRAMTotal, w.Version, w.LastSeen, w.State = req.VramTotalBytes, req.AgentVersion, r.now(), "registered"
 	w.EngineURL, w.Slots = req.EngineUrl, req.ParallelSlots
+	return nil
 }
 
 // Heartbeat records capacity and returns (registered, pauseRequested).
