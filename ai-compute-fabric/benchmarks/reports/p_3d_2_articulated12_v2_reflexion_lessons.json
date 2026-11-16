@@ -1,0 +1,166 @@
+{
+  "timestamp": "2026-11-14T11:57:19+0700",
+  "suite": "articulated12_m1",
+  "mode": "M1",
+  "max_repairs": 3,
+  "bake_pbr": false,
+  "total_items": 9,
+  "pass_at_1_count": 1,
+  "pass_at_1_rate": 0.1111,
+  "pass_at_repair_le_3_count": 3,
+  "pass_at_repair_le_3_rate": 0.3333,
+  "validator_zero_errors_on_passed": true,
+  "duration_p50_s": 675.23,
+  "duration_p95_s": 1143.05,
+  "peak_rss_mb": 329.25,
+  "items": [
+    {
+      "id": "a01_hinged_door",
+      "job_id": "articulated12_m1_a01_hinged_door_1794625280",
+      "status": "completed",
+      "repair_count": 1,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": true,
+      "duration_s": 547.02,
+      "peak_rss_mb": 291.31,
+      "validator_errors": 0,
+      "tris_lod0": 60,
+      "failure_reasons": [],
+      "vlm_pass": true,
+      "vlm_fix": "None"
+    },
+    {
+      "id": "a02_treasure_chest_lid",
+      "job_id": "articulated12_m1_a02_treasure_chest_lid_1794625827",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 1038.71,
+      "peak_rss_mb": 288.89,
+      "validator_errors": 0,
+      "tris_lod0": 0,
+      "failure_reasons": [
+        "Blender lỗi ở exec_bpy: SyntaxError: invalid syntax (<generated_bpy>, line 1)"
+      ],
+      "vlm_pass": null,
+      "vlm_fix": ""
+    },
+    {
+      "id": "a03_wooden_cart_wheel",
+      "job_id": "articulated12_m1_a03_wooden_cart_wheel_1794627863",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 1143.05,
+      "peak_rss_mb": 329.25,
+      "validator_errors": 0,
+      "tris_lod0": 804,
+      "failure_reasons": [],
+      "vlm_pass": false,
+      "vlm_fix": "Tài sản hiện bị quay sai trục: mặt trước (phía có bánh xe) đang hướng về +X (bên phải) thay vì -Y (về phía camera Ảnh 1). Hãy xoay đối tượng -90 độ quanh trục Z (hoặc +90 tùy chiều) để bánh xe và mặt trước hướng về -Y, đảm bảo khi nhìn từ Ảnh 1 (Front) thấy rõ bánh xe và mặt phẳng bàn xe."
+    },
+    {
+      "id": "a04_sliding_drawer_desk",
+      "job_id": "articulated12_m1_a04_sliding_drawer_desk_1794629006",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 706.32,
+      "peak_rss_mb": 329.25,
+      "validator_errors": 0,
+      "tris_lod0": 180,
+      "failure_reasons": [
+        "[G2_TransformAndGround] z_min=-0.1250m (yêu cầu |z_min| <= 0.002m)",
+        "[G3_IllegalOverlap] Đâm xuyên cabinet_body.001<->cabinet_body.006 (100.0%)"
+      ],
+      "vlm_pass": null,
+      "vlm_fix": ""
+    },
+    {
+      "id": "a05_gate_barrier",
+      "job_id": "articulated12_m1_a05_gate_barrier_1794629712",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 504.92,
+      "peak_rss_mb": 0.0,
+      "validator_errors": 0,
+      "tris_lod0": 0,
+      "failure_reasons": [
+        "Blender lỗi ở exec_bpy: SyntaxError: positional argument follows keyword argument (<generated_bpy>, line 86)"
+      ],
+      "vlm_pass": null,
+      "vlm_fix": ""
+    },
+    {
+      "id": "a06_wall_lever",
+      "job_id": "articulated12_m1_a06_wall_lever_1794630217",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 503.93,
+      "peak_rss_mb": 329.25,
+      "validator_errors": 0,
+      "tris_lod0": 104,
+      "failure_reasons": [
+        "[G3_IllegalOverlap] Đâm xuyên lever_arm<->lever_pedestal (42.9%)",
+        "[G6_ArticulatedSweep] Khớp lever_pivot đâm xuyên 30.3% vào lever_pedestal ở góc bước 1"
+      ],
+      "vlm_pass": null,
+      "vlm_fix": ""
+    },
+    {
+      "id": "a07_windmill_tower",
+      "job_id": "articulated12_m1_a07_windmill_tower_1794630721",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 675.23,
+      "peak_rss_mb": 329.25,
+      "validator_errors": 0,
+      "tris_lod0": 104,
+      "failure_reasons": [
+        "[G3_IllegalOverlap] Đâm xuyên rotor_blades<->tower_body (98.9%)",
+        "[G6_ArticulatedSweep] Khớp rotor_spin đâm xuyên 100.2% vào tower_body ở góc bước 1"
+      ],
+      "vlm_pass": null,
+      "vlm_fix": ""
+    },
+    {
+      "id": "a08_awning_window",
+      "job_id": "articulated12_m1_a08_awning_window_1794631397",
+      "status": "completed",
+      "repair_count": 0,
+      "pass_at_1": true,
+      "pass_at_repair_le_3": true,
+      "duration_s": 95.54,
+      "peak_rss_mb": 329.25,
+      "validator_errors": 0,
+      "tris_lod0": 60,
+      "failure_reasons": [],
+      "vlm_pass": true,
+      "vlm_fix": ""
+    },
+    {
+      "id": "a09_double_locker",
+      "job_id": "articulated12_m1_a09_double_locker_1794631492",
+      "status": "completed",
+      "repair_count": 2,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": true,
+      "duration_s": 746.47,
+      "peak_rss_mb": 329.25,
+      "validator_errors": 0,
+      "tris_lod0": 120,
+      "failure_reasons": [],
+      "vlm_pass": true,
+      "vlm_fix": "None"
+    }
+  ]
+}

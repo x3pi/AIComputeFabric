@@ -1,0 +1,116 @@
+{
+  "timestamp": "2026-11-14T13:17:29+0700",
+  "suite": "articulated12_m1",
+  "mode": "M1",
+  "max_repairs": 3,
+  "bake_pbr": false,
+  "total_items": 6,
+  "pass_at_1_count": 1,
+  "pass_at_1_rate": 0.1667,
+  "pass_at_repair_le_3_count": 1,
+  "pass_at_repair_le_3_rate": 0.1667,
+  "validator_zero_errors_on_passed": true,
+  "duration_p50_s": 600.89,
+  "duration_p95_s": 1669.3,
+  "peak_rss_mb": 376.86,
+  "items": [
+    {
+      "id": "a01_hinged_door",
+      "job_id": "articulated12_m1_a01_hinged_door_1794632418",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 557.67,
+      "peak_rss_mb": 376.86,
+      "validator_errors": 0,
+      "tris_lod0": 48,
+      "failure_reasons": [
+        "[G6_ArticulatedSweep] Khớp hinge_door đâm xuyên 20.4% vào door_frame ở góc bước 5"
+      ],
+      "vlm_pass": null,
+      "vlm_fix": ""
+    },
+    {
+      "id": "a02_treasure_chest_lid",
+      "job_id": "articulated12_m1_a02_treasure_chest_lid_1794632976",
+      "status": "completed",
+      "repair_count": 0,
+      "pass_at_1": true,
+      "pass_at_repair_le_3": true,
+      "duration_s": 105.32,
+      "peak_rss_mb": 376.86,
+      "validator_errors": 0,
+      "tris_lod0": 124,
+      "failure_reasons": [],
+      "vlm_pass": true,
+      "vlm_fix": "None"
+    },
+    {
+      "id": "a03_wooden_cart_wheel",
+      "job_id": "articulated12_m1_a03_wooden_cart_wheel_1794633082",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 1101.01,
+      "peak_rss_mb": 376.86,
+      "validator_errors": 0,
+      "tris_lod0": 280,
+      "failure_reasons": [
+        "[G3_IllegalOverlap] Đâm xuyên cart_frame<->wheel_right.006 (15.5%)"
+      ],
+      "vlm_pass": null,
+      "vlm_fix": ""
+    },
+    {
+      "id": "a04_sliding_drawer_desk",
+      "job_id": "articulated12_m1_a04_sliding_drawer_desk_1794634183",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 1669.3,
+      "peak_rss_mb": 0.0,
+      "validator_errors": 0,
+      "tris_lod0": 0,
+      "failure_reasons": [
+        "Blender lỗi ở exec_bpy: SyntaxError: invalid syntax (<generated_bpy>, line 1)"
+      ],
+      "vlm_pass": null,
+      "vlm_fix": ""
+    },
+    {
+      "id": "a05_gate_barrier",
+      "job_id": "articulated12_m1_a05_gate_barrier_1794635852",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 644.11,
+      "peak_rss_mb": 376.86,
+      "validator_errors": 0,
+      "tris_lod0": 84,
+      "failure_reasons": [
+        "[G2_TransformAndGround] z_min=-1.2711m (yêu cầu |z_min| <= 0.002m)"
+      ],
+      "vlm_pass": null,
+      "vlm_fix": ""
+    },
+    {
+      "id": "a06_wall_lever",
+      "job_id": "articulated12_m1_a06_wall_lever_1794636496",
+      "status": "needs_human_review",
+      "repair_count": 3,
+      "pass_at_1": false,
+      "pass_at_repair_le_3": false,
+      "duration_s": 552.85,
+      "peak_rss_mb": 376.86,
+      "validator_errors": 0,
+      "tris_lod0": 60,
+      "failure_reasons": [],
+      "vlm_pass": false,
+      "vlm_fix": "Cần xoay cần gạt (lever handle) về phía trước (-Y) một góc 70 độ so với trục đứng. Hiện tại cần gạt đang dựng thẳng đứng (90 độ) hoặc hướng sai, không khớp với yêu cầu 'rotating 70 degrees forward'."
+    }
+  ]
+}
