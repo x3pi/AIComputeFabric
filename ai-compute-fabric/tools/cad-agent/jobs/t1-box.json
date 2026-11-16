@@ -1,0 +1,48 @@
+{
+  "id": "t1-box",
+  "goal": "Smoke test of the unattended runner: make one simple rectangular block part.",
+  "advisor": "off",
+  "budget": {
+    "max_minutes": 15,
+    "max_steps_per_subtask": 10,
+    "max_retries": 1
+  },
+  "subtasks": [
+    {
+      "name": "block-40x20x10",
+      "instruction": "Create a new part containing a single rectangular block 40 mm wide, 20 mm high and 10 mm deep. Rebuild and verify the bounding box. Save it as block.sldprt in the job folder.",
+      "checks": [
+        {
+          "name": "bbox 40x20x10",
+          "tool": "get_bounding_box",
+          "args": {},
+          "assert": [
+            "r['ok']",
+            "approx(r['bounding_box_mm']['size_mm'][0], 40, 0.001)",
+            "approx(r['bounding_box_mm']['size_mm'][1], 20, 0.001)",
+            "approx(r['bounding_box_mm']['size_mm'][2], 10, 0.001)"
+          ]
+        },
+        {
+          "name": "one solid, volume 8000",
+          "tool": "get_mass_properties",
+          "args": {},
+          "assert": [
+            "r['ok']",
+            "approx(r['mass_properties']['volume_mm3'], 8000, 0.001)"
+          ]
+        },
+        {
+          "name": "features sane",
+          "tool": "list_features",
+          "args": {},
+          "assert": [
+            "r['ok']",
+            "r['count'] >= 2",
+            "len(r['under_defined_sketches']) == 0"
+          ]
+        }
+      ]
+    }
+  ]
+}
