@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 )
 
 // probedEngine is the fake engine plus a scripted /health answer.
@@ -120,5 +121,30 @@ func TestLlamaEngineHealthyReadsTheRealHTTPStatus(t *testing.T) {
 	e.Mode = "rpc-worker"
 	if _, app := e.Healthy(); app {
 		t.Fatal("rpc-worker has no HTTP /health, must be not applicable")
+	}
+}
+
+func TestReporterFollowsTheHeartbeatIntervalTheGatewayAsks(t *testing.T) {
+	r, _, _, _, _ := reporterRig(t)
+	if r.pace() != time.Second {
+		t.Fatalf("before registering the default is 1 s, got %v", r.pace())
+	}
+	r.gwInterval = 10 * time.Second
+	if r.pace() != 10*time.Second {
+		t.Fatalf("must follow the gateway, got %v", r.pace())
+	}
+	r.Interval = 2 * time.Second
+	if r.pace() != 2*time.Second {
+		t.Fatalf("an explicit Interval must win, got %v", r.pace())
+	}
+}
+
+func TestRegisterStoresTheGatewayInterval(t *testing.T) {
+	r, _, _, _, _ := reporterRig(t) // fakeGateway answers HeartbeatIntervalMs: 1000
+	if err := r.register(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if r.gwInterval != time.Second {
+		t.Fatalf("register must record the gateway's interval, got %v", r.gwInterval)
 	}
 }

@@ -22,7 +22,8 @@ import (
 func main() {
 	grpcAddr := flag.String("grpc", "127.0.0.1:7443", "gRPC listen address")
 	httpAddr := flag.String("http", "127.0.0.1:8080", "HTTP/dashboard listen address")
-	offline := flag.Duration("offline-after", 3*time.Second, "mark a worker offline after this long without heartbeat")
+	hbEvery := flag.Duration("heartbeat-interval", time.Second, "how often workers heartbeat (told to them at registration); raise it for a large fleet")
+	offline := flag.Duration("offline-after", 0, "mark a worker offline after this long without heartbeat (0 = 3 x heartbeat-interval)")
 	maxQueue := flag.Int("max-queue", 64, "requests allowed to wait for a slot")
 	maxWait := flag.Duration("max-wait", 10*time.Second, "longest a request waits for a slot")
 	defThink := flag.String("default-thinking", "model", "thinking when a request does not say: model (model's own default), off or on; only hybrid models are affected")
@@ -72,7 +73,11 @@ func main() {
 		DefaultTopologyFile = filepath.Join(filepath.Dir(*tenantsFile), "topology.json")
 	}
 	vramSidecar = NewSidecar(*vramSidecarFlag)
-	reg := NewRegistry(*offline)
+	offlineAfter, err := resolveOffline(*hbEvery, *offline)
+	if err != nil {
+		log.Fatalf("gateway: %v", err)
+	}
+	reg := NewRegistry(offlineAfter)
 	lis, err := net.Listen("tcp", *grpcAddr)
 	if err != nil {
 		log.Fatal(err)
@@ -88,7 +93,7 @@ func main() {
 		log.Print("WARNING: gRPC is listening beyond loopback without mTLS (--tls-cert/--tls-key/--tls-client-ca)")
 	}
 	s := grpc.NewServer(opts...)
-	pb.RegisterFleetGatewayServer(s, &GRPC{Reg: reg})
+	pb.RegisterFleetGatewayServer(s, &GRPC{Reg: reg, HeartbeatEvery: *hbEvery})
 	leases := NewLeaseManager(reg, *maxLease)
 	leases.StartSweeper(time.Second, nil)
 	pb.RegisterLeaseServiceServer(s, leases)

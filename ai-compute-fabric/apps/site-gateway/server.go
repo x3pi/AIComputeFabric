@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	pb "github.com/aicf/ai-compute-fabric/contracts/gen/go"
 	"google.golang.org/grpc/codes"
@@ -25,7 +26,24 @@ var webFS embed.FS
 // claimed WorkerId is bound to the CommonName of its client certificate.
 type GRPC struct {
 	pb.UnimplementedFleetGatewayServer
-	Reg *Registry
+	Reg            *Registry
+	HeartbeatEvery time.Duration // told to workers at registration; 0 = 1 s
+}
+
+// resolveOffline derives how long silence is tolerated from the heartbeat interval, so the two cannot
+// drift apart: with offline-after unset it is 3 intervals (two lost heartbeats are forgiven). An explicit
+// value below 2 intervals would flap every worker offline between two ordinary heartbeats, so it is refused.
+func resolveOffline(interval, explicit time.Duration) (time.Duration, error) {
+	if interval <= 0 {
+		return 0, fmt.Errorf("heartbeat-interval must be > 0, got %v", interval)
+	}
+	if explicit == 0 {
+		return 3 * interval, nil
+	}
+	if explicit < 2*interval {
+		return 0, fmt.Errorf("offline-after %v is below 2 x heartbeat-interval (%v): workers would flap offline", explicit, 2*interval)
+	}
+	return explicit, nil
 }
 
 // verifyWorkerPeer binds a worker's claimed WorkerId to the CommonName of its
@@ -56,7 +74,11 @@ func (g *GRPC) Register(ctx context.Context, r *pb.RegisterRequest) (*pb.Registe
 		log.Printf("gateway: register refused: %v", err)
 		return nil, status.Error(codes.AlreadyExists, err.Error())
 	}
-	return &pb.RegisterReply{HeartbeatIntervalMs: 1000}, nil
+	every := g.HeartbeatEvery
+	if every <= 0 {
+		every = time.Second
+	}
+	return &pb.RegisterReply{HeartbeatIntervalMs: uint32(every / time.Millisecond)}, nil
 }
 
 func (g *GRPC) Heartbeat(ctx context.Context, r *pb.HeartbeatRequest) (*pb.HeartbeatReply, error) {

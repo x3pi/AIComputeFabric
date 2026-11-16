@@ -19,7 +19,8 @@ type Reporter struct {
 	Model             string
 	EngineURL         string
 	Slots             uint32
-	Interval          time.Duration
+	Interval          time.Duration // explicit override; 0 = follow the gateway's RegisterReply
+	gwInterval        time.Duration // what the gateway asked for at the last registration
 	registered        bool
 	pausedByGateway   bool
 }
@@ -34,9 +35,7 @@ func (r *Reporter) register(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if rep.HeartbeatIntervalMs > 0 && r.Interval == 0 {
-		r.Interval = time.Duration(rep.HeartbeatIntervalMs) * time.Millisecond
-	}
+	r.gwInterval = time.Duration(rep.HeartbeatIntervalMs) * time.Millisecond
 	r.registered = true
 	return nil
 }
@@ -93,10 +92,8 @@ func (r *Reporter) Step(ctx context.Context) error {
 // Run loops until ctx is done; transient gateway errors are logged, never fatal,
 // because a worker must keep reclaiming GPU for its user even when the network is down.
 func (r *Reporter) Run(ctx context.Context) {
-	if r.Interval == 0 {
-		r.Interval = time.Second
-	}
-	t := time.NewTicker(r.Interval)
+	cur := r.pace()
+	t := time.NewTicker(cur)
 	defer t.Stop()
 	for {
 		cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -104,12 +101,28 @@ func (r *Reporter) Run(ctx context.Context) {
 			log.Printf("gateway: %v", err)
 		}
 		cancel()
+		if p := r.pace(); p != cur { // the gateway told us a new rhythm (registered, or re-registered after a restart)
+			cur = p
+			t.Reset(cur)
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 		}
 	}
+}
+
+// pace is the heartbeat period: an explicit Interval wins, else what the gateway asked for, else 1 s.
+// Following the gateway keeps the guard's rhythm and the gateway's offline-after in step.
+func (r *Reporter) pace() time.Duration {
+	switch {
+	case r.Interval > 0:
+		return r.Interval
+	case r.gwInterval > 0:
+		return r.gwInterval
+	}
+	return time.Second
 }
 
 // servedModel is what the engine is configured with now (it changes when the operator switches model in the web UI);
