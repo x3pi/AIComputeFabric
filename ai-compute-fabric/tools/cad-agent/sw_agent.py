@@ -325,6 +325,14 @@ def run_tool(name, args):
     return out, imgs
 
 
+ADVISOR_NUDGE = ("The same kind of step has now failed twice in a row. Before trying it a third time, call ask_advisor ONCE: give it the goal, "
+                 "what you tried, the exact error text and the key numbers, then apply what is sensible and verify it on the real part.")
+
+
+def failed(out):
+    return out.startswith("ERROR") or '"ok": false' in out[:60]
+
+
 LOOP_WINDOW = 8     # look at the last 8 tool calls
 NUDGE = ("You seem to be going in circles (same few tools again and again, or creating and deleting the same things). Stop. "
          "Read the CURRENT state of the part (list_features, get_mass_properties), compare it with the request, and decide: "
@@ -369,6 +377,7 @@ def turn(msgs):
     global adv_calls
     adv_calls = 0
     recent, nudged = [], False
+    streak, adv_nudges = {}, 0
     for _ in range(MAX_STEPS):
         if SHOULD_STOP():
             EMIT("info", text="  (stopped by the user)")
@@ -396,9 +405,15 @@ def turn(msgs):
             msgs.append({"role": "tool", "tool_call_id": c["id"], "content": out[:MAX_TOOL_CHARS] or "(no output)"})
             pending_imgs += imgs
             recent.append(name)
+            if name != "ask_advisor":
+                streak[name] = streak.get(name, 0) + 1 if failed(out) else 0
         if pending_imgs:
             msgs.append({"role": "user", "content": [{"type": "text", "text": "Screenshot(s) from SolidWorks:"}] +
                          [{"type": "image_url", "image_url": {"url": u}} for u in pending_imgs]})
+        if ADVISOR_MODE != "off" and adv_calls == 0 and adv_nudges < 1 and any(v >= 2 for v in streak.values()):
+            adv_nudges += 1
+            EMIT("info", text="  (two failures in a row: the agent is asked to consult the advisor)")
+            msgs.append({"role": "user", "content": ADVISOR_NUDGE})
         if circling(recent):
             if nudged:
                 return final_answer(msgs, "still circling after a warning")
