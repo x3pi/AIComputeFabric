@@ -70,6 +70,7 @@ textarea{flex:1;border:0;outline:0;resize:none;background:transparent;color:var(
   <span class="chip"><span id="dot" class="dot"></span><span id="status">Đang kết nối…</span></span>
   <span class="chip" id="model"></span>
   <span class="sp"></span>
+  <label class="tg" title="Không hỏi lại khi lưu / xuất / xóa / đóng (vẫn hỏi nếu ghi ra ngoài thư mục người dùng)"><input type="checkbox" id="auto"> Tự động cho phép</label>
   <label class="tg" title="Hiện phần model suy nghĩ (chậm hơn, có thể chính xác hơn)"><input type="checkbox" id="think"> Suy nghĩ</label>
   <button id="stop" class="danger" disabled>Dừng</button>
   <button id="reset">Cuộc trò chuyện mới</button>
@@ -228,10 +229,15 @@ $("inp").addEventListener("input",grow);
 $("inp").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();send()}});
 $("stop").onclick=()=>api("/api/stop",{});
 $("reset").onclick=async()=>{const r=await api("/api/reset",{});if(!r.ok)addNote(r.j.error,true)};
+$("auto").onchange=async e=>{
+  const want=e.target.checked;
+  if(want&&!confirm("Bật tự động cho phép?\n\nAgent sẽ tự lưu, xuất, xóa feature và đóng tài liệu mà không hỏi bạn. Việc ghi/mở file ngoài thư mục người dùng vẫn hỏi.")){e.target.checked=false;return}
+  const r=await api("/api/auto",{on:want});if(!r.ok)e.target.checked=!want;
+};
 $("think").onchange=e=>api("/api/think",{on:e.target.checked});
 (async()=>{
   const r=await api("/api/state");
-  if(r.ok){$("model").textContent=r.j.model+" · "+r.j.tools+" công cụ";$("think").checked=r.j.think}
+  if(r.ok){$("model").textContent=r.j.model+" · "+r.j.tools+" công cụ";$("think").checked=r.j.think;$("auto").checked=!!r.j.auto}
   if(!r.ok||r.j.last===0)emptyState();
   poll();
 })();

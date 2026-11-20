@@ -56,6 +56,25 @@ def _console_confirm(name, args):
     return input(f"  ?? model wants {name}({json.dumps(args, ensure_ascii=False)[:200]}) - allow? [y/N] ").strip().lower() == "y"
 
 
+AUTO_ALLOW = str(os.environ.get("AICF_AUTO_ALLOW") or CFG.get("auto_allow") or "").lower() in ("1", "true", "yes", "on")
+PATH_KEYS = ("path", "file", "file_path", "filename", "output", "output_path", "save_path")
+
+
+def needs_human(name, args):
+    """In auto-allow mode a call still goes to the person when it would write or open a file OUTSIDE the user's own profile
+    folder and the data folder (system folders, other users, network shares)."""
+    if name not in ("save_part", "export", "open_part"):
+        return False
+    homes = [os.path.realpath(os.path.expanduser("~")), os.path.realpath(aicfconf.data_dir(CFG))]
+    for k in PATH_KEYS:
+        v = args.get(k)
+        if isinstance(v, str) and v.strip():
+            p = os.path.realpath(os.path.expandvars(v))
+            if not any(os.path.commonpath([p, h]) == h for h in homes if os.path.splitdrive(p)[0].lower() == os.path.splitdrive(h)[0].lower()):
+                return True
+    return False
+
+
 EMIT = _console_emit              # EMIT(kind, **data): text | think | text_end | info | tool_call | tool_result | usage
 CONFIRM_FN = _console_confirm     # CONFIRM_FN(name, args) -> bool
 SHOULD_STOP = lambda: False       # polled between steps; True aborts the turn
@@ -133,6 +152,9 @@ SYSTEM = """You are a mechanical CAD assistant controlling SolidWorks live throu
 Rules:
 - Start with get_status, then new_part (unless a part is already active). Build step by step: one feature per tool call, with explicit dimensions.
 - After features, verify with get_bounding_box, get_mass_properties, list_features and rebuild; compare numbers with what the user asked. Never claim something is correct without a tool result that shows it.
+- screenshot: do not worry about a file path (the app chooses it). The picture is shown to the user AND to you: LOOK at it to check your work, and take a second view (view='front'/'right'/'top', or from_dir=[x,y,z]) when one angle cannot show a hole or an opening.
+- A cut or hole is only done when it is proven: compare the volume before and after (get_mass_properties) with the volume you expected to remove, and look at a picture. If the volume drops by clearly less than expected (under about 90 percent) or the picture shows no opening, the cut went the wrong way or only part of the depth: redo it (reverse=True, or omit depth_mm for through-all) and check again. Do not report success on "ok": true alone.
+- Handles and grips: make the handle a loop (an outer profile with a window cut fully through its thickness), keep the window clear of the cup wall (at least 3 mm of material) and say what you verified.
 - If a tool returns ERROR, read it, change the arguments and retry (at most 2 retries for the same step), then explain the problem.
 - Do not save, export, close or delete unless the user asked; those calls need the person's confirmation anyway.
 - Reply to the user in their language (Vietnamese if they write Vietnamese), briefly: what you built, dimensions, and the verification numbers."""
@@ -191,14 +213,35 @@ def trim_images(msgs, keep=2):
                 m["content"] = [p for p in m["content"] if p.get("type") != "image_url"] or "[older screenshot removed]"
 
 
+def run_screenshot(args):
+    """solidworks-mcp's screenshot only WRITES a file (it returns no image). So: the app picks the path (the model may not choose
+    where to write), then reads the PNG back so it is shown in the chat and given to the model to look at."""
+    import base64
+    d = os.path.join(aicfconf.data_dir(CFG), "shots")
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, "shot-%s.png" % time.strftime("%Y%m%d-%H%M%S"))
+    args = {k: v for k, v in args.items() if k in ("view", "zoom_mm", "show_planes", "from_dir")}
+    out, imgs = mcp_call("screenshot", dict(args, path=path))
+    try:
+        if os.path.getsize(path) <= 4_000_000:
+            with open(path, "rb") as f:
+                imgs = imgs + ["data:image/png;base64," + base64.b64encode(f.read()).decode()]
+    except OSError:
+        pass
+    return out, imgs
+
+
 def run_tool(name, args):
     if name not in ALLOW:
         return f"ERROR: tool {name} is not allowed", []
     if name in CONFIRM:
-        if not CONFIRM_FN(name, args):
+        if AUTO_ALLOW and not needs_human(name, args):
+            audit("auto_allowed", tool=name, args=args)
+            EMIT("info", text="  (auto-allowed: %s)" % name)
+        elif not CONFIRM_FN(name, args):
             audit("denied", tool=name, args=args)
             return "DENIED by the user. Do not retry; continue without it.", []
-    out, imgs = mcp_call(name, args)
+    out, imgs = run_screenshot(args) if name == "screenshot" else mcp_call(name, args)
     audit("tool", tool=name, args=args, result=out[:1500], images=len(imgs))
     return out, imgs
 
