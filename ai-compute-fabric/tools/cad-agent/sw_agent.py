@@ -160,9 +160,11 @@ Rules:
 - Reply to the user in their language (Vietnamese if they write Vietnamese), briefly: what you built, dimensions, and the verification numbers."""
 
 
-def llm(messages):
-    body = {"model": MODEL, "messages": messages, "tools": TOOLS, "max_tokens": 4000, "temperature": 0.3, "stream": True,
+def llm(messages, use_tools=True):
+    body = {"model": MODEL, "messages": messages, "max_tokens": 4000, "temperature": 0.3, "stream": True,
             "chat_template_kwargs": {"enable_thinking": think}}
+    if use_tools:
+        body["tools"] = TOOLS
     req = urllib.request.Request(URL, json.dumps(body).encode(), {"Content-Type": "application/json", "Authorization": "Bearer " + KEY})
     for attempt in range(10):
         try:
@@ -246,7 +248,21 @@ def run_tool(name, args):
     return out, imgs
 
 
+LOOP_N = 4          # this many consecutive calls of the same tool = the model is circling, not progressing
+FINAL_PROMPT = ("Stop calling tools now. Write your final answer for the user: what you did, what you VERIFIED (with the numbers or "
+                "pictures that prove it), what you could NOT verify, and what the user should check. Be honest about uncertainty.")
+
+
+def final_answer(msgs, why):
+    """One last model call with tools switched off, so a long or looping task always ends with a report, never silence."""
+    EMIT("info", text="  (%s: asking for a final report)" % why)
+    msgs.append({"role": "user", "content": FINAL_PROMPT})
+    m = llm(msgs, use_tools=False)
+    msgs.append({k: v for k, v in m.items() if k in ("role", "content")})
+
+
 def turn(msgs):
+    recent = []
     for _ in range(MAX_STEPS):
         if SHOULD_STOP():
             EMIT("info", text="  (stopped by the user)")
@@ -273,10 +289,15 @@ def turn(msgs):
             EMIT("tool_result", name=name, result=out, images=imgs)
             msgs.append({"role": "tool", "tool_call_id": c["id"], "content": out[:MAX_TOOL_CHARS] or "(no output)"})
             pending_imgs += imgs
+            recent.append(name)
         if pending_imgs:
             msgs.append({"role": "user", "content": [{"type": "text", "text": "Screenshot(s) from SolidWorks:"}] +
                          [{"type": "image_url", "image_url": {"url": u}} for u in pending_imgs]})
-    EMIT("step_limit", text="  (step limit reached: %d steps; say 'continue' to let it go on)" % MAX_STEPS, steps=MAX_STEPS)
+        if len(recent) >= LOOP_N and len(set(recent[-LOOP_N:])) == 1:
+            return final_answer(msgs, "%s called %d times in a row" % (recent[-1], LOOP_N))
+    if not SHOULD_STOP():
+        EMIT("step_limit", text="  (step limit reached: %d steps; say 'continue' to let it go on)" % MAX_STEPS, steps=MAX_STEPS)
+        final_answer(msgs, "step limit")
 
 
 def main():
