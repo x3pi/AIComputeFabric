@@ -71,6 +71,8 @@ textarea{flex:1;border:0;outline:0;resize:none;background:transparent;color:var(
   <span class="chip" id="model"></span>
   <span class="sp"></span>
   <label class="tg" title="Không hỏi lại khi lưu / xuất / xóa / đóng (vẫn hỏi nếu ghi ra ngoài thư mục người dùng)"><input type="checkbox" id="auto"> Tự động cho phép</label>
+  <label class="tg" title="Cố vấn chỉ trả lời bằng chữ, không bao giờ tự sửa mô hình. Claude gửi nguyên văn câu hỏi ra ngoài máy; Qwen chạy trên máy."> Cố vấn
+    <select id="adv"><option value="off">Tắt</option><option value="claude">Claude (ngoài máy)</option><option value="qwen_think">Qwen suy nghĩ</option><option value="qwen_nothink">Qwen không suy nghĩ</option></select></label>
   <label class="tg" title="Hiện phần model suy nghĩ (chậm hơn, có thể chính xác hơn)"><input type="checkbox" id="think"> Suy nghĩ</label>
   <button id="stop" class="danger" disabled>Dừng</button>
   <button id="reset">Cuộc trò chuyện mới</button>
@@ -241,9 +243,17 @@ $("auto").onchange=async e=>{
   const r=await api("/api/auto",{on:want});if(!r.ok)e.target.checked=!want;
 };
 $("think").onchange=e=>api("/api/think",{on:e.target.checked});
+let advPrev="off";
+$("adv").onchange=async e=>{
+  const want=e.target.value;
+  if(want==="claude"&&!confirm("Dùng Claude làm cố vấn?\n\nCâu hỏi của agent (có thể chứa kích thước, tên chi tiết) sẽ được gửi NGUYÊN VĂN ra dịch vụ bên ngoài, không lọc. Mỗi câu hỏi hiện trong thẻ công cụ để bạn xem.")){e.target.value=advPrev;return}
+  const r=await api("/api/advisor",{mode:want});
+  if(!r.ok){e.target.value=advPrev;addNote(r.j.error,true);return}
+  advPrev=want;
+};
 (async()=>{
   const r=await api("/api/state");
-  if(r.ok){$("model").textContent=r.j.model+" · "+r.j.tools+" công cụ";$("think").checked=r.j.think;$("auto").checked=!!r.j.auto}
+  if(r.ok){$("model").textContent=r.j.model+" · "+r.j.tools+" công cụ";$("think").checked=r.j.think;$("auto").checked=!!r.j.auto;$("adv").value=advPrev=r.j.advisor;for(const o of $("adv").options)if(r.j.advisors&&!r.j.advisors[o.value])o.disabled=true}
   if(!r.ok||r.j.last===0)emptyState();
   poll();
 })();

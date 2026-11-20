@@ -40,6 +40,80 @@ ALLOW = {
 # Need an explicit y/N from the person at the console (destructive or writes outside memory).
 CONFIRM = {"delete_feature", "save_part", "export", "close_part", "open_part", "delete_component", "delete_mate", "make_drawing"}
 
+# ---- advisor: a second opinion that can only ANSWER IN TEXT (no tools, no files, never edits the part) ---------------------
+# Modes: off | claude (external, via config.json "advisor": url/model/key_file) | qwen_think | qwen_nothink (the local model itself).
+# There is NO input filter here by the owner's decision: what the agent writes in `question` is sent as written (length-capped, audited,
+# and shown in the chat as the tool card). Local modes never leave the PC.
+import advisor as ADV
+ADVISOR_MODES = ("off", "claude", "qwen_think", "qwen_nothink")
+ADVISOR_MODE = str(os.environ.get("AICF_ADVISOR") or (CFG.get("advisor") or {}).get("default_mode") or "off")
+if ADVISOR_MODE not in ADVISOR_MODES:
+    ADVISOR_MODE = "off"
+ADVISOR_MAX_CALLS = int(os.environ.get("AICF_ADVISOR_MAX") or (CFG.get("advisor") or {}).get("max_calls") or 5)   # per user message
+adv_calls = 0
+ADVISOR_TOOL = {"type": "function", "function": {"name": "ask_advisor", "description":
+    "Ask a second, stronger-reasoning advisor when you are stuck, a feature keeps failing, or you need to plan a tricky modelling order. "
+    "The advisor CANNOT see the part or SolidWorks and cannot change anything: put ALL the facts it needs in `question` (what you want, "
+    "what you tried, exact error text, key dimensions). Its answer is advice only: verify it against the real model state before acting.",
+    "parameters": {"type": "object", "properties": {"question": {"type": "string", "description": "self-contained question with all context"}},
+                   "required": ["question"]}}}
+
+
+def advisor_available():
+    c = CFG.get("advisor") or {}
+    return {"off": True, "qwen_think": True, "qwen_nothink": True,
+            "claude": bool(c.get("url") and c.get("model") and c.get("key_file") and os.path.isfile(os.path.expandvars(os.path.expanduser(c["key_file"]))))}
+
+
+def active_tools():
+    return TOOLS + [ADVISOR_TOOL] if ADVISOR_MODE != "off" else TOOLS
+
+
+def _qwen_advice(q, thinking):
+    body = {"model": MODEL, "max_tokens": 4000 if thinking else 1500, "temperature": 0.3, "chat_template_kwargs": {"enable_thinking": thinking},
+            "messages": [{"role": "system", "content": ADV.ADVISOR_SYSTEM}, {"role": "user", "content": q}]}
+    req = urllib.request.Request(URL, json.dumps(body).encode(), {"Content-Type": "application/json", "Authorization": "Bearer " + KEY})
+    for attempt in range(6):
+        try:
+            d = json.loads(urllib.request.urlopen(req, timeout=900).read())
+            return (d["choices"][0]["message"].get("content") or "").strip(), ""
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 502, 503) or attempt == 5:
+                return "", "advisor HTTP %d" % e.code
+            time.sleep(5 + 3 * attempt)
+        except Exception as e:
+            return "", "advisor request failed (%s)" % type(e).__name__
+    return "", "advisor busy"
+
+
+def advise(args):
+    global adv_calls
+    q = str((args or {}).get("question") or "").strip()
+    if not q:
+        return "ERROR: ask_advisor needs a non-empty `question`."
+    if adv_calls >= ADVISOR_MAX_CALLS:
+        return "ERROR: advisor call budget for this request is used up (%d). Decide yourself or report what blocks you." % ADVISOR_MAX_CALLS
+    adv_calls += 1
+    mode = ADVISOR_MODE
+    if len(q) > 16000:
+        q = q[:16000]
+    if mode == "claude":
+        c = dict(CFG.get("advisor") or {}, mode="anthropic", sanitize="off")
+        res = ADV.ask({"kind": "agent_question", "api_names": [], "error_class": "", "question": q}, c)
+        text, err = res.get("reply", ""), ("" if res.get("ok") else res.get("reason", "unknown"))
+    elif mode in ("qwen_think", "qwen_nothink"):
+        ADV.audit("outbound", mode=mode, payload=q, report={"sanitize": "off", "local": True})
+        text, err = _qwen_advice(q, mode == "qwen_think")
+        if text:
+            ADV.audit("inbound", reply=text[:4000])
+    else:
+        return "ERROR: the advisor is switched off."
+    audit("advisor", mode=mode, ok=not err, reason=err, q_chars=len(q), reply_chars=len(text))
+    if err or not text:
+        return "ERROR: advisor unavailable (%s). Solve it yourself with the tools you have." % (err or "empty reply")
+    return "ADVISOR REPLY (%s; advice only, NOT executed; verify against the real part state):\n%s" % (mode, text[:3500])
+
+
 # ---- front-end hooks: the console below is the default; ui_server.py replaces them to drive a web page -------------------
 def _console_emit(kind, **kw):
     if kind == "text":
@@ -165,7 +239,7 @@ def llm(messages, use_tools=True):
     body = {"model": MODEL, "messages": messages, "max_tokens": 4000, "temperature": 0.3, "stream": True,
             "chat_template_kwargs": {"enable_thinking": think}}
     if use_tools:
-        body["tools"] = TOOLS
+        body["tools"] = active_tools()
     req = urllib.request.Request(URL, json.dumps(body).encode(), {"Content-Type": "application/json", "Authorization": "Bearer " + KEY})
     for attempt in range(10):
         try:
@@ -235,6 +309,8 @@ def run_screenshot(args):
 
 
 def run_tool(name, args):
+    if name == "ask_advisor":
+        return (advise(args) if ADVISOR_MODE != "off" else "ERROR: the advisor is switched off."), []
     if name not in ALLOW:
         return f"ERROR: tool {name} is not allowed", []
     if name in CONFIRM:
@@ -290,6 +366,8 @@ def final_answer(msgs, why):
 
 
 def turn(msgs):
+    global adv_calls
+    adv_calls = 0
     recent, nudged = [], False
     for _ in range(MAX_STEPS):
         if SHOULD_STOP():

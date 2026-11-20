@@ -158,7 +158,7 @@ class H(http.server.BaseHTTPRequestHandler):
             with open(PAGE, "rb") as f:
                 return self._send(200, f.read(), "text/html")
         if u.path == "/api/state":
-            return self._send(200, {"busy": state["busy"], "model": A.MODEL, "tools": len(A.TOOLS), "think": A.think, "auto": A.AUTO_ALLOW, "last": len(events)})
+            return self._send(200, {"busy": state["busy"], "model": A.MODEL, "tools": len(A.TOOLS), "think": A.think, "auto": A.AUTO_ALLOW, "advisor": A.ADVISOR_MODE, "advisors": A.advisor_available(), "last": len(events)})
         if u.path == "/api/events":
             since = int(q.get("since", ["0"])[0])
             with lock:
@@ -208,6 +208,14 @@ class H(http.server.BaseHTTPRequestHandler):
             A.AUTO_ALLOW = bool(body.get("on"))
             push("info", text="  Tự động cho phép: %s" % ("BẬT (save/export/xóa/đóng không hỏi, trừ đường dẫn ngoài thư mục người dùng)" if A.AUTO_ALLOW else "TẮT"))
             return self._send(200, {"auto": A.AUTO_ALLOW})
+        if p == "/api/advisor":
+            mode = body.get("mode")
+            if mode not in A.ADVISOR_MODES or not A.advisor_available().get(mode):
+                return self._send(400, {"error": "advisor mode not available on this PC"})
+            A.ADVISOR_MODE = mode
+            names = {"off": "TẮT", "claude": "CLAUDE (ngoài máy, gửi nguyên văn câu hỏi, không lọc)", "qwen_think": "QWEN suy nghĩ (trên máy)", "qwen_nothink": "QWEN không suy nghĩ (trên máy)"}
+            push("info", text="  Cố vấn: %s" % names[mode])
+            return self._send(200, {"advisor": mode})
         if p == "/api/think":
             A.think = bool(body.get("on"))
             return self._send(200, {"think": A.think})
