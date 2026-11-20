@@ -155,6 +155,7 @@ Rules:
 - screenshot: do not worry about a file path (the app chooses it). The picture is shown to the user AND to you: LOOK at it to check your work, and take a second view (view='front'/'right'/'top', or from_dir=[x,y,z]) when one angle cannot show a hole or an opening.
 - A cut or hole is only done when it is proven: compare the volume before and after (get_mass_properties) with the volume you expected to remove, and look at a picture (at most 3 verification pictures per task: pick the views that can show the feature, then conclude and report). If the volume drops by clearly less than expected (under about 90 percent) or the picture shows no opening, the cut went the wrong way or only part of the depth: redo it (reverse=True, or omit depth_mm for through-all) and check again. Do not report success on "ok": true alone.
 - Any feature that must be open (hole, window, slot, pocket, through-cut) must be clear of neighbouring walls and leave real material around it; state what you verified (volume change, picture) for each such feature.
+- Before changing an EXISTING part, read its current state (list_features, get_mass_properties) and compare it with the request: if the request is already satisfied, say so and show the evidence instead of redoing it; if it is partly done, build only the missing part.
 - If a tool returns ERROR, read it, change the arguments and retry (at most 2 retries for the same step), then explain the problem.
 - Do not save, export, close or delete unless the user asked; those calls need the person's confirmation anyway.
 - Reply to the user in their language (Vietnamese if they write Vietnamese), briefly: what you built, dimensions, and the verification numbers."""
@@ -248,9 +249,36 @@ def run_tool(name, args):
     return out, imgs
 
 
-LOOP_N = 4          # this many consecutive calls of the same tool = the model is circling, not progressing
+LOOP_WINDOW = 8     # look at the last 8 tool calls
+NUDGE = ("You seem to be going in circles (same few tools again and again, or creating and deleting the same things). Stop. "
+         "Read the CURRENT state of the part (list_features, get_mass_properties), compare it with the request, and decide: "
+         "if the request is already satisfied, say so with the evidence; if not, do ONE different, concrete action. "
+         "If you cannot make progress, report what is blocking you.")
+
+
+def circling(recent):
+    """General, tool-agnostic signs of a model that is not progressing: very few distinct tools over a window, or repeated
+    delete_feature (undoing its own work)."""
+    if len(recent) >= 4 and recent[-4:].count("delete_feature") >= 2:     # build / delete / build / delete: undoing its own work
+        return True
+    w = recent[-LOOP_WINDOW:]
+    if len(w) < LOOP_WINDOW:
+        return False
+    return len(set(w)) <= 3 or w.count("delete_feature") >= 3 or max(w.count(n) for n in set(w)) >= LOOP_WINDOW - 1
+
+
 FINAL_PROMPT = ("Stop calling tools now. Write your final answer for the user: what you did, what you VERIFIED (with the numbers or "
                 "pictures that prove it), what you could NOT verify, and what the user should check. Be honest about uncertainty.")
+
+
+def repair(msgs):
+    """After an interrupted turn (LLM error, MCP crash) make the history valid again: every tool call needs a tool reply."""
+    answered = {m.get("tool_call_id") for m in msgs if m.get("role") == "tool"}
+    for i in range(len(msgs) - 1, -1, -1):
+        if msgs[i].get("role") == "assistant" and msgs[i].get("tool_calls"):
+            missing = [c["id"] for c in msgs[i]["tool_calls"] if c["id"] not in answered]
+            msgs[i + 1:i + 1] = [{"role": "tool", "tool_call_id": cid, "content": "ERROR: interrupted before this call finished."} for cid in missing]
+            break
 
 
 def final_answer(msgs, why):
@@ -262,7 +290,7 @@ def final_answer(msgs, why):
 
 
 def turn(msgs):
-    recent = []
+    recent, nudged = [], False
     for _ in range(MAX_STEPS):
         if SHOULD_STOP():
             EMIT("info", text="  (stopped by the user)")
@@ -293,8 +321,13 @@ def turn(msgs):
         if pending_imgs:
             msgs.append({"role": "user", "content": [{"type": "text", "text": "Screenshot(s) from SolidWorks:"}] +
                          [{"type": "image_url", "image_url": {"url": u}} for u in pending_imgs]})
-        if len(recent) >= LOOP_N and len(set(recent[-LOOP_N:])) == 1:
-            return final_answer(msgs, "%s called %d times in a row" % (recent[-1], LOOP_N))
+        if circling(recent):
+            if nudged:
+                return final_answer(msgs, "still circling after a warning")
+            nudged = True
+            recent.clear()
+            EMIT("info", text="  (the agent is going in circles: sent a warning)")
+            msgs.append({"role": "user", "content": NUDGE})
     if not SHOULD_STOP():
         EMIT("step_limit", text="  (step limit reached: %d steps; say 'continue' to let it go on)" % MAX_STEPS, steps=MAX_STEPS)
         final_answer(msgs, "step limit")

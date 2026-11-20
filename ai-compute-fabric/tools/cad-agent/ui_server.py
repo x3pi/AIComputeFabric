@@ -91,7 +91,8 @@ def run_turn(text):
         A.audit("user", text=text)
         A.turn(msgs)
     except Exception as e:
-        push("error", text="%s: %s" % (type(e).__name__, e))
+        A.repair(msgs)
+        push("error", text="%s: %s" % (type(e).__name__, e), can_continue=True)
     finally:
         _buf["text"] = _buf["think"] = ""
         state["busy"] = False

@@ -197,7 +197,13 @@ function handle(ev){
       const row=el("div","row");const go=el("button","primary","Tiếp tục");
       go.onclick=()=>{go.disabled=true;$("inp").value="Tiếp tục hoàn thành yêu cầu trước: kiểm tra lại kết quả, mở view cho tôi xem và tóm tắt ngắn.";send()};
       row.appendChild(go);n.appendChild(row);col.appendChild(n);scrollDown(true);break}
-    case "error":{if(cur){cur.body.classList.remove("cursor");cur=null}addNote("Lỗi: "+ev.text,true);break}
+    case "error":{
+      if(cur){cur.body.classList.remove("cursor");cur=null}addNote("Lỗi: "+ev.text,true);
+      if(ev.can_continue){
+        const row=el("div","row");const go=el("button","primary","Tiếp tục từ chỗ đã dừng");
+        go.onclick=()=>{go.disabled=true;$("inp").value="Tiếp tục từ chỗ đã dừng (lượt trước bị gián đoạn do lỗi). Đọc lại trạng thái hiện tại rồi làm nốt.";send()};
+        row.appendChild(go);col.appendChild(row);scrollDown(true)}
+      break}
     case "reset":{col.textContent="";cur=null;tools=[];asks={};emptyState();break}
     case "done":{if(cur){cur.body.classList.remove("cursor");cur=null}break}
   }
