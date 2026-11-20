@@ -20,7 +20,8 @@ in the denylist can pass). Measure with canary_test.py and keep L2 data out of p
 import base64, binascii, hashlib, json, os, re, subprocess, tempfile, time, unicodedata, urllib.parse, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-AUDIT = os.environ.get("ADVISOR_AUDIT", os.path.join(HERE, "advisor_audit.jsonl"))
+import aicfconf
+AUDIT = os.environ.get("ADVISOR_AUDIT") or os.path.join(aicfconf.data_dir(), "advisor_audit.jsonl")
 KINDS = {"api_usage", "error_help", "strategy", "review_abstract"}
 MAX_Q = 1200
 
@@ -145,12 +146,13 @@ def sanitize(req, cfg=None, disabled=()):
 
 # ---- reviewer (local Qwen), fail closed --------------------------------------------------------------------------
 def review_local(text, cfg):
-    key = open(os.path.join(HERE, "key.txt")).read().strip()
-    body = {"model": cfg.get("model", "Qwen3.8-27B-UD-Q4_K_M.gguf"), "max_tokens": 60, "temperature": 0,
+    import aicfconf
+    key = aicfconf.read_key()
+    body = {"model": cfg.get("model") or aicfconf.model(), "max_tokens": 60, "temperature": 0,
             "chat_template_kwargs": {"enable_thinking": False},
             "messages": [{"role": "system", "content": "You are a data-leak reviewer. The text will be sent to an external service. Answer ONLY JSON {\"leak\": true|false}. leak=true if it reveals a specific dimension, quantity, customer/project/product name, part number, file name, location, or any identifying detail of a particular design. Generic API questions are leak=false."},
                          {"role": "user", "content": text}]}
-    req = urllib.request.Request(cfg.get("url", "http://192.168.1.40:18080/v1/chat/completions"), json.dumps(body).encode(),
+    req = urllib.request.Request(cfg.get("url") or aicfconf.url(), json.dumps(body).encode(),
                                  {"Content-Type": "application/json", "Authorization": "Bearer " + key})
     out = json.loads(urllib.request.urlopen(req, timeout=120).read())["choices"][0]["message"]["content"]
     m = re.search(r"\{.*?\}", out, re.S)

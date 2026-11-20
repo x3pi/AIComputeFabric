@@ -3,3 +3,6 @@ audit.jsonl
 advisor_audit.jsonl
 state.json
 __pycache__/
+dist/
+config.json
+api.key

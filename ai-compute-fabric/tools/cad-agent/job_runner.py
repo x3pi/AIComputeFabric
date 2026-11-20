@@ -8,7 +8,7 @@ advisor/egress in this version; `advisor` must be "off").
 job.json
   id, goal                     free text; goal is given to the model for every subtask
   inputs: [paths]              copied into <workdir>/inputs (originals are never opened or modified)
-  workdir                      default C:\\aicf-cad\\jobs\\<id>; every file the model saves/exports/screenshots must be inside
+  workdir                      default <data_dir>\\jobs\\<id> (data_dir from config.json); every file the model saves/exports/screenshots must be inside
   budget: {max_minutes, max_steps_per_subtask, max_retries}
   subtasks: [{name, instruction, checks: [{name, tool, args, assert: ["python-like expression over r", ...]}]}]
      r = JSON-parsed tool result (or {"text": ...}); expressions may use + - * / ** comparisons and/or/not, [] , abs min max
@@ -24,13 +24,14 @@ import ast, json, os, re, shutil, subprocess, sys, time, urllib.request, urllib.
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
-import advisor
+import advisor, aicfconf
+CFG = aicfconf.load()
 ADV = {"mode": "off"}          # set from job["advisor"]; "off" or {"mode": dryrun|api|codex_cli, denylist, pseudonyms, reviewer, max_calls}
 adv_calls = 0
-URL =os.environ.get("AICF_URL", "http://192.168.1.40:18080/v1/chat/completions")
-MODEL = os.environ.get("AICF_MODEL", "Qwen3.8-27B-UD-Q4_K_M.gguf")
-KEY = open(os.path.join(ROOT, "key.txt")).read().strip()
-MCP_EXE = os.environ.get("SW_MCP_EXE", os.path.expanduser(r"~\.local\bin\solidworks-mcp.exe"))
+URL = aicfconf.url(CFG)
+MODEL = aicfconf.model(CFG)
+KEY = aicfconf.read_key(CFG)
+MCP_EXE = aicfconf.mcp_exe(CFG)
 
 ALLOW = {
     "get_status", "new_part", "add_box", "add_cylinder", "add_disc", "add_cone", "add_extruded_profile", "add_revolved_profile",
@@ -291,7 +292,7 @@ def run_subtask(st, tools, prior, budget):
     return log, True
 
 
-SW_EXE = r"C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\SLDWORKS.exe"
+SW_EXE = aicfconf.sw_exe(CFG)
 
 
 def ensure_solidworks(wait_s=300):
@@ -307,6 +308,8 @@ def ensure_solidworks(wait_s=300):
     if running:
         audit("solidworks_process_exists_waiting")     # never start a second instance
     else:
+        if not SW_EXE:
+            raise RuntimeError("SolidWorks is not running and SLDWORKS.exe was not found (set sw_exe in config.json)")
         audit("launch_solidworks", exe=SW_EXE)
         subprocess.Popen([SW_EXE])
     end = time.time() + wait_s
@@ -351,7 +354,7 @@ def main():
         if a["mode"] != "dryrun" and not a.get("denylist"):
             sys.exit("advisor mode %s needs a non-empty denylist (project/customer/part-number terms)" % a["mode"])
         ADV.update(a)
-    WORK = job.get("workdir") or os.path.join(r"C:\aicf-cad\jobs", job["id"])
+    WORK = job.get("workdir") or os.path.join(aicfconf.data_dir(CFG), "jobs", job["id"])
     os.makedirs(os.path.join(WORK, "inputs"), exist_ok=True)
     for p in job.get("inputs", []):
         shutil.copy2(p, os.path.join(WORK, "inputs", os.path.basename(p)))

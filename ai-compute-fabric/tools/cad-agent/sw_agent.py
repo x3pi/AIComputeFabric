@@ -15,11 +15,14 @@ Commands: /reset (forget chat)  /think on|off  /tools  /exit
 import json, os, re, subprocess, sys, time, urllib.request, urllib.error
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-URL = os.environ.get("AICF_URL", "http://192.168.1.40:18080/v1/chat/completions")
-MODEL = os.environ.get("AICF_MODEL", "Qwen3.8-27B-UD-Q4_K_M.gguf")
-KEY = open(os.path.join(ROOT, "key.txt")).read().strip()
-MCP_EXE = os.environ.get("SW_MCP_EXE", os.path.expanduser(r"~\.local\bin\solidworks-mcp.exe"))
-AUDIT = os.path.join(ROOT, "audit.jsonl")
+sys.path.insert(0, ROOT)
+import aicfconf
+CFG = aicfconf.load()
+URL = aicfconf.url(CFG)
+MODEL = aicfconf.model(CFG)
+KEY = aicfconf.read_key(CFG)
+MCP_EXE = aicfconf.mcp_exe(CFG)
+AUDIT = os.path.join(aicfconf.data_dir(CFG), "audit.jsonl")
 MAX_STEPS = 16
 MAX_TOOL_CHARS = 4000
 think = False
