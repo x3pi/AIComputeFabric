@@ -17,7 +17,7 @@ Design rules
 Honest limit: filters reduce risk, they do not prove absence of leakage (a new encoding or paraphrase of a secret that is not
 in the denylist can pass). Measure with canary_test.py and keep L2 data out of prompts by design.
 """
-import base64, binascii, hashlib, json, os, re, subprocess, tempfile, time, unicodedata, urllib.parse, urllib.request
+import base64, binascii, hashlib, json, os, re, subprocess, tempfile, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import aicfconf
@@ -210,8 +210,49 @@ def check_code(code):
 
 
 # ---- backends -------------------------------------------------------------------------------------------------
+ADVISOR_SYSTEM = ("You advise on CAD scripting. Reply with concise guidance and, if useful, a short Python snippet. "
+                  "You have no tools and no access to any files.")
+
+
+def _advisor_key(cfg):
+    """Key from key_file (preferred: a file only the user can read) or from the env var named by key_env. Never logged."""
+    if cfg.get("key_file"):
+        with open(os.path.expandvars(os.path.expanduser(cfg["key_file"])), encoding="utf-8-sig") as f:
+            return f.read().strip()
+    return os.environ[cfg.get("key_env", "ADVISOR_API_KEY")].strip()
+
+
+def _ask_anthropic(cfg, text):
+    """Anthropic Messages API (also served by Claude-compatible gateways). Sends only the sanitised text, no tools. Returns (reply, error)."""
+    try:
+        key = _advisor_key(cfg)
+    except (OSError, KeyError) as e:
+        return "", "advisor key not available (%s)" % type(e).__name__
+    url = cfg["url"].rstrip("/")
+    if not url.endswith("/messages"):
+        url += "/v1/messages"
+    body = {"model": cfg["model"], "max_tokens": int(cfg.get("max_tokens", 4000)), "system": ADVISOR_SYSTEM,
+            "messages": [{"role": "user", "content": text}]}
+    # An explicit User-Agent is required: some gateways sit behind Cloudflare, which rejects urllib's default one (error 1010, HTTP 403).
+    head = {"Content-Type": "application/json", "anthropic-version": "2023-06-01", "User-Agent": cfg.get("user_agent", "aicf-cad-advisor/1.0")}
+    head["x-api-key" if cfg.get("auth") == "x-api-key" else "Authorization"] = key if cfg.get("auth") == "x-api-key" else "Bearer " + key
+    try:
+        r = urllib.request.Request(url, json.dumps(body).encode(), head)
+        d = json.loads(urllib.request.urlopen(r, timeout=int(cfg.get("timeout", 180))).read())
+    except urllib.error.HTTPError as e:
+        return "", "advisor HTTP %d" % e.code
+    except Exception as e:                                   # network, timeout, bad JSON: never leak details that may contain the key
+        return "", "advisor request failed (%s)" % type(e).__name__
+    parts = [b.get("text", "") for b in d.get("content", []) if isinstance(b, dict) and b.get("type") == "text"]
+    if not parts or not "".join(parts).strip():
+        if d.get("stop_reason") == "max_tokens":              # the model thinks first; a small max_tokens is eaten before any text appears
+            return "", "advisor ran out of tokens before writing an answer (raise max_tokens; the model thinks first)"
+        return "", "advisor reply had no text"
+    return "".join(parts), ""
+
+
 def ask(req, cfg=None):
-    """cfg: mode dryrun|api|codex_cli, approve(text)->bool for human approval, denylist[], pseudonyms[], reviewer off|local."""
+    """cfg: mode dryrun|api|anthropic|codex_cli, approve(text)->bool for human approval, denylist[], pseudonyms[], reviewer off|local."""
     cfg = cfg or {}
     mode = cfg.get("mode", "dryrun")
     try:
@@ -238,6 +279,11 @@ def ask(req, cfg=None):
             {"role": "user", "content": text}]}
         r = urllib.request.Request(cfg["url"], json.dumps(body).encode(), {"Content-Type": "application/json", "Authorization": "Bearer " + os.environ[cfg.get("key_env", "ADVISOR_API_KEY")]})
         reply = json.loads(urllib.request.urlopen(r, timeout=300).read())["choices"][0]["message"]["content"]
+    elif mode == "anthropic":
+        reply, err = _ask_anthropic(cfg, text)
+        if err:
+            audit("error", mode=mode, reason=err)
+            return {"ok": False, "reason": err}
     elif mode == "codex_cli":
         if not cfg.get("contained_user"):
             audit("blocked", reason="codex_cli needs contained_user (its read-only sandbox does not stop reads)", mode=mode)

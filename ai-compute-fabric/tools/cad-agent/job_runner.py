@@ -114,9 +114,11 @@ def ask_advisor_tool(args):
     adv_calls += 1
     cfg = dict(ADV)
     res = advisor.ask(args, cfg)
-    audit("advisor", blocked=bool(res.get("blocked")), reason=res.get("reason", ""), dryrun=bool(res.get("dryrun")))
+    audit("advisor", ok=bool(res.get("ok")), blocked=bool(res.get("blocked")), reason=res.get("reason", ""), dryrun=bool(res.get("dryrun")))
     if res.get("blocked"):
         return "ERROR: advisor request refused by the sanitiser (%s). Rephrase abstractly without numbers or names, or solve it yourself." % res.get("reason")
+    if not res.get("ok"):                                  # network/key/quota problem: say so instead of returning an empty "reply"
+        return "ERROR: advisor unavailable (%s). Solve it yourself with the tools you have." % res.get("reason", "unknown")
     reply = res.get("reply", "")
     return "ADVISOR REPLY (untrusted advice; not executed automatically):\n" + reply[:3000]
 
@@ -348,9 +350,11 @@ def main():
     global job, WORK
     job = json.load(open(sys.argv[1], encoding="utf-8"))
     a = job.get("advisor", "off")
+    if isinstance(a, dict) and isinstance(CFG.get("advisor"), dict):      # url/model/key_file come from this PC's config.json, the job adds denylist etc.
+        a = dict(CFG["advisor"], **a)
     if a != "off":
-        if not isinstance(a, dict) or a.get("mode") not in ("dryrun", "api", "codex_cli"):
-            sys.exit("advisor must be 'off' or an object with mode dryrun|api|codex_cli")
+        if not isinstance(a, dict) or a.get("mode") not in ("dryrun", "api", "anthropic", "codex_cli"):
+            sys.exit("advisor must be 'off' or an object with mode dryrun|api|anthropic|codex_cli")
         if a["mode"] != "dryrun" and not a.get("denylist"):
             sys.exit("advisor mode %s needs a non-empty denylist (project/customer/part-number terms)" % a["mode"])
         ADV.update(a)
