@@ -23,7 +23,7 @@ MODEL = aicfconf.model(CFG)
 KEY = aicfconf.read_key(CFG)
 MCP_EXE = aicfconf.mcp_exe(CFG)
 AUDIT = os.path.join(aicfconf.data_dir(CFG), "audit.jsonl")
-MAX_STEPS = 16
+MAX_STEPS = int(os.environ.get("AICF_MAX_STEPS") or CFG.get("max_steps") or 30)   # model calls per user message
 MAX_TOOL_CHARS = 4000
 think = False
 
@@ -46,7 +46,7 @@ def _console_emit(kind, **kw):
         print(kw["text"], end="", flush=True)
     elif kind == "text_end":
         print(flush=True)
-    elif kind == "info":
+    elif kind in ("info", "step_limit"):
         print(kw["text"], flush=True)
     elif kind == "tool_call":
         print(f"  [solidworks] {kw['name']}({json.dumps(kw['args'], ensure_ascii=False)[:160]})", flush=True)
@@ -233,7 +233,7 @@ def turn(msgs):
         if pending_imgs:
             msgs.append({"role": "user", "content": [{"type": "text", "text": "Screenshot(s) from SolidWorks:"}] +
                          [{"type": "image_url", "image_url": {"url": u}} for u in pending_imgs]})
-    EMIT("info", text="  (step limit reached)")
+    EMIT("step_limit", text="  (step limit reached: %d steps; say 'continue' to let it go on)" % MAX_STEPS, steps=MAX_STEPS)
 
 
 def main():

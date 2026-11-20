@@ -189,6 +189,13 @@ function handle(ev){
       col.appendChild(a);asks[ev.cid]={a,ok,no};scrollDown(true);break}
     case "confirm_done":{const k=asks[ev.cid];if(k){k.ok.disabled=k.no.disabled=true;k.a.appendChild(el("div","note",ev.allow?"Đã cho phép.":"Đã từ chối."));delete asks[ev.cid]}break}
     case "info":{addNote(ev.text.trim());break}
+    case "step_limit":{
+      clearEmpty();cur=null;
+      const n=el("div","ask");n.appendChild(el("b",null,"Đã dùng hết "+ev.steps+" bước cho một yêu cầu. "));
+      n.appendChild(document.createTextNode("Agent chưa kịp báo kết quả cuối. Việc đã làm trong SolidWorks vẫn còn nguyên."));
+      const row=el("div","row");const go=el("button","primary","Tiếp tục");
+      go.onclick=()=>{go.disabled=true;$("inp").value="Tiếp tục hoàn thành yêu cầu trước: kiểm tra lại kết quả, mở view cho tôi xem và tóm tắt ngắn.";send()};
+      row.appendChild(go);n.appendChild(row);col.appendChild(n);scrollDown(true);break}
     case "error":{if(cur){cur.body.classList.remove("cursor");cur=null}addNote("Lỗi: "+ev.text,true);break}
     case "reset":{col.textContent="";cur=null;tools=[];asks={};emptyState();break}
     case "done":{if(cur){cur.body.classList.remove("cursor");cur=null}break}
