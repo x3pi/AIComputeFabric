@@ -256,7 +256,13 @@ def ask(req, cfg=None):
     cfg = cfg or {}
     mode = cfg.get("mode", "dryrun")
     try:
-        text, rep = sanitize(req, cfg)
+        if cfg.get("sanitize") == "off":      # explicit opt-out: the text goes as written (still length-capped and audited)
+            q = str(req.get("question", "")) if isinstance(req, dict) else str(req)
+            if len(q) > 16000:
+                raise Blocked("request too long (%d)" % len(q))
+            text, rep = "KIND: %s\nAPI: %s\nERROR CLASS: %s\nQUESTION: %s" % (req.get("kind", ""), ", ".join(req.get("api_names") or []), req.get("error_class", ""), q), {"sanitize": "off"}
+        else:
+            text, rep = sanitize(req, cfg)
         if cfg.get("reviewer", "off") == "local":
             try:
                 if review_local(text, cfg):

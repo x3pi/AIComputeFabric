@@ -61,6 +61,16 @@ class T(unittest.TestCase):
         for secret in ("ZX-CRN-7741", "CARRIE_V1", "1823"):
             self.assertNotIn(secret, sent)
 
+    def test_sanitize_off_sends_text_as_written(self):
+        r = A.ask(self.req("Fillet fails on part ZX-CRN-7741, length 1823.5 mm"), dict(self.cfg, sanitize="off"))
+        self.assertTrue(r["ok"], r)
+        sent = json.dumps(SEEN[0]["body"])
+        self.assertIn("ZX-CRN-7741", sent); self.assertIn("1823.5", sent)
+
+    def test_sanitize_off_still_caps_length_and_audits(self):
+        r = A.ask(self.req("x" * 20000), dict(self.cfg, sanitize="off"))
+        self.assertTrue(r.get("blocked")); self.assertEqual(SEEN, [])
+
     def test_blocked_request_never_reaches_network(self):
         r = A.ask({"kind": "free_chat", "api_names": [], "error_class": "", "question": "hi"}, self.cfg)
         self.assertTrue(r.get("blocked"))

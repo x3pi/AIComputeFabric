@@ -355,7 +355,7 @@ def main():
     if a != "off":
         if not isinstance(a, dict) or a.get("mode") not in ("dryrun", "api", "anthropic", "codex_cli"):
             sys.exit("advisor must be 'off' or an object with mode dryrun|api|anthropic|codex_cli")
-        if a["mode"] != "dryrun" and not a.get("denylist"):
+        if a["mode"] != "dryrun" and not a.get("denylist") and a.get("sanitize") != "off":
             sys.exit("advisor mode %s needs a non-empty denylist (project/customer/part-number terms)" % a["mode"])
         ADV.update(a)
     WORK = job.get("workdir") or os.path.join(aicfconf.data_dir(CFG), "jobs", job["id"])
