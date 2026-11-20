@@ -31,6 +31,16 @@ STATIC = {"/chat.html", "/common.css", "/common.js", "/chat.js", "/favicon.ico",
 # and stops refusing admin credentials. Delete the file to close it again (takes effect on the next request, no restart).
 ADMIN_FLAG = Path(__file__).with_name("admin_remote.enabled")
 MAX_BODY = 32 * 1024 * 1024  # base64 images in chat requests
+
+# Optional news routing (enabled only when AICF_NEWS_ROUTER=1): chat requests that ask for news get fresh articles from the Langflow retrieval
+# flow put into their system context. Any failure here leaves the request exactly as the client sent it. See deploy/news-router in poly-agent.
+NEWS = None
+if os.environ.get("AICF_NEWS_ROUTER") == "1":
+    try:
+        import aicf_tools as NEWS  # sibling files: aicf_tools.py, aicf_tool_defs.py, news_router.py
+    except Exception as _e:  # noqa: BLE001
+        sys.stderr.write("news router disabled: %s: %s\n" % (type(_e).__name__, _e))
+        NEWS = None
 LOGIN_PATHS = {"/api/auth/login", "/api/serverless/v1/auth/login"}  # where an admin user name is refused
 
 # (method, exact path or compiled regex)
@@ -232,7 +242,17 @@ class Handler(BaseHTTPRequestHandler):
             if any(t.casefold() in n for n in norm for t in self.secrets) or (path in LOGIN_PATHS and any(n == u.casefold() for n in norm for u in self.admin_users)):
                 return self._deny(403, "Tài khoản/token quản trị không dùng được qua cổng LAN này.")
 
+        news_hdr, footer = None, None
+        if NEWS is not None and self.command == "POST" and path == "/v1/chat/completions" and body:
+            try:
+                body, news_hdr, footer = NEWS.process(body, self.headers.get("Authorization") or "")
+            except Exception:  # noqa: BLE001 - never let the tools hook break chat
+                news_hdr, footer = None, None
         headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP and k.lower() != "host"}
+        if body:
+            for k in [k for k in headers if k.lower() == "content-length"]:
+                del headers[k]
+            headers["Content-Length"] = str(len(body))  # the body may have been rewritten by the news hook
         headers["Host"] = self.headers.get("Host") or f"{upstream[0]}:{upstream[1]}"
         headers["X-Forwarded-For"] = self.client_address[0]
         conn = http.client.HTTPConnection(*upstream, timeout=600)
@@ -249,13 +269,23 @@ class Handler(BaseHTTPRequestHandler):
                 if k.lower() in HOP or k.lower() == "content-length":
                     continue
                 self.send_header(k, v)
+            for hk, hv in (news_hdr or {}).items():
+                self.send_header(hk, hv)
+            ctype = (resp.getheader("Content-Type") or "").lower()
+            if footer and resp.status != 200:
+                footer = None
             head_only = self.command == "HEAD" or resp.status in (204, 304)
             if head_only:
                 if clen is not None:
                     self.send_header("Content-Length", clen)
                 self.end_headers()
                 return
-            if clen is not None:
+            if clen is not None and footer and "json" in ctype:  # tools footer: rewrite the (small) JSON answer, so the length changes
+                data = NEWS.append_footer_json(resp.read(), footer)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            elif clen is not None:
                 self.send_header("Content-Length", clen)
                 self.end_headers()
                 while True:
@@ -266,9 +296,16 @@ class Handler(BaseHTTPRequestHandler):
             else:  # streaming (SSE): relay as chunked, flush every piece
                 self.send_header("Transfer-Encoding", "chunked")
                 self.end_headers()
+                sse = NEWS.SSEFooter(footer) if footer and "event-stream" in ctype else None
                 while True:
                     chunk = resp.read1(65536) if hasattr(resp, "read1") else resp.read(4096)
+                    if sse is not None:
+                        chunk = sse.feed(chunk) if chunk else sse.finish()
                     if not chunk:
+                        if sse is not None:
+                            tail = sse.finish()
+                            if tail:
+                                self.wfile.write(b"%x\r\n" % len(tail) + tail + b"\r\n")
                         break
                     self.wfile.write(b"%x\r\n" % len(chunk) + chunk + b"\r\n")
                     self.wfile.flush()
@@ -336,6 +373,7 @@ def make_tls_server(host: str, port: int, cert: str, key: str) -> ThreadingHTTPS
 
 
 def main() -> None:
+    global NEWS
     ap = argparse.ArgumentParser()
     ap.add_argument("--listen", required=True, help="ip:port to bind (use the LAN IP, not 0.0.0.0)")
     ap.add_argument("--upstream", default="127.0.0.1:18080")
@@ -348,6 +386,13 @@ def main() -> None:
     host, port = a.listen.rsplit(":", 1)
     uh, up = a.upstream.rsplit(":", 1)
     Handler.upstream = (uh, int(up))
+    if NEWS is not None:
+        try:
+            NEWS.configure_from_env((uh, int(up)))
+            print("news routing ON (Langflow %s)" % NEWS.Config.langflow, flush=True)
+        except Exception as e:  # noqa: BLE001
+            print("news routing OFF: %s: %s" % (type(e).__name__, e), flush=True)
+            NEWS = None
     secrets = [os.environ.get("AICF_ADMIN_TOKEN", "demo-admin-token")]
     users = [os.environ.get("AICF_ADMIN_USER", "")]
     if a.gateway_pid:
