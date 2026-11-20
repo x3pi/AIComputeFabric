@@ -3,13 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="${1:-$(date +%Y.%m.%d)}"
-python3 -m py_compile aicfconf.py sw_agent.py job_runner.py advisor.py doctor.py
+python3 -m py_compile aicfconf.py sw_agent.py job_runner.py advisor.py doctor.py ui_server.py
 python3 test_aicfconf.py >/dev/null 2>&1 || { echo "test_aicfconf failed"; exit 1; }
 python3 canary_test.py >/dev/null 2>&1 || { echo "canary_test failed (data-leak filter regression)"; exit 1; }
 # secrets must never ship
 for f in key.txt api.key config.json audit.jsonl advisor_audit.jsonl state.json; do [ -e "$f" ] && echo "note: $f present locally, NOT packaged"; done
 OUT="dist/aicf-cad-agent-$VERSION"; rm -rf "$OUT" "$OUT.zip"; mkdir -p "$OUT/installer" "$OUT/jobs"
-cp aicfconf.py sw_agent.py job_runner.py advisor.py doctor.py canary_test.py test_aicfconf.py "$OUT/"
+cp aicfconf.py sw_agent.py job_runner.py advisor.py doctor.py ui_server.py ui_page.html canary_test.py test_aicfconf.py "$OUT/"
 cp installer/install.ps1 installer/uninstall.ps1 installer/README.txt "$OUT/installer/"
 cp jobs/*.json "$OUT/jobs/"
 echo "$VERSION" > "$OUT/VERSION"

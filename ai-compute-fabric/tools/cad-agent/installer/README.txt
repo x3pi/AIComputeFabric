@@ -17,7 +17,10 @@ Install
   3. The installer ends with a self-check. Every line must be PASS (SolidWorks "running" may be WARN until you start it).
 
 Use
-  * Interactive:  %LOCALAPPDATA%\AICF-CAD\app\aicf-cad-chat.cmd
+  * Chat in Chrome (recommended): %LOCALAPPDATA%\AICF-CAD\app\aicf-cad-ui.cmd
+      A window opens and Chrome shows the chat: streamed replies, every SolidWorks step as a card, screenshots, and
+      Allow/Deny buttons for save/export/delete. Keep the black window open while you work; close it to stop.
+  * Text console chat: %LOCALAPPDATA%\AICF-CAD\app\aicf-cad-chat.cmd
   * Unattended:   %LOCALAPPDATA%\AICF-CAD\app\aicf-cad-job.cmd job.json
       - SolidWorks must be OPEN and responsive first; the Windows session must stay logged in (disconnecting RDP is fine,
         signing out is not). Job outputs, audit logs and REPORT.md go to %LOCALAPPDATA%\AICF-CAD\data.

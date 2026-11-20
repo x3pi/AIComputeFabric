@@ -43,7 +43,7 @@ function Fail($m) { Write-Host ("FAILED: " + $m) -ForegroundColor Red; Stop-Tran
 Step "Checking this PC"
 if ([Environment]::OSVersion.Version.Major -lt 10) { Fail "Windows 10 or newer is required" }
 if ($PSVersionTable.PSVersion.Major -lt 5) { Fail "PowerShell 5.1 or newer is required" }
-foreach ($f in "sw_agent.py","job_runner.py","advisor.py","aicfconf.py","doctor.py") {
+foreach ($f in "sw_agent.py","job_runner.py","advisor.py","aicfconf.py","doctor.py","ui_server.py","ui_page.html") {
   if (-not (Test-Path (Join-Path $src $f))) { Fail "package file missing: $f (run install.ps1 from the unpacked package)" }
 }
 $sw = $null
@@ -101,7 +101,7 @@ $mcp = Join-Path $venv "Scripts\solidworks-mcp.exe"
 if (-not (Test-Path $mcp)) { Fail "solidworks-mcp.exe missing after install" }
 
 Step "Copying the agent"
-foreach ($f in "sw_agent.py","job_runner.py","advisor.py","aicfconf.py","doctor.py","canary_test.py","test_aicfconf.py") {
+foreach ($f in "sw_agent.py","job_runner.py","advisor.py","aicfconf.py","doctor.py","ui_server.py","ui_page.html","canary_test.py","test_aicfconf.py") {
   if (Test-Path (Join-Path $src $f)) { Copy-Item -Force (Join-Path $src $f) $InstallDir }
 }
 if (Test-Path (Join-Path $src "jobs")) { Copy-Item -Recurse -Force (Join-Path $src "jobs") $InstallDir }
@@ -123,9 +123,11 @@ if ($sw) { $cfg["sw_exe"] = $sw }
 Step "Launchers"
 $l1 = '@echo off' + "`r`n" + '"' + $py + '" "' + (Join-Path $InstallDir "sw_agent.py") + '" %*' + "`r`n"
 $l2 = '@echo off' + "`r`n" + '"' + $py + '" -X utf8 "' + (Join-Path $InstallDir "job_runner.py") + '" %*' + "`r`n"
+$l4 = '@echo off' + "`r`n" + '"' + $py + '" -X utf8 "' + (Join-Path $InstallDir "ui_server.py") + '" %*' + "`r`n" + 'pause' + "`r`n"
 $l3 = '@echo off' + "`r`n" + '"' + $py + '" -X utf8 "' + (Join-Path $InstallDir "doctor.py") + '" %*' + "`r`n" + 'pause' + "`r`n"
 Set-Content -Path (Join-Path $InstallDir "aicf-cad-chat.cmd") -Value $l1 -Encoding ASCII
 Set-Content -Path (Join-Path $InstallDir "aicf-cad-job.cmd") -Value $l2 -Encoding ASCII
+Set-Content -Path (Join-Path $InstallDir "aicf-cad-ui.cmd") -Value $l4 -Encoding ASCII
 Set-Content -Path (Join-Path $InstallDir "aicf-cad-doctor.cmd") -Value $l3 -Encoding ASCII
 
 if (-not $SkipDoctor) {
@@ -135,7 +137,8 @@ if (-not $SkipDoctor) {
 
 Stop-Transcript | Out-Null
 Write-Host "`nInstalled to $InstallDir (data: $DataDir). Install log: $log"
-Write-Host "Run:   $InstallDir\aicf-cad-chat.cmd        (interactive)"
+Write-Host "Run:   $InstallDir\aicf-cad-ui.cmd          (chat in Chrome, recommended)"
+Write-Host "       $InstallDir\aicf-cad-chat.cmd        (text console chat)"
 Write-Host "       $InstallDir\aicf-cad-job.cmd job.json (unattended job)"
 Write-Host "       $InstallDir\aicf-cad-doctor.cmd       (re-check)"
 if ($docExit -ne 0) { Write-Host "The self-check reported FAIL lines above: fix them before use." -ForegroundColor Red; exit 2 }

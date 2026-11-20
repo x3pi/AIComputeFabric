@@ -40,6 +40,26 @@ ALLOW = {
 # Need an explicit y/N from the person at the console (destructive or writes outside memory).
 CONFIRM = {"delete_feature", "save_part", "export", "close_part", "open_part", "delete_component", "delete_mate", "make_drawing"}
 
+# ---- front-end hooks: the console below is the default; ui_server.py replaces them to drive a web page -------------------
+def _console_emit(kind, **kw):
+    if kind == "text":
+        print(kw["text"], end="", flush=True)
+    elif kind == "text_end":
+        print(flush=True)
+    elif kind == "info":
+        print(kw["text"], flush=True)
+    elif kind == "tool_call":
+        print(f"  [solidworks] {kw['name']}({json.dumps(kw['args'], ensure_ascii=False)[:160]})", flush=True)
+
+
+def _console_confirm(name, args):
+    return input(f"  ?? model wants {name}({json.dumps(args, ensure_ascii=False)[:200]}) - allow? [y/N] ").strip().lower() == "y"
+
+
+EMIT = _console_emit              # EMIT(kind, **data): text | think | text_end | info | tool_call | tool_result | usage
+CONFIRM_FN = _console_confirm     # CONFIRM_FN(name, args) -> bool
+SHOULD_STOP = lambda: False       # polled between steps; True aborts the turn
+
 env = dict(os.environ, PYTHONIOENCODING="utf-8", DISABLE_TELEMETRY="1", MCP_DISABLE_TELEMETRY="1")
 srv = subprocess.Popen([MCP_EXE], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
                        encoding="utf-8", env=env)
@@ -131,7 +151,7 @@ def llm(messages):
             if e.code not in (429, 502, 503) or attempt == 9:
                 raise RuntimeError(f"LLM HTTP {e.code}: {msg!r}")
             wait = int(e.headers.get("Retry-After") or 5) + 2 * attempt
-            print(f"  (server busy, HTTP {e.code}; retry in {wait}s)", flush=True)
+            EMIT("info", text=f"  (server busy, HTTP {e.code}; retry in {wait}s)")
             time.sleep(wait)
     content, calls = "", {}
     with r:
@@ -143,16 +163,19 @@ def llm(messages):
             if not ch:
                 continue
             d = ch[0].get("delta", {})
+            rt = d.get("reasoning_content") or d.get("reasoning") or ""
+            if rt:
+                EMIT("think", text=rt)
             t = d.get("content") or ""
             if t:
                 content += t
-                print(t, end="", flush=True)
+                EMIT("text", text=t)
             for tc in d.get("tool_calls") or []:
                 c = calls.setdefault(tc.get("index", 0), {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
                 c["id"] = tc.get("id") or c["id"]
                 c["function"]["name"] += tc.get("function", {}).get("name") or ""
                 c["function"]["arguments"] += tc.get("function", {}).get("arguments") or ""
-    print(flush=True)
+    EMIT("text_end")
     msg = {"role": "assistant", "content": content}
     if calls:
         msg["tool_calls"] = [calls[k] for k in sorted(calls)]
@@ -172,8 +195,7 @@ def run_tool(name, args):
     if name not in ALLOW:
         return f"ERROR: tool {name} is not allowed", []
     if name in CONFIRM:
-        ans = input(f"  ?? model wants {name}({json.dumps(args, ensure_ascii=False)[:200]}) - allow? [y/N] ").strip().lower()
-        if ans != "y":
+        if not CONFIRM_FN(name, args):
             audit("denied", tool=name, args=args)
             return "DENIED by the user. Do not retry; continue without it.", []
     out, imgs = mcp_call(name, args)
@@ -183,6 +205,9 @@ def run_tool(name, args):
 
 def turn(msgs):
     for _ in range(MAX_STEPS):
+        if SHOULD_STOP():
+            EMIT("info", text="  (stopped by the user)")
+            return
         trim_images(msgs)
         m = llm(msgs)
         msgs.append({k: v for k, v in m.items() if k in ("role", "content", "tool_calls")})
@@ -197,14 +222,18 @@ def turn(msgs):
             except Exception as e:
                 msgs.append({"role": "tool", "tool_call_id": c["id"], "content": f"ERROR: bad JSON arguments ({e}); resend with valid JSON."})
                 continue
-            print(f"  [solidworks] {name}({json.dumps(args, ensure_ascii=False)[:160]})", flush=True)
+            if SHOULD_STOP():
+                msgs.append({"role": "tool", "tool_call_id": c["id"], "content": "Skipped: the user pressed stop."})
+                continue
+            EMIT("tool_call", name=name, args=args)
             out, imgs = run_tool(name, args)
+            EMIT("tool_result", name=name, result=out, images=imgs)
             msgs.append({"role": "tool", "tool_call_id": c["id"], "content": out[:MAX_TOOL_CHARS] or "(no output)"})
             pending_imgs += imgs
         if pending_imgs:
             msgs.append({"role": "user", "content": [{"type": "text", "text": "Screenshot(s) from SolidWorks:"}] +
                          [{"type": "image_url", "image_url": {"url": u}} for u in pending_imgs]})
-    print("  (step limit reached)", flush=True)
+    EMIT("info", text="  (step limit reached)")
 
 
 def main():
