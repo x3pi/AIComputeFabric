@@ -76,7 +76,10 @@ def _qwen_advice(q, thinking):
     for attempt in range(6):
         try:
             d = json.loads(urllib.request.urlopen(req, timeout=900).read())
-            return (d["choices"][0]["message"].get("content") or "").strip(), ""
+            text = (d["choices"][0]["message"].get("content") or "").strip()
+            if not text and thinking:                      # all tokens went into the reasoning: ask again without thinking rather than return nothing
+                return _qwen_advice(q, False)
+            return text, ""
         except urllib.error.HTTPError as e:
             if e.code not in (429, 502, 503) or attempt == 5:
                 return "", "advisor HTTP %d" % e.code
