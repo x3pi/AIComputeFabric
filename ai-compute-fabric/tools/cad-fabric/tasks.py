@@ -18,6 +18,24 @@ TASKS = {
     "pocket": {
         "text": "Tao part moi: tam 80 x 50 x 10 mm. Khoet mot tui chu nhat 40 x 10 mm sau 5 mm o chinh giua mat tren (khong xuyen thung). Cuoi cung bao cao the tich.",
         "ref": "result = cq.Workplane('XY').box(80,50,10).faces('>Z').workplane().rect(40,10).cutBlind(-5)", "tol": 0.002, "analytic": 80 * 50 * 10 - 40 * 10 * 5},
+    "bolt_circle_plate": {
+        "text": "Tao part moi: tam tron duong kinh 100 mm, day 10 mm. Khoan 6 lo xuyen duong kinh 8 mm, chia deu tren vong tron duong kinh 70 mm cung tam voi tam. Cuoi cung bao cao the tich.",
+        "ref": "result = cq.Workplane('XY').circle(50).extrude(10).faces('>Z').workplane().polarArray(35, 0, 360, 6).hole(8)",
+        "tol": 0.002, "analytic": math.pi * 2500 * 10 - 6 * math.pi * 16 * 10},
+    "rounded_block": {
+        "text": "Tao part moi: khoi 40 x 30 x 20 mm (cao 20 mm). Bo tron ban kinh 5 mm ca 4 canh dung (4 canh song song chieu cao 20 mm). Cuoi cung bao cao the tich.",
+        "ref": "result = cq.Workplane('XY').box(40, 30, 20).edges('|Z').fillet(5)", "tol": 0.002, "analytic": (40 * 30 - (4 - math.pi) * 25) * 20},
+    "open_box": {
+        "text": "Tao part moi: hop chu nhat 60 x 40 x 30 mm (cao 30 mm), rong ruot, thanh va day deu day 2 mm, mo mat tren. Cuoi cung bao cao the tich.",
+        "ref": "result = cq.Workplane('XY').box(60, 40, 30).faces('>Z').shell(-2)", "tol": 0.002, "analytic": 60 * 40 * 30 - 56 * 36 * 28},
+    "keyway_shaft": {
+        "text": "Tao part moi: truc tron duong kinh 20 mm, dai 50 mm. O mot dau truc khoet mot ranh then: day ranh phang, nam cach duong tam truc 7 mm, ranh rong 6 mm (doi xung hai ben mat phang di qua truc), dai 20 mm tinh tu mat dau, mo ra mat dau va mat ben (chi bo phan truc nam xa tam hon day ranh, trong be rong 6 mm). Cuoi cung bao cao the tich.",
+        "ref": "shaft = cq.Workplane('XY').circle(10).extrude(50)\ncutter = cq.Workplane('XY').box(15, 6, 20, centered=(False, True, False)).translate((7, 0, 30))\nresult = shaft.cut(cutter)",
+        "tol": 0.002, "analytic": None},
+    "flange_tube": {
+        "text": "Tao part moi: ong co bich. Ong tru ngoai duong kinh 40 mm, cao 40 mm, long ong duong kinh 30 mm xuyen suot. O chan ong co bich tron duong kinh 80 mm day 5 mm (cung truc, long cung xuyen suot). Tren bich khoan 4 lo xuyen duong kinh 6 mm chia deu tren vong tron duong kinh 60 mm. Cuoi cung bao cao the tich.",
+        "ref": "a = cq.Workplane('XY').circle(40).extrude(5).union(cq.Workplane('XY').circle(20).extrude(40))\na = a.cut(cq.Workplane('XY').circle(15).extrude(40))\nholes = cq.Workplane('XY').polarArray(30, 0, 360, 4).circle(3).extrude(5)\nresult = a.cut(holes)",
+        "tol": 0.002, "analytic": math.pi * (1600 - 225) * 5 + math.pi * (400 - 225) * 35 - 4 * math.pi * 9 * 5},
 }
 
 

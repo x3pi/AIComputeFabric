@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cadfabric"
+version = "0.1.0"
+description = "Backend-agnostic CAD agent: a local LLM writes CadQuery, the kernel measures every step, formulas from a planner verify the result"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["cadquery>=2.4"]
+
+[project.scripts]
+cadfabric = "cadfabric.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
