@@ -158,8 +158,10 @@ def eff_mode(kind, n=0):
 # ---- advisor architecture: (1) plan first, (2) numbers checked by CODE, (3) review before "done" ------------------------
 PLAN, REQUEST, gates_used = None, "", 0
 GATE_MAX = 2          # failed final checks per request before the agent may report anyway
-VOL_TOL = 0.005       # relative tolerance for the final volume
-BBOX_TOL_MM = 0.5
+# Measured on 21 passing runs: CAD volumes match the exact answer to 2e-6 relative or better, so 1e-4 leaves a wide margin for rounding in the
+# advisor's arithmetic and still rejects a real geometric error (e.g. a 0.4% volume miss). Override with AICF_VOL_TOL / AICF_BBOX_TOL_MM.
+VOL_TOL = float(os.environ.get("AICF_VOL_TOL") or 1e-4)
+BBOX_TOL_MM = float(os.environ.get("AICF_BBOX_TOL_MM") or 0.05)
 PLAN_PROMPT = (
     "You are planning a CAD job that a smaller model will carry out through the tools listed below. Read the USER REQUEST and reply with ONE JSON "
     "object and nothing else:\n"
