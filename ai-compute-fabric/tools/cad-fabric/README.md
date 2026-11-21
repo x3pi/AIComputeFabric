@@ -24,7 +24,9 @@ Trong **Cài đặt → + Thêm cố vấn** có hai loại, đều chỉ nhận
 | Loại | Điền | Ghi chú |
 |---|---|---|
 | **API (URL)** | kiểu `OpenAI-compatible` hoặc `Anthropic`, URL, model, khoá | khoá lưu file riêng `key-<id>.txt` (0600), không vào JSON; URL ở mạng LAN thì mặc định không tính là "gửi ra ngoài" |
-| **CLI** | chọn `Claude Code`, `Codex` (ứng dụng báo đã thấy chương trình ở đâu) hoặc lệnh tự đặt | chạy không qua shell, trong thư mục tạm rỗng, lời nhắc qua stdin (hoặc tham số `{prompt}`) |
+| **CLI** | chọn `Claude Code`, `Codex` (ứng dụng báo đã thấy chương trình ở đâu) hoặc lệnh tự đặt; với Claude/Codex chọn thêm **model** (yếu/nhanh như `haiku`, hay mạnh như `opus`) và **mức suy nghĩ** (`--effort` của Claude: low…max; `model_reasoning_effort` của Codex: low/medium/high) | chạy không qua shell, trong thư mục tạm rỗng, lời nhắc qua stdin (hoặc tham số `{prompt}`) |
+
+Với cố vấn API, ô Model chọn model của dịch vụ đó. Đã đo thật với Claude CLI: `haiku` 3,6 s, `sonnet` 2,6 s, `opus` (effort low) 3,8 s, model sai cho lỗi đọc được.
 
 Mỗi cố vấn có nút **Kiểm tra** (hỏi một câu vô hại và báo kết quả + số giây), cờ "gửi ra ngoài" (hỏi xác nhận mỗi lần dùng) và nút Sửa/Xoá. Xoá một cố vấn cũng xoá file khoá của nó. Nếu cố vấn lỗi giữa chừng, ứng dụng rơi về `nothink` (chạy ở máy chủ của bạn) và **ghi rõ điều đó** trong thẻ kế hoạch. Từ dòng lệnh: `cadfabric configure --advisor-cli claude`, `cadfabric run --planner claude-cli "..."`; cài hàng loạt: `install.ps1 -AdvisorCli claude -Planner claude-cli`.
 

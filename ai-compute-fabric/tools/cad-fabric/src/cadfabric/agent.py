@@ -17,6 +17,7 @@ Rules:
 - To drill through a curved wall, cut a cylinder placed where you want the hole and measure: do not assume the removed volume is a straight cylinder.
 - If a call returns an error or a HARNESS CHECK line, find the cause before continuing; do not repeat the same code with small changes.
 - Notes marked "HARNESS CHECK" come from the program, not from you. If you are certain a planned number is wrong, say so with the arithmetic instead of bending the part to it.
+- If the user asks to open / view / show the part in SolidWorks or another CAD program, call `open_in_viewer()` (it exports STEP and opens the user's CAD program). Only say it was opened if the tool result starts with OK, and name the program the result names (not the one the user mentioned); otherwise report the error. Do not call it unless the user asked.
 - When the part is finished, reply briefly in the user's language: what you built, the dimensions, and the measured volume."""
 
 TOOLS = [
@@ -26,7 +27,11 @@ TOOLS = [
 ]
 
 
-def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None):
+OPEN_TOOL = {"type": "function", "function": {"name": "open_in_viewer", "description": "Export the current part to STEP and open it in the user's desktop CAD program (e.g. SolidWorks). Only when the user asks to view/open it.",
+                                              "parameters": {"type": "object", "properties": {}}}}
+
+
+def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None):
     """-> dict: ok, final text, final measure, steps, checks, warnings, plan. plan_mode: off | nothink | think | codex | codex-relay. `planner(request)->(spec, raw)` overrides."""
     t0 = time.time()
     ev = on_event or (lambda kind, **kw: None)         # structured events for a UI: plan, cell, gate
@@ -58,7 +63,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
             stopped = True
             break
         ev("phase", what="llm", step=step + 1)
-        m = llm.chat(msgs, tools=TOOLS, think=False)
+        m = llm.chat(msgs, tools=TOOLS + ([OPEN_TOOL] if opener else []), think=False)
         tokens += (m.pop("_usage", {}) or {}).get("completion_tokens", 0)
         msgs.append(m)
         calls = m.get("tool_calls") or []
@@ -94,6 +99,15 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                     log("    " + chk[:200])
                 ev("cell", n=len(trace), code=str(args.get("code", ""))[:4000], ok=res.ok, error=res.error[:400], output=res.output.strip()[:300],
                    volume=res.measure.volume if res.measure else None, check=chk)
+            elif name == "open_in_viewer" and opener:
+                if not backend.measure():
+                    text = "ERROR: there is no part to open yet"
+                else:
+                    r = opener()
+                    text = ("OK: " if r.get("ok") else "ERROR: ") + r.get("detail", "") + (" (file: %s)" % r["path"] if r.get("path") else "")
+                    ev("open", ok=bool(r.get("ok")), viewer=r.get("viewer", ""), detail=r.get("detail", ""), path=r.get("path", ""))
+                trace.append({"tool": name, "ok": text.startswith("OK")})
+                log("  open_in_viewer: " + text[:120])
             elif name == "undo":
                 ok = backend.undo(); mm = backend.measure()
                 text = ("undone" if ok else "nothing to undo") + ("\nMEASURE: " + mm.text() if mm else "")

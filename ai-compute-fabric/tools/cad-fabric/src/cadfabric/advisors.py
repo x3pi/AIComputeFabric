@@ -10,11 +10,17 @@ BUILTIN = ("off", "nothink", "think", "codex", "codex-relay")
 BUILTIN_LABELS = {"off": "Không cố vấn", "nothink": "Qwen lập kế hoạch (nhanh)", "think": "Qwen suy nghĩ sâu (chậm)", "codex": "Codex trên máy này", "codex-relay": "Codex trên máy khác (ssh)"}
 BUILTIN_EXTERNAL = ("codex", "codex-relay")
 
+# model_flag / effort_flag: how the CLI takes a model and a reasoning effort (checked against `codex exec --help` and `claude --help`).
+# `at`: where the extra flags go (codex needs the final "-" to stay last, so they go right after "exec").
 CLI_PRESETS = {
-    "codex": {"label": "Codex CLI", "exe": "codex", "args": ["exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "-C", "{cwd}", "-"]},
+    "codex": {"label": "Codex CLI", "exe": "codex", "args": ["exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "-C", "{cwd}", "-"],
+              "model_flag": ["-m"], "effort_flag": lambda e: ["-c", 'model_reasoning_effort="%s"' % e], "efforts": ("low", "medium", "high"), "at": 1, "models": ()},
     "claude": {"label": "Claude Code CLI", "exe": "claude", "args": ["-p", "--tools", "", "--no-session-persistence", "--disable-slash-commands", "--strict-mcp-config",
-                                                                      "--output-format", "text"]},
+                                                                      "--output-format", "text"],
+               "model_flag": ["--model"], "effort_flag": lambda e: ["--effort", e], "efforts": ("low", "medium", "high", "xhigh", "max"), "at": None,
+               "models": ("haiku", "sonnet", "opus")},
 }
+_MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@\-]{0,79}$")
 API_KINDS = ("openai", "anthropic")
 PREFIX = ("You are an advisor for a CAD automation agent. Answer ONLY from the text below, in plain text, concisely. "
           "Do not run any command, do not read or write any file, do not browse.\n\n")
@@ -34,6 +40,11 @@ def find_exe(name, cfg=None):
             if os.path.isfile(c):
                 return c
     return None
+
+
+def presets_info():
+    """What the UI needs to build the model / effort pickers."""
+    return {k: {"label": v["label"], "efforts": list(v["efforts"]), "models": list(v["models"])} for k, v in CLI_PRESETS.items()}
 
 
 def detected(cfg=None):
@@ -78,6 +89,13 @@ def validate(a):
         if preset not in CLI_PRESETS and preset != "custom":
             return None, "unknown CLI preset"
         out["preset"] = preset
+        if preset != "custom":
+            model, effort = str(a.get("model", "") or "").strip(), str(a.get("effort", "") or "").strip()
+            if model and not _MODEL.match(model):
+                return None, "model name is not valid"
+            if effort and effort not in CLI_PRESETS[preset]["efforts"]:
+                return None, "effort must be one of: " + ", ".join(CLI_PRESETS[preset]["efforts"])
+            out.update({k: v for k, v in (("model", model), ("effort", effort)) if v})
         if preset == "custom":
             cmd = str(a.get("command", "")).strip()
             if not cmd or len(cmd) > 500 or re.search(r"[\x00\r\n]", cmd):
@@ -130,7 +148,7 @@ def meta(cfg):
     out = [{"id": b, "label": BUILTIN_LABELS[b], "external": b in BUILTIN_EXTERNAL, "builtin": True} for b in BUILTIN]
     for a in cfg.get("advisors") or []:
         d = {"id": a["id"], "label": a["label"], "external": bool(a.get("external")), "builtin": False, "type": a["type"]}
-        d.update({k: a[k] for k in ("kind", "url", "model", "preset", "command") if a.get(k)})
+        d.update({k: a[k] for k in ("kind", "url", "model", "effort", "preset", "command") if a.get(k)})
         d["has_key"] = bool(a.get("key_file") and os.path.isfile(os.path.expanduser(a["key_file"])))
         out.append(d)
     return out
@@ -192,7 +210,10 @@ def cli_argv(a, cfg, cwd):
         exe = find_exe(p["exe"], cfg)
         if not exe:
             raise RuntimeError("%s not found on this machine (install it and log in)" % p["label"])
-        return [exe] + [x.replace("{cwd}", cwd) for x in p["args"]], False
+        base = [x.replace("{cwd}", cwd) for x in p["args"]]
+        extra = (p["model_flag"] + [a["model"]] if a.get("model") else []) + (p["effort_flag"](a["effort"]) if a.get("effort") else [])
+        at = len(base) if p["at"] is None else p["at"]
+        return [exe] + base[:at] + extra + base[at:], False
     parts = shlex.split(a["command"], posix=(os.name != "nt"))
     exe = shutil.which(parts[0]) or (parts[0] if os.path.isfile(parts[0]) else None)
     if not exe:

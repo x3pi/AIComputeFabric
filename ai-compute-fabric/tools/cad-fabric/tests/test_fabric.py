@@ -156,6 +156,18 @@ class WorkerEnv(unittest.TestCase):
         self.assertEqual(sorted(e), ["APPDATA", "PATH", "SystemRoot", "USERPROFILE"])          # Windows env names are case-insensitive: SystemRoot must survive
 
 
+class WorkerProtocol(unittest.TestCase):
+    def test_c_level_stdout_noise_never_reaches_the_protocol(self):
+        import subprocess
+        from cadfabric import cq_backend
+        env = dict(cq_backend.worker_env(), CADFABRIC_TEST_NOISE="1")
+        p = subprocess.Popen([sys.executable, "-I", os.path.join(os.path.dirname(cq_backend.__file__), "worker.py")], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=env)
+        try:
+            p.stdin.write('{"op": "noise"}\n{"op": "ping"}\n'); p.stdin.flush()
+            self.assertEqual(json.loads(p.stdout.readline()), {"ok": True}); self.assertEqual(json.loads(p.stdout.readline()), {"ok": True})
+        finally: p.kill(); p.wait()
+
+
 class Events(unittest.TestCase):
     def test_plan_event_carries_the_advisors_pitfalls(self):
         b = CadQueryBackend(timeout=20); ev = []
@@ -389,6 +401,25 @@ class Advisors(unittest.TestCase):
         self.assertTrue(A.validate({"id": "l", "type": "api", "kind": "openai", "url": "http://192.168.1.5:1/v1"})[0]["external"] is False)    # private LAN: not external
         self.assertTrue(A.validate({"id": "p", "type": "api", "kind": "openai", "url": "https://api.example.com/v1"})[0]["external"])          # public host: external
 
+    def test_cli_model_and_effort(self):
+        import tempfile
+        from cadfabric import advisors as A
+        d = tempfile.mkdtemp(); fake = os.path.join(d, "claude"); open(fake, "w").write("#!/bin/sh\ncat >/dev/null; echo \"$@\"\n"); os.chmod(fake, 0o755)
+        old = os.environ["PATH"]; os.environ["PATH"] = d + os.pathsep + old
+        try:
+            t, e = A.ask({"type": "cli", "preset": "claude", "model": "haiku", "effort": "low"}, "q"); self.assertEqual(e, "")
+            self.assertIn("--model haiku", t); self.assertIn("--effort low", t); self.assertTrue(t.index("--output-format") < t.index("--model"))
+            t, e = A.ask({"type": "cli", "preset": "claude"}, "q"); self.assertNotIn("--model", t); self.assertNotIn("--effort", t)      # nothing added when unset
+        finally: os.environ["PATH"] = old
+        argv, _ = A.cli_argv({"preset": "codex", "model": "m1", "effort": "high"}, {"codex_bin": sys.executable}, "/w") if A.find_exe("codex", {"codex_bin": sys.executable}) else (None, 0)
+        if argv: self.assertEqual(argv[-1], "-"); self.assertEqual(argv[argv.index("-m") + 1], "m1"); self.assertIn('model_reasoning_effort="high"', argv)   # prompt marker stays last
+        ok = lambda a: A.validate(dict({"id": "x", "type": "cli"}, **a))[1] == ""
+        self.assertTrue(ok({"preset": "claude", "model": "claude-sonnet-4-5", "effort": "max"})); self.assertTrue(ok({"preset": "codex", "model": "gpt-5.1", "effort": "high"}))
+        for bad in ({"preset": "claude", "model": "-rm"}, {"preset": "claude", "model": "a b"}, {"preset": "claude", "model": 'x"y'}, {"preset": "claude", "effort": "ultra"}, {"preset": "codex", "effort": "max"}):
+            self.assertFalse(ok(bad), bad)
+        self.assertIn("haiku", A.presets_info()["claude"]["models"])
+        self.assertEqual(A.presets_info()["claude"]["efforts"], ["low", "medium", "high", "xhigh", "max"])
+
     def test_api_openai_and_anthropic_shapes_and_keys(self):
         from cadfabric import advisors as A
         def fn(path, h, body):
@@ -494,6 +525,79 @@ class AdvisorWeb(Settings):
             try: self.assertEqual(self.req("POST", "/api/advisor_test", {"advisor": a})[0], 403)
             finally: self.srv.sess.local = True
         finally: srv.shutdown()
+
+
+MARK_VIEWER = """import sys
+open(sys.argv[1], 'w').write(open(sys.argv[2], 'rb').read()[:20].decode('latin1'))
+"""
+
+
+class Viewers(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.d = tempfile.mkdtemp(); self.script = os.path.join(self.d, "viewer.py"); open(self.script, "w").write(MARK_VIEWER)
+        self.mark = os.path.join(self.d, "mark.txt"); self.step = os.path.join(self.d, "p.step"); open(self.step, "w").write("ISO-10303-21;\nHEADER;")
+        self.cfg = {"viewer": {"kind": "custom", "command": '"%s" "%s" "%s" {file}' % (sys.executable, self.script, self.mark)}}
+
+    def wait_mark(self):
+        for _ in range(50):
+            if os.path.exists(self.mark) and os.path.getsize(self.mark): return open(self.mark).read()
+            time.sleep(0.1)
+        return ""
+
+    def test_validate(self):
+        from cadfabric import viewers as W
+        self.assertEqual(W.validate({"kind": "solidworks"})[0], {"kind": "solidworks", "command": ""})
+        self.assertEqual(W.validate({})[0]["kind"], "auto")
+        for bad in ({"kind": "wat"}, {"kind": "custom"}, {"kind": "custom", "command": "--x"}, {"kind": "custom", "command": "a\nb"}):
+            self.assertTrue(W.validate(bad)[1], bad)
+
+    def test_custom_viewer_receives_the_step_file(self):
+        from cadfabric import viewers as W
+        r = W.open_file(self.step, self.cfg); self.assertTrue(r["ok"], r); self.assertIn("ISO-10303", self.wait_mark())
+        r = W.open_file(self.step, {"viewer": {"kind": "custom", "command": "definitely-not-a-program-xyz"}}); self.assertFalse(r["ok"]); self.assertIn("not found", r["detail"])
+        self.assertEqual(W.resolve({"viewer": {"kind": "solidworks"}})[0], "solidworks")
+        if os.name != "nt": self.assertEqual(W.resolve({})[0], "default")                                          # no SolidWorks off Windows: auto falls back
+        if os.name != "nt": self.assertFalse(W.open_file(self.step, {"viewer": {"kind": "solidworks"}})["ok"])
+
+    def test_agent_tool_is_offered_only_with_an_opener_and_reports_honestly(self):
+        seen = []
+        class L(FakeLLM):
+            def chat(self, messages, tools=None, **kw): seen.append([t["function"]["name"] for t in (tools or [])]); return FakeLLM.chat(self, messages, tools=tools, **kw)
+        b = CadQueryBackend(timeout=20); ev = []
+        try:
+            script = [[("execute_cadquery", {"code": CYL})], [("open_in_viewer", {})], "Đã mở."]
+            r = agent.run(L(script), b, "mo", plan_mode="off", log=lambda s: None, on_event=lambda k, **kw: ev.append((k, kw)), opener=lambda: {"ok": True, "detail": "sent to X", "viewer": "X", "path": "/p.step"})
+            self.assertIn("open_in_viewer", seen[0]); op = [kw for k, kw in ev if k == "open"][0]; self.assertEqual((op["ok"], op["viewer"], op["path"]), (True, "X", "/p.step"))
+            self.assertTrue(any("OK: sent to X" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))
+            seen.clear(); ev.clear()
+            r = agent.run(L(script), b, "mo", plan_mode="off", log=lambda s: None, on_event=lambda k, **kw: ev.append((k, kw)), opener=lambda: {"ok": False, "detail": "no viewer"})
+            self.assertTrue(any("ERROR: no viewer" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))       # the model sees the failure
+            seen.clear(); agent.run(L(["ok"]), b, "x", plan_mode="off", log=lambda s: None)
+            self.assertNotIn("open_in_viewer", seen[0])                                                                       # remote / no opener: tool not offered
+            b.reset(); r = agent.run(L([[("open_in_viewer", {})], "x"]), b, "mo", plan_mode="off", log=lambda s: None, opener=lambda: {"ok": True, "detail": "should not be called"})
+            self.assertTrue(any("no part to open" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))
+        finally: b.close()
+
+
+class ViewerWeb(Settings):
+    def test_open_endpoint_and_settings(self):
+        sess = self.srv.sess
+        self.assertEqual(self.req("POST", "/api/open", {})[0], 404)                                                    # no part yet
+        sess.backend.reset(); sess.backend.execute(CYL); sess.measure = sess.backend.measure().as_dict()
+        mark = os.path.join(self.dir, "m.txt"); sc = os.path.join(self.dir, "v.py"); open(sc, "w").write(MARK_VIEWER)
+        body = {"url": self.fake_url, "model": "q", "planner": "nothink", "viewer": {"kind": "custom", "command": '"%s" "%s" "%s" {file}' % (sys.executable, sc, mark)}}
+        self.assertEqual(self.req("POST", "/api/settings", body)[0], 200)
+        s, d = self.req("POST", "/api/open", {}); self.assertEqual(s, 200); self.assertTrue(d["ok"], d); self.assertTrue(d["path"].endswith(".step"))
+        for _ in range(60):
+            if os.path.exists(mark) and os.path.getsize(mark): break
+            time.sleep(0.1)
+        self.assertIn("ISO-10303", open(mark).read())                                                                  # a real STEP file reached the viewer
+        self.assertEqual(self.req("POST", "/api/settings", dict(body, viewer={"kind": "custom", "command": "--evil"}))[0], 400)
+        sess.local = False
+        try: self.assertEqual(self.req("POST", "/api/open", {})[0], 403)
+        finally: sess.local = True
+        s, d = self.req("GET", "/api/config"); self.assertEqual(d["viewer_label"], "chương trình tự đặt")
 
 
 if __name__ == "__main__":

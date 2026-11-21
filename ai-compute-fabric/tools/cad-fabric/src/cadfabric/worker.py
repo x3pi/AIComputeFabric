@@ -9,6 +9,10 @@ import ast, builtins, contextlib, io, json, math, os, sys, traceback
 
 _proto = os.fdopen(os.dup(1), "w", buffering=1, encoding="utf-8")
 os.dup2(2, 1)                                  # OCC and stray prints go to stderr, never into the protocol stream
+if os.name == "nt":                            # ...but on Windows OCCT writes to the Win32 standard handle, which dup2 does not change (STEP export corrupted the JSON line)
+    import ctypes, msvcrt
+    _nul = os.open(os.devnull, os.O_WRONLY)
+    ctypes.windll.kernel32.SetStdHandle(-11, msvcrt.get_osfhandle(_nul))
 try:
     import resource
     lim = int(float(os.environ.get("CADFABRIC_MEM_GB", "6")) * 2**30)
@@ -146,6 +150,8 @@ def handle(req):
             if "viewBox" not in svg[:400]:                       # CadQuery gives fixed width/height only; a viewBox lets the page scale the drawing
                 svg = re.sub(r"<svg\b", '<svg viewBox="0 0 640 440"', svg, count=1)
             return {"ok": True, "svg": svg}
+    elif op == "noise" and os.environ.get("CADFABRIC_TEST_NOISE"):           # test hook: write to fd 1 the way a C library would
+        os.write(1, b"NOISE FROM A C LIBRARY\n"); return {"ok": True}
     elif op == "ping":
         return {"ok": True}
     else:

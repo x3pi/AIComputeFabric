@@ -3,7 +3,7 @@ Security: binds 127.0.0.1 unless told otherwise; every request needs the access 
 the Host header must be one we serve (blocks DNS rebinding); Origin, when present, must match; request bodies are capped."""
 import hmac, http.server, json, os, re, secrets, socketserver, threading, time, urllib.parse
 from http import cookies
-from . import advisors, agent, config, llm as llm_mod
+from . import advisors, agent, config, llm as llm_mod, viewers
 from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
@@ -42,7 +42,8 @@ class Session:
     def _work(self, text, planner):
         try:
             r = agent.run(self.llm, self.backend, text, plan_mode=planner, log=lambda s: None, cfg=self.cfg,
-                          history=self.history, should_stop=lambda: self.stop, on_event=lambda kind, **kw: self.emit(kind, **kw))
+                          history=self.history, should_stop=lambda: self.stop, on_event=lambda kind, **kw: self.emit(kind, **kw),
+                          opener=(lambda: self.open_in_viewer()[1]) if self.local else None)
             self.history = r["history"]
             m = self.backend.measure()
             with self.lock:
@@ -65,6 +66,22 @@ class Session:
         self.cfg, self.llm = cfg, llm_mod.LLM(cfg)
         return path
 
+    def open_in_viewer(self):
+        """Export the part to <data dir>/exports and open it in the chosen CAD program. -> (http status, body)."""
+        if not self.measure:
+            return 404, {"error": "no part yet"}
+        d = os.path.join(config.data_dir(self.cfg), "exports"); os.makedirs(d, exist_ok=True)
+        p = os.path.join(d, "part-%s.step" % time.strftime("%Y%m%d-%H%M%S"))
+        try:
+            self.backend.export_step(p)
+        except Exception as e:                                                   # noqa: BLE001
+            return 500, {"error": "export failed: %s" % str(e)[:160]}
+        for old in sorted(os.listdir(d))[:-20]:                                   # keep the last 20 exports
+            try: os.unlink(os.path.join(d, old))
+            except OSError: pass
+        r = viewers.open_file(p, self.cfg); r["path"] = p
+        return 200, r
+
     def reset(self):
         with self.lock:
             if self.busy:
@@ -84,6 +101,7 @@ def public_settings(cfg):
     except SystemExit:
         has_key = False
     return {"url": cfg["url"], "model": cfg["model"], "planner": cfg["planner"], "relay": cfg.get("relay") or {}, "has_key": has_key, "advisors": advisors.meta(cfg),
+            "viewer": cfg.get("viewer") or {"kind": "auto", "command": ""}, "viewer_label": viewers.resolve(cfg)[1], "viewers_detected": viewers.detected(),
             "configured": bool(cfg.get("_path")), "config_path": cfg.get("_path") or config.user_config_path()}
 
 
@@ -135,7 +153,7 @@ def make_handler(sess, token, hosts, data_dir):
                 self._send(200, sess.state(int((q.get("since") or ["0"])[0] or 0)), extra=cookie)
             elif u.path == "/api/config":
                 self._send(200, {"planners": advisors.names(sess.cfg), "external": [n for n in advisors.names(sess.cfg) if advisors.is_external(sess.cfg, n)], "default": sess.cfg["planner"],
-                                 "advisors": advisors.meta(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "version": __import__("cadfabric").__version__,
+                                 "advisors": advisors.meta(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "cli_presets": advisors.presets_info(), "viewer_label": viewers.resolve(sess.cfg)[1], "version": __import__("cadfabric").__version__,
                                  "local": sess.local, "settings": public_settings(sess.cfg)})
             elif u.path == "/api/part.svg":
                 try:
@@ -176,13 +194,15 @@ def make_handler(sess, token, hosts, data_dir):
                     return self._send(409, {"error": "this planner sends your request to an external service; confirm_external is required"})
                 ok = sess.send(text, planner)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
                 if u.path == "/api/quit":
                     sess.quit = True; self._send(200, {"ok": True}); return
                 cur = sess.cfg
                 saved = {a["id"]: a for a in cur.get("advisors") or []}
+                if u.path == "/api/open":
+                    return self._send(*sess.open_in_viewer())
                 if u.path == "/api/advisor_test":
                     a, err = advisors.validate(dict(body.get("advisor") or {}))
                     if err:
@@ -195,7 +215,7 @@ def make_handler(sess, token, hosts, data_dir):
                     if isinstance(a, dict):
                         a.pop("key_file", None)                                               # the browser never chooses which file is read as a key
                 adv_in = body.get("advisors", [{k: v for k, v in a.items() if k != "key_file"} for a in saved.values()])
-                clean, err = config.validate_settings({"url": body.get("url", cur["url"]), "model": body.get("model", cur["model"]), "advisors": adv_in,
+                clean, err = config.validate_settings({"url": body.get("url", cur["url"]), "model": body.get("model", cur["model"]), "advisors": adv_in, "viewer": body.get("viewer", cur.get("viewer") or {}),
                                                        "planner": body.get("planner", cur["planner"]), "relay": body.get("relay", cur.get("relay") or {})})
                 if err:
                     return self._send(400, {"error": err})

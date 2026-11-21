@@ -64,6 +64,9 @@ if (-not (Test-Path (Join-Path $site 'pip'))) {
 }
 Run $py @('-m', 'pip', '--version')
 
+# an app that is running from this folder locks its own files: close it first (an upgrade must not fail half way)
+Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($Prefix, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force
+Start-Sleep -Milliseconds 800
 Step 'Installing cadfabric and CadQuery (offline)'
 Run $py @('-m', 'pip', 'install', '--no-index', '--find-links', (Join-Path $here 'wheelhouse'), '--no-warn-script-location', '--upgrade', 'cadfabric')
 

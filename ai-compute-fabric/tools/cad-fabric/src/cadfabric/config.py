@@ -7,7 +7,7 @@ Environment overrides: CADFABRIC_URL, CADFABRIC_MODEL, CADFABRIC_KEY (the key it
 import json, os, sys
 
 DEFAULTS = {"url": "http://127.0.0.1:18080/v1/chat/completions", "model": "", "key_file": None, "planner": "nothink",
-            "relay": {"host": "", "workdir": "", "codex": "codex"}, "codex_bin": None, "data_dir": None, "advisors": []}
+            "relay": {"host": "", "workdir": "", "codex": "codex"}, "codex_bin": None, "data_dir": None, "advisors": [], "viewer": {"kind": "auto", "command": ""}}
 PLANNERS = ("off", "nothink", "think", "codex", "codex-relay")
 
 
@@ -88,7 +88,12 @@ def validate_settings(s):
     if len(model) > 120 or re.search(r"[\s\"'<>]", model):
         return None, "model name is not valid"
     out["model"] = model
-    from . import advisors
+    from . import advisors, viewers
+    if "viewer" in s:
+        vw, err = viewers.validate(s.get("viewer"))
+        if err:
+            return None, err
+        out["viewer"] = vw
     if "advisors" in s:
         lst, err = advisors.validate_list(s.get("advisors"))
         if err:
@@ -117,7 +122,7 @@ def save_settings(clean, key=None, advisor_keys=None):
     if os.path.isfile(path):
         with open(path, encoding="utf-8-sig") as f:
             cur = json.load(f)
-    cur.update({k: v for k, v in clean.items() if k not in ("relay", "advisors")})
+    cur.update({k: v for k, v in clean.items() if k not in ("relay", "advisors")})              # viewer replaces the whole dict
     cur["relay"] = dict(cur.get("relay") or {}, **clean["relay"])
     if "advisors" in clean:
         cdir, old = os.path.dirname(path), {a["id"]: a for a in cur.get("advisors") or []}
