@@ -74,6 +74,7 @@ textarea{flex:1;border:0;outline:0;resize:none;background:transparent;color:var(
   <label class="tg" title="Cố vấn chỉ trả lời bằng chữ, không bao giờ tự sửa mô hình. Claude gửi nguyên văn câu hỏi ra ngoài máy; Qwen chạy trên máy."> Cố vấn
     <select id="adv"><option value="off">Tắt</option><option value="auto">Tự động (kế hoạch + kiểm tra số)</option><option value="claude">Claude (ngoài máy)</option><option value="qwen_think">Qwen suy nghĩ</option><option value="qwen_nothink">Qwen không suy nghĩ</option></select></label>
   <label class="tg" title="Hiện phần model suy nghĩ (chậm hơn, có thể chính xác hơn)"><input type="checkbox" id="think"> Suy nghĩ</label>
+  <button id="rbbtn" title="Bài học chung rút ra từ các lần agent bị kẹt. Chỉ bài học đã DUYỆT mới được đưa cho agent.">Sổ tay lỗi</button>
   <button id="stop" class="danger" disabled>Dừng</button>
   <button id="reset">Cuộc trò chuyện mới</button>
 </header>
@@ -191,7 +192,7 @@ function handle(ev){
       ok.onclick=()=>answer(true);no.onclick=()=>answer(false);row.append(ok,no);a.appendChild(row);
       col.appendChild(a);asks[ev.cid]={a,ok,no};scrollDown(true);break}
     case "confirm_done":{const k=asks[ev.cid];if(k){k.ok.disabled=k.no.disabled=true;k.a.appendChild(el("div","note",ev.allow?"Đã cho phép.":"Đã từ chối."));delete asks[ev.cid]}break}
-    case "info":{addNote(ev.text.trim());break}
+    case "info":{addNote(ev.text.trim());if(ev.text.indexOf("Sổ tay")>=0)refreshState();break}
     case "step_limit":{
       clearEmpty();cur=null;
       const n=el("div","ask");n.appendChild(el("b",null,"Đã dùng hết "+ev.steps+" bước cho một yêu cầu. "));
@@ -207,7 +208,7 @@ function handle(ev){
         row.appendChild(go);col.appendChild(row);scrollDown(true)}
       break}
     case "reset":{col.textContent="";cur=null;tools=[];asks={};emptyState();break}
-    case "done":{if(cur){cur.body.classList.remove("cursor");cur=null}break}
+    case "done":{if(cur){cur.body.classList.remove("cursor");cur=null}refreshState();break}
   }
 }
 function setBusy(b){
@@ -251,12 +252,35 @@ $("adv").onchange=async e=>{
   if(!r.ok){e.target.value=advPrev;addNote(r.j.error,true);return}
   advPrev=want;
 };
+async function rbLoad(){
+  const r=await api("/api/runbook");const box=$("rblist");box.textContent="";
+  if(!r.ok){box.textContent="Không đọc được sổ tay.";return}
+  if(!r.j.entries.length){box.textContent="Chưa có bài học nào.";return}
+  for(const x of r.j.entries){
+    const c=el("div","note");c.style.margin="0 0 8px";
+    const head=el("div",null,"#"+x.id+" · "+({pending:"chờ duyệt",approved:"đã duyệt",rejected:"đã từ chối"}[x.status]||x.status)+" · công cụ: "+(x.tool||"bất kỳ")+" · đã dùng "+(x.hits||0)+" lần");head.style.cssText="font-size:12px;color:var(--mute)";
+    const pat=el("pre",null,x.pattern);pat.style.cssText="white-space:pre-wrap;margin:4px 0;font-size:12px";
+    const les=el("div",null,x.lesson);const bar=el("div");bar.style.cssText="margin-top:6px;display:flex;gap:6px";
+    const mk=(t,a,cls)=>{const b=el("button",cls,t);b.onclick=async()=>{await api("/api/runbook",{id:x.id,action:a});rbLoad();refreshState()};return b};
+    if(x.status!=="approved")bar.appendChild(mk("Duyệt","approve","primary"));
+    if(x.status!=="rejected")bar.appendChild(mk("Từ chối","reject"));
+    bar.appendChild(mk("Xóa","delete","danger"));
+    c.append(head,pat,les,bar);box.appendChild(c);
+  }
+}
+$("rbbtn").onclick=()=>{$("rb").showModal();rbLoad()};$("rbclose").onclick=()=>$("rb").close();
+async function refreshState(){const r=await api("/api/state");if(r.ok)$("rbbtn").textContent="Sổ tay lỗi"+(r.j.runbook_pending?" ("+r.j.runbook_pending+" chờ duyệt)":"")}
 (async()=>{
   const r=await api("/api/state");
-  if(r.ok){$("model").textContent=r.j.model+" · "+r.j.tools+" công cụ";$("think").checked=r.j.think;$("auto").checked=!!r.j.auto;$("adv").value=advPrev=r.j.advisor;for(const o of $("adv").options)if(r.j.advisors&&!r.j.advisors[o.value])o.disabled=true}
+  if(r.ok){$("model").textContent=r.j.model+" · "+r.j.tools+" công cụ";$("think").checked=r.j.think;$("auto").checked=!!r.j.auto;refreshState();$("adv").value=advPrev=r.j.advisor;for(const o of $("adv").options)if(r.j.advisors&&!r.j.advisors[o.value])o.disabled=true}
   if(!r.ok||r.j.last===0)emptyState();
   poll();
 })();
 </script>
+<dialog id="rb" style="max-width:760px;width:94vw;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink)">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b>Sổ tay lỗi</b><span class="sp"></span><button id="rbclose">Đóng</button></div>
+  <div style="color:var(--mute);font-size:13px;margin-bottom:8px">Bài học chung, gắn với thông báo lỗi của công cụ (không gắn với chi tiết nào). Chỉ bài học <b>đã duyệt</b> mới được hiện cho agent khi gặp lỗi tương ứng.</div>
+  <div id="rblist"></div>
+</dialog>
 </body>
 </html>

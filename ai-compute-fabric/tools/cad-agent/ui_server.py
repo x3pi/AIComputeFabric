@@ -158,12 +158,15 @@ class H(http.server.BaseHTTPRequestHandler):
             with open(PAGE, "rb") as f:
                 return self._send(200, f.read(), "text/html")
         if u.path == "/api/state":
-            return self._send(200, {"busy": state["busy"], "model": A.MODEL, "tools": len(A.TOOLS), "think": A.think, "auto": A.AUTO_ALLOW, "advisor": A.ADVISOR_MODE, "advisors": A.advisor_available(), "last": len(events)})
+            return self._send(200, {"busy": state["busy"], "model": A.MODEL, "tools": len(A.TOOLS), "think": A.think, "auto": A.AUTO_ALLOW, "advisor": A.ADVISOR_MODE, "runbook_pending": sum(1 for x in A.RB.load(A.RUNBOOK_PATH) if x.get("status") == "pending"), "advisors": A.advisor_available(), "last": len(events)})
         if u.path == "/api/events":
             since = int(q.get("since", ["0"])[0])
             with lock:
                 out = events[since:since + 400]
             return self._send(200, {"events": out, "busy": state["busy"]})
+        if u.path == "/api/runbook":
+            es = sorted(A.RB.load(A.RUNBOOK_PATH), key=lambda x: ({"pending": 0, "approved": 1, "rejected": 2}.get(x.get("status"), 3), -x.get("id", 0)))
+            return self._send(200, {"entries": es})
         if u.path.startswith("/img/"):
             try:
                 uri = images[int(u.path[5:])]
@@ -216,6 +219,11 @@ class H(http.server.BaseHTTPRequestHandler):
             names = {"off": "TẮT", "auto": "TỰ ĐỘNG (kế hoạch + kiểm tra số bởi cố vấn mạnh nhất có; Claude nếu đã cấu hình, gửi nguyên văn)", "claude": "CLAUDE (ngoài máy, gửi nguyên văn câu hỏi, không lọc)", "qwen_think": "QWEN suy nghĩ (trên máy)", "qwen_nothink": "QWEN không suy nghĩ (trên máy)"}
             push("info", text="  Cố vấn: %s" % names[mode])
             return self._send(200, {"advisor": mode})
+        if p == "/api/runbook":
+            act = {"approve": "approved", "reject": "rejected", "delete": "deleted", "pending": "pending"}.get(body.get("action"))
+            if not act or not isinstance(body.get("id"), int) or not A.RB.set_status(A.RUNBOOK_PATH, body["id"], act):
+                return self._send(400, {"error": "unknown entry or action"})
+            return self._send(200, {"ok": True})
         if p == "/api/think":
             A.think = bool(body.get("on"))
             return self._send(200, {"think": A.think})

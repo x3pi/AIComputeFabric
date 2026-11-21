@@ -45,6 +45,12 @@ CONFIRM = {"delete_feature", "save_part", "export", "close_part", "open_part", "
 # There is NO input filter here by the owner's decision: what the agent writes in `question` is sent as written (length-capped, audited,
 # and shown in the chat as the tool card). Local modes never leave the PC.
 import advisor as ADV
+import runbook as RB
+import threading
+RUNBOOK_PATH = RB.path(aicfconf.data_dir(CFG))
+RUNBOOK_LEARN = str(os.environ.get("AICF_RUNBOOK_LEARN") or "1").lower() in ("1", "true", "yes", "on")   # distil lessons after runs that got stuck (needs an advisor)
+ERRS = []                 # (tool, error text) of the current request, for the post-mortem
+LAST = {"sigs": {}}
 ADVISOR_MODES = ("off", "auto", "claude", "qwen_think", "qwen_nothink")
 ADVISOR_MODE = str(os.environ.get("AICF_ADVISOR") or (CFG.get("advisor") or {}).get("default_mode") or "off")
 if ADVISOR_MODE not in ADVISOR_MODES:
@@ -59,10 +65,13 @@ ADVISOR_TOOL = {"type": "function", "function": {"name": "ask_advisor", "descrip
                    "required": ["question"]}}}
 
 
+CLAUDE_DOWN = False       # set when the external advisor rejects our key (expired / revoked): degrade to the local model instead of failing every call
+
+
 def advisor_available():
     c = CFG.get("advisor") or {}
     return {"off": True, "auto": True, "qwen_think": True, "qwen_nothink": True,
-            "claude": bool(c.get("url") and c.get("model") and c.get("key_file") and os.path.isfile(os.path.expandvars(os.path.expanduser(c["key_file"]))))}
+            "claude": not CLAUDE_DOWN and bool(c.get("url") and c.get("model") and c.get("key_file") and os.path.isfile(os.path.expandvars(os.path.expanduser(c["key_file"]))))}
 
 
 def active_tools():
@@ -101,7 +110,14 @@ def _ask_mode(q, mode):
     if mode == "claude":
         c = dict(CFG.get("advisor") or {}, mode="anthropic", sanitize="off")
         res = ADV.ask({"kind": "agent_question", "api_names": [], "error_class": "", "question": q}, c)
-        return res.get("reply", ""), ("" if res.get("ok") else res.get("reason", "unknown"))
+        why = "" if res.get("ok") else res.get("reason", "unknown")
+        if why.startswith("advisor HTTP 401") or why.startswith("advisor HTTP 403"):
+            global CLAUDE_DOWN
+            CLAUDE_DOWN = True
+            EMIT("info", text="  Cố vấn Claude từ chối khóa (%s: hết hạn hoặc bị thu hồi). Chuyển sang Qwen suy nghĩ trên máy; hãy thay khóa rồi khởi động lại." % why)
+            audit("advisor_key_rejected", reason=why)
+            return _ask_mode(q, "qwen_think")
+        return res.get("reply", ""), why
     if mode in ("qwen_think", "qwen_nothink"):
         ADV.audit("outbound", mode=mode, payload=q[:6000], report={"sanitize": "off", "local": True})
         text, err = _qwen_advice(q, mode == "qwen_think")
@@ -520,6 +536,37 @@ DIAGNOSE_NUDGE = ("The same error has come back. Do NOT retry with only differen
                   "normal the tool returned), and only then act.")
 
 
+def post_mortem(msgs, start, request):
+    """After a request in which the same error repeated: ask the advisor (in the background) for GENERAL lessons and store them as `pending`."""
+    if not RUNBOOK_LEARN or ADVISOR_MODE == "off" or max(list(LAST["sigs"].values()) or [0]) < 2 or not ERRS:
+        return
+    lines = []
+    for m in msgs[start:]:
+        if m.get("role") == "assistant":
+            for c in m.get("tool_calls") or []:
+                lines.append("CALL %s %s" % (c["function"]["name"], (c["function"].get("arguments") or "")[:160]))
+        elif m.get("role") == "tool":
+            lines.append("REPLY %s" % str(m.get("content"))[:240].replace("\n", " "))
+    transcript = "\n".join(lines)[-9000:]
+    threading.Thread(target=_distill, args=(request, transcript, list(ERRS)), daemon=True).start()
+
+
+def _distill(request, transcript, errs):
+    mode = eff_mode("gate")
+    try:
+        reply, err = _ask_mode("%s\n\nUSER REQUEST:\n%s\n\nTOOL CALLS AND REPLIES (in order):\n%s" % (RB.DISTILL_PROMPT, request[:1500], transcript), mode)
+        if err or not reply:
+            audit("runbook_distill", ok=False, reason=err or "empty")
+            return
+        cands = json.loads(reply[reply.index("["):reply.rindex("]") + 1])
+        added, rejected = RB.add_candidates(RUNBOOK_PATH, cands, errs, source=time.strftime("%Y-%m-%d %H:%M"))
+        audit("runbook_distill", ok=True, mode=mode, added=len(added), rejected=[r for _, r in rejected])
+        if added:
+            EMIT("info", text="  Sổ tay lỗi: %d bài học mới chờ bạn duyệt (nút «Sổ tay lỗi»)" % len(added))
+    except Exception as e:                                     # learning must never disturb the work
+        audit("runbook_distill", ok=False, reason=type(e).__name__)
+
+
 def failed(out):
     return out.startswith("ERROR") or '"ok": false' in out[:60]
 
@@ -565,12 +612,26 @@ def final_answer(msgs, why):
 
 
 def turn(msgs):
+    start = len(msgs) - 1
+    request = str(msgs[-1].get("content") or "") if msgs and msgs[-1].get("role") == "user" else ""
+    ERRS.clear()
+    try:
+        _turn(msgs)
+    finally:
+        try:
+            post_mortem(msgs, start, request)
+        except Exception:
+            pass
+
+
+def _turn(msgs):
     global adv_calls
     adv_calls = 0
     start_request(msgs)
     recent, nudged = [], False
     streak, adv_nudges = {}, 0
     sigs, diag_sent, pending_note = {}, False, None
+    LAST["sigs"] = sigs
     for _ in range(MAX_STEPS):
         if SHOULD_STOP():
             EMIT("info", text="  (stopped by the user)")
@@ -599,6 +660,10 @@ def turn(msgs):
             EMIT("tool_call", name=name, args=args)
             out, imgs = run_tool(name, args)
             out = annotate(name, args, out)
+            if failed(out):
+                ERRS.append((name, out[:400]))
+                del ERRS[:-40]
+                out += RB.note_for(RUNBOOK_PATH, name, out)
             sig = error_signature(name, out)
             if sig:
                 sigs[sig] = sigs.get(sig, 0) + 1
