@@ -69,21 +69,28 @@ def active_tools():
     return TOOLS + [ADVISOR_TOOL] if ADVISOR_MODE != "off" else TOOLS
 
 
-def _qwen_advice(q, thinking):
+ADVISOR_DEADLINE_S = int(os.environ.get("AICF_ADVISOR_DEADLINE") or (CFG.get("advisor") or {}).get("deadline_s") or 300)   # total time one local advisor call may take
+
+
+def _qwen_advice(q, thinking, deadline=None):
+    deadline = deadline or time.time() + ADVISOR_DEADLINE_S
     body = {"model": MODEL, "max_tokens": 4000 if thinking else 1500, "temperature": 0.3, "chat_template_kwargs": {"enable_thinking": thinking},
             "messages": [{"role": "system", "content": ADV.ADVISOR_SYSTEM}, {"role": "user", "content": q}]}
     req = urllib.request.Request(URL, json.dumps(body).encode(), {"Content-Type": "application/json", "Authorization": "Bearer " + KEY})
     for attempt in range(6):
+        left = deadline - time.time()
+        if left < 15 or SHOULD_STOP():                     # never hold the whole agent hostage: fail fast and let it carry on
+            return "", "advisor gave up (%s)" % ("stopped by the user" if SHOULD_STOP() else "time budget used up")
         try:
-            d = json.loads(urllib.request.urlopen(req, timeout=900).read())
+            d = json.loads(urllib.request.urlopen(req, timeout=min(left, 240)).read())
             text = (d["choices"][0]["message"].get("content") or "").strip()
             if not text and thinking:                      # all tokens went into the reasoning: ask again without thinking rather than return nothing
-                return _qwen_advice(q, False)
+                return _qwen_advice(q, False, deadline)
             return text, ""
         except urllib.error.HTTPError as e:
             if e.code not in (429, 502, 503) or attempt == 5:
                 return "", "advisor HTTP %d" % e.code
-            time.sleep(5 + 3 * attempt)
+            time.sleep(min(5 + 3 * attempt, max(1, deadline - time.time() - 15)))
         except Exception as e:
             return "", "advisor request failed (%s)" % type(e).__name__
     return "", "advisor busy"
