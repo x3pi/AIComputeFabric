@@ -1,5 +1,5 @@
 """OpenAI-compatible chat client (stdlib only)."""
-import json, time, urllib.error, urllib.request
+import json, socket, time, urllib.error, urllib.request
 from . import config
 
 
@@ -39,7 +39,7 @@ class LLM:
         return out
 
 
-def probe(url, model="", key="", timeout=25):
+def probe(url, model="", key="", timeout=60):
     """Check an OpenAI-compatible endpoint without saving anything. -> {ok, models, detail}. Never raises."""
     base = url.split("/chat/completions")[0].rstrip("/")
     hdr = {"Authorization": "Bearer " + key} if key else {}
@@ -59,4 +59,5 @@ def probe(url, model="", key="", timeout=25):
         m = c.chat([{"role": "user", "content": "Reply with the single word OK."}], max_tokens=16)
         return {"ok": True, "models": models, "detail": "answered: %r" % m["content"][:30]}
     except Exception as e:                                                   # noqa: BLE001
-        return {"ok": False, "models": models, "detail": (detail + "; " if detail else "") + str(e)[:200]}
+        why = "no answer within %ds (the server may be busy; try again)" % timeout if isinstance(e, (TimeoutError, socket.timeout)) or "timed out" in str(e) else str(e)[:200]
+        return {"ok": False, "models": models, "detail": (detail + "; " if detail else "") + why}

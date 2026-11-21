@@ -36,6 +36,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
     spec = tracker = None
     raw_plan = ""
     if plan_mode != "off" and not follow_up:
+        ev("phase", what="plan", mode=plan_mode)
         spec, raw_plan = (planner or (lambda r: planners.make_plan(llm, r, plan_mode, cfg)))(request)
         if spec:
             tracker = V.Tracker(spec)
@@ -56,6 +57,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
         if should_stop and should_stop():
             stopped = True
             break
+        ev("phase", what="llm", step=step + 1)
         m = llm.chat(msgs, tools=TOOLS, think=False)
         tokens += (m.pop("_usage", {}) or {}).get("completion_tokens", 0)
         msgs.append(m)
@@ -76,6 +78,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                 args = {}
             name = c["function"]["name"]
             if name == "execute_cadquery":
+                ev("phase", what="cad")
                 res = backend.execute(str(args.get("code", "")))
                 text = ("OK" if res.ok else "ERROR: " + res.error) + ("\nprinted: " + res.output.strip() if res.output.strip() else "")
                 if res.measure:

@@ -149,6 +149,13 @@ class Planners(unittest.TestCase):
         t, e = planners.ask_relay("q", {"relay": {"host": "u@h"}}); self.assertEqual(t, ""); self.assertIn("EMPTY", e)
 
 
+class WorkerEnv(unittest.TestCase):
+    def test_keeps_what_windows_needs_and_drops_secrets(self):
+        from cadfabric.cq_backend import worker_env
+        e = worker_env({"PATH": "p", "USERPROFILE": "C:\\Users\\x", "APPDATA": "a", "SystemRoot": "C:\\Windows", "CADFABRIC_KEY": "k", "SSHPASS": "s", "AWS_SECRET_ACCESS_KEY": "z", "OPENAI_API_KEY": "o"})
+        self.assertEqual(sorted(e), ["APPDATA", "PATH", "SystemRoot", "USERPROFILE"])          # Windows env names are case-insensitive: SystemRoot must survive
+
+
 class Events(unittest.TestCase):
     def test_plan_event_carries_the_advisors_pitfalls(self):
         b = CadQueryBackend(timeout=20); ev = []
@@ -160,6 +167,22 @@ class Events(unittest.TestCase):
         plan = [kw for k, kw in ev if k == "plan"][0]
         self.assertTrue(plan["ok"]); self.assertEqual(plan["milestones"], 2); self.assertEqual(plan["pitfalls"][0], "wording could mean 40 overall")
         self.assertEqual([k for k, _ in ev if k == "cell"], ["cell"])
+        self.assertEqual([kw["what"] for k, kw in ev if k == "phase"][:4], ["plan", "llm", "cad", "llm"])      # later llm phases = the final gate sending the model back
+
+
+class Configure(unittest.TestCase):
+    def test_configure_command_writes_config_and_key_separately(self):
+        import io, tempfile
+        from cadfabric import cli
+        d = tempfile.mkdtemp(); os.environ["CADFABRIC_CONFIG"] = os.path.join(d, "c.json"); old = sys.stdin
+        try:
+            sys.stdin = io.StringIO("topsecret\n")
+            self.assertEqual(cli.main(["configure", "--url", "http://h:1/v1/chat/completions", "--model", "m", "--planner", "off", "--key-stdin"]), 0)
+            txt = open(os.path.join(d, "c.json")).read(); self.assertNotIn("topsecret", txt)
+            c = config.load(); self.assertEqual((c["url"], c["model"], c["planner"]), ("http://h:1/v1/chat/completions", "m", "off")); self.assertEqual(config.read_key(c), "topsecret")
+            self.assertEqual(cli.main(["configure", "--relay-host=-oBad"]), 2)
+        finally:
+            sys.stdin = old; os.environ.pop("CADFABRIC_CONFIG")
 
 
 class Config(unittest.TestCase):
@@ -298,6 +321,20 @@ class Settings(unittest.TestCase):
         self.assertFalse(d["ok"]); self.assertIn("rejected", d["detail"])
         s, d = self.req("POST", "/api/test", {"url": "http://127.0.0.1:1/v1/chat/completions", "model": "", "key": "", "planner": "off"})
         self.assertFalse(d["ok"]); self.assertIn("cannot reach", d["detail"])
+
+    def test_slow_server_gets_a_readable_message(self):
+        import socket, threading
+        from cadfabric import llm
+        srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(5); port = srv.getsockname()[1]
+        def sink():                                                                   # accepts and never answers
+            while True:
+                try: c, _ = srv.accept()
+                except OSError: return
+        threading.Thread(target=sink, daemon=True).start()
+        try:
+            r = llm.probe("http://127.0.0.1:%d/v1/chat/completions" % port, "m", "", timeout=2)
+        finally: srv.close()
+        self.assertFalse(r["ok"]); self.assertTrue("cannot reach" in r["detail"] or "no answer within" in r["detail"], r)
 
     def test_remote_mode_cannot_change_settings_or_quit(self):
         self.srv.sess.local = False

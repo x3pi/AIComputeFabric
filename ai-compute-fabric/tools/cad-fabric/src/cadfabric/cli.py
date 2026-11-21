@@ -1,5 +1,6 @@
 """cadfabric command line.
   cadfabric init            write a starter config (never writes a key)
+  cadfabric configure       set url/model/planner (and --key-stdin to store a key) without opening the UI; used by the installers
   cadfabric doctor          check CadQuery, the worker, the gateway and the chosen planner
   cadfabric run "request"   build a part from a request; --step out.step exports it; --planner overrides the config
   cadfabric app             the desktop app: starts the web chat on a free local port and opens your browser (reuses a running one)
@@ -20,6 +21,19 @@ def cmd_init(a):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2); f.write("\n")
     print("wrote %s\nSet key_file to a file that holds your API key (or export CADFABRIC_KEY). No key is stored in this file." % path)
+    return 0
+
+
+def cmd_configure(a):
+    cur = config.load()
+    clean, err = config.validate_settings({"url": a.url or cur["url"], "model": cur["model"] if a.model is None else a.model, "planner": a.planner or cur["planner"],
+                                           "relay": {"host": a.relay_host if a.relay_host is not None else cur["relay"].get("host", ""),
+                                                     "workdir": a.relay_workdir if a.relay_workdir is not None else cur["relay"].get("workdir", ""),
+                                                     "codex": a.relay_codex or cur["relay"].get("codex", "codex")}})
+    if err:
+        print("error: " + err); return 2
+    key = sys.stdin.readline().strip() if a.key_stdin else None
+    print("saved " + config.save_settings(clean, key) + (" (key stored in its own file)" if key else ""))
     return 0
 
 
@@ -191,6 +205,8 @@ def main(argv=None):
     p = sub.add_parser("init"); p.add_argument("--path"); p.add_argument("--force", action="store_true")
     p.add_argument("--url", default=config.DEFAULTS["url"]); p.add_argument("--model", default=""); p.add_argument("--key-file", dest="key_file"); p.add_argument("--planner", default="nothink", choices=config.PLANNERS)
     p.set_defaults(fn=cmd_init)
+    p = sub.add_parser("configure"); p.add_argument("--url"); p.add_argument("--model"); p.add_argument("--planner", choices=config.PLANNERS)
+    p.add_argument("--relay-host"); p.add_argument("--relay-workdir"); p.add_argument("--relay-codex"); p.add_argument("--key-stdin", action="store_true"); p.set_defaults(fn=cmd_configure)
     sub.add_parser("doctor").set_defaults(fn=cmd_doctor)
     p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner", choices=config.PLANNERS); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
     sub.add_parser("tasks").set_defaults(fn=cmd_tasks)

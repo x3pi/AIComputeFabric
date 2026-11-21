@@ -4,23 +4,55 @@ Tác tử CAD không phụ thuộc phần mềm CAD cụ thể: một mô hình 
 
 Chạy headless trên Linux, Windows, macOS. Không cần SolidWorks, không cần GPU ở máy chạy CAD.
 
+## Ứng dụng chat (khuyên dùng)
+
+`cadfabric app` mở một ứng dụng chat trong trình duyệt (giao diện kiểu trợ lý lập trình): gõ mô tả bằng tiếng Việt, xem kế hoạch kiểm tra, từng bước code CadQuery (bấm để mở), thể tích đo thật sau mỗi bước, bản xem trước 3D, bảng số đo và nút tải STEP. Tin nhắn tiếp theo chỉnh sửa chính chi tiết đó; `/new` bắt đầu chi tiết mới, `/stop` dừng.
+
+Lần đầu chạy, hộp **Cài đặt** tự mở:
+
+| Mục | Ý nghĩa |
+|---|---|
+| URL API Qwen | endpoint tương thích OpenAI (ví dụ `http://192.168.1.40:18080/v1/chat/completions`) |
+| Tên model | để trống nếu máy chủ tự chọn; nút **Kiểm tra kết nối** liệt kê model có sẵn |
+| Khoá API | lưu vào file riêng `key.txt` trong thư mục cấu hình của người dùng (quyền 0600), **không bao giờ** vào file JSON và không bao giờ gửi ngược lại trình duyệt |
+| Cố vấn | `off`, `nothink`, `think`, `codex`, `codex-relay` (xem bảng bên dưới). Cố vấn gửi nội dung ra ngoài luôn hỏi xác nhận |
+
+Cố vấn được chọn ngay trên ô nhập từng lần gửi. Ứng dụng chỉ lắng nghe `127.0.0.1`, mỗi lần chạy có token riêng; chỉ máy chạy ứng dụng mới sửa được cài đặt.
+
 ## Cài đặt
+
+### Windows (nhiều máy, offline, không cần quyền quản trị)
+
+Bộ cài mang theo Python 3.12 riêng và toàn bộ thư viện, không đụng Python sẵn có. Tạo bộ cài trên Linux/macOS:
+
+```bash
+./packaging/build_windows_bundle.sh        # -> dist/cadfabric-windows-<phiên bản>.zip (khoảng 350 MB)
+```
+
+Trên mỗi máy Windows 10/11 64-bit: giải nén zip, bấm đúp `install.cmd`. Ứng dụng được cài vào `%LOCALAPPDATA%\CadFabric`, có shortcut **CadFabric** trên Start Menu và Desktop. Cài hàng loạt với cấu hình sẵn:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1 -Url http://GATEWAY:18080/v1/chat/completions -Model TEN_MODEL -KeyFile \\server\share\key.txt -Planner nothink
+```
+
+Cài đè bản mới nâng cấp tại chỗ và giữ nguyên cài đặt người dùng (nhớ tăng `version` trong `pyproject.toml`, pip bỏ qua cùng số phiên bản). Gỡ: `%LOCALAPPDATA%\CadFabric\uninstall.ps1` (`-Purge` xoá cả cài đặt).
+
+Đã kiểm chứng thật trên một máy Windows 10 sạch (PowerShell 5.1): cài mất khoảng 107 s, nâng cấp 16 s, `cadfabric doctor` OK, ứng dụng không console dựng chi tiết và thoát sạch.
+
+### Linux / macOS
 
 Cần Python 3.10 trở lên (đã kiểm tra trên 3.12) và khoảng 2 GB đĩa cho CadQuery.
 
 ```bash
-# Linux / macOS
 ./install.sh
-# Windows (PowerShell)
-.\install.ps1
 ```
 
-Hai script tạo môi trường ảo riêng (`~/.local/share/cadfabric/venv` hoặc `%LOCALAPPDATA%\cadfabric\venv`), cài gói, ghi cấu hình khởi tạo và chạy `cadfabric doctor`. Hoặc thủ công:
+Script tạo môi trường ảo riêng (`~/.local/share/cadfabric/venv`), cài gói, ghi cấu hình khởi tạo và chạy `cadfabric doctor`. Hoặc thủ công:
 
 ```bash
 python -m venv venv && venv/bin/pip install .
-venv/bin/cadfabric init --url http://GATEWAY:18080/v1/chat/completions --model TEN_MODEL --key-file /duong/dan/key.txt
-venv/bin/cadfabric doctor
+venv/bin/cadfabric configure --url http://GATEWAY:18080/v1/chat/completions --model TEN_MODEL
+venv/bin/cadfabric app
 ```
 
 ## Dùng
@@ -61,6 +93,17 @@ Planner viết kế hoạch (các bước + công thức thể tích). Chất l�
 | `codex-relay` | như `codex`, chạy trên máy khác qua ssh | cần ssh vào máy đó (khóa ssh, hoặc `SSHPASS` + `sshpass`) |
 
 `codex` và `codex-relay` chạy Codex ở chế độ `read-only` trong thư mục rỗng, chỉ nhận văn bản. Đây là biện pháp giảm rủi ro, **không phải sandbox cứng**: mô hình vẫn có thể thử đọc file theo đường dẫn. Không dùng với yêu cầu chứa dữ liệu mật.
+
+## Kết quả đo (đã đo, 3 lần mỗi ô, kernel CadQuery tự chấm thể tích)
+
+5 bài khó (`bolt_circle_plate`, `rounded_block`, `open_box`, `keyway_shaft`, `flange_tube`), cổng Qwen3.8-27B chạy tuần tự:
+
+| Cố vấn | Đạt | Ghi chú |
+|---|---|---|
+| `off` (Qwen tự làm) | 10/15 | `keyway_shaft` 0/3 |
+| `codex` | 13/15 | `keyway_shaft` 3/3; mất 2 lần ở `flange_tube` |
+
+`flange_tube` thất bại ở cả hai chế độ **vì đề bài mơ hồ**: "ống cao 40 mm" có thể là 40 trên mặt bích (tổng 45) hoặc 40 tổng cộng. Codex đã nêu đúng điều này trong mục lưu ý của kế hoạch; ứng dụng hiển thị các lưu ý đó trong khung màu vàng để người dùng kiểm tra đề bài trước khi tin kết quả. Bài `cup_side_hole`: `off` 0/5, `nothink` 0/5, `codex` 5/5; `think` bị cổng trả HTTP 502 ở bước lập kế hoạch (5/5 lần). Thời gian phụ thuộc tải của cổng Qwen dùng chung: cùng một yêu cầu đã đo từ 13 s đến hơn 200 s khi cổng bận.
 
 ## An toàn
 

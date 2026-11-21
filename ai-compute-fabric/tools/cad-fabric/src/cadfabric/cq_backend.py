@@ -7,7 +7,23 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 def default_python():
     """The interpreter that runs the worker: the one that has CadQuery (normally the one running us)."""
-    return os.environ.get("CADFABRIC_PYTHON") or sys.executable
+    exe = os.environ.get("CADFABRIC_PYTHON") or sys.executable
+    if os.name == "nt" and os.path.basename(exe).lower() == "pythonw.exe":       # the windowless launcher: the worker needs a real stdin/stdout
+        exe = os.path.join(os.path.dirname(exe), "python.exe")
+    return exe
+
+
+# The only environment variables the worker sees: enough for Python/OCP/ezdxf to start (Windows needs USERPROFILE & co to find a home directory),
+# and none of the caller's secrets (CADFABRIC_KEY, SSHPASS, cloud keys, ...).
+WORKER_ENV_KEEP = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "CADFABRIC_MEM_GB",
+                   "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "NUMBER_OF_PROCESSORS")
+
+
+def worker_env(environ=None):
+    return {k: v for k, v in (environ if environ is not None else os.environ).items() if k.upper() in WORKER_ENV_KEEP}
+
+
+NOWIN = {"creationflags": 0x08000000} if os.name == "nt" else {}                   # CREATE_NO_WINDOW: no black console flashing from a GUI app
 
 
 class CadQueryBackend(Backend):
@@ -23,8 +39,8 @@ class CadQueryBackend(Backend):
     def _start(self):
         self.close()
         self.proc = subprocess.Popen([self.python, "-I", os.path.join(HERE, "worker.py")], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                     text=True, encoding="utf-8", bufsize=1, cwd=tempfile.gettempdir(),
-                                     env={k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "LANG", "LC_ALL", "SYSTEMROOT", "TMPDIR", "CADFABRIC_MEM_GB")})
+                                     text=True, encoding="utf-8", bufsize=1, cwd=tempfile.gettempdir(), **NOWIN,
+                                     env=worker_env())
 
     def _rpc(self, req):
         """-> reply dict. On timeout/crash the worker is killed and restarted with the history replayed; returns {"ok": False, "error": ...}."""

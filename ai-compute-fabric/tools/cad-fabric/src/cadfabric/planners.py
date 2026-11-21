@@ -7,6 +7,7 @@
 A planner failure never loses the plan: it falls back to `nothink` and says so in the raw text."""
 import json, os, re, shutil, subprocess, tempfile
 from . import verifier as V
+from .cq_backend import NOWIN
 
 PREFIX = ("You are an advisor for a CAD automation agent. Answer ONLY from the text below, in plain text, concisely. "
           "Do not run any command, do not read or write any file, do not browse.\n\n")
@@ -48,7 +49,7 @@ def ask_codex(prompt, cfg, timeout=300):
     try:
         with tempfile.TemporaryDirectory(prefix="cadfabric-codex-") as wd:
             r = subprocess.run([exe, "exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "-C", wd, "-"], input=PREFIX + prompt[:30000],
-                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=wd)
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=wd, **NOWIN)
     except subprocess.TimeoutExpired:
         return "", "codex timed out after %ds" % timeout
     except OSError as e:
@@ -65,7 +66,7 @@ def ask_relay(prompt, cfg, timeout=300):
     argv = (["sshpass", "-e"] if os.environ.get("SSHPASS") and shutil.which("sshpass") else []) + \
            ["ssh", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=15", rel["host"], cmd]
     try:
-        r = subprocess.run(argv, input=PREFIX + prompt[:30000], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
+        r = subprocess.run(argv, input=PREFIX + prompt[:30000], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, **NOWIN)
     except subprocess.TimeoutExpired:
         return "", "codex relay timed out after %ds" % timeout
     except OSError as e:
