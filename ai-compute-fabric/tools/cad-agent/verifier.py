@@ -126,14 +126,14 @@ class Tracker:
     def reset(self):
         self.prev, self.k, self.checks = 0.0, 0, 0
 
-    def observe(self, tool, vol):
+    def observe(self, tool, vol, feature=None):
         """Call after every operation that may change the solid, with the measured volume. -> (level, text) or None. level: ok | warn."""
         if vol is None or not self.ms:
             return None
         self.checks += 1
         changed = abs(vol - self.prev) > 1e-6 * max(1.0, abs(self.prev))
         if not changed:
-            if FEATURE.search(tool) and self.k < len(self.ms) and not _near(vol, self.ms[self.k]):
+            if (FEATURE.search(tool) if feature is None else feature) and self.k < len(self.ms) and not _near(vol, self.ms[self.k]):
                 m = self.ms[self.k]
                 return ("warn", "HARNESS CHECK: `%s` did not change the volume (still %.1f mm3). The plan expects %.1f mm3 at step %d, so material still has to be "
                         "%s. If this operation was meant to add or remove material, it did nothing: read the feature list and the error text, "
