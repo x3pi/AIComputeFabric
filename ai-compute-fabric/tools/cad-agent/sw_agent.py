@@ -45,7 +45,7 @@ CONFIRM = {"delete_feature", "save_part", "export", "close_part", "open_part", "
 # There is NO input filter here by the owner's decision: what the agent writes in `question` is sent as written (length-capped, audited,
 # and shown in the chat as the tool card). Local modes never leave the PC.
 import advisor as ADV
-ADVISOR_MODES = ("off", "claude", "qwen_think", "qwen_nothink")
+ADVISOR_MODES = ("off", "auto", "claude", "qwen_think", "qwen_nothink")
 ADVISOR_MODE = str(os.environ.get("AICF_ADVISOR") or (CFG.get("advisor") or {}).get("default_mode") or "off")
 if ADVISOR_MODE not in ADVISOR_MODES:
     ADVISOR_MODE = "off"
@@ -61,7 +61,7 @@ ADVISOR_TOOL = {"type": "function", "function": {"name": "ask_advisor", "descrip
 
 def advisor_available():
     c = CFG.get("advisor") or {}
-    return {"off": True, "qwen_think": True, "qwen_nothink": True,
+    return {"off": True, "auto": True, "qwen_think": True, "qwen_nothink": True,
             "claude": bool(c.get("url") and c.get("model") and c.get("key_file") and os.path.isfile(os.path.expandvars(os.path.expanduser(c["key_file"]))))}
 
 
@@ -89,6 +89,75 @@ def _qwen_advice(q, thinking):
     return "", "advisor busy"
 
 
+def _ask_mode(q, mode):
+    """One advisor round trip in the given mode. Returns (text, error). Text only: no tools, never edits the part."""
+    if mode == "claude":
+        c = dict(CFG.get("advisor") or {}, mode="anthropic", sanitize="off")
+        res = ADV.ask({"kind": "agent_question", "api_names": [], "error_class": "", "question": q}, c)
+        return res.get("reply", ""), ("" if res.get("ok") else res.get("reason", "unknown"))
+    if mode in ("qwen_think", "qwen_nothink"):
+        ADV.audit("outbound", mode=mode, payload=q[:6000], report={"sanitize": "off", "local": True})
+        text, err = _qwen_advice(q, mode == "qwen_think")
+        if text:
+            ADV.audit("inbound", reply=text[:4000])
+        return text, err
+    return "", "advisor is off"
+
+
+def eff_mode(kind, n=0):
+    """`auto` = plan and checks use the strongest advisor available; ordinary consults go local first, then escalate."""
+    if ADVISOR_MODE != "auto":
+        return ADVISOR_MODE
+    strong = "claude" if advisor_available()["claude"] else "qwen_think"
+    if kind in ("plan", "gate"):
+        return strong
+    return "qwen_think" if n == 0 else strong
+
+
+# ---- advisor architecture: (1) plan first, (2) numbers checked by CODE, (3) review before "done" ------------------------
+PLAN, REQUEST, gates_used = None, "", 0
+GATE_MAX = 2          # failed final checks per request before the agent may report anyway
+VOL_TOL = 0.005       # relative tolerance for the final volume
+BBOX_TOL_MM = 0.5
+PLAN_PROMPT = (
+    "You are planning a CAD job that a smaller model will carry out through the tools listed below. Read the USER REQUEST and reply with ONE JSON "
+    "object and nothing else:\n"
+    '{"steps": ["short imperative step naming the tool to use"], "expected": {"volume_mm3": <number or null>, "bbox_size_mm": [x, y, z] or null}, '
+    '"pitfalls": ["what commonly goes wrong with this request and how to check it"]}\n'
+    "Rules: compute `expected` yourself from the request with exact arithmetic (volume of the FINAL solid in mm3, and its overall bounding-box size); "
+    "use null when the request does not determine it. Prefer the simplest tool that does the job. Say which axis or plane each step uses, because the "
+    "executor does not know the tools' geometry conventions. Do not invent requirements.")
+
+
+def catalog():
+    lines = []
+    for t in TOOLS:
+        f = t["function"]
+        props = list(((f.get("parameters") or {}).get("properties") or {}))
+        lines.append("- %s(%s): %s" % (f["name"], ", ".join(props[:10]), (f.get("description") or "").split("\n")[0][:150]))
+    return "\n".join(lines)
+
+
+def state_snapshot():
+    """Read-only look at the real part, done by the harness (not by the model): (text, volume_mm3, bbox_size_mm)."""
+    vol = bbox = None
+    parts = []
+    for name in ("list_features", "get_mass_properties"):
+        try:
+            out, _ = mcp_call(name, {})
+        except Exception as e:
+            parts.append("%s: unavailable (%s)" % (name, type(e).__name__))
+            continue
+        parts.append("%s -> %s" % (name, out[:1800]))
+        if name == "get_mass_properties":
+            try:
+                mp = json.loads(out)["mass_properties"]
+                vol, bbox = float(mp["volume_mm3"]), [float(x) for x in mp["bounding_box_mm"]["size_mm"]]
+            except Exception:
+                pass
+    return "\n".join(parts), vol, bbox
+
+
 def advise(args):
     global adv_calls
     q = str((args or {}).get("question") or "").strip()
@@ -96,25 +165,85 @@ def advise(args):
         return "ERROR: ask_advisor needs a non-empty `question`."
     if adv_calls >= ADVISOR_MAX_CALLS:
         return "ERROR: advisor call budget for this request is used up (%d). Decide yourself or report what blocks you." % ADVISOR_MAX_CALLS
+    mode = eff_mode("consult", adv_calls)
     adv_calls += 1
-    mode = ADVISOR_MODE
-    if len(q) > 16000:
-        q = q[:16000]
-    if mode == "claude":
-        c = dict(CFG.get("advisor") or {}, mode="anthropic", sanitize="off")
-        res = ADV.ask({"kind": "agent_question", "api_names": [], "error_class": "", "question": q}, c)
-        text, err = res.get("reply", ""), ("" if res.get("ok") else res.get("reason", "unknown"))
-    elif mode in ("qwen_think", "qwen_nothink"):
-        ADV.audit("outbound", mode=mode, payload=q, report={"sanitize": "off", "local": True})
-        text, err = _qwen_advice(q, mode == "qwen_think")
-        if text:
-            ADV.audit("inbound", reply=text[:4000])
-    else:
-        return "ERROR: the advisor is switched off."
-    audit("advisor", mode=mode, ok=not err, reason=err, q_chars=len(q), reply_chars=len(text))
+    snap, _, _ = state_snapshot()          # the advisor cannot see SolidWorks: the harness attaches the real state
+    full = ("ORIGINAL USER REQUEST:\n%s\n\nQUESTION FROM THE EXECUTOR:\n%s\n\nCURRENT STATE OF THE PART (read by the harness; authoritative):\n%s\n\n"
+            "TOOLS THE EXECUTOR HAS:\n%s" % (REQUEST or "(not recorded)", q[:12000], snap, catalog()))[:30000]
+    text, err = _ask_mode(full, mode)
+    audit("advisor", mode=mode, ok=not err, reason=err, q_chars=len(full), reply_chars=len(text))
     if err or not text:
         return "ERROR: advisor unavailable (%s). Solve it yourself with the tools you have." % (err or "empty reply")
     return "ADVISOR REPLY (%s; advice only, NOT executed; verify against the real part state):\n%s" % (mode, text[:3500])
+
+
+def start_request(msgs):
+    """Once per user message: ask the strongest advisor for a plan with checkable numbers, and put it in front of the executor."""
+    global PLAN, REQUEST, gates_used
+    gates_used = 0
+    if ADVISOR_MODE == "off":
+        PLAN = None
+        return
+    last = [m for m in msgs if m["role"] == "user"][-1]["content"]
+    text = last if isinstance(last, str) else ""
+    if PLAN and len(text) < 40:                      # a short follow-up ("continue") keeps the current plan
+        return
+    REQUEST, PLAN = text, None
+    mode = eff_mode("plan")
+    EMIT("tool_call", name="advisor_plan", args={"advisor": mode})
+    reply, err = _ask_mode("%s\n\nTOOLS:\n%s\n\nUSER REQUEST:\n%s" % (PLAN_PROMPT, catalog(), REQUEST), mode)
+    audit("advisor_plan", mode=mode, ok=not err, reason=err, reply_chars=len(reply))
+    if err or not reply:
+        EMIT("tool_result", name="advisor_plan", result="(no plan: %s)" % (err or "empty reply"), images=[])
+        return
+    try:
+        plan = json.loads(reply[reply.index("{"):reply.rindex("}") + 1])
+        if not isinstance(plan, dict):
+            raise ValueError
+    except ValueError:
+        EMIT("tool_result", name="advisor_plan", result="(plan was not valid JSON; used as plain advice)\n" + reply[:2500], images=[])
+        msgs.append({"role": "user", "content": "ADVISOR PLAN (advice only):\n" + reply[:3000]})
+        return
+    PLAN = plan
+    exp = plan.get("expected") or {}
+    body = ("Steps:\n" + "\n".join("%d. %s" % (k + 1, x) for k, x in enumerate(plan.get("steps") or [])) +
+            "\nPitfalls:\n" + "\n".join("- %s" % x for x in (plan.get("pitfalls") or [])) +
+            "\nExpected final result (the advisor's own calculation): volume_mm3=%s, bbox_size_mm=%s" % (exp.get("volume_mm3"), exp.get("bbox_size_mm")))
+    EMIT("tool_result", name="advisor_plan", result=body, images=[])
+    msgs.append({"role": "user", "content": "ADVISOR PLAN (advice only; verify each step on the real part). The harness will compare the final part with the "
+                 "expected numbers below. If you are certain an expected number is wrong, do not bend the part to it: say so with the arithmetic.\n" + body})
+
+
+def gate(final_text):
+    """Before the agent may say 'done': compare the real part with the plan's numbers (by code). On mismatch, consult the advisor with the facts."""
+    global gates_used
+    if ADVISOR_MODE == "off" or not PLAN or gates_used >= GATE_MAX:
+        return None
+    exp = PLAN.get("expected") or {}
+    ev, eb = exp.get("volume_mm3"), exp.get("bbox_size_mm")
+    snap, vol, bbox = state_snapshot()
+    bad = []
+    if isinstance(ev, (int, float)) and not isinstance(ev, bool) and ev > 0 and vol is not None and abs(vol - ev) / ev > VOL_TOL:
+        bad.append("volume %.1f mm3 measured vs %.1f expected (%+.2f%%)" % (vol, ev, 100 * (vol - ev) / ev))
+    if isinstance(eb, list) and len(eb) == 3 and bbox and all(isinstance(x, (int, float)) for x in eb):
+        if any(abs(a - b) > BBOX_TOL_MM for a, b in zip(sorted(bbox), sorted(float(x) for x in eb))):
+            bad.append("bounding box %s measured vs %s expected" % ([round(x, 2) for x in sorted(bbox)], sorted(eb)))
+    if not bad:
+        return None
+    gates_used += 1
+    mode = eff_mode("gate")
+    EMIT("tool_call", name="advisor_check", args={"mismatch": bad, "advisor": mode})
+    q = ("A CAD executor says it is finished, but the numbers do not match your plan.\n\nORIGINAL USER REQUEST:\n%s\n\nYOUR EXPECTED RESULT: %s\n\n"
+         "MEASURED (by the harness): %s\n\nCURRENT STATE:\n%s\n\nEXECUTOR'S FINAL MESSAGE:\n%s\n\nDecide which is wrong: the part or your expectation "
+         "(recompute it). If the part is wrong, say what is most likely wrong and give the next 1-3 concrete tool steps. Be brief."
+         % (REQUEST, json.dumps(exp), "; ".join(bad), snap, (final_text or "")[:1500]))
+    text, err = _ask_mode(q, mode)
+    audit("advisor_check", mode=mode, mismatch=bad, ok=not err, reason=err)
+    advice = text if text else "(advisor unavailable: %s)" % err
+    EMIT("tool_result", name="advisor_check", result="; ".join(bad) + "\n\n" + advice[:3000], images=[])
+    return ("VERIFICATION FAILED: the real part does not match what the request implies: %s.\nAdvisor analysis (advice, NOT executed): %s\n"
+            "Read the current state, find the cause, fix it and verify again. If you are certain the expected value is wrong, do not change the part: "
+            "explain with the arithmetic in your final answer." % ("; ".join(bad), advice[:2500]))
 
 
 # ---- front-end hooks: the console below is the default; ui_server.py replaces them to drive a web page -------------------
@@ -379,6 +508,7 @@ def final_answer(msgs, why):
 def turn(msgs):
     global adv_calls
     adv_calls = 0
+    start_request(msgs)
     recent, nudged = [], False
     streak, adv_nudges = {}, 0
     for _ in range(MAX_STEPS):
@@ -390,6 +520,10 @@ def turn(msgs):
         msgs.append({k: v for k, v in m.items() if k in ("role", "content", "tool_calls")})
         calls = m.get("tool_calls") or []
         if not calls:
+            again = gate(m.get("content") or "")
+            if again:
+                msgs.append({"role": "user", "content": again})
+                continue
             return
         pending_imgs = []
         for c in calls:

@@ -213,7 +213,7 @@ class H(http.server.BaseHTTPRequestHandler):
             if mode not in A.ADVISOR_MODES or not A.advisor_available().get(mode):
                 return self._send(400, {"error": "advisor mode not available on this PC"})
             A.ADVISOR_MODE = mode
-            names = {"off": "TẮT", "claude": "CLAUDE (ngoài máy, gửi nguyên văn câu hỏi, không lọc)", "qwen_think": "QWEN suy nghĩ (trên máy)", "qwen_nothink": "QWEN không suy nghĩ (trên máy)"}
+            names = {"off": "TẮT", "auto": "TỰ ĐỘNG (kế hoạch + kiểm tra số bởi cố vấn mạnh nhất có; Claude nếu đã cấu hình, gửi nguyên văn)", "claude": "CLAUDE (ngoài máy, gửi nguyên văn câu hỏi, không lọc)", "qwen_think": "QWEN suy nghĩ (trên máy)", "qwen_nothink": "QWEN không suy nghĩ (trên máy)"}
             push("info", text="  Cố vấn: %s" % names[mode])
             return self._send(200, {"advisor": mode})
         if p == "/api/think":
@@ -223,6 +223,7 @@ class H(http.server.BaseHTTPRequestHandler):
             if state["busy"]:
                 return self._send(409, {"error": "stop the running task first"})
             msgs[:] = [{"role": "system", "content": A.SYSTEM}]
+            A.PLAN = None
             push("reset")
             return self._send(200, {"ok": True})
         self._send(404, {"error": "not found"})
