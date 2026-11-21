@@ -15,3 +15,9 @@ cadfabric = "cadfabric.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+cadfabric = ["web_page.html"]
+
+[project.gui-scripts]
+cadfabric-app = "cadfabric.cli:app_main"

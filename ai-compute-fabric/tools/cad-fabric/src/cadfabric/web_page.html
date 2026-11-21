@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23c96442'/%3E%3Cpath d='M16 6l9 5v10l-9 5-9-5V11z' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CadFabric</title>
+<style>
+:root{--bg:#f7f6f3;--panel:#fff;--ink:#1f2328;--mute:#6b7280;--line:#e3e1db;--accent:#c96442;--accent-ink:#fff;--ok:#18794e;--bad:#c4321f;--warn:#9a6700;--warn-bg:#fff6dc;--user:#ece9e1;--code:#f1efe9;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1c1b19;--panel:#252320;--ink:#ece9e2;--mute:#9a968c;--line:#38352f;--accent:#d97757;--accent-ink:#1c1b19;--ok:#5cc693;--bad:#ff8a78;--warn:#f0b24c;--warn-bg:#352c16;--user:#2f2c27;--code:#1f1d1a;color-scheme:dark}}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+button,select,input,textarea{font:inherit;color:inherit}
+header{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.logo{font-weight:700;letter-spacing:.01em}.logo i{color:var(--accent);font-style:normal}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}.dot.busy{background:var(--accent);animation:p 1s infinite}@keyframes p{50%{opacity:.3}}
+header .sp{flex:1}.mute{color:var(--mute)}.small{font-size:13px}
+.btn{white-space:nowrap;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 11px;cursor:pointer}.btn:hover{border-color:var(--mute)}.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.layout{flex:1;display:flex;min-height:0}
+.chat{flex:1;display:flex;flex-direction:column;min-width:0}
+#log{flex:1;overflow:auto;padding:22px 16px 8px}
+.col{max-width:780px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.hero{text-align:center;margin:9vh auto 0;max-width:620px}.hero h2{font-size:26px;margin:0 0 6px}.hero p{margin:0 0 16px;color:var(--mute)}
+.chips{display:flex;flex-direction:column;gap:8px;align-items:stretch;text-align:left}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:10px 13px;cursor:pointer}.chip:hover{border-color:var(--accent)}
+.banner{background:var(--warn-bg);border:1px solid var(--warn);color:var(--warn);border-radius:10px;padding:10px 13px;margin:0 0 14px;text-align:left}
+.banner button{margin-left:8px}
+.user{align-self:flex-end;background:var(--user);border-radius:14px;padding:9px 14px;max-width:88%;white-space:pre-wrap;overflow-wrap:anywhere}
+.user small{display:block;color:var(--mute);margin-top:2px}
+.card{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:0}
+.card>summary,.card>.hd{list-style:none;cursor:pointer;padding:8px 12px;display:flex;gap:8px;align-items:center}.card>summary::-webkit-details-marker{display:none}
+.card .body{padding:0 12px 10px;border-top:1px solid var(--line)}
+.ic{width:18px;text-align:center;font-weight:700}.ok{color:var(--ok)}.bad{color:var(--bad)}.warnc{color:var(--warn)}
+.card .vol{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mute);font-size:13px}
+pre{margin:8px 0 0;background:var(--code);border-radius:8px;padding:9px 11px;overflow:auto;font:12.5px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.pit{background:var(--warn-bg);border:1px solid var(--warn);color:var(--ink);border-radius:8px;padding:8px 12px;margin-top:8px}.pit b{color:var(--warn)}.pit ul{margin:4px 0 0 18px;padding:0}
+.chk{color:var(--warn);font-size:13px;margin-top:6px}
+.final{background:transparent;padding:2px 2px 0}.final p{margin:.4em 0}.final ul,.final ol{margin:.3em 0 .3em 20px;padding:0}.final code{background:var(--code);padding:1px 5px;border-radius:5px;font:13px ui-monospace,Consolas,monospace}
+.foot{color:var(--mute);font-size:12.5px;margin-top:6px}
+.err{color:var(--bad);border:1px solid var(--bad);border-radius:10px;padding:8px 12px}
+.working{color:var(--mute);font-size:14px}.working:after{content:"";display:inline-block;width:1.2em;animation:d 1.2s steps(4) infinite;overflow:hidden;vertical-align:bottom}@keyframes d{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+.composer{padding:6px 16px 14px}
+.box{max-width:780px;margin:0 auto;border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:8px 10px 8px 12px;display:flex;flex-direction:column;gap:6px}.box:focus-within{border-color:var(--accent)}
+textarea{border:0;outline:0;background:transparent;resize:none;width:100%;max-height:200px;min-height:26px}
+.tools{display:flex;gap:8px;align-items:center}.tools select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:4px 8px;font-size:13px}.tools .sp{flex:1}
+.hint{max-width:780px;margin:5px auto 0;color:var(--mute);font-size:12.5px;text-align:center}
+aside{width:360px;border-left:1px solid var(--line);background:var(--panel);overflow:auto;display:flex;flex-direction:column}
+aside h3{margin:0;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);border-bottom:1px solid var(--line)}
+#preview{margin:12px;border-radius:10px;min-height:190px;background:#fff;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:14px}#preview svg{width:100%;height:auto}
+table{width:calc(100% - 28px);margin:0 14px 10px;border-collapse:collapse;font-size:14px}td{padding:5px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.side-actions{padding:0 14px 14px;display:flex;gap:8px;flex-wrap:wrap}a.btn{text-decoration:none;color:var(--ink)}
+@media(max-width:640px){header{gap:6px;padding:8px 10px}#status,#ver{display:none}.btn.small{padding:5px 8px;font-size:13px}}
+@media(max-width:900px){aside{display:none;position:fixed;inset:48px 0 0 auto;width:min(360px,100%);z-index:5;box-shadow:-8px 0 24px #0004}aside.open{display:flex}}
+dialog{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:14px;padding:0;width:min(560px,94vw);max-height:92vh}dialog::backdrop{background:#0006}
+dialog form{padding:18px 20px;display:flex;flex-direction:column;gap:12px}dialog h2{margin:0;font-size:18px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mute)}label.f input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;font-size:14px;color:var(--ink)}
+.adv{display:flex;flex-direction:column;gap:6px}.opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer}.opt:has(input:checked){border-color:var(--accent)}
+.opt b{font-size:14px}.opt div>span:not(.tag){display:block;font-size:12.5px;color:var(--mute)}.tag{font-size:11px;border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:0 5px;margin-left:6px}
+#relay{display:none;gap:8px;flex-direction:column}#relay.show{display:flex}
+.row{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}#tst{flex:1;font-size:13px;min-width:160px}
+</style>
+</head>
+<body>
+<header>
+ <span class="logo">Cad<i>Fabric</i></span><span class="mute small" id="ver"></span><span class="dot" id="dot"></span><span class="mute small" id="status">sẵn sàng</span>
+ <span class="sp"></span>
+ <button class="btn small" id="partbtn" title="Chi tiết hiện tại">Chi tiết</button>
+ <button class="btn small" id="newbtn">Chi tiết mới</button>
+ <button class="btn small" id="setbtn">Cài đặt</button>
+ <button class="btn small" id="quitbtn" title="Tắt ứng dụng" hidden>Thoát</button>
+</header>
+<div class="layout">
+ <div class="chat">
+  <div id="log"><div class="col" id="col"></div></div>
+  <div class="composer">
+   <div class="box">
+    <textarea id="text" rows="1" maxlength="8000" placeholder="Mô tả chi tiết cần tạo, hoặc yêu cầu chỉnh sửa chi tiết hiện tại…"></textarea>
+    <div class="tools"><span class="mute small">Cố vấn</span><select id="planner" title="Ai lập kế hoạch kiểm tra thể tích"></select><span class="sp"></span>
+     <button class="btn primary" id="send">Gửi</button><button class="btn" id="stop" hidden>Dừng</button></div>
+   </div>
+   <div class="hint" id="hint">Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /stop dừng</div>
+  </div>
+ </div>
+ <aside id="side"><h3>Chi tiết hiện tại</h3><div id="preview">chưa có chi tiết</div><table id="meas"></table>
+  <div class="side-actions"><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div></aside>
+</div>
+
+<dialog id="dlg"><form method="dialog" id="sf">
+ <h2>Cài đặt</h2>
+ <div class="mute small" id="localnote"></div>
+ <label class="f">URL API của Qwen (tương thích OpenAI)<input id="s_url" placeholder="http://192.168.1.40:18080/v1/chat/completions" autocomplete="off"></label>
+ <label class="f">Tên model (để trống nếu máy chủ tự chọn)<input id="s_model" list="models" autocomplete="off"><datalist id="models"></datalist></label>
+ <label class="f">Khoá API <span id="keystate"></span><input id="s_key" type="password" autocomplete="off" placeholder="để trống = giữ nguyên"></label>
+ <div class="adv" id="adv"></div>
+ <div id="relay"><label class="f">Máy có Codex (ssh) — ví dụ user@192.168.1.33<input id="r_host" autocomplete="off"></label>
+  <label class="f">Thư mục RỖNG trên máy đó (Codex không có gì để đọc)<input id="r_dir" autocomplete="off"></label>
+  <label class="f">Lệnh codex trên máy đó<input id="r_codex" autocomplete="off" value="codex"></label></div>
+ <div class="row"><span id="tst" class="mute"></span><button type="button" class="btn" id="tbtn">Kiểm tra kết nối</button><button type="button" class="btn" id="cbtn">Đóng</button><button class="btn primary" id="sbtn" value="save">Lưu</button></div>
+ <div class="mute small" id="cfgpath"></div>
+</form></dialog>
+
+<script>
+"use strict";
+const $=s=>document.getElementById(s);let since=0,busy=false,ext=[],local=true,lastVol=null,cfgd=null,workEl=null;
+const H={"X-Requested-With":"cadfabric","Content-Type":"application/json"};
+const ADV={off:["Không cố vấn","Qwen tự làm, không có kế hoạch kiểm tra. Nhanh nhất."],nothink:["Qwen lập kế hoạch (nhanh)","Qwen viết kế hoạch rồi hệ thống tự tính thể tích để đối chiếu. Dữ liệu ở lại máy chủ của bạn."],
+ think:["Qwen suy nghĩ sâu (chậm)","Kế hoạch kỹ hơn nhưng có thể quá hạn trên máy chủ với đề khó."],codex:["Codex trên máy này","Chất lượng kế hoạch cao nhất đã đo. Nội dung yêu cầu được gửi ra dịch vụ ngoài. Cần cài và đăng nhập Codex."],
+ "codex-relay":["Codex trên máy khác (ssh)","Như trên nhưng chạy Codex ở máy khác qua ssh. Nội dung yêu cầu được gửi ra dịch vụ ngoài."]};
+async function api(p,body){const r=await fetch(p,body===undefined?{}:{method:"POST",headers:H,body:JSON.stringify(body)});let d={};try{d=await r.json()}catch(e){}return{ok:r.ok,status:r.status,d}}
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e};
+const fmt=v=>Number(v).toLocaleString("vi-VN",{maximumFractionDigits:3});
+function inline(p,t){t.split(/(\*\*[^*]+\*\*|`[^`]+`)/).forEach(s=>{if(!s)return;if(s.startsWith("**")&&s.endsWith("**")&&s.length>4)p.appendChild(el("b",0,s.slice(2,-2)));else if(s[0]==="`"&&s.endsWith("`")&&s.length>2)p.appendChild(el("code",0,s.slice(1,-1)));else p.appendChild(document.createTextNode(s))})}
+function md(text){const box=el("div","final");let list=null,para=null;
+ const flush=()=>{list=null;para=null};
+ for(const raw of text.split("\n")){const l=raw.trimEnd();
+  if(!l.trim()){flush();continue}
+  const m=l.match(/^\s*([-*]|\d+\.)\s+(.*)$/);
+  if(m){const ord=/\d/.test(m[1]);if(!list||list.tagName!==(ord?"OL":"UL")){list=el(ord?"ol":"ul");box.appendChild(list)}const li=el("li");inline(li,m[2]);list.appendChild(li);para=null}
+  else{list=null;if(!para){para=el("p");box.appendChild(para)}else para.appendChild(el("br"));inline(para,l.replace(/^#+\s*/,""))}}
+ return box}
+function col(){return $("col")}
+function put(e){const log=$("log"),near=log.scrollHeight-log.scrollTop-log.clientHeight<140;if(workEl&&workEl.parentNode)col().insertBefore(e,workEl);else col().appendChild(e);if(near)log.scrollTop=1e9}
+function render(ev){hero(false);
+ if(ev.kind==="user"){const b=el("div","user",ev.text);if(ev.planner)b.appendChild(el("small",0,"cố vấn: "+ev.planner));put(b)}
+ else if(ev.kind==="plan"){const d=el("details","card");const s=el("summary");s.appendChild(el("span","ic "+(ev.ok?"ok":"warnc"),ev.ok?"◆":"!"));
+  s.appendChild(el("span",0,ev.ok?"Kế hoạch kiểm tra ("+ev.mode+") — "+ev.milestones+" mốc thể tích":"Không lập được kế hoạch ("+ev.mode+")"));d.appendChild(s);
+  const b=el("div","body");if(ev.note)b.appendChild(el("div","chk",ev.note));if(ev.describe)b.appendChild(el("pre",0,ev.describe));d.appendChild(b);put(d);
+  if(ev.pitfalls&&ev.pitfalls.length){const p=el("div","pit");p.appendChild(el("b",0,"Cố vấn lưu ý — kiểm tra đề bài trước khi tin kết quả"));const u=el("ul");ev.pitfalls.forEach(x=>u.appendChild(el("li",0,x)));p.appendChild(u);put(p)}}
+ else if(ev.kind==="cell"){const d=el("details","card");const s=el("summary");s.appendChild(el("span","ic "+(ev.ok?"ok":"bad"),ev.ok?"✓":"✗"));s.appendChild(el("span",0,"Bước "+ev.n+(ev.ok?"":" — lỗi")));
+  if(ev.volume!=null)s.appendChild(el("span","vol","V = "+fmt(ev.volume)+" mm³"));d.appendChild(s);const b=el("div","body");b.appendChild(el("pre",0,ev.code));
+  if(ev.error)b.appendChild(el("div","chk bad",ev.error));if(ev.output)b.appendChild(el("pre",0,ev.output));d.appendChild(b);put(d);
+  if(ev.check)put(el("div","chk","⚠ "+ev.check))}
+ else if(ev.kind==="gate")put(el("div","chk","⚠ Cổng kiểm cuối chặn: "+ev.text))
+ else if(ev.kind==="final"){const f=md(ev.text);f.appendChild(el("div","foot",ev.steps+" bước · "+ev.sec+" s"+(ev.warnings?" · "+ev.warnings+" cảnh báo kiểm tra":"")+(ev.gates?" · "+ev.gates+" lần cổng kiểm cuối chặn":"")));put(f)}
+ else if(ev.kind==="error")put(el("div","err","Lỗi: "+ev.text))}
+function hero(show){const h=$("hero");if(show&&!h){const x=el("div","hero");x.id="hero";x.appendChild(el("h2",0,"Bạn muốn thiết kế chi tiết gì?"));x.appendChild(el("p",0,"Mô tả bằng tiếng Việt, kèm kích thước. Hệ thống dựng bằng CadQuery và đối chiếu thể tích thật."));
+  if(cfgd&&!cfgd.configured){const b=el("div","banner","Chưa cấu hình URL API. ");const bt=el("button","btn small","Mở cài đặt");bt.onclick=openSettings;b.appendChild(bt);x.appendChild(b)}
+  const c=el("div","chips");["Tạo hộp 80×50×30 mm, khoan lỗ xuyên Ø10 ở tâm mặt trên, báo thể tích.","Đĩa tròn Ø100 dày 10, khoan 6 lỗ Ø8 đều trên vòng tròn Ø70.","Trục bậc: đoạn Ø30 dài 40 và đoạn Ø20 dài 30 cùng trục, vát 2 mm đầu trục."].forEach(t=>{const k=el("div","chip",t);k.onclick=()=>{$("text").value=t;$("text").focus();grow()};c.appendChild(k)});x.appendChild(c);col().prepend(x)}
+ else if(!show&&h)h.remove()}
+async function showPart(m){const t=$("meas");t.replaceChildren();
+ if(!m){$("preview").textContent="chưa có chi tiết";$("dl").hidden=true;return}
+ for(const [k,v] of [["Thể tích (mm³)",fmt(m.volume)],["Bbox (mm)",m.bbox_size.map(fmt).join(" × ")],["Tâm khối lượng",m.com.map(fmt).join(", ")],["Mặt / cạnh / đỉnh",m.faces+" / "+m.edges+" / "+m.vertices],["Số solid",m.solids],["Hợp lệ",m.valid?"có":"KHÔNG"]]){const tr=t.insertRow();tr.insertCell().textContent=k;tr.insertCell().textContent=v}
+ $("dl").hidden=false;
+ try{const r=await fetch("/api/part.svg?"+Date.now());if(r.ok){const d=new DOMParser().parseFromString(await r.text(),"image/svg+xml").documentElement;$("preview").replaceChildren(document.importNode(d,true))}}catch(e){}}
+function setBusy(b){busy=b;$("dot").className="dot"+(b?" busy":"");$("status").textContent=b?"đang làm…":"sẵn sàng";$("send").hidden=b;$("stop").hidden=!b;$("newbtn").disabled=b;
+ if(b&&!(workEl&&workEl.parentNode)){workEl=el("div","working","Đang làm");col().appendChild(workEl);$("log").scrollTop=1e9}if(!b&&workEl){workEl.remove();workEl=null}}
+async function poll(){const {ok,d}=await api("/api/state?since="+since);if(!ok)return;
+ d.events.forEach(render);since=d.next;if(d.busy!==busy)setBusy(d.busy);if(!col().children.length||(col().children.length===1&&workEl))hero(true);
+ $("hint").textContent=d.follow_up?"Tin nhắn tiếp theo sẽ chỉnh sửa chi tiết này (phần chỉnh sửa không có kế hoạch kiểm tra riêng).":"Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /stop dừng";
+ const key=d.measure?d.measure.volume+"|"+d.measure.faces:null;if(key!==lastVol){lastVol=key;showPart(d.measure)}}
+async function newPart(){if(busy)return;if(lastVol&&!confirm("Bắt đầu chi tiết mới? Chi tiết hiện tại sẽ bị xóa khỏi phiên."))return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;hero(true);poll()}
+async function submit(){const text=$("text").value.trim();if(!text)return;
+ if(text==="/new"){$("text").value="";grow();return newPart()}if(text==="/stop"){$("text").value="";grow();return api("/api/stop",{})}
+ if(busy)return;const planner=$("planner").value;const body={text,planner};
+ if(ext.includes(planner)){if(!confirm("Cố vấn '"+planner+"' gửi nội dung yêu cầu ra dịch vụ bên ngoài. Tiếp tục?"))return;body.confirm_external=true}
+ const r=await api("/api/send",body);if(r.ok){$("text").value="";grow()}else put(el("div","err","Không gửi được: "+(r.d.error||r.status)));poll()}
+function grow(){const t=$("text");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,200)+"px"}
+$("text").oninput=grow;$("text").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();submit()}};
+$("send").onclick=submit;$("stop").onclick=()=>api("/api/stop",{});$("newbtn").onclick=newPart;$("partbtn").onclick=()=>$("side").classList.toggle("open");
+function loadSettings(s){cfgd=cfgd||{};cfgd.configured=s.configured;$("s_url").value=s.url;$("s_model").value=s.model;$("s_key").value="";$("keystate").textContent=s.has_key?"(đã lưu một khoá)":"(chưa có khoá)";
+ const r=s.relay||{};$("r_host").value=r.host||"";$("r_dir").value=r.workdir||"";$("r_codex").value=r.codex||"codex";$("cfgpath").textContent="Lưu tại: "+s.config_path;pick(s.planner)}
+function pick(p){document.querySelectorAll("#adv input").forEach(i=>i.checked=i.value===p);$("relay").classList.toggle("show",p==="codex-relay")}
+function buildAdv(planners){const a=$("adv");a.replaceChildren();a.appendChild(el("div","mute small","Cố vấn lập kế hoạch kiểm tra"));
+ for(const p of planners){const l=el("label","opt");const i=el("input");i.type="radio";i.name="adv";i.value=p;i.onchange=()=>pick(p);l.appendChild(i);const d=el("div");const b=el("b",0,ADV[p][0]);if(ext.includes(p))b.appendChild(el("span","tag","gửi ra ngoài"));d.appendChild(b);d.appendChild(el("span",0,ADV[p][1]));l.appendChild(d);a.appendChild(l)}}
+function form(){const p=(document.querySelector("#adv input:checked")||{}).value;return{url:$("s_url").value.trim(),model:$("s_model").value.trim(),key:$("s_key").value,planner:p,relay:{host:$("r_host").value.trim(),workdir:$("r_dir").value.trim(),codex:$("r_codex").value.trim()||"codex"}}}
+function openSettings(){$("tst").textContent="";$("dlg").showModal()}
+$("setbtn").onclick=openSettings;$("cbtn").onclick=()=>$("dlg").close();
+$("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=await api("/api/test",form());if(!r.ok){$("tst").textContent=r.d.error||("lỗi "+r.status);return}
+ $("tst").textContent=(r.d.ok?"✓ ":"✗ ")+r.d.detail;const dl=$("models");dl.replaceChildren();(r.d.models||[]).forEach(m=>{const o=el("option");o.value=m;dl.appendChild(o)});
+ if(r.d.ok&&!$("s_model").value&&r.d.models&&r.d.models.length===1)$("s_model").value=r.d.models[0]}
+$("sf").onsubmit=async e=>{e.preventDefault();const r=await api("/api/settings",form());if(!r.ok){$("tst").textContent="✗ "+(r.d.error||r.status);return}
+ loadSettings(r.d.settings);$("planner").value=r.d.settings.planner;$("dlg").close();if(!col().querySelector(".user"))hero(false),hero(true)};
+$("quitbtn").onclick=async()=>{if(confirm("Tắt ứng dụng CadFabric?")){await api("/api/quit",{});document.body.textContent="Đã tắt CadFabric. Bạn có thể đóng tab này."}};
+(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local;
+ for(const p of d.planners){const o=el("option",0,ADV[p][0]);o.value=p;$("planner").appendChild(o)}buildAdv(d.planners);loadSettings(d.settings);$("planner").value=d.default;
+ if(!local){$("localnote").textContent="Đang truy cập từ xa: không sửa được cài đặt (chỉ sửa được trên máy chạy ứng dụng).";document.querySelectorAll("#dlg input,#tbtn,#sbtn").forEach(x=>x.disabled=true)}
+ hero(true);poll();setInterval(poll,800);if(!d.settings.configured&&local)setTimeout(openSettings,300)})();
+</script>
+</body>
+</html>

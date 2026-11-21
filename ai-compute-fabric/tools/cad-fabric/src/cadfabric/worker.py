@@ -4,6 +4,7 @@ Runs in its own process so a crash, a hang or a memory blow-up kills only this w
 
 Not a security boundary against a determined attacker: it blocks the obvious ways out (imports other than cadquery/math, file/process builtins,
 dunder access) and limits memory; run the whole worker in a container when the model is not trusted."""
+import re
 import ast, builtins, contextlib, io, json, math, os, sys, traceback
 
 _proto = os.fdopen(os.dup(1), "w", buffering=1, encoding="utf-8")
@@ -131,6 +132,20 @@ def handle(req):
             return {"ok": False, "error": "no part to export"}
         cq.exporters.export(cq.Workplane(obj=sh), req["path"], "STEP")
         return {"ok": True}
+    elif op == "svg":
+        sh = as_shape(STATE["part"]) if STATE["part"] is not None else None
+        if sh is None:
+            return {"ok": False, "error": "no part to draw"}
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "v.svg")
+            cq.exporters.export(cq.Workplane(obj=sh), p, cq.exporters.ExportTypes.SVG,
+                                opt={"width": 640, "height": 440, "marginLeft": 24, "marginTop": 24, "showAxes": False, "projectionDir": (1, -1, 0.8),
+                                     "strokeWidth": 0.5, "strokeColor": (30, 30, 30), "hiddenColor": (170, 170, 170), "showHidden": True})
+            svg = open(p, encoding="utf-8").read()
+            if "viewBox" not in svg[:400]:                       # CadQuery gives fixed width/height only; a viewBox lets the page scale the drawing
+                svg = re.sub(r"<svg\b", '<svg viewBox="0 0 640 440"', svg, count=1)
+            return {"ok": True, "svg": svg}
     elif op == "ping":
         return {"ok": True}
     else:

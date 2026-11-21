@@ -2,6 +2,8 @@
   cadfabric init            write a starter config (never writes a key)
   cadfabric doctor          check CadQuery, the worker, the gateway and the chosen planner
   cadfabric run "request"   build a part from a request; --step out.step exports it; --planner overrides the config
+  cadfabric app             the desktop app: starts the web chat on a free local port and opens your browser (reuses a running one)
+  cadfabric serve           web chat on http://127.0.0.1:8765 (prints a one-time access URL); --open also opens the browser
   cadfabric bench           run the benchmark tasks (--modes off,codex --reps 3 --tasks a,b --out file.jsonl)
   cadfabric tasks           list the benchmark tasks and their kernel-computed answers"""
 import argparse, json, os, sys, time
@@ -84,6 +86,81 @@ def cmd_run(a):
         be.close()
 
 
+def cmd_serve(a):
+    from .llm import LLM
+    from . import web
+    cfg = config.load()
+    if a.host not in ("127.0.0.1", "localhost") and not a.allow_remote:
+        print("refusing to listen on %s without --allow-remote (the chat can run CAD code and spend your LLM quota; anyone with the token can use it)" % a.host); return 2
+    srv = web.serve(_make_llm(cfg), cfg, a.host, a.port, token=os.environ.get("CADFABRIC_TOKEN"))
+    if a.open:
+        import threading, webbrowser
+        threading.Timer(0.4, lambda: webbrowser.open("http://127.0.0.1:%d/?t=%s" % (srv.port, srv.token))).start()
+    _wait_quit(srv)
+    return 0
+
+
+def _make_llm(cfg):
+    from .llm import LLM
+    try:
+        return LLM(cfg)
+    except SystemExit:                                      # unreadable key file: still start, so the user can fix it in the settings dialog
+        return LLM(dict(cfg, key_file=None))
+
+
+def _wait_quit(srv):
+    import threading
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        while not srv.sess.quit:
+            time.sleep(0.3)
+    except KeyboardInterrupt:
+        pass
+    srv.shutdown(); srv.sess.close()
+
+
+def cmd_app(a):
+    import socket, threading, urllib.request, webbrowser
+    from . import web
+    cfg = config.load()
+    data = config.data_dir(cfg)
+    if sys.stdout is None or sys.stderr is None:            # started with pythonw / a shortcut: no console, log to a file
+        sys.stdout = sys.stderr = open(os.path.join(data, "app.log"), "a", buffering=1, encoding="utf-8")
+    state = os.path.join(data, "app.json")
+    try:                                                    # a running app: just open it again
+        with open(state, encoding="utf-8") as f:
+            st = json.load(f)
+        rq = urllib.request.Request("http://127.0.0.1:%d/api/config" % st["port"], headers={"Cookie": "cft=" + st["token"]})
+        urllib.request.urlopen(rq, timeout=3).read()
+        webbrowser.open("http://127.0.0.1:%d/?t=%s" % (st["port"], st["token"]))
+        print("already running on port %d" % st["port"]); return 0
+    except (OSError, ValueError, KeyError):
+        pass
+    srv = None
+    for port in range(a.port, a.port + 30):
+        try:
+            srv = web.serve(_make_llm(cfg), cfg, "127.0.0.1", port, quiet=True)
+            break
+        except OSError:
+            continue
+    if srv is None:
+        print("no free port near %d" % a.port); return 2
+    url = "http://127.0.0.1:%d/?t=%s" % (srv.port, srv.token)
+    with open(state, "w", encoding="utf-8") as f:
+        json.dump({"port": srv.port, "token": srv.token, "pid": os.getpid()}, f)
+    print("cadfabric app: " + url, flush=True)
+    if not a.no_browser:
+        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+    try:
+        _wait_quit(srv)
+    finally:
+        try:
+            os.unlink(state)
+        except OSError:
+            pass
+    return 0
+
+
 def cmd_tasks(a):
     from . import tasks
     from .cq_backend import CadQueryBackend
@@ -117,9 +194,16 @@ def main(argv=None):
     sub.add_parser("doctor").set_defaults(fn=cmd_doctor)
     p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner", choices=config.PLANNERS); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
     sub.add_parser("tasks").set_defaults(fn=cmd_tasks)
+    p = sub.add_parser("serve"); p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8765); p.add_argument("--allow-remote", action="store_true"); p.add_argument("--open", action="store_true"); p.set_defaults(fn=cmd_serve)
+    p = sub.add_parser("app"); p.add_argument("--port", type=int, default=8765); p.add_argument("--no-browser", action="store_true"); p.set_defaults(fn=cmd_app)
     p = sub.add_parser("bench"); p.add_argument("--modes", default="off,nothink"); p.add_argument("--reps", type=int, default=3); p.add_argument("--tasks"); p.add_argument("--out"); p.set_defaults(fn=cmd_bench)
     a = ap.parse_args(argv)
     return a.fn(a)
+
+
+def app_main():
+    """Entry point for the windowless launcher (`cadfabric-app.exe` on Windows): same as `cadfabric app`."""
+    return main(["app"] + sys.argv[1:])
 
 
 if __name__ == "__main__":

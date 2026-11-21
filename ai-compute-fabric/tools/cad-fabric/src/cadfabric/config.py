@@ -7,7 +7,7 @@ Environment overrides: CADFABRIC_URL, CADFABRIC_MODEL, CADFABRIC_KEY (the key it
 import json, os, sys
 
 DEFAULTS = {"url": "http://127.0.0.1:18080/v1/chat/completions", "model": "", "key_file": None, "planner": "nothink",
-            "relay": {"host": "", "codex": "codex"}, "codex_bin": None, "data_dir": None}
+            "relay": {"host": "", "workdir": "", "codex": "codex"}, "codex_bin": None, "data_dir": None}
 PLANNERS = ("off", "nothink", "think", "codex", "codex-relay")
 
 
@@ -64,3 +64,65 @@ def data_dir(cfg):
                                            else os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "cadfabric")
     os.makedirs(d, exist_ok=True)
     return d
+
+
+# ---- settings written from the web UI (only these fields; every value is validated because some end up in a command line) ----
+import re
+_HOST = re.compile(r"^[A-Za-z0-9_.@:\-\[\]]{1,120}$")
+_PATH = re.compile(r"^[A-Za-z0-9_ ./\\:~\-]{0,260}$")
+
+
+def user_config_path():
+    return os.environ.get("CADFABRIC_CONFIG") or os.path.join(config_dir(), "config.json")
+
+
+def validate_settings(s):
+    """-> (clean dict, error text). Raises nothing."""
+    out = {}
+    url = str(s.get("url", "")).strip()
+    if not re.match(r"^https?://[^\s\"'<>]{1,300}$", url):
+        return None, "URL must start with http:// or https://"
+    out["url"] = url
+    model = str(s.get("model", "")).strip()
+    if len(model) > 120 or re.search(r"[\s\"'<>]", model):
+        return None, "model name is not valid"
+    out["model"] = model
+    planner = s.get("planner")
+    if planner not in PLANNERS:
+        return None, "unknown planner"
+    out["planner"] = planner
+    rel = s.get("relay") or {}
+    host, workdir, codex = str(rel.get("host", "")).strip(), str(rel.get("workdir", "")).strip(), str(rel.get("codex", "") or "codex").strip()
+    if host and (not _HOST.match(host) or host.startswith("-")):
+        return None, "relay host is not valid (use name, user@name or an IP)"
+    if not _PATH.match(workdir) or not _PATH.match(codex):
+        return None, "relay folder / codex path contain characters that are not allowed"
+    out["relay"] = {"host": host, "workdir": workdir, "codex": codex}
+    return out, ""
+
+
+def save_settings(clean, key=None):
+    """Merge `clean` into the user config file. `key` (if given) goes to <config dir>/key.txt, never into the JSON."""
+    path = user_config_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    cur = {}
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8-sig") as f:
+            cur = json.load(f)
+    cur.update({k: v for k, v in clean.items() if k != "relay"})
+    cur["relay"] = dict(cur.get("relay") or {}, **clean["relay"])
+    if key:
+        kp = os.path.join(os.path.dirname(path), "key.txt")
+        fd = os.open(kp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(key.strip() + "\n")
+        try:
+            os.chmod(kp, 0o600)
+        except OSError:
+            pass
+        cur["key_file"] = kp
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cur, f, indent=2); f.write("\n")
+    os.replace(tmp, path)
+    return path

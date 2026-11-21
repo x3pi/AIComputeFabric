@@ -79,6 +79,12 @@ class CadQueryBackend(Backend):
             raise RuntimeError(r.get("error", "export failed"))
         return path
 
+    def preview_svg(self):
+        r = self._rpc({"op": "svg"})
+        if not r.get("ok"):
+            raise RuntimeError(r.get("error", "preview failed"))
+        return r["svg"]
+
     def close(self):
         p, self.proc = self.proc, None
         if p and p.poll() is None:
