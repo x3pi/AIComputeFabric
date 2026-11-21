@@ -25,7 +25,7 @@ for t in a.tasks.split(","):
                 r, vol, err = {"steps": 0, "sec": 0, "warnings": 0, "gates": 0, "trace": []}, None, "%s: %s" % (type(e).__name__, str(e)[:200])
             row = {"task": t, "mode": mode, "rep": rep, "pass": tasks.passed(vol, exp[t], tasks.TASKS[t]["tol"]), "vol": vol, "expected": exp[t], "steps": r["steps"],
                    "warnings": r["warnings"], "gates": r["gates"], "sec": r["sec"], "tokens": r.get("tokens"), "limit": r.get("ended_by_limit"), "error": err,
-                   "final": (r.get("final") or "")[-300:], "trace": r["trace"]}
+                   "final": (r.get("final") or "")[-300:], "plan_raw": r.get("plan_raw", ""), "trace": r["trace"]}
             open(a.out, "a", encoding="utf-8").write(json.dumps(row, ensure_ascii=False) + "\n")
             print("%-16s %-6s #%d %s vol=%s exp=%.4f steps=%d warn=%d gates=%d %ss %s" % (t, mode, rep, "PASS" if row["pass"] else "FAIL", None if vol is None else round(vol, 4),
                   exp[t], r["steps"], r["warnings"], r["gates"], r["sec"], err), flush=True)

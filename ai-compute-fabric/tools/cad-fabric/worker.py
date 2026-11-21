@@ -56,7 +56,7 @@ NS = {}
 
 def fresh():
     NS.clear()
-    NS.update({"__builtins__": dict(SAFE), "cq": cq, "math": math})
+    NS.update({"__builtins__": dict(SAFE), "cq": cq, "math": math, "Workplane": cq.Workplane, "Vector": cq.Vector, "Location": cq.Location})
     return {"part": None}
 
 
@@ -80,7 +80,7 @@ def pick_part(before):
     """The part after a cell: `result` if the cell assigned it, else the last new/rebound Workplane or Shape."""
     cand = None
     for k, v in NS.items():
-        if k in ("cq", "math", "__builtins__"):
+        if k in ("cq", "math", "__builtins__", "Workplane", "Vector", "Location"):
             continue
         if isinstance(v, (cq.Workplane, cq.Shape, cq.Assembly)) and as_shape(v) is not None and before.get(k) is not id(v):
             cand = v

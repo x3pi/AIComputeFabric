@@ -9,7 +9,7 @@ GATE_MAX = 2
 
 SYSTEM = """You build CAD parts by writing CadQuery (Python) code that runs in a persistent session. Units are millimetres.
 Rules:
-- Call `execute_cadquery(code)`. `cq` and `math` are already imported; variables persist between calls. Assign the finished solid to `result`.
+- Call `execute_cadquery(code)`. `cq`, `math`, `Workplane`, `Vector` and `Location` are already imported (write `cq.Workplane(...)` or `Workplane(...)`); variables persist between calls. Assign the finished solid to `result`.
 - After every call the harness measures the real part (volume, bounding box, centre of mass, face/edge/vertex counts, validity). Those numbers are facts; never compute a volume by hand, read it from the measurement.
 - Build the part step by step (one feature per call) so a mistake shows up right where it happens. `undo()` removes the last successful call.
 - Conventions: Workplane("XY") sketches in the XY plane and extrudes along +Z; Workplane("XZ") extrudes along -Y; Workplane("YZ") along +X. `.revolve(360, (0,0,0), (0,1,0))` revolves about the workplane's local Y axis.
@@ -45,14 +45,24 @@ def make_plan(llm, request, think=True):
     return (V.parse_spec(plan) if plan else None), msg["content"]
 
 
+def make_plan_codex(llm, request):
+    """Plan by Codex on the Windows PC (ssh relay). Any failure falls back to the gateway model so a run never loses its plan to a relay hiccup."""
+    import codex_relay
+    text, err = codex_relay.ask("%s\n\n%s\n\nUSER REQUEST:\n%s" % (V.PLAN_PROMPT, ENV_NOTE, request), timeout=300)
+    plan = extract_json(text) if text else None
+    if plan:
+        return V.parse_spec(plan), text
+    return make_plan(llm, request, think=True)[0], "(codex failed: %s; used think)" % (err or "no JSON")
+
+
 def run(llm, backend, request, plan_mode="think", planner=None, log=print):
-    """-> dict: ok, final text, final measure, steps, checks, warnings, plan. plan_mode: off | think. `planner(request)->(spec, raw)` overrides."""
+    """-> dict: ok, final text, final measure, steps, checks, warnings, plan. plan_mode: off | think | nothink | codex. `planner(request)->(spec, raw)` overrides."""
     t0 = time.time()
     backend.reset()
     spec = tracker = None
     raw_plan = ""
     if plan_mode != "off":
-        spec, raw_plan = (planner or (lambda r: make_plan(llm, r, think=True)))(request)
+        spec, raw_plan = (planner or ((lambda r: make_plan_codex(llm, r)) if plan_mode == "codex" else (lambda r: make_plan(llm, r, think=(plan_mode != "nothink")))))(request)
         if spec:
             tracker = V.Tracker(spec)
     msgs = [{"role": "system", "content": SYSTEM}]

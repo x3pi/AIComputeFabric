@@ -58,6 +58,9 @@ class Backend(unittest.TestCase):
             self.assertAlmostEqual(b.measure().volume, math.pi * (400 * 50 - 25 * 50), places=3)
         finally: b.close()
 
+    def test_bare_workplane_name_works(self):
+        self.assertTrue(self.b.execute("result = Workplane('XY').box(1,1,1)").ok)
+
     def test_step_export(self):
         import tempfile
         self.b.execute(CYL); p = os.path.join(tempfile.mkdtemp(), "a.step"); self.b.export_step(p)
