@@ -70,14 +70,19 @@ try:
     CODEX_OK = CDX.available()
 except Exception:
     CDX, CODEX_OK = None, False
-CODEX_DOWN = False        # set after a Codex failure (model refused, login expired): degrade to the local model
-CLAUDE_DOWN = False       # set when the external advisor rejects our key (expired / revoked): degrade to the local model instead of failing every call
+COOLDOWN_S = 600
+DOWN = {"codex": 0.0, "claude": 0.0}      # an advisor that just failed is skipped by `auto` until this time (a timeout is often transient)
+CLAUDE_DOWN = False                       # permanent for this process: the key was rejected (expired / revoked)
 
 
-def advisor_available():
+def cooling(name):
+    return time.time() < DOWN[name]
+
+
+def advisor_available(ignore_cooldown=False):
     c = CFG.get("advisor") or {}
-    return {"off": True, "auto": True, "qwen_think": True, "qwen_nothink": True, "codex": CODEX_OK and not CODEX_DOWN,
-            "claude": not CLAUDE_DOWN and bool(c.get("url") and c.get("model") and c.get("key_file") and os.path.isfile(os.path.expandvars(os.path.expanduser(c["key_file"]))))}
+    return {"off": True, "auto": True, "qwen_think": True, "qwen_nothink": True, "codex": CODEX_OK and (ignore_cooldown or not cooling("codex")),
+            "claude": not CLAUDE_DOWN and (ignore_cooldown or not cooling("claude")) and bool(c.get("url") and c.get("model") and c.get("key_file") and os.path.isfile(os.path.expandvars(os.path.expanduser(c["key_file"]))))}
 
 
 def active_tools():
@@ -119,19 +124,21 @@ def _ask_mode(q, mode):
         why = "" if res.get("ok") else res.get("reason", "unknown")
         if why.startswith(("advisor HTTP 401", "advisor HTTP 403", "advisor request failed")):      # rejected key, or unreachable / timed out
             global CLAUDE_DOWN
-            CLAUDE_DOWN = True
+            if "request failed" in why:
+                DOWN["claude"] = time.time() + COOLDOWN_S
+            else:
+                CLAUDE_DOWN = True
             EMIT("info", text="  Cố vấn Claude không dùng được (%s: khóa hết hạn/bị thu hồi, hoặc không kết nối được). Chuyển sang cố vấn khác; hãy kiểm tra rồi khởi động lại." % why)
             audit("advisor_key_rejected", reason=why)
             return _ask_mode(q, "codex" if advisor_available().get("codex") else "qwen_think")
         return res.get("reply", ""), why
     if mode == "codex":
         ADV.audit("outbound", mode=mode, payload=q[:6000], report={"sanitize": "off", "local": False})
-        text, err = CDX.ask(q, timeout=min(240, ADVISOR_DEADLINE_S))
+        text, err = CDX.ask(q, timeout=ADVISOR_DEADLINE_S)
         if text:
             ADV.audit("inbound", reply=text[:4000])
             return text, ""
-        global CODEX_DOWN
-        CODEX_DOWN = True
+        DOWN["codex"] = time.time() + COOLDOWN_S
         EMIT("info", text="  Cố vấn Codex lỗi (%s). Chuyển sang Qwen suy nghĩ trên máy." % err[:140])
         audit("advisor_codex_failed", reason=err[:200])
         return _ask_mode(q, "qwen_think")
