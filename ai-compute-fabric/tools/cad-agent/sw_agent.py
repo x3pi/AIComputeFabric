@@ -155,22 +155,12 @@ def eff_mode(kind, n=0):
     return "qwen_think" if n == 0 else strong
 
 
-# ---- advisor architecture: (1) plan first, (2) numbers checked by CODE, (3) review before "done" ------------------------
-PLAN, REQUEST, gates_used = None, "", 0
+# ---- verification architecture (verifier.py): (1) the advisor plans with FORMULAS, (2) the harness evaluates them and measures the real part after
+# every step that can change the solid, (3) the final state is compared with the last milestone before the agent may say "done" ---------------
+import verifier as V
+PLAN, SPEC, TRACK, REQUEST, gates_used = None, None, None, "", 0
 GATE_MAX = 2          # failed final checks per request before the agent may report anyway
-# Passing runs match the exact answer to 2e-6, but the advisor computes its expected value by hand and often simplifies curved geometry
-# (a hole through a curved wall as a plain cylinder is off by ~1e-4). 1e-3 still rejects every real miss seen (0.36% to 1.2%) without
-# rejecting correct parts. Override with AICF_VOL_TOL / AICF_BBOX_TOL_MM.
-VOL_TOL = float(os.environ.get("AICF_VOL_TOL") or 1e-3)
-BBOX_TOL_MM = float(os.environ.get("AICF_BBOX_TOL_MM") or 0.05)
-PLAN_PROMPT = (
-    "You are planning a CAD job that a smaller model will carry out through the tools listed below. Read the USER REQUEST and reply with ONE JSON "
-    "object and nothing else:\n"
-    '{"steps": ["short imperative step naming the tool to use"], "expected": {"volume_mm3": <number or null>, "bbox_size_mm": [x, y, z] or null}, '
-    '"pitfalls": ["what commonly goes wrong with this request and how to check it"]}\n'
-    "Rules: compute `expected` yourself from the request with exact arithmetic (volume of the FINAL solid in mm3, and its overall bounding-box size); "
-    "use null when the request does not determine it. Prefer the simplest tool that does the job. Say which axis or plane each step uses, because the "
-    "executor does not know the tools' geometry conventions. Do not invent requirements.")
+READONLY = ("get_", "list_", "screenshot", "measure", "check", "find", "read", "ask_", "view", "zoom", "select", "show", "hide")
 
 
 def catalog():
@@ -222,20 +212,20 @@ def advise(args):
 
 
 def start_request(msgs):
-    """Once per user message: ask the strongest advisor for a plan with checkable numbers, and put it in front of the executor."""
-    global PLAN, REQUEST, gates_used
+    """Once per user message: ask the strongest advisor for a plan whose volumes are formulas, evaluate them by code, show the executor the numbers."""
+    global PLAN, SPEC, TRACK, REQUEST, gates_used
     gates_used = 0
     if ADVISOR_MODE == "off":
-        PLAN = None
+        PLAN = SPEC = TRACK = None
         return
     last = [m for m in msgs if m["role"] == "user"][-1]["content"]
     text = last if isinstance(last, str) else ""
     if PLAN and len(text) < 40:                      # a short follow-up ("continue") keeps the current plan
         return
-    REQUEST, PLAN = text, None
+    REQUEST, PLAN, SPEC, TRACK = text, None, None, None
     mode = eff_mode("plan")
     EMIT("tool_call", name="advisor_plan", args={"advisor": mode})
-    reply, err = _ask_mode("%s\n\nTOOLS:\n%s\n\nUSER REQUEST:\n%s" % (PLAN_PROMPT, catalog(), REQUEST), mode)
+    reply, err = _ask_mode("%s\n\nTOOLS:\n%s\n\nUSER REQUEST:\n%s" % (V.PLAN_PROMPT, catalog(), REQUEST), mode)
     audit("advisor_plan", mode=mode, ok=not err, reason=err, reply_chars=len(reply))
     if err or not reply:
         EMIT("tool_result", name="advisor_plan", result="(no plan: %s)" % (err or "empty reply"), images=[])
@@ -249,44 +239,67 @@ def start_request(msgs):
         msgs.append({"role": "user", "content": "ADVISOR PLAN (advice only):\n" + reply[:3000]})
         return
     PLAN = plan
-    exp = plan.get("expected") or {}
-    body = ("Steps:\n" + "\n".join("%d. %s" % (k + 1, x) for k, x in enumerate(plan.get("steps") or [])) +
-            "\nPitfalls:\n" + "\n".join("- %s" % x for x in (plan.get("pitfalls") or [])) +
-            "\nExpected final result (the advisor's own calculation): volume_mm3=%s, bbox_size_mm=%s" % (exp.get("volume_mm3"), exp.get("bbox_size_mm")))
+    SPEC = V.parse_spec(plan)
+    TRACK = V.Tracker(SPEC)
+    body = V.describe(SPEC)
+    audit("plan_spec", milestones=[m["vol"] for m in SPEC["milestones"]], bbox=SPEC["bbox"], errors=SPEC["errors"])
     EMIT("tool_result", name="advisor_plan", result=body, images=[])
-    msgs.append({"role": "user", "content": "ADVISOR PLAN (advice only; verify each step on the real part). The harness will compare the final part with the "
-                 "expected numbers below. If you are certain an expected number is wrong, do not bend the part to it: say so with the arithmetic.\n" + body})
+    msgs.append({"role": "user", "content": "ADVISOR PLAN (advice only; verify each step on the real part). The numbers were computed by the harness from the advisor's formulas. "
+                 "After each step that changes the solid, the harness measures the real part and reports `HARNESS CHECK` lines; those are measured facts. "
+                 "If you are certain a planned number is wrong, do not bend the part to it: say so with the arithmetic.\n" + body})
+
+
+def measure():
+    """(volume_mm3, bbox_size_mm) of the real part, read-only, or (None, None)."""
+    try:
+        mp = json.loads(mcp_call("get_mass_properties", {})[0])["mass_properties"]
+        return float(mp["volume_mm3"]), [float(x) for x in mp["bounding_box_mm"]["size_mm"]]
+    except Exception:
+        return None, None
+
+
+def step_check(name, out):
+    """After a tool call that succeeded and may change the solid: measure it and compare with the plan. -> text to append to the tool result, or ''."""
+    if TRACK is None or not out.lstrip().startswith("{") or name.startswith(READONLY):
+        return ""
+    if name in ("new_part", "open_part", "close_part"):
+        TRACK.reset()
+        return ""
+    if name in ("add_plane", "add_sketch"):            # these never change the solid
+        return ""
+    if failed(out):
+        return ""
+    vol, _ = measure()
+    r = TRACK.observe(name, vol)
+    if not r:
+        return ""
+    audit("step_check", tool=name, level=r[0], volume=vol)
+    return "\n" + r[1]
 
 
 def gate(final_text):
-    """Before the agent may say 'done': compare the real part with the plan's numbers (by code). On mismatch, consult the advisor with the facts."""
+    """Before the agent may say 'done': compare the real part with the plan (by code). On mismatch, consult the advisor with the facts."""
     global gates_used
-    if ADVISOR_MODE == "off" or not PLAN or gates_used >= GATE_MAX:
+    if ADVISOR_MODE == "off" or not SPEC or TRACK is None or gates_used >= GATE_MAX:
         return None
-    exp = PLAN.get("expected") or {}
-    ev, eb = exp.get("volume_mm3"), exp.get("bbox_size_mm")
-    snap, vol, bbox = state_snapshot()
-    bad = []
-    if isinstance(ev, (int, float)) and not isinstance(ev, bool) and ev > 0 and vol is not None and abs(vol - ev) / ev > VOL_TOL:
-        bad.append("volume %.1f mm3 measured vs %.1f expected (%+.2f%%)" % (vol, ev, 100 * (vol - ev) / ev))
-    if isinstance(eb, list) and len(eb) == 3 and bbox and all(isinstance(x, (int, float)) for x in eb):
-        if any(abs(a - b) > BBOX_TOL_MM for a, b in zip(sorted(bbox), sorted(float(x) for x in eb))):
-            bad.append("bounding box %s measured vs %s expected" % ([round(x, 2) for x in sorted(bbox)], sorted(eb)))
+    snap, _, _ = state_snapshot()
+    vol, bbox = measure()
+    bad = TRACK.final_verdict(vol, bbox, SPEC)
     if not bad:
         return None
     gates_used += 1
     mode = eff_mode("gate")
     EMIT("tool_call", name="advisor_check", args={"mismatch": bad, "advisor": mode})
-    q = ("A CAD executor says it is finished, but the numbers do not match your plan.\n\nORIGINAL USER REQUEST:\n%s\n\nYOUR EXPECTED RESULT: %s\n\n"
-         "MEASURED (by the harness): %s\n\nCURRENT STATE:\n%s\n\nEXECUTOR'S FINAL MESSAGE:\n%s\n\nDecide which is wrong: the part or your expectation "
-         "(recompute it). If the part is wrong, say what is most likely wrong and give the next 1-3 concrete tool steps. Be brief."
-         % (REQUEST, json.dumps(exp), "; ".join(bad), snap, (final_text or "")[:1500]))
+    q = ("A CAD executor says it is finished, but the measured part does not match your plan.\n\nORIGINAL USER REQUEST:\n%s\n\nYOUR PLAN (volumes computed by the "
+         "harness from your formulas):\n%s\n\nMEASURED (by the harness): %s\n\nCURRENT STATE:\n%s\n\nEXECUTOR'S FINAL MESSAGE:\n%s\n\nDecide which is wrong: the part "
+         "or your plan (re-derive the formula). If the part is wrong, say what is most likely wrong and give the next 1-3 concrete tool steps. Be brief."
+         % (REQUEST, V.describe(SPEC), "; ".join(bad), snap, (final_text or "")[:1500]))
     text, err = _ask_mode(q, mode)
     audit("advisor_check", mode=mode, mismatch=bad, ok=not err, reason=err)
     advice = text if text else "(advisor unavailable: %s)" % err
     EMIT("tool_result", name="advisor_check", result="; ".join(bad) + "\n\n" + advice[:3000], images=[])
-    return ("VERIFICATION FAILED: the real part does not match what the request implies: %s.\nAdvisor analysis (advice, NOT executed): %s\n"
-            "Read the current state, find the cause, fix it and verify again. If you are certain the expected value is wrong, do not change the part: "
+    return ("VERIFICATION FAILED: the real part does not match the plan: %s.\nAdvisor analysis (advice, NOT executed): %s\n"
+            "Read the current state, find the cause, fix it and verify again. If you are certain the plan's number is wrong, do not change the part: "
             "explain with the arithmetic in your final answer." % ("; ".join(bad), advice[:2500]))
 
 
@@ -518,30 +531,16 @@ def part_bbox():
 
 
 def annotate(name, args, out):
-    """Generic geometry preflight, done by code: a sketch whose profile lies entirely outside the part's bounding box can never cut or join the
-    part, however the numbers are tweaked. Tell the model that as a measured fact the moment it happens (not after N failed cuts)."""
-    if name != "add_sketch" or not out.lstrip().startswith("{"):
-        return out
-    try:
-        d = json.loads(out)
-        if not d.get("ok"):
+    """Harness checks appended to a tool result: sketch preflight (geometry) and the step-level volume check against the plan."""
+    if name == "add_sketch" and out.lstrip().startswith("{"):
+        try:
+            d = json.loads(out)
+        except ValueError:
             return out
-        o, xa, ya, pts = d["origin_mm"], d["x_axis"], d["y_axis"], d["points_mm"]
-        world = [[o[k] + p[0] * xa[k] + p[1] * ya[k] for k in range(3)] for p in pts]
-        lo, hi = [min(w[k] for w in world) for k in range(3)], [max(w[k] for w in world) for k in range(3)]
-    except (ValueError, KeyError, TypeError, IndexError):
-        return out
-    bb = part_bbox()
-    if not bb:
-        return out
-    gap = [max(bb[0][k] - hi[k], lo[k] - bb[1][k], 0.0) for k in range(3)]
-    if max(gap) <= 0.01:
-        return out
-    k = max(range(3), key=lambda i: gap[i])
-    return out + ("\nHARNESS CHECK: this sketch lies entirely OUTSIDE the part: along %s its profile spans %.1f..%.1f mm but the part spans %.1f..%.1f mm "
-                  "(gap %.1f mm). A cut or extrusion from it cannot touch the part. Move the sketch plane/profile so it passes through the part "
-                  "(compare with the part's bounding box and the plane origin/normal) instead of retrying the same operation." %
-                  ("XYZ"[k], lo[k], hi[k], bb[0][k], bb[1][k], gap[k]))
+        bb = part_bbox() if d.get("ok") else None
+        msg = V.sketch_outside(d, bb) if bb else None
+        return out + ("\n" + msg if msg else "")
+    return out + step_check(name, out)
 
 
 def error_signature(name, out):
