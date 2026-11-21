@@ -369,7 +369,9 @@ Rules:
 - A cut or hole is only done when it is proven: compare the volume before and after (get_mass_properties) with the volume you expected to remove, and look at a picture (at most 3 verification pictures per task: pick the views that can show the feature, then conclude and report). If the volume drops by clearly less than expected (under about 90 percent) or the picture shows no opening, the cut went the wrong way or only part of the depth: redo it (reverse=True, or omit depth_mm for through-all) and check again. Do not report success on "ok": true alone.
 - Any feature that must be open (hole, window, slot, pocket, through-cut) must be clear of neighbouring walls and leave real material around it; state what you verified (volume change, picture) for each such feature.
 - Before changing an EXISTING part, read its current state (list_features, get_mass_properties) and compare it with the request: if the request is already satisfied, say so and show the evidence instead of redoing it; if it is partly done, build only the missing part.
-- If a tool returns ERROR, read it, change the arguments and retry (at most 2 retries for the same step), then explain the problem.
+- Work in the part's OWN frame: after the first body, read its bounding box and note which axis is its height/length/width; every offset, plane and sketch position must be expressed in that frame and compared with the bounding box before you use it.
+- If a tool returns ERROR, read it and retry with changed arguments at most once. If the same error comes back, stop varying numbers: your picture of the situation is wrong (frame, plane position, face, direction, units). Name two possible reasons, check the cheapest one with a read-only query (bounding box, list_faces, the plane origin/normal the tool returned), then act. If still stuck, explain the problem.
+- Notes marked "HARNESS CHECK" come from the program, not from SolidWorks: they are measured facts, take them seriously.
 - Do not save, export, close or delete unless the user asked; those calls need the person's confirmation anyway.
 - Reply to the user in their language (Vietnamese if they write Vietnamese), briefly: what you built, dimensions, and the verification numbers."""
 
@@ -468,6 +470,56 @@ ADVISOR_NUDGE = ("The same kind of step has now failed twice in a row. Before tr
                  "what you tried, the exact error text and the key numbers, then apply what is sensible and verify it on the real part.")
 
 
+def part_bbox():
+    """(min, max) of the active part from SolidWorks, or None. Read-only."""
+    try:
+        out, _ = mcp_call("get_mass_properties", {})
+        b = json.loads(out)["mass_properties"]["bounding_box_mm"]
+        return [float(x) for x in b["min_mm"]], [float(x) for x in b["max_mm"]]
+    except Exception:
+        return None
+
+
+def annotate(name, args, out):
+    """Generic geometry preflight, done by code: a sketch whose profile lies entirely outside the part's bounding box can never cut or join the
+    part, however the numbers are tweaked. Tell the model that as a measured fact the moment it happens (not after N failed cuts)."""
+    if name != "add_sketch" or not out.lstrip().startswith("{"):
+        return out
+    try:
+        d = json.loads(out)
+        if not d.get("ok"):
+            return out
+        o, xa, ya, pts = d["origin_mm"], d["x_axis"], d["y_axis"], d["points_mm"]
+        world = [[o[k] + p[0] * xa[k] + p[1] * ya[k] for k in range(3)] for p in pts]
+        lo, hi = [min(w[k] for w in world) for k in range(3)], [max(w[k] for w in world) for k in range(3)]
+    except (ValueError, KeyError, TypeError, IndexError):
+        return out
+    bb = part_bbox()
+    if not bb:
+        return out
+    gap = [max(bb[0][k] - hi[k], lo[k] - bb[1][k], 0.0) for k in range(3)]
+    if max(gap) <= 0.01:
+        return out
+    k = max(range(3), key=lambda i: gap[i])
+    return out + ("\nHARNESS CHECK: this sketch lies entirely OUTSIDE the part: along %s its profile spans %.1f..%.1f mm but the part spans %.1f..%.1f mm "
+                  "(gap %.1f mm). A cut or extrusion from it cannot touch the part. Move the sketch plane/profile so it passes through the part "
+                  "(compare with the part's bounding box and the plane origin/normal) instead of retrying the same operation." %
+                  ("XYZ"[k], lo[k], hi[k], bb[0][k], bb[1][k], gap[k]))
+
+
+def error_signature(name, out):
+    """Same tool + same error text (numbers blurred) = same signature."""
+    if not failed(out):
+        return None
+    return name + "|" + re.sub(r"[-+]?\d+(?:\.\d+)?", "#", out.replace("\n", " "))[:140]
+
+
+DIAGNOSE_NUDGE = ("The same error has come back. Do NOT retry with only different numbers. Write down two possible reasons why the tool rejects your input "
+                  "(frame/axis, plane or sketch position relative to the part, face or direction, units, a feature that already changed the part), "
+                  "check the cheapest one with a read-only query (get_bounding_box / get_mass_properties, list_faces, list_features, the origin and "
+                  "normal the tool returned), and only then act.")
+
+
 def failed(out):
     return out.startswith("ERROR") or '"ok": false' in out[:60]
 
@@ -518,6 +570,7 @@ def turn(msgs):
     start_request(msgs)
     recent, nudged = [], False
     streak, adv_nudges = {}, 0
+    sigs, diag_sent, pending_note = {}, False, None
     for _ in range(MAX_STEPS):
         if SHOULD_STOP():
             EMIT("info", text="  (stopped by the user)")
@@ -545,6 +598,14 @@ def turn(msgs):
                 continue
             EMIT("tool_call", name=name, args=args)
             out, imgs = run_tool(name, args)
+            out = annotate(name, args, out)
+            sig = error_signature(name, out)
+            if sig:
+                sigs[sig] = sigs.get(sig, 0) + 1
+                if sigs[sig] == 2 and not diag_sent:
+                    diag_sent = True
+                    EMIT("info", text="  (same error twice: the agent is asked to diagnose instead of retrying)")
+                    pending_note = DIAGNOSE_NUDGE
             EMIT("tool_result", name=name, result=out, images=imgs)
             msgs.append({"role": "tool", "tool_call_id": c["id"], "content": out[:MAX_TOOL_CHARS] or "(no output)"})
             pending_imgs += imgs
@@ -554,6 +615,9 @@ def turn(msgs):
         if pending_imgs:
             msgs.append({"role": "user", "content": [{"type": "text", "text": "Screenshot(s) from SolidWorks:"}] +
                          [{"type": "image_url", "image_url": {"url": u}} for u in pending_imgs]})
+        if pending_note:
+            msgs.append({"role": "user", "content": pending_note})
+            pending_note = None
         if ADVISOR_MODE != "off" and adv_calls == 0 and adv_nudges < 1 and any(v >= 2 for v in streak.values()):
             adv_nudges += 1
             EMIT("info", text="  (two failures in a row: the agent is asked to consult the advisor)")
