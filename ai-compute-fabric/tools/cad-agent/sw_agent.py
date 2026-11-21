@@ -117,12 +117,12 @@ def _ask_mode(q, mode):
         c = dict(CFG.get("advisor") or {}, mode="anthropic", sanitize="off")
         res = ADV.ask({"kind": "agent_question", "api_names": [], "error_class": "", "question": q}, c)
         why = "" if res.get("ok") else res.get("reason", "unknown")
-        if why.startswith("advisor HTTP 401") or why.startswith("advisor HTTP 403"):
+        if why.startswith(("advisor HTTP 401", "advisor HTTP 403", "advisor request failed")):      # rejected key, or unreachable / timed out
             global CLAUDE_DOWN
             CLAUDE_DOWN = True
-            EMIT("info", text="  Cố vấn Claude từ chối khóa (%s: hết hạn hoặc bị thu hồi). Chuyển sang Qwen suy nghĩ trên máy; hãy thay khóa rồi khởi động lại." % why)
+            EMIT("info", text="  Cố vấn Claude không dùng được (%s: khóa hết hạn/bị thu hồi, hoặc không kết nối được). Chuyển sang cố vấn khác; hãy kiểm tra rồi khởi động lại." % why)
             audit("advisor_key_rejected", reason=why)
-            return _ask_mode(q, "qwen_think")
+            return _ask_mode(q, "codex" if advisor_available().get("codex") else "qwen_think")
         return res.get("reply", ""), why
     if mode == "codex":
         ADV.audit("outbound", mode=mode, payload=q[:6000], report={"sanitize": "off", "local": False})
