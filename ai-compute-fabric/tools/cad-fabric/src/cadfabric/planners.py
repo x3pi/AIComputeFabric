@@ -6,7 +6,7 @@
   codex-relay  the Codex CLI on another machine over ssh (config relay.host / relay.codex); credentials only from the ssh agent/keys or $SSHPASS.
 A planner failure never loses the plan: it falls back to `nothink` and says so in the raw text."""
 import json, os, re, shutil, subprocess, tempfile
-from . import verifier as V
+from . import advisors, verifier as V
 from .cq_backend import NOWIN
 
 PREFIX = ("You are an advisor for a CAD automation agent. Answer ONLY from the text below, in plain text, concisely. "
@@ -85,8 +85,9 @@ def make_plan(llm, request, mode, cfg=None):
     """-> (spec or None, raw text)."""
     cfg = cfg or llm.cfg
     note = ""
-    if mode in ("codex", "codex-relay"):
-        text, err = (ask_codex if mode == "codex" else ask_relay)(plan_prompt(request), cfg)
+    adv = advisors.find(cfg, mode)
+    if adv or mode in ("codex", "codex-relay"):
+        text, err = advisors.ask(adv, plan_prompt(request), cfg) if adv else (ask_codex if mode == "codex" else ask_relay)(plan_prompt(request), cfg)
         plan = extract_json(text) if text else None
         if plan:
             return V.parse_spec(plan), text

@@ -7,7 +7,7 @@ Environment overrides: CADFABRIC_URL, CADFABRIC_MODEL, CADFABRIC_KEY (the key it
 import json, os, sys
 
 DEFAULTS = {"url": "http://127.0.0.1:18080/v1/chat/completions", "model": "", "key_file": None, "planner": "nothink",
-            "relay": {"host": "", "workdir": "", "codex": "codex"}, "codex_bin": None, "data_dir": None}
+            "relay": {"host": "", "workdir": "", "codex": "codex"}, "codex_bin": None, "data_dir": None, "advisors": []}
 PLANNERS = ("off", "nothink", "think", "codex", "codex-relay")
 
 
@@ -40,8 +40,9 @@ def load():
         if os.environ.get(env):
             cfg[k] = os.environ[env]
     cfg["_path"] = path
-    if cfg["planner"] not in PLANNERS:
-        raise SystemExit("config: planner must be one of %s (got %r)" % (", ".join(PLANNERS), cfg["planner"]))
+    from . import advisors
+    if cfg["planner"] not in advisors.names(cfg):
+        raise SystemExit("config: planner must be one of %s (got %r)" % (", ".join(advisors.names(cfg)), cfg["planner"]))
     return cfg
 
 
@@ -87,8 +88,15 @@ def validate_settings(s):
     if len(model) > 120 or re.search(r"[\s\"'<>]", model):
         return None, "model name is not valid"
     out["model"] = model
+    from . import advisors
+    if "advisors" in s:
+        lst, err = advisors.validate_list(s.get("advisors"))
+        if err:
+            return None, err
+        out["advisors"] = lst
     planner = s.get("planner")
-    if planner not in PLANNERS:
+    known = list(advisors.BUILTIN) + [a["id"] for a in (out.get("advisors") if "advisors" in out else s.get("_current_advisors") or [])]
+    if planner not in known:
         return None, "unknown planner"
     out["planner"] = planner
     rel = s.get("relay") or {}
@@ -101,7 +109,7 @@ def validate_settings(s):
     return out, ""
 
 
-def save_settings(clean, key=None):
+def save_settings(clean, key=None, advisor_keys=None):
     """Merge `clean` into the user config file. `key` (if given) goes to <config dir>/key.txt, never into the JSON."""
     path = user_config_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -109,8 +117,21 @@ def save_settings(clean, key=None):
     if os.path.isfile(path):
         with open(path, encoding="utf-8-sig") as f:
             cur = json.load(f)
-    cur.update({k: v for k, v in clean.items() if k != "relay"})
+    cur.update({k: v for k, v in clean.items() if k not in ("relay", "advisors")})
     cur["relay"] = dict(cur.get("relay") or {}, **clean["relay"])
+    if "advisors" in clean:
+        cdir, old = os.path.dirname(path), {a["id"]: a for a in cur.get("advisors") or []}
+        for a in clean["advisors"]:
+            k = (advisor_keys or {}).get(a["id"])
+            if k:
+                a["key_file"] = _write_secret(os.path.join(cdir, "key-%s.txt" % a["id"]), k)
+            elif a["type"] == "api":
+                a["key_file"] = (old.get(a["id"]) or {}).get("key_file")           # no new key typed: keep the saved one
+        for gone in set(old) - {a["id"] for a in clean["advisors"]}:                # a removed advisor leaves no key behind
+            kf = old[gone].get("key_file")
+            if kf and os.path.dirname(os.path.abspath(kf)) == os.path.abspath(cdir) and os.path.isfile(kf):
+                os.unlink(kf)
+        cur["advisors"] = clean["advisors"]
     if key:
         kp = os.path.join(os.path.dirname(path), "key.txt")
         fd = os.open(kp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -125,4 +146,15 @@ def save_settings(clean, key=None):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cur, f, indent=2); f.write("\n")
     os.replace(tmp, path)
+    return path
+
+
+def _write_secret(path, value):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(value.strip() + "\n")
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
     return path

@@ -6,12 +6,13 @@
  Optional pre-configuration for a fleet of machines (otherwise the app opens its Settings dialog on first run):
    -Url      OpenAI-compatible chat URL      -Model    model name      -Planner  off|nothink|think|codex|codex-relay
    -KeyFile  a file holding the API key (copied into the user's config folder, never passed on a command line)
+   -AdvisorCli claude|codex   add that CLI as an advisor (its id is claude-cli / codex-cli; pass that to -Planner to make it the default)
    -RelayHost / -RelayWorkdir   for planner codex-relay
 #>
 [CmdletBinding()]
 param(
     [string]$Prefix = (Join-Path $env:LOCALAPPDATA 'CadFabric'),
-    [string]$Url, [string]$Model, [string]$Planner, [string]$KeyFile, [string]$RelayHost, [string]$RelayWorkdir,
+    [string]$Url, [string]$Model, [string]$Planner, [string]$AdvisorCli, [string]$KeyFile, [string]$RelayHost, [string]$RelayWorkdir,
     [switch]$NoDesktopShortcut, [switch]$NoShortcuts
 )
 $ErrorActionPreference = 'Stop'
@@ -66,11 +67,12 @@ Run $py @('-m', 'pip', '--version')
 Step 'Installing cadfabric and CadQuery (offline)'
 Run $py @('-m', 'pip', 'install', '--no-index', '--find-links', (Join-Path $here 'wheelhouse'), '--no-warn-script-location', '--upgrade', 'cadfabric')
 
-if ($Url -or $Model -or $Planner -or $KeyFile -or $RelayHost -or $RelayWorkdir) {
+if ($Url -or $Model -or $Planner -or $AdvisorCli -or $KeyFile -or $RelayHost -or $RelayWorkdir) {
     Step 'Writing settings for this user'
     $a = @('-m', 'cadfabric', 'configure')
     if ($Url) { $a += @('--url', $Url) }
     if ($Model) { $a += @('--model', $Model) }
+    if ($AdvisorCli) { $a += @('--advisor-cli', $AdvisorCli) }
     if ($Planner) { $a += @('--planner', $Planner) }
     if ($RelayHost) { $a += ('--relay-host=' + $RelayHost) }
     if ($RelayWorkdir) { $a += @('--relay-workdir', $RelayWorkdir) }

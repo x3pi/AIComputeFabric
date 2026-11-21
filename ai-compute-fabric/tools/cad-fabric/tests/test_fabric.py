@@ -181,6 +181,10 @@ class Configure(unittest.TestCase):
             txt = open(os.path.join(d, "c.json")).read(); self.assertNotIn("topsecret", txt)
             c = config.load(); self.assertEqual((c["url"], c["model"], c["planner"]), ("http://h:1/v1/chat/completions", "m", "off")); self.assertEqual(config.read_key(c), "topsecret")
             self.assertEqual(cli.main(["configure", "--relay-host=-oBad"]), 2)
+            for preset in ("codex", "claude"):                                                                     # "codex" is a built-in id: the CLI advisor must not collide with it
+                self.assertEqual(cli.main(["configure", "--advisor-cli", preset, "--planner", preset + "-cli"]), 0)
+            c = config.load(); self.assertEqual([a["id"] for a in c["advisors"]], ["codex-cli", "claude-cli"]); self.assertEqual(c["planner"], "claude-cli")
+            self.assertEqual(cli.main(["configure", "--advisor-cli", "claude"]), 0); self.assertEqual(len(config.load()["advisors"]), 2)   # idempotent
         finally:
             sys.stdin = old; os.environ.pop("CADFABRIC_CONFIG")
 
@@ -345,6 +349,151 @@ class Settings(unittest.TestCase):
 
     def test_quit_sets_the_flag(self):
         self.assertEqual(self.req("POST", "/api/quit", {})[0], 200); self.assertTrue(self.srv.sess.quit); self.srv.sess.quit = False
+
+
+def _recording_server(handler_fn):
+    """A tiny HTTP server: handler_fn(path, headers, body_dict) -> (status, reply_dict). Returns (server, url, seen list)."""
+    import http.server, threading
+    seen = []
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+            seen.append({"path": self.path, "h": {k.lower(): v for k, v in self.headers.items()}, "body": body})
+            code, rep = handler_fn(self.path, self.headers, body); b = json.dumps(rep).encode()
+            self.send_response(code); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, "http://127.0.0.1:%d" % srv.server_address[1], seen
+
+
+FAKE_CLI = """import os, sys
+assert os.listdir('.') == [], 'cwd must be empty: %r' % os.listdir('.')
+text = sys.stdin.read() if '--arg' not in sys.argv else sys.argv[-1]
+print('STDIN-MODE' if '--arg' not in sys.argv else 'ARG-MODE', len(text), 'ADVISOR PREFIX OK' if text.startswith('You are an advisor') else 'NO PREFIX')
+"""
+
+
+class Advisors(unittest.TestCase):
+    def test_validation(self):
+        from cadfabric import advisors as A
+        ok = lambda a: A.validate(a)[1] == ""
+        self.assertTrue(ok({"id": "mine", "type": "cli", "preset": "claude"}))
+        self.assertTrue(ok({"id": "q2", "type": "api", "kind": "openai", "url": "http://10.0.0.5:1/v1/chat/completions"}))
+        for bad in ({"id": "codex", "type": "cli", "preset": "codex"}, {"id": "Bad Id", "type": "cli", "preset": "claude"}, {"id": "x", "type": "wat"},
+                    {"id": "x", "type": "cli", "preset": "custom", "command": "--evil"}, {"id": "x", "type": "cli", "preset": "custom", "command": ""},
+                    {"id": "x", "type": "cli", "preset": "custom", "command": "a\nb"}, {"id": "x", "type": "api", "kind": "openai", "url": "file:///etc/passwd"},
+                    {"id": "x", "type": "api", "kind": "anthropic", "url": "https://h/v1/messages", "model": ""}, {"id": "x", "type": "api", "kind": "bogus", "url": "http://h/"},
+                    {"id": "x", "type": "cli", "preset": "nope"}):
+            self.assertFalse(ok(bad), bad)
+        self.assertIn("duplicate", A.validate_list([{"id": "a", "type": "cli", "preset": "claude"}, {"id": "a", "type": "cli", "preset": "claude"}])[1])
+        self.assertTrue(A.validate({"id": "l", "type": "api", "kind": "openai", "url": "http://192.168.1.5:1/v1"})[0]["external"] is False)    # private LAN: not external
+        self.assertTrue(A.validate({"id": "p", "type": "api", "kind": "openai", "url": "https://api.example.com/v1"})[0]["external"])          # public host: external
+
+    def test_api_openai_and_anthropic_shapes_and_keys(self):
+        from cadfabric import advisors as A
+        def fn(path, h, body):
+            if path == "/bad": return 401, {"error": "nope"}
+            if path == "/anth": return 200, {"content": [{"type": "thinking", "thinking": "x"}, {"type": "text", "text": "ANTHROPIC-ANSWER"}]}
+            return 200, {"choices": [{"message": {"content": "OPENAI-ANSWER"}}]}
+        srv, base, seen = _recording_server(fn)
+        try:
+            t, e = A.ask({"type": "api", "kind": "openai", "url": base + "/v1/chat/completions", "model": "m1"}, "question", key="K1")
+            self.assertEqual((t, e), ("OPENAI-ANSWER", "")); self.assertEqual(seen[-1]["h"]["authorization"], "Bearer K1"); self.assertEqual(seen[-1]["body"]["model"], "m1")
+            self.assertTrue(seen[-1]["body"]["messages"][0]["content"].startswith("You are an advisor")); self.assertTrue(seen[-1]["body"]["messages"][0]["content"].endswith("question"))
+            t, e = A.ask({"type": "api", "kind": "anthropic", "url": base + "/anth", "model": "claude-x"}, "q", key="K2")
+            self.assertEqual(t, "ANTHROPIC-ANSWER"); h = seen[-1]["h"]
+            self.assertEqual((h["x-api-key"], h["anthropic-version"], h["user-agent"]), ("K2", "2023-06-01", "cadfabric")); self.assertNotIn("authorization", h)
+            self.assertGreaterEqual(seen[-1]["body"]["max_tokens"], 4000)                                 # thinking models need room
+            t, e = A.ask({"type": "api", "kind": "openai", "url": base + "/bad"}, "q", key="K"); self.assertEqual(t, ""); self.assertIn("HTTP 401", e)
+            t, e = A.ask({"type": "api", "kind": "openai", "url": "http://127.0.0.1:1/x"}, "q"); self.assertEqual(t, ""); self.assertIn("cannot reach", e)
+        finally: srv.shutdown()
+
+    def test_custom_cli_runs_in_an_empty_dir_with_stdin_or_arg(self):
+        import tempfile
+        from cadfabric import advisors as A
+        d = tempfile.mkdtemp(); sc = os.path.join(d, "fake.py"); open(sc, "w").write(FAKE_CLI)
+        t, e = A.ask({"type": "cli", "preset": "custom", "command": '"%s" "%s"' % (sys.executable, sc)}, "hello")
+        self.assertEqual(e, ""); self.assertIn("STDIN-MODE", t); self.assertIn("ADVISOR PREFIX OK", t)
+        t, e = A.ask({"type": "cli", "preset": "custom", "command": '"%s" "%s" --arg {prompt}' % (sys.executable, sc)}, "hello there")
+        self.assertEqual(e, ""); self.assertIn("ARG-MODE", t); self.assertIn("ADVISOR PREFIX OK", t)
+        t, e = A.ask({"type": "cli", "preset": "custom", "command": "definitely-not-a-program-xyz"}, "q"); self.assertEqual(t, ""); self.assertIn("not found", e)
+        t, e = A.ask({"type": "cli", "preset": "custom", "command": '"%s" -c "import sys; sys.exit(3)"' % sys.executable}, "q"); self.assertEqual(t, ""); self.assertIn("exit 3", e)
+        t, e = A.ask({"type": "cli", "preset": "custom", "command": '"%s" -c "print(\'Not logged in\'); raise SystemExit(1)"' % sys.executable}, "q")
+        self.assertEqual(t, ""); self.assertIn("Not logged in", e)                                              # the reason printed on stdout is not lost
+
+    def test_preset_argv_is_text_only(self):
+        import tempfile, stat
+        from cadfabric import advisors as A
+        d = tempfile.mkdtemp(); fake = os.path.join(d, "claude"); open(fake, "w").write("#!/bin/sh\ncat >/dev/null; echo hi\n"); os.chmod(fake, 0o755)
+        old = os.environ["PATH"]; os.environ["PATH"] = d + os.pathsep + old
+        try:
+            argv, in_args = A.cli_argv({"preset": "claude"}, {}, "/w"); self.assertFalse(in_args)
+            self.assertEqual(argv[1:4], ["-p", "--tools", ""]); self.assertIn("--no-session-persistence", argv)                  # no tools: text only
+            t, e = A.ask({"type": "cli", "preset": "claude"}, "q"); self.assertEqual((t, e), ("hi", ""))
+        finally: os.environ["PATH"] = old
+        argv, _ = A.cli_argv({"preset": "codex"}, {"codex_bin": sys.executable}, "/w") if A.find_exe("codex", {"codex_bin": sys.executable}) else (["x", "-C", "/w", "-s", "read-only"], 0)
+        self.assertIn("read-only", argv); self.assertEqual(argv[argv.index("-C") + 1], "/w")
+
+    def test_plan_through_a_custom_advisor_and_fallback_note(self):
+        import tempfile
+        from cadfabric import advisors as A
+        d = tempfile.mkdtemp(); sc = os.path.join(d, "plan.py"); open(sc, "w").write("import sys, json\nsys.stdin.read()\nprint(json.dumps(%r))\n" % (PLAN,))
+        cfg = {"planner": "mine", "relay": {}, "advisors": [{"id": "mine", "label": "M", "type": "cli", "preset": "custom", "command": '"%s" "%s"' % (sys.executable, sc), "external": True}]}
+        class NoThink:
+            def chat(self, *a, **k): return {"role": "assistant", "content": json.dumps(PLAN)}
+        spec, raw = planners.make_plan(NoThink(), "req", "mine", cfg); self.assertEqual(len(spec["milestones"]), 2); self.assertFalse(raw.startswith("("))
+        cfg["advisors"][0]["command"] = "definitely-not-a-program-xyz"
+        spec, raw = planners.make_plan(NoThink(), "req", "mine", cfg); self.assertTrue(raw.startswith("(mine failed")); self.assertTrue(spec)           # fell back to nothink, said so
+
+
+class AdvisorWeb(Settings):
+    """Advisor settings through the real HTTP API (reuses the Settings fixture: temp config dir, fake model server)."""
+    def test_roundtrip_keys_external_flag_and_removal(self):
+        srv, base, seen = _recording_server(lambda p, h, b: (200, {"choices": [{"message": {"content": "OK"}}]}))
+        try:
+            adv = [{"id": "cloudy", "label": "Cloudy", "type": "api", "kind": "openai", "url": "https://api.example.com/v1/chat/completions", "model": "m"},
+                   {"id": "lan", "label": "Lan", "type": "api", "kind": "openai", "url": base + "/v1/chat/completions", "model": "m"},
+                   {"id": "cc", "label": "Claude", "type": "cli", "preset": "claude"}]
+            body = {"url": self.fake_url, "model": "qwen-test", "planner": "nothink", "advisors": adv, "advisor_keys": {"cloudy": "SECRET-CLOUDY"}}
+            s, d = self.req("POST", "/api/settings", body); self.assertEqual(s, 200, d)
+            txt = open(os.path.join(self.dir, "config.json")).read(); self.assertNotIn("SECRET-CLOUDY", txt)
+            kp = os.path.join(self.dir, "key-cloudy.txt"); self.assertEqual(open(kp).read().strip(), "SECRET-CLOUDY")
+            if os.name != "nt": self.assertEqual(os.stat(kp).st_mode & 0o777, 0o600)
+            s, d = self.req("GET", "/api/config"); m = {a["id"]: a for a in d["advisors"]}
+            self.assertTrue(m["cloudy"]["external"]); self.assertFalse(m["lan"]["external"]); self.assertTrue(m["cc"]["external"]); self.assertTrue(m["cloudy"]["has_key"]); self.assertFalse(m["lan"]["has_key"])
+            self.assertNotIn("SECRET-CLOUDY", json.dumps(d)); self.assertIn("cloudy", d["external"]); self.assertNotIn("lan", d["external"]); self.assertIn("lan", d["planners"])
+            self.assertEqual(self.req("POST", "/api/send", {"text": "a", "planner": "cloudy"})[0], 409)             # external: needs confirm_external
+            self.assertEqual(self.req("POST", "/api/send", {"text": "a", "planner": "ghost"})[0], 400)
+            self.assertEqual(self.req("POST", "/api/settings", dict(body, planner="lan"))[0], 200)                  # a custom advisor can be the default
+            # keep the saved key when the form leaves the key empty; removing the advisor deletes its key file
+            self.assertEqual(self.req("POST", "/api/settings", dict(body, planner="nothink", advisor_keys={}))[0], 200); self.assertTrue(os.path.isfile(kp))
+            self.assertEqual(self.req("POST", "/api/settings", dict(body, planner="nothink", advisors=adv[1:], advisor_keys={}))[0], 200); self.assertFalse(os.path.exists(kp))
+        finally: srv.shutdown()
+
+    def test_browser_cannot_choose_which_file_is_read_as_a_key(self):
+        import tempfile
+        secret = os.path.join(tempfile.mkdtemp(), "secret.txt"); open(secret, "w").write("TOP-SECRET-FILE")
+        srv, base, seen = _recording_server(lambda p, h, b: (200, {"choices": [{"message": {"content": "OK"}}]}))
+        try:
+            a = {"id": "evil", "label": "E", "type": "api", "kind": "openai", "url": base + "/v1/chat/completions", "model": "m", "key_file": secret}
+            s, d = self.req("POST", "/api/advisor_test", {"advisor": a}); self.assertEqual(s, 200); self.assertTrue(d["ok"])
+            self.assertNotIn("authorization", seen[-1]["h"]); self.assertNotIn("TOP-SECRET", json.dumps(seen))
+            self.assertEqual(self.req("POST", "/api/settings", {"url": self.fake_url, "model": "q", "planner": "nothink", "advisors": [a]})[0], 200)
+            self.assertNotIn(secret, open(os.path.join(self.dir, "config.json")).read())
+            s, d = self.req("POST", "/api/advisor_test", {"advisor": {"id": "evil", "type": "api", "kind": "openai", "url": base + "/x", "model": "m"}}); self.assertTrue(d["ok"])
+            self.assertNotIn("authorization", seen[-1]["h"])
+        finally: srv.shutdown()
+
+    def test_advisor_test_endpoint_with_typed_key_and_remote_refusal(self):
+        srv, base, seen = _recording_server(lambda p, h, b: (200, {"content": [{"type": "text", "text": "OK"}]}))
+        try:
+            a = {"id": "an", "label": "A", "type": "api", "kind": "anthropic", "url": base + "/v1/messages", "model": "claude-x"}
+            s, d = self.req("POST", "/api/advisor_test", {"advisor": a, "key": "TYPED"}); self.assertTrue(d["ok"]); self.assertEqual(seen[-1]["h"]["x-api-key"], "TYPED")
+            self.assertEqual(self.req("POST", "/api/advisor_test", {"advisor": {"id": "x", "type": "wat"}})[0], 400)
+            self.srv.sess.local = False
+            try: self.assertEqual(self.req("POST", "/api/advisor_test", {"advisor": a})[0], 403)
+            finally: self.srv.sess.local = True
+        finally: srv.shutdown()
 
 
 if __name__ == "__main__":

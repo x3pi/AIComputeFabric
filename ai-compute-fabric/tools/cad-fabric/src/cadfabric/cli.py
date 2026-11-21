@@ -8,7 +8,7 @@
   cadfabric bench           run the benchmark tasks (--modes off,codex --reps 3 --tasks a,b --out file.jsonl)
   cadfabric tasks           list the benchmark tasks and their kernel-computed answers"""
 import argparse, json, os, sys, time
-from . import __version__, config
+from . import __version__, advisors, config
 
 
 def cmd_init(a):
@@ -26,7 +26,11 @@ def cmd_init(a):
 
 def cmd_configure(a):
     cur = config.load()
-    clean, err = config.validate_settings({"url": a.url or cur["url"], "model": cur["model"] if a.model is None else a.model, "planner": a.planner or cur["planner"],
+    advs = list(cur.get("advisors") or [])
+    aid = (a.advisor_cli or "") + "-cli"                                    # "codex" itself is a built-in advisor, so the CLI one is codex-cli
+    if a.advisor_cli and not any(x["id"] == aid for x in advs):
+        advs.append({"id": aid, "label": advisors.CLI_PRESETS[a.advisor_cli]["label"], "type": "cli", "preset": a.advisor_cli})
+    clean, err = config.validate_settings({"advisors": [{k: v for k, v in x.items() if k != "key_file"} for x in advs], "url": a.url or cur["url"], "model": cur["model"] if a.model is None else a.model, "planner": a.planner or cur["planner"],
                                            "relay": {"host": a.relay_host if a.relay_host is not None else cur["relay"].get("host", ""),
                                                      "workdir": a.relay_workdir if a.relay_workdir is not None else cur["relay"].get("workdir", ""),
                                                      "codex": a.relay_codex or cur["relay"].get("codex", "codex")}})
@@ -82,6 +86,8 @@ def cmd_run(a):
     from . import agent
     cfg = config.load()
     mode = a.planner or cfg["planner"]
+    if mode not in advisors.names(cfg):
+        print("unknown planner %r; choose one of: %s" % (mode, ", ".join(advisors.names(cfg)))); return 2
     be, llm = CadQueryBackend(), LLM(cfg)
     try:
         r = agent.run(llm, be, " ".join(a.request), plan_mode=mode, log=print, cfg=cfg)
@@ -203,12 +209,12 @@ def main(argv=None):
     ap.add_argument("--version", action="version", version=__version__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("init"); p.add_argument("--path"); p.add_argument("--force", action="store_true")
-    p.add_argument("--url", default=config.DEFAULTS["url"]); p.add_argument("--model", default=""); p.add_argument("--key-file", dest="key_file"); p.add_argument("--planner", default="nothink", choices=config.PLANNERS)
+    p.add_argument("--url", default=config.DEFAULTS["url"]); p.add_argument("--model", default=""); p.add_argument("--key-file", dest="key_file"); p.add_argument("--planner", default="nothink")
     p.set_defaults(fn=cmd_init)
-    p = sub.add_parser("configure"); p.add_argument("--url"); p.add_argument("--model"); p.add_argument("--planner", choices=config.PLANNERS)
+    p = sub.add_parser("configure"); p.add_argument("--url"); p.add_argument("--model"); p.add_argument("--planner"); p.add_argument("--advisor-cli", choices=sorted(advisors.CLI_PRESETS), help="add a CLI advisor; its id is <name>-cli (claude-cli, codex-cli)")
     p.add_argument("--relay-host"); p.add_argument("--relay-workdir"); p.add_argument("--relay-codex"); p.add_argument("--key-stdin", action="store_true"); p.set_defaults(fn=cmd_configure)
     sub.add_parser("doctor").set_defaults(fn=cmd_doctor)
-    p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner", choices=config.PLANNERS); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
+    p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner"); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
     sub.add_parser("tasks").set_defaults(fn=cmd_tasks)
     p = sub.add_parser("serve"); p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8765); p.add_argument("--allow-remote", action="store_true"); p.add_argument("--open", action="store_true"); p.set_defaults(fn=cmd_serve)
     p = sub.add_parser("app"); p.add_argument("--port", type=int, default=8765); p.add_argument("--no-browser", action="store_true"); p.set_defaults(fn=cmd_app)

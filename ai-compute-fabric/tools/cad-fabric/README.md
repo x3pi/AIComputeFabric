@@ -15,7 +15,18 @@ Lần đầu chạy, hộp **Cài đặt** tự mở:
 | URL API Qwen | endpoint tương thích OpenAI (ví dụ `http://192.168.1.40:18080/v1/chat/completions`) |
 | Tên model | để trống nếu máy chủ tự chọn; nút **Kiểm tra kết nối** liệt kê model có sẵn |
 | Khoá API | lưu vào file riêng `key.txt` trong thư mục cấu hình của người dùng (quyền 0600), **không bao giờ** vào file JSON và không bao giờ gửi ngược lại trình duyệt |
-| Cố vấn | `off`, `nothink`, `think`, `codex`, `codex-relay` (xem bảng bên dưới). Cố vấn gửi nội dung ra ngoài luôn hỏi xác nhận |
+| Cố vấn | có sẵn `off`, `nothink`, `think`, `codex`, `codex-relay` (xem bảng bên dưới) và các cố vấn bạn tự thêm. Cố vấn gửi nội dung ra ngoài luôn hỏi xác nhận |
+
+### Thêm cố vấn của riêng bạn (URL hoặc CLI)
+
+Trong **Cài đặt → + Thêm cố vấn** có hai loại, đều chỉ nhận văn bản (cố vấn không có công cụ, không đọc được file):
+
+| Loại | Điền | Ghi chú |
+|---|---|---|
+| **API (URL)** | kiểu `OpenAI-compatible` hoặc `Anthropic`, URL, model, khoá | khoá lưu file riêng `key-<id>.txt` (0600), không vào JSON; URL ở mạng LAN thì mặc định không tính là "gửi ra ngoài" |
+| **CLI** | chọn `Claude Code`, `Codex` (ứng dụng báo đã thấy chương trình ở đâu) hoặc lệnh tự đặt | chạy không qua shell, trong thư mục tạm rỗng, lời nhắc qua stdin (hoặc tham số `{prompt}`) |
+
+Mỗi cố vấn có nút **Kiểm tra** (hỏi một câu vô hại và báo kết quả + số giây), cờ "gửi ra ngoài" (hỏi xác nhận mỗi lần dùng) và nút Sửa/Xoá. Xoá một cố vấn cũng xoá file khoá của nó. Nếu cố vấn lỗi giữa chừng, ứng dụng rơi về `nothink` (chạy ở máy chủ của bạn) và **ghi rõ điều đó** trong thẻ kế hoạch. Từ dòng lệnh: `cadfabric configure --advisor-cli claude`, `cadfabric run --planner claude-cli "..."`; cài hàng loạt: `install.ps1 -AdvisorCli claude -Planner claude-cli`.
 
 Cố vấn được chọn ngay trên ô nhập từng lần gửi. Ứng dụng chỉ lắng nghe `127.0.0.1`, mỗi lần chạy có token riêng; chỉ máy chạy ứng dụng mới sửa được cài đặt.
 

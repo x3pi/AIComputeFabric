@@ -3,12 +3,11 @@ Security: binds 127.0.0.1 unless told otherwise; every request needs the access 
 the Host header must be one we serve (blocks DNS rebinding); Origin, when present, must match; request bodies are capped."""
 import hmac, http.server, json, os, re, secrets, socketserver, threading, time, urllib.parse
 from http import cookies
-from . import agent, config, llm as llm_mod
+from . import advisors, agent, config, llm as llm_mod
 from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
 MAX_BODY = 40_000
-EXTERNAL = ("codex", "codex-relay")
 
 
 class Session:
@@ -56,12 +55,12 @@ class Session:
             with self.lock:
                 self.busy = False
 
-    def apply_settings(self, clean, key):
+    def apply_settings(self, clean, key, advisor_keys=None):
         """Save and hot-reload. Refused while a job runs."""
         with self.lock:
             if self.busy:
                 return None
-        path = config.save_settings(clean, key)
+        path = config.save_settings(clean, key, advisor_keys)
         cfg = config.load()
         self.cfg, self.llm = cfg, llm_mod.LLM(cfg)
         return path
@@ -84,7 +83,7 @@ def public_settings(cfg):
         has_key = bool(config.read_key(cfg))
     except SystemExit:
         has_key = False
-    return {"url": cfg["url"], "model": cfg["model"], "planner": cfg["planner"], "relay": cfg.get("relay") or {}, "has_key": has_key,
+    return {"url": cfg["url"], "model": cfg["model"], "planner": cfg["planner"], "relay": cfg.get("relay") or {}, "has_key": has_key, "advisors": advisors.meta(cfg),
             "configured": bool(cfg.get("_path")), "config_path": cfg.get("_path") or config.user_config_path()}
 
 
@@ -135,7 +134,8 @@ def make_handler(sess, token, hosts, data_dir):
             elif u.path == "/api/state":
                 self._send(200, sess.state(int((q.get("since") or ["0"])[0] or 0)), extra=cookie)
             elif u.path == "/api/config":
-                self._send(200, {"planners": list(config.PLANNERS), "external": list(EXTERNAL), "default": sess.cfg["planner"], "version": __import__("cadfabric").__version__,
+                self._send(200, {"planners": advisors.names(sess.cfg), "external": [n for n in advisors.names(sess.cfg) if advisors.is_external(sess.cfg, n)], "default": sess.cfg["planner"],
+                                 "advisors": advisors.meta(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "version": __import__("cadfabric").__version__,
                                  "local": sess.local, "settings": public_settings(sess.cfg)})
             elif u.path == "/api/part.svg":
                 try:
@@ -170,19 +170,32 @@ def make_handler(sess, token, hosts, data_dir):
                 text, planner = str(body.get("text", "")).strip(), body.get("planner") or sess.cfg["planner"]
                 if not text or len(text) > 8000:
                     return self._send(400, {"error": "empty or too long"})
-                if planner not in config.PLANNERS:
+                if planner not in advisors.names(sess.cfg):
                     return self._send(400, {"error": "unknown planner"})
-                if planner in EXTERNAL and not body.get("confirm_external"):
+                if advisors.is_external(sess.cfg, planner) and not body.get("confirm_external"):
                     return self._send(409, {"error": "this planner sends your request to an external service; confirm_external is required"})
                 ok = sess.send(text, planner)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
                 if u.path == "/api/quit":
                     sess.quit = True; self._send(200, {"ok": True}); return
                 cur = sess.cfg
-                clean, err = config.validate_settings({"url": body.get("url", cur["url"]), "model": body.get("model", cur["model"]),
+                saved = {a["id"]: a for a in cur.get("advisors") or []}
+                if u.path == "/api/advisor_test":
+                    a, err = advisors.validate(dict(body.get("advisor") or {}))
+                    if err:
+                        return self._send(400, {"error": err})
+                    if a["type"] == "api":
+                        a["key_file"] = (saved.get(a["id"]) or {}).get("key_file")         # never a path chosen by the browser
+                    k = str(body.get("key") or "").strip()
+                    return self._send(200, advisors.self_test(a, cur, key=k if k else None))
+                for a in body.get("advisors") or []:
+                    if isinstance(a, dict):
+                        a.pop("key_file", None)                                               # the browser never chooses which file is read as a key
+                adv_in = body.get("advisors", [{k: v for k, v in a.items() if k != "key_file"} for a in saved.values()])
+                clean, err = config.validate_settings({"url": body.get("url", cur["url"]), "model": body.get("model", cur["model"]), "advisors": adv_in,
                                                        "planner": body.get("planner", cur["planner"]), "relay": body.get("relay", cur.get("relay") or {})})
                 if err:
                     return self._send(400, {"error": err})
@@ -191,7 +204,8 @@ def make_handler(sess, token, hosts, data_dir):
                     return self._send(400, {"error": "key is not valid"})
                 if u.path == "/api/test":
                     return self._send(200, llm_mod.probe(clean["url"], clean["model"], key or config.read_key(cur)))
-                path = sess.apply_settings(clean, key)
+                akeys = {str(k): str(v).strip() for k, v in (body.get("advisor_keys") or {}).items() if isinstance(v, str) and v.strip() and len(v) < 500 and not re.search(r"[\r\n]", v)}
+                path = sess.apply_settings(clean, key, akeys)
                 self._send(200 if path else 409, {"ok": True, "path": path, "settings": public_settings(sess.cfg)} if path else {"error": "busy: wait for the current job"})
             elif u.path == "/api/stop":
                 sess.stop = True; self._send(200, {"ok": True})
