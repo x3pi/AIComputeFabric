@@ -72,7 +72,7 @@ textarea{flex:1;border:0;outline:0;resize:none;background:transparent;color:var(
   <span class="sp"></span>
   <label class="tg" title="Không hỏi lại khi lưu / xuất / xóa / đóng (vẫn hỏi nếu ghi ra ngoài thư mục người dùng)"><input type="checkbox" id="auto"> Tự động cho phép</label>
   <label class="tg" title="Cố vấn chỉ trả lời bằng chữ, không bao giờ tự sửa mô hình. Claude gửi nguyên văn câu hỏi ra ngoài máy; Qwen chạy trên máy."> Cố vấn
-    <select id="adv"><option value="off">Tắt</option><option value="auto">Tự động (kế hoạch + kiểm tra số)</option><option value="claude">Claude (ngoài máy)</option><option value="qwen_think">Qwen suy nghĩ</option><option value="qwen_nothink">Qwen không suy nghĩ</option></select></label>
+    <select id="adv"><option value="off">Tắt</option><option value="auto">Tự động (kế hoạch + kiểm tra số)</option><option value="claude">Claude (ngoài máy)</option><option value="codex">Codex (ngoài máy)</option><option value="qwen_think">Qwen suy nghĩ</option><option value="qwen_nothink">Qwen không suy nghĩ</option></select></label>
   <label class="tg" title="Hiện phần model suy nghĩ (chậm hơn, có thể chính xác hơn)"><input type="checkbox" id="think"> Suy nghĩ</label>
   <button id="rbbtn" title="Bài học chung rút ra từ các lần agent bị kẹt. Chỉ bài học đã DUYỆT mới được đưa cho agent.">Sổ tay lỗi</button>
   <button id="stop" class="danger" disabled>Dừng</button>
@@ -247,7 +247,7 @@ $("think").onchange=e=>api("/api/think",{on:e.target.checked});
 let advPrev="off";
 $("adv").onchange=async e=>{
   const want=e.target.value;
-  if((want==="claude"||want==="auto")&&!confirm("Dùng Claude làm cố vấn?\n\nCâu hỏi của agent (có thể chứa kích thước, tên chi tiết) sẽ được gửi NGUYÊN VĂN ra dịch vụ bên ngoài, không lọc. Mỗi câu hỏi hiện trong thẻ công cụ để bạn xem.")){e.target.value=advPrev;return}
+  if((want==="claude"||want==="codex"||want==="auto")&&!confirm("Dùng cố vấn ngoài máy (Claude/Codex)?\n\nCâu hỏi của agent (có thể chứa kích thước, tên chi tiết) sẽ được gửi NGUYÊN VĂN ra dịch vụ bên ngoài, không lọc. Mỗi câu hỏi hiện trong thẻ công cụ để bạn xem.")){e.target.value=advPrev;return}
   const r=await api("/api/advisor",{mode:want});
   if(!r.ok){e.target.value=advPrev;addNote(r.j.error,true);return}
   advPrev=want;

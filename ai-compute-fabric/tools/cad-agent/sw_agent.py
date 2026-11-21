@@ -51,7 +51,7 @@ RUNBOOK_PATH = RB.path(aicfconf.data_dir(CFG))
 RUNBOOK_LEARN = str(os.environ.get("AICF_RUNBOOK_LEARN") or "1").lower() in ("1", "true", "yes", "on")   # distil lessons after runs that got stuck (needs an advisor)
 ERRS = []                 # (tool, error text) of the current request, for the post-mortem
 LAST = {"sigs": {}}
-ADVISOR_MODES = ("off", "auto", "claude", "qwen_think", "qwen_nothink")
+ADVISOR_MODES = ("off", "auto", "claude", "codex", "qwen_think", "qwen_nothink")
 ADVISOR_MODE = str(os.environ.get("AICF_ADVISOR") or (CFG.get("advisor") or {}).get("default_mode") or "off")
 if ADVISOR_MODE not in ADVISOR_MODES:
     ADVISOR_MODE = "off"
@@ -65,12 +65,18 @@ ADVISOR_TOOL = {"type": "function", "function": {"name": "ask_advisor", "descrip
                    "required": ["question"]}}}
 
 
+try:
+    import codex_advisor as CDX
+    CODEX_OK = CDX.available()
+except Exception:
+    CDX, CODEX_OK = None, False
+CODEX_DOWN = False        # set after a Codex failure (model refused, login expired): degrade to the local model
 CLAUDE_DOWN = False       # set when the external advisor rejects our key (expired / revoked): degrade to the local model instead of failing every call
 
 
 def advisor_available():
     c = CFG.get("advisor") or {}
-    return {"off": True, "auto": True, "qwen_think": True, "qwen_nothink": True,
+    return {"off": True, "auto": True, "qwen_think": True, "qwen_nothink": True, "codex": CODEX_OK and not CODEX_DOWN,
             "claude": not CLAUDE_DOWN and bool(c.get("url") and c.get("model") and c.get("key_file") and os.path.isfile(os.path.expandvars(os.path.expanduser(c["key_file"]))))}
 
 
@@ -118,6 +124,17 @@ def _ask_mode(q, mode):
             audit("advisor_key_rejected", reason=why)
             return _ask_mode(q, "qwen_think")
         return res.get("reply", ""), why
+    if mode == "codex":
+        ADV.audit("outbound", mode=mode, payload=q[:6000], report={"sanitize": "off", "local": False})
+        text, err = CDX.ask(q, timeout=min(240, ADVISOR_DEADLINE_S))
+        if text:
+            ADV.audit("inbound", reply=text[:4000])
+            return text, ""
+        global CODEX_DOWN
+        CODEX_DOWN = True
+        EMIT("info", text="  Cố vấn Codex lỗi (%s). Chuyển sang Qwen suy nghĩ trên máy." % err[:140])
+        audit("advisor_codex_failed", reason=err[:200])
+        return _ask_mode(q, "qwen_think")
     if mode in ("qwen_think", "qwen_nothink"):
         ADV.audit("outbound", mode=mode, payload=q[:6000], report={"sanitize": "off", "local": True})
         text, err = _qwen_advice(q, mode == "qwen_think")
@@ -131,7 +148,8 @@ def eff_mode(kind, n=0):
     """`auto` = plan and checks use the strongest advisor available; ordinary consults go local first, then escalate."""
     if ADVISOR_MODE != "auto":
         return ADVISOR_MODE
-    strong = "claude" if advisor_available()["claude"] else "qwen_think"
+    av = advisor_available()
+    strong = "claude" if av["claude"] else "codex" if av.get("codex") else "qwen_think"
     if kind in ("plan", "gate"):
         return strong
     return "qwen_think" if n == 0 else strong
