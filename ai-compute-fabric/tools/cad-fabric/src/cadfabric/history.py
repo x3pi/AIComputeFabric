@@ -5,7 +5,7 @@ import json, os, re, secrets, time
 
 ID = re.compile(r"^\d{8}-\d{6}-[a-z0-9]{4}$")
 MAX_SESSIONS = 100
-SKIP_EVENTS = ("phase",)                      # progress ticks are not worth keeping
+SKIP_EVENTS = ("phase", "ctx")                      # progress ticks are not worth keeping
 
 
 def valid(sid):
@@ -76,9 +76,17 @@ def list_sessions(data_dir, workspace=None):
     return sorted(out, key=lambda r: r["id"], reverse=True)
 
 
+def _drop_ledger(data_dir, sid):
+    try:
+        os.unlink(os.path.join(data_dir, "ledger", sid + ".jsonl"))
+    except OSError:
+        pass
+
+
 def delete(data_dir, sid):
     try:
         os.unlink(_path(data_dir, sid))
+        _drop_ledger(data_dir, sid)
         return True
     except OSError:
         return False
@@ -95,6 +103,8 @@ def clear(data_dir, workspace=None):
                 continue
             try:
                 os.unlink(os.path.join(d, f)); n += 1
+                if f.endswith(".json"):
+                    _drop_ledger(data_dir, f[:-5])
             except OSError:
                 pass
     return n

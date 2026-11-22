@@ -1138,5 +1138,113 @@ class SkillsCore(unittest.TestCase):
 
 
 
+class LongRun(unittest.TestCase):
+    """Phase 1+2 of long multi-step work: progress guard, step budget, work ledger, compaction with recall."""
+    BOX = 'result = cq.Workplane("XY").box(10, 10, 10)'
+
+    def run_agent(self, script, **kw):
+        b = CadQueryBackend(timeout=30); ev = []
+        try:
+            llm = kw.pop("llm", None) or FakeLLM(script)
+            r = agent.run(llm, b, kw.pop("request", "build"), plan_mode="off", log=lambda s: None, on_event=lambda k, **x: ev.append((k, x)), **kw)
+            return r, ev, llm
+        finally: b.close()
+
+    def test_same_code_repeated_is_nudged_then_stopped(self):
+        r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40)
+        self.assertEqual((bool(r["stuck"]), r["steps"], r["ended_by_limit"]), (True, 6, False)); self.assertIn("same code", r["stuck"])
+        self.assertEqual([k for k, _ in ev].count("stuck"), 1); self.assertTrue(any(k == "gate" and "PROGRESS CHECK" in x["text"] for k, x in ev))                   # told once, then ended
+        self.assertTrue(any("PROGRESS CHECK" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
+
+    def test_unchanged_volume_and_failing_cells_are_caught(self):
+        same = [[("execute_cadquery", {"code": self.BOX.replace("10, 10, 10", "10, 10, 10") + "  # variant %d" % i})] for i in range(30)]
+        r, _, _ = self.run_agent(same, max_steps=40); self.assertIn("did not change", r["stuck"]); self.assertEqual(r["steps"], 9)
+        bad = [[("execute_cadquery", {"code": "result = undefined_thing_%d" % i})] for i in range(30)]
+        r, ev, _ = self.run_agent(bad, max_steps=40); self.assertIn("failed", r["stuck"]); self.assertEqual(r["steps"], 10)
+        self.assertEqual(sum(1 for k, x in ev if k == "gate"), 2)      # one for the repeated error, one for the failing streak
+        ok = [[("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(%d, 10, 10)' % (10 + i)})] for i in range(12)] + ["done"]
+        r, _, _ = self.run_agent(ok, max_steps=40); self.assertEqual((r["stuck"], r["final"], r["steps"]), ("", "done", 12))                      # real progress is never flagged
+
+    def test_same_error_with_different_code_is_called_out_once(self):
+        cells = [[("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(10, 10, 10)'})]] + [[("execute_cadquery", {"code": "x = part.Vertexes  # try %d" % i})] for i in range(3)] + ["gave up"]
+        r, ev, _ = self.run_agent(cells, max_steps=20)
+        notes = [x["text"] for k, x in ev if k == "gate" and "same error" in x["text"]]; self.assertEqual(len(notes), 1); self.assertIn("3 times", notes[0]); self.assertEqual(r["final"], "gave up")
+        cells = [[("execute_cadquery", {"code": "x = undefined_%d" % i})] for i in range(2)] + ["stop"]
+        r, ev, _ = self.run_agent(cells, max_steps=20); self.assertFalse(any("same error" in x["text"] for k, x in ev if k == "gate"))                          # twice is not yet a loop
+
+    def test_budget_follows_the_plan_and_the_limit_is_reported(self):
+        r, _, _ = self.run_agent([[("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(%d, 10, 10)' % (10 + i)})] for i in range(40)])
+        self.assertEqual((r["budget"], r["steps"], r["ended_by_limit"], bool(r["stuck"])), (agent.MAX_STEPS, agent.MAX_STEPS, True, False))
+        spec = V.parse_spec(PLAN); b = CadQueryBackend(timeout=30)
+        try:
+            r = agent.run(FakeLLM(["ok"]), b, "x", plan_mode="nothink", planner=PLANNER, log=lambda s: None); self.assertEqual(r["budget"], max(agent.MAX_STEPS, 10 + 5 * len(spec["milestones"])))
+            r = agent.run(FakeLLM(["ok"]), b, "y", plan_mode="off", log=lambda s: None, history=r["history"]); self.assertGreaterEqual(r["budget"], 20)          # follow-up: more room
+        finally: b.close()
+
+    def test_ledger_persists_recalls_and_is_private(self):
+        from cadfabric import ledger as LG
+        import tempfile
+        d = tempfile.mkdtemp(); p = os.path.join(d, "ledger", "s.jsonl"); L = LG.Ledger(p)
+        L.add_cell(self.BOX, True, "", "", 1000.0, "volume 1000"); L.add_cell("result = oops_name", False, "NameError: oops_name is not defined"); L.add_note("attachments", "spec: plate")
+        self.assertEqual(oct(os.stat(p).st_mode & 0o777), "0o600"); L2 = LG.Ledger(p); self.assertEqual((len(L2.cells), L2.notes["attachments"]), (2, "spec: plate"))
+        self.assertIn("box(10", L2.recall("1")); self.assertIn("NameError", L2.recall("#2")); self.assertIn("ERROR", L2.recall("9")); self.assertEqual(L2.recall("attachments"), "spec: plate")
+        self.assertIn("step 2", L2.recall("oops_name")); self.assertIn("no earlier step", L2.recall("zzzzzz")); self.assertIn("ERROR", L2.recall("a"))
+        self.assertEqual(LG.Ledger(os.path.join(d, "nothing.jsonl")).cells, [])
+        from cadfabric import history as H; open(os.path.join(d, "ledger", "20260101-000000-abcd.jsonl"), "w").write("{}\n")
+        H.save(d, {"id": "20260101-000000-abcd", "events": [], "title": "t"}); self.assertTrue(H.delete(d, "20260101-000000-abcd")); self.assertFalse(os.path.exists(os.path.join(d, "ledger", "20260101-000000-abcd.jsonl")))
+
+    def mk_msgs(self, n, L, attach=False):
+        msgs = [{"role": "system", "content": "SYS"}, {"role": "user", "content": "build a thing" + ("\n\n" + __import__("cadfabric.ledger", fromlist=["x"]).ATT_MARK + "\n" + "BIG" * 500 if attach else "")}]
+        for i in range(1, n + 1):
+            code = 'result = cq.Workplane("XY").box(%d, 5, 5)' % i; ok = i % 4 != 0
+            L.add_cell(code, ok, "" if ok else "TypeError: bad thing %d" % (i % 2), "", 100.0 * i if ok else None, "vol")
+            msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": "c%d" % i, "type": "function", "function": {"name": "execute_cadquery", "arguments": json.dumps({"code": code})}}]})
+            msgs.append({"role": "tool", "tool_call_id": "c%d" % i, "content": "OK" if ok else "ERROR: x"})
+        return msgs
+
+    def test_compaction_keeps_a_valid_conversation_and_the_facts(self):
+        from cadfabric import ledger as LG
+        L = LG.Ledger(); msgs = self.mk_msgs(20, L, attach=True); L.add_note("attachments", "ATT-TEXT"); before = LG.msgs_chars(msgs)
+        r = LG.compact(msgs, L, "volume 1234", run_start=1); self.assertIsNotNone(r); self.assertLess(r[1], before)
+        self.assertEqual([m["role"] for m in msgs[:3]], ["system", "user", "user"]); self.assertTrue(msgs[2]["content"].startswith(LG.CARD_MARK))
+        self.assertNotIn("BIGBIG", msgs[1]["content"]); self.assertIn("recall('attachments')", msgs[1]["content"])                                        # attachments left the prompt
+        card = msgs[2]["content"]; self.assertIn("Steps so far: 20 (15 succeeded, 5 failed)", card); self.assertIn("volume 1234", card); self.assertIn("TypeError: bad thing 0 (x5)", card); self.assertIn("Dead ends", card)
+        ids = set(); [ids.add(c["id"]) for m in msgs if m["role"] == "assistant" for c in m.get("tool_calls", [])]
+        self.assertTrue(all(m["tool_call_id"] in ids for m in msgs if m["role"] == "tool"))                                                          # no orphan tool message
+        self.assertEqual(sum(1 for m in msgs if m["role"] == "assistant"), LG.KEEP_TAIL); self.assertEqual(msgs[3]["role"], "assistant")
+        self.assertIsNone(LG.compact(msgs, L, "", run_start=1)); self.assertIsNone(LG.compact(self.mk_msgs(2, LG.Ledger()), LG.Ledger()))                  # nothing to drop: no change
+
+    def test_second_compaction_and_follow_up_request(self):
+        from cadfabric import ledger as LG
+        L = LG.Ledger(); msgs = self.mk_msgs(14, L); msgs.append({"role": "user", "content": "NOW ADD A HOLE"}); rs = len(msgs) - 1
+        for i in range(15, 30):
+            L.add_cell('result = x%d' % i, True, "", "", 1.0 * i); msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": "c%d" % i, "type": "function", "function": {"name": "execute_cadquery", "arguments": "{}"}}]}); msgs.append({"role": "tool", "tool_call_id": "c%d" % i, "content": "OK"})
+        LG.compact(msgs, L, "m", run_start=rs); self.assertIn("NOW ADD A HOLE", msgs[2]["content"]); self.assertEqual(msgs[2]["content"].count(LG.CARD_MARK), 1)
+        L.add_cell("result = y", True, "", "", 2.0); msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": "z", "type": "function", "function": {"name": "execute_cadquery", "arguments": "{}"}}]}); msgs.append({"role": "tool", "tool_call_id": "z", "content": "OK"})
+        for k in range(8): msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": "k%d" % k, "type": "function", "function": {"name": "execute_cadquery", "arguments": "{}"}}]}); msgs.append({"role": "tool", "tool_call_id": "k%d" % k, "content": "OK"})
+        LG.compact(msgs, L, "m2", run_start=2); c = msgs[2]["content"]; self.assertEqual(c.count(LG.CARD_MARK), 1); self.assertEqual(c.count("NOW ADD A HOLE"), 1); self.assertIn("m2", c)       # the request survives, the card is not nested
+
+    def test_card_stays_small_for_hundreds_of_steps(self):
+        from cadfabric import ledger as LG
+        L = LG.Ledger()
+        for i in range(400): L.add_cell('result = cq.Workplane("XY").box(%d, 5, 5).faces(">Z").workplane().hole(2)  # step %d' % (i, i), i % 7 != 0, "Err %d" % (i % 5) if i % 7 == 0 else "", "", float(i))
+        c = LG.state_card(L, "m"); self.assertLessEqual(len(c), LG.CARD_MAX); self.assertIn("oldest are not listed", c); self.assertIn("Steps so far: 400", c)
+
+    def test_agent_prompt_stays_flat_over_many_steps_and_recall_works(self):
+        from cadfabric import ledger as LG
+        old = LG.COMPACT_CHARS; LG.COMPACT_CHARS = 4000
+        sizes = []
+        class Cap(FakeLLM):
+            def chat(self, messages, tools=None, **kw): sizes.append(LG.msgs_chars(messages)); return FakeLLM.chat(self, messages, tools=tools, **kw)
+        try:
+            script = [[("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(%d, 10, 10)  # ' % (10 + i) + "padding " * 40})] for i in range(40)] + [[("recall", {"query": "3"})], "finished"]
+            r, ev, _ = self.run_agent(None, llm=Cap(script), max_steps=60)
+        finally: LG.COMPACT_CHARS = old
+        self.assertEqual((r["final"], r["steps"] >= 40), ("finished", True)); self.assertTrue(any(k == "compact" for k, _ in ev))
+        self.assertLess(max(sizes), 4000 + 6 * 900 + LG.CARD_MAX + 1200); self.assertLess(sizes[-1], sizes[30] * 1.5)                                    # flat: bounded by threshold + tail + card, not by step count
+        self.assertTrue(any(k == "recall" and x["ok"] for k, x in ev)); self.assertTrue(any("STEP 3" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))
+        self.assertEqual(r["measure"]["volume"], 10 * 10 * 49)                                                                                         # the part is unaffected by what left the prompt
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

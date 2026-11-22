@@ -4,7 +4,7 @@ the Host header must be one we serve (blocks DNS rebinding); Origin, when presen
 import hmac, http.server, json, os, re, secrets, socketserver, subprocess, sys, threading, time, urllib.parse
 from http import cookies
 from . import advisors, agent, config, history as history_mod, llm as llm_mod, viewers, workspace as ws_mod
-from . import cq_backend, lessons as lessons_mod, skills as skills_mod
+from . import cq_backend, lessons as lessons_mod, skills as skills_mod, ledger as ledger_mod
 from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
@@ -32,6 +32,7 @@ class Session:
         self.llm, self.cfg, self.local, self.quit = llm, cfg, local, False
         self.pinned = cfg.get("workspace") or ""   # this window's project; a different folder opens another window
         self.reflecting = False
+        self.ledger = ledger_mod.Ledger()          # this conversation's work ledger (memory only until it has a session id)
         self.lessons_given = set()              # lesson ids already in this conversation's prompt
         self.autofile = None                    # the STEP file this conversation keeps up to date in the project folder
         self.picker = None                      # set by the desktop window: () -> folder path or ''
@@ -57,6 +58,7 @@ class Session:
             self.busy, self.stop = True, False
         if not self.sid:
             self.sid, self.created, self.title = history_mod.new_id(), time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(text.split())[:60]
+            self.ledger = ledger_mod.Ledger(self._ledger_path(self.sid))
         self.emit("user", files=list(files) + [u["name"] for u in (uploads or [])], text=text, planner=planner if self.history is None else "(follow-up: no plan)")
         self.thread = threading.Thread(target=self._work, args=(text, planner, tuple(files), uploads or []), daemon=True)
         self.thread.start()
@@ -98,14 +100,14 @@ class Session:
             r = agent.run(self.llm, self.backend, text, plan_mode=planner, log=lambda s: None, cfg=self.cfg, workspace=root or None, attachments=block, lessons=lblock,
                           skill_catalog=sblock, skill_reader=(lambda n, f: skills_mod.use(dd, root, n, f)) if sblock else None,
                           lesson_reader=(lambda n: lessons_mod.read_one(dd, root, n)) if lcat else None,
-                          history=self.history, should_stop=lambda: self.stop, on_event=lambda kind, **kw: self.emit(kind, **kw),
+                          history=self.history, ledger=self.ledger, should_stop=lambda: self.stop, on_event=lambda kind, **kw: self.emit(kind, **kw),
                           opener=(lambda: self.open_in_viewer()[1]) if self.local else None)
             self.history = r["history"]
             m = self.backend.measure()
             with self.lock:
                 self.measure = m.as_dict() if m else None
-            self.emit("final", text=r["final"] or ("(stopped)" if r.get("stopped") else "(step limit reached without a final answer)"), warnings=r["warnings"], gates=r["gates"],
-                      steps=r["steps"], sec=r["sec"])
+            self.emit("final", text=r["final"] or ("(stopped)" if r.get("stopped") else ("(ended: %s)" % r["stuck"]) if r.get("stuck") else "(step limit reached without a final answer)"), warnings=r["warnings"], gates=r["gates"],
+                      steps=r["steps"], sec=r["sec"], resume=bool(r.get("stuck") or r.get("ended_by_limit")), budget=r.get("budget"), peak_ctx=max(r.get("ctx_tokens") or [0]))
         except Exception as e:                                                   # noqa: BLE001 - show the failure in the chat
             self.emit("error", text="%s: %s" % (type(e).__name__, str(e)[:300]))
         finally:
@@ -183,6 +185,9 @@ class Session:
         except (OSError, TypeError, ValueError):
             pass
 
+    def _ledger_path(self, sid):
+        return os.path.join(config.data_dir(self.cfg), "ledger", sid + ".jsonl")
+
     def load_history(self, sid):
         """Reopen a saved conversation: rebuild the part by replaying its cells, restore the chat and the model's context. -> (status, body)."""
         rec = history_mod.load(config.data_dir(self.cfg), sid) if history_mod.valid(sid) else None
@@ -210,6 +215,12 @@ class Session:
                 self.history = rec.get("messages") if isinstance(rec.get("messages"), list) else None
                 self.measure = m.as_dict() if m else None
                 self.sid, self.created, self.title = rec["id"], rec.get("created", ""), rec.get("title", ""); self.autofile = None
+                self.lessons_given = set()
+                self.ledger = ledger_mod.Ledger(self._ledger_path(rec["id"]))
+                if not self.ledger.cells:                                            # older record without a ledger file: rebuild it from the saved successful cells
+                    for code in rec.get("cells") or []:
+                        if isinstance(code, str):
+                            self.ledger.add_cell(code, True)
             return 200, {"ok": True, "id": sid, "replay_failed": bad, "has_part": m is not None}
         finally:
             with self.lock:
@@ -275,6 +286,7 @@ class Session:
                 return False
             self.events, self.history, self.measure = [], None, None
             self.lessons_given = set()
+            self.ledger = ledger_mod.Ledger()
             self.sid, self.created, self.title = None, "", ""
             self.autofile = None
         self.backend.reset()

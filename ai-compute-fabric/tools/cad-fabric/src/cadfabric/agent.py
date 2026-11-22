@@ -1,11 +1,16 @@
 """Backend-agnostic CAD agent loop: plan (formulas evaluated by code) -> execute code -> measure after EVERY cell -> step check against the plan -> final gate.
 The executor model never sees the plan's arithmetic as its own: the harness evaluates the advisor's formulas and compares them with the kernel's measurements."""
-import json, os, time
+import json, os, re, time
 from . import verifier as V
 from . import planners, workspace as ws_mod
+from . import ledger as ledger_mod
 
 MAX_STEPS = int(os.environ.get("CADFABRIC_MAX_STEPS", "14"))
 GATE_MAX = 2
+HARD_STEPS = int(os.environ.get("CADFABRIC_HARD_STEPS", "120"))
+NUDGE = {"repeat": 3, "same_volume": 5, "failing": 5}          # consecutive cells before the model is told it is stuck
+STOP = {"repeat": 6, "same_volume": 9, "failing": 10}          # and before the run is ended as stuck
+STUCK_TEXT = {"repeat": "you ran the same code %d times in a row", "same_volume": "the part did not change for %d cells in a row", "failing": "%d cells in a row failed"}
 
 SYSTEM = """You build CAD parts by writing CadQuery (Python) code that runs in a persistent session. Units are millimetres.
 Rules:
@@ -81,7 +86,7 @@ def _ws_call(name, args, root, backend, ev):
 WS_NAMES = ("list_files", "read_file", "search_files", "save_step")
 
 
-def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None, workspace=None, attachments="", lessons="", skill_catalog="", skill_reader=None, lesson_reader=None):
+def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None, workspace=None, attachments="", lessons="", skill_catalog="", skill_reader=None, lesson_reader=None, ledger=None, max_steps=None):
     """-> dict: ok, final text, final measure, steps, checks, warnings, plan. plan_mode: off | nothink | think | codex | codex-relay. `planner(request)->(spec, raw)` overrides."""
     t0 = time.time()
     ev = on_event or (lambda kind, **kw: None)         # structured events for a UI: plan, cell, gate
@@ -109,14 +114,39 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                  "After each cell that changes the solid the harness reports `HARNESS CHECK` lines.\n" + V.describe(spec))
     msgs.append({"role": "user", "content": user})
     trace, warns, gates, tokens, final = [], 0, 0, 0, ""
-    stopped = False
-    for step in range(MAX_STEPS):
+    stopped, stuck = False, ""
+    led = ledger if ledger is not None else ledger_mod.Ledger()
+    if attachments and "attachments" not in led.notes:
+        led.add_note("attachments", attachments)
+    run_start = len(msgs) - 1                                     # index of this run's request message (kept verbatim by compaction)
+    if max_steps:
+        budget = max_steps
+    elif follow_up:
+        budget = max(MAX_STEPS, 20)
+    else:
+        budget = min(HARD_STEPS, max(MAX_STEPS, 10 + 5 * (len(spec["milestones"]) if spec else 0)))
+    run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
+    for step in range(budget):
         if should_stop and should_stop():
             stopped = True
             break
         ev("phase", what="llm", step=step + 1)
-        m = llm.chat(msgs, tools=TOOLS + ([OPEN_TOOL] if opener else []) + (_ws_tools() if workspace else []) + ([SKILL_TOOL] if (skill_catalog and skill_reader) else []) + ([LESSON_TOOL] if lesson_reader else []), think=False)
-        tokens += (m.pop("_usage", {}) or {}).get("completion_tokens", 0)
+        since_compact += 1
+        if since_compact >= 4 and ledger_mod.msgs_chars(msgs) > ledger_mod.COMPACT_CHARS:   # memory: old steps leave the prompt, the ledger keeps them (not every step: the engine reuses the unchanged prompt prefix)
+            mm0 = backend.measure()
+            r0 = ledger_mod.compact(msgs, led, mm0.text() if mm0 else "", run_start=run_start)
+            if r0 and r0[1] > 0.75 * ledger_mod.COMPACT_CHARS:                # still big (long recent steps): keep fewer verbatim turns
+                run_start = 2 if run_start > 1 else run_start
+                r1 = ledger_mod.compact(msgs, led, mm0.text() if mm0 else "", keep=3, run_start=run_start)
+                r0 = (r0[0], r1[1], r0[2] + r1[2]) if r1 else r0
+            if r0:
+                run_start = 2 if run_start > 1 else run_start; since_compact = 0
+                ev("compact", chars_before=r0[0], chars_after=r0[1], steps_dropped=r0[2]); log("  compact: %d -> %d chars" % (r0[0], r0[1]))
+        m = llm.chat(msgs, tools=TOOLS + [ledger_mod.RECALL_TOOL] + ([OPEN_TOOL] if opener else []) + (_ws_tools() if workspace else []) + ([SKILL_TOOL] if (skill_catalog and skill_reader) else []) + ([LESSON_TOOL] if lesson_reader else []), think=False)
+        usage = m.pop("_usage", {}) or {}
+        tokens += usage.get("completion_tokens", 0)
+        if usage.get("prompt_tokens"):
+            ctx_tokens.append(usage["prompt_tokens"]); ev("ctx", tokens=usage["prompt_tokens"], step=step + 1)
         msgs.append(m)
         calls = m.get("tool_calls") or []
         if not calls:
@@ -144,6 +174,20 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                     obs = tracker.observe("execute", res.measure.volume, feature=bool(V.FEATURE.search(str(args.get("code", "")))))
                     if obs:
                         text += "\n" + obs[1]; warns += obs[0] == "warn"
+                led.add_cell(args.get("code", ""), res.ok, res.error, res.output.strip(), res.measure.volume if res.measure else None, res.measure.text() if res.measure else "")
+                sig = ledger_mod.code_sig(args.get("code", "")); vol = round(res.measure.volume, 6) if (res.ok and res.measure) else None
+                run["repeat"] = run["repeat"] + 1 if sig == last_sig else 1
+                run["failing"] = 0 if res.ok else run["failing"] + 1
+                run["same_volume"] = (run["same_volume"] + 1 if (vol is not None and vol == last_vol) else (1 if vol is not None else 0)) if res.ok else run["same_volume"]
+                last_sig = sig
+                if not res.ok:                                                    # the same error again and again (even with different code) is a loop of its own
+                    ek = re.sub(r"\s+", " ", re.sub(r"\(line \d+[^)]*\)|0x[0-9a-f]+|\d+", "#", res.error))[:90]
+                    errs[ek] = errs.get(ek, 0) + 1
+                    if errs[ek] == 3:
+                        err_note = ("PROGRESS CHECK: the same error has now happened 3 times: %s. Do not try that again. Use a different CadQuery call or a different way to reach the same result "
+                                    "(recall('words') shows how earlier steps dealt with it)." % res.error.strip().splitlines()[-1][:160])
+                if vol is not None:
+                    last_vol = vol
                 trace.append({"tool": name, "ok": res.ok, "vol": res.measure.volume if res.measure else None, "err": res.error[:200]})
                 log("  step %d: %s%s" % (len(trace), "ok" if res.ok else "ERROR " + res.error[:100], "  volume %.2f mm3" % res.measure.volume if res.measure else ""))
                 chk = text[text.index("HARNESS CHECK"):][:300].replace("\n", " ") if "HARNESS CHECK" in text else ""
@@ -151,6 +195,10 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                     log("    " + chk[:200])
                 ev("cell", n=len(trace), code=str(args.get("code", ""))[:4000], ok=res.ok, error=res.error[:400], output=res.output.strip()[:300],
                    volume=res.measure.volume if res.measure else None, check=chk)
+            elif name == "recall":
+                text = led.recall(args.get("query", ""))
+                ev("recall", query=str(args.get("query", ""))[:60], ok=not text.startswith("ERROR"))
+                trace.append({"tool": name, "ok": not text.startswith("ERROR")})
             elif name == "open_in_viewer" and opener:
                 if not backend.measure():
                     text = "ERROR: there is no part to open yet"
@@ -180,13 +228,29 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                 if ok and tracker:
                     tracker.reset(); [tracker.observe("replay", h) for h in []]      # volume history is not replayed; the tracker restarts from the next measurement
                 trace.append({"tool": name, "ok": ok})
+                if ok:
+                    led.add_cell("undo()", True, "", "", mm.volume if mm else None, mm.text() if mm else "")
             else:
                 text = "unknown tool"
             msgs.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": text[:(20000 if name in WS_NAMES or name == "use_skill" else 4000)]})
+        if err_note:
+            msgs.append({"role": "user", "content": err_note}); trace.append({"gate": err_note}); ev("gate", text=err_note[:400]); err_note = ""
+        for kind in ("repeat", "same_volume", "failing"):                       # progress guard: tell the model once, then end the run instead of burning steps
+            if run[kind] >= STOP[kind]:
+                stuck = (STUCK_TEXT[kind] % run[kind]) + "; the run was ended"
+                ev("stuck", reason=stuck, kind=kind, steps=len(trace)); log("  stuck: " + stuck)
+                break
+            if run[kind] >= NUDGE[kind] and kind not in nudged:
+                nudged.add(kind)
+                note = ("PROGRESS CHECK: " + STUCK_TEXT[kind] % run[kind] + ". Stop repeating it. Re-read the request, list which features are still missing, and try a different approach "
+                        "(recall('words') searches your earlier steps). If you cannot, say so plainly in your answer.")
+                msgs.append({"role": "user", "content": note}); trace.append({"gate": note}); ev("gate", text=note[:400])
+        if stuck:
+            break
     mm = backend.measure()
     return {"final": final, "measure": mm.as_dict() if mm else None, "steps": len([t for t in trace if t.get("tool")]), "warnings": warns, "gates": gates,
             "checks": tracker.checks if tracker else 0, "plan": spec["milestones"] if spec else None, "plan_raw": raw_plan[:1500], "trace": trace, "tokens": tokens,
-            "sec": round(time.time() - t0, 1), "ended_by_limit": not final and not stopped, "stopped": stopped, "history": msgs}
+            "sec": round(time.time() - t0, 1), "ended_by_limit": not final and not stopped and not stuck, "stopped": stopped, "stuck": stuck, "budget": budget, "ctx_tokens": ctx_tokens, "history": msgs}
 
 
 def _vb(backend):
