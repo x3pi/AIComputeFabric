@@ -24,7 +24,7 @@ Bộ cài **offline** (không cần Internet), **không cần quyền quản tr�
 
 ## Dùng lần đầu
 
-1. Bấm shortcut **CadFabric**. Trình duyệt tự mở trang chat.
+1. Bấm shortcut **CadFabric**. Ứng dụng mở cửa sổ riêng (dùng Microsoft Edge WebView2 có sẵn trong Windows 10/11); nếu máy không có WebView2 thì tự mở bằng trình duyệt. Đóng cửa sổ là tắt ứng dụng.
 2. Hộp **Cài đặt** tự hiện ở lần chạy đầu. Điền:
    - **URL API Qwen**, ví dụ `http://192.168.1.40:18080/v1/chat/completions`
    - **Tên model** (để trống nếu máy chủ tự chọn). Nút **Kiểm tra kết nối** liệt kê model có sẵn.
@@ -47,6 +47,14 @@ Cố vấn lập một kế hoạch có công thức thể tích. Chương trìn
 | API do bạn thêm | tuỳ URL | OpenAI-compatible hoặc Anthropic |
 
 Thêm cố vấn: **Cài đặt, + Thêm cố vấn**, chọn **API (URL)** hoặc **CLI**. Với Claude và Codex chọn thêm model (yếu/nhanh hay mạnh) và mức suy nghĩ. Mỗi cố vấn có nút **Kiểm tra**.
+
+## Thư mục làm việc, đính kèm tệp, tra cứu internet
+
+**Thư mục làm việc:** trong **Cài đặt** bấm **Chọn…** (hoặc gõ đường dẫn) để chọn thư mục dự án. Qwen và cố vấn được **đọc** tệp văn bản trong đó (txt, md, csv, json, dxf, step, py, ...), không ghi đè bất kỳ tệp nào. Tệp bí mật (`.env`, `key*.txt`, `*.pem`, thư mục `.git`, `.ssh`...) và đường dẫn trỏ ra ngoài thư mục luôn bị chặn.
+- Bạn có thể nói trong chat: "đọc tệp sub/hop.txt rồi dựng đúng chi tiết đó", "tìm chữ bu lông trong thư mục", "lưu chi tiết thành tệp hop-test" (tạo tệp `.step` mới, không bao giờ ghi đè).
+- Nút **📎 Tệp** ở khung chat chọn tệp (tối đa 8) đính kèm vào tin nhắn: nội dung được đưa cho cả Qwen **và cố vấn**. Với cố vấn bên ngoài (Claude, Codex), ứng dụng hỏi thêm một lần vì nội dung tệp rời khỏi máy.
+
+**Tra cứu internet:** khi thêm cố vấn Claude Code hoặc Codex, tích **Cho phép tra cứu internet**. Cố vấn tìm kiếm và đọc trang web để kiểm tra tiêu chuẩn, kích thước chuẩn rồi nêu nguồn; vẫn không đọc được tệp trên máy bạn. Chỉ nên bật cho cố vấn bạn tin cậy, vì câu hỏi có thể được dùng để tìm kiếm.
 
 ## Lịch sử thiết kế
 

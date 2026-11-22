@@ -16,6 +16,11 @@ echo "== dependencies for Windows x64 / Python 3.12"
 if [ -n "${WHEELHOUSE:-}" ]; then cp -n "$WHEELHOUSE"/*.whl "$B/wheelhouse/"; fi
 $PIP download --quiet --only-binary=:all: --platform win_amd64 --python-version 3.12 --implementation cp --abi cp312 -d "$B/wheelhouse" --find-links "$B/wheelhouse" cadfabric pip
 
+echo "== desktop window (pywebview + its Windows dependencies; markers are evaluated on THIS host, so the list is explicit)"
+$PIP download --quiet --only-binary=:all: --no-deps --platform win_amd64 --python-version 3.12 --implementation cp --abi cp312 -d "$B/wheelhouse" \
+  pywebview pythonnet clr_loader cffi pycparser typing_extensions
+$PIP wheel --quiet --no-deps -w "$B/wheelhouse" proxy_tools bottle          # source-only on PyPI, pure Python: built here into py3-none-any wheels
+
 echo "== embeddable Python $PY_VER and the Microsoft runtime"
 curl -fsSL -o "$B/python-$PY_VER-embed-amd64.zip" "https://www.python.org/ftp/python/$PY_VER/python-$PY_VER-embed-amd64.zip"
 if [ -f "${VC_REDIST:-}" ]; then cp "$VC_REDIST" "$B/vc_redist.x64.exe"; else curl -fsSL -o "$B/vc_redist.x64.exe" https://aka.ms/vs/17/release/vc_redist.x64.exe; fi

@@ -146,3 +146,10 @@ Thêm bài benchmark: sửa `src/cadfabric/tasks.py` (văn bản đề + lời g
 ## Lịch sử
 
 Mỗi cuộc trò chuyện tự lưu vào `<data dir>/history/<id>.json` (0600, tối đa 100). Nút **Lịch sử** mở lại: chat, ngữ cảnh của model và chi tiết (dựng lại bằng chạy lại các cell đã lưu). Chỉ dùng được khi app gắn với máy này (không `--allow-remote`). Đã đo: mở lại sau khi khởi động lại app, sửa tiếp thêm lỗ Ø6, thể tích 28 994,69 → 28 429,20 mm³ (giảm đúng 565,49 = π·3²·20).
+
+## Thư mục làm việc, tệp đính kèm, tra internet, cửa sổ riêng (0.5.0)
+
+- `workspace` (Cài đặt): thư mục chỉ-đọc cho Qwen (`list_files`, `read_file`, `search_files`) và `save_step` (chỉ tạo tệp mới). Chặn `..`, đường dẫn tuyệt đối, symlink ra ngoài, tệp bí mật; kiểm thử đột biến cả ba luật.
+- Đính kèm tệp (`files` trong `/api/send`, nút 📎): nội dung vào cả lời nhắc của Qwen và của cố vấn. Đo thật (đề: đĩa Ø60 dày 8, lỗ Ø12, đọc từ tệp): planner `off` đúng 1/3 lần, `nothink` 3/3, Claude (haiku) 3/3, thể tích đúng 21714,69 mm³.
+- Cố vấn Claude/Codex có tuỳ chọn `web` (Claude: `--tools WebSearch,WebFetch`; Codex: `--search`). Đã đo Claude CLI tra được M8 theo bảng Optimas trong 18,6 s. Codex `--search` chưa chạy thử đến cùng (Codex trên máy Linux này báo model mặc định không hỗ trợ).
+- `cadfabric app` mở cửa sổ riêng bằng pywebview (WebView2 trên Windows); `--browser` để dùng trình duyệt. Đã xem tận mắt cửa sổ trên Windows 10 (.33) và nút Thoát đóng sạch tiến trình. Linux/macOS: cần cài thêm `pip install cadfabric[desktop]` và GTK/Qt; chưa thử.

@@ -652,5 +652,80 @@ class HistoryStore(unittest.TestCase):
         self.assertTrue(H.delete(d, "20300102-000000-aaaa")); self.assertIsNone(H.load(d, "20300102-000000-aaaa")); self.assertFalse(H.delete(d, "20300102-000000-aaaa"))
 
 
+class WorkspaceTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.root = tempfile.mkdtemp(); self.out = tempfile.mkdtemp()
+        w = lambda rel, t, mode="w": (os.makedirs(os.path.dirname(os.path.join(self.root, rel)), exist_ok=True), open(os.path.join(self.root, rel), mode).write(t))
+        w("spec.txt", "Flange OD 80, bore 30, 4 holes D6 on PCD 60\n"); w("sub/bom.csv", "part,qty\nbolt,4\n"); w(".env", "SECRET=1"); w("key.txt", "aicf_SECRET"); w("data.bin", b"\x00\x01\x02" * 10, "wb")
+        w("big.txt", "x" * 100000); w(".git/config", "[core]"); open(os.path.join(self.out, "outside.txt"), "w").write("OUTSIDE")
+        if os.name != "nt": os.symlink(os.path.join(self.out, "outside.txt"), os.path.join(self.root, "link.txt")); os.symlink(self.out, os.path.join(self.root, "linkdir"))
+
+    def test_confinement_and_secrets(self):
+        from cadfabric import workspace as W
+        self.assertIn("OD 80", W.read_text(self.root, "spec.txt")[0]); self.assertIn("bolt", W.read_text(self.root, "sub/bom.csv")[0])
+        for bad in ("../" + os.path.basename(self.out) + "/outside.txt", "..", "/etc/passwd", "C:\\Windows\\win.ini", "~/x", "sub/../../x", ".env", "key.txt", ".git/config", "link.txt", "linkdir/outside.txt", "a\nb"):
+            t, e = W.read_text(self.root, bad); self.assertIsNone(t, bad); self.assertTrue(e, bad)
+        self.assertTrue(W.read_text(self.root, "data.bin")[1])                                                                     # binary file refused
+        t, _ = W.read_text(self.root, "big.txt"); self.assertIn("cut at", t); self.assertLess(len(t), 61000)
+        names = [e["name"] for e in W.listing(self.root)[0]["entries"]]
+        self.assertEqual(names[0], "sub"); self.assertIn("spec.txt", names)
+        for hidden in (".env", "key.txt", ".git", "link.txt", "linkdir"): self.assertNotIn(hidden, names)
+        self.assertEqual(W.search(self.root, "bolt")[0], ["sub/bom.csv:2: bolt,4"]); self.assertEqual(W.search(self.root, "SECRET")[0], [])        # secrets are not searchable
+        self.assertIsNone(W.listing(self.root, "..")[0]); self.assertIsNone(W.listing(self.root, "linkdir")[0])
+        b, used, err = W.attachments(self.root, ["spec.txt", "sub/bom.csv"]); self.assertEqual(err, ""); self.assertIn("FILE: spec.txt", b); self.assertEqual(len(used), 2)
+        self.assertTrue(W.attachments(self.root, ["spec.txt", ".env"])[2])
+        self.assertEqual(W.check_folder("")[0], ""); self.assertTrue(W.check_folder("/definitely/not/here")[1]); self.assertTrue(W.check_folder(os.path.expanduser("~"))[1]); self.assertTrue(W.check_folder("/")[1])
+
+    def test_new_step_never_overwrites(self):
+        from cadfabric import workspace as W
+        p, _ = W.new_step_path(self.root, "fl"); open(p, "w").write("x"); q, _ = W.new_step_path(self.root, "fl.step"); self.assertNotEqual(p, q); self.assertEqual(os.path.dirname(q), os.path.realpath(self.root))
+        for bad in ("../x", "a/b", ".hidden", "x" * 90): self.assertIsNone(W.new_step_path(self.root, bad)[0], bad)
+        self.assertIsNone(W.new_step_path(self.root, "../x")[0]); self.assertIsNone(W.new_step_path(self.root, "a/b")[0])
+
+    def test_agent_tools_only_with_a_folder_and_model_cannot_escape(self):
+        seen = []
+        class L(FakeLLM):
+            def chat(self, messages, tools=None, **kw): seen.append([t["function"]["name"] for t in (tools or [])]); return FakeLLM.chat(self, messages, tools=tools, **kw)
+        b = CadQueryBackend(timeout=20)
+        try:
+            script = [[("read_file", {"path": "spec.txt"}), ("read_file", {"path": "../x"}), ("read_file", {"path": ".env"}), ("list_files", {}), ("search_files", {"text": "bolt"})],
+                      [("execute_cadquery", {"code": CYL})], [("save_step", {"name": "out1"})], "ok"]
+            ev = []; r = agent.run(L(script), b, "x", plan_mode="off", log=lambda s: None, workspace=self.root, on_event=lambda k, **kw: ev.append((k, kw)))
+            tool = [m["content"] for m in r["history"] if m.get("role") == "tool"]
+            self.assertIn("OD 80", tool[0]); self.assertTrue(tool[1].startswith("ERROR")); self.assertTrue(tool[2].startswith("ERROR")); self.assertIn("spec.txt", tool[3]); self.assertNotIn(".env", tool[3]); self.assertIn("bom.csv", tool[4])
+            self.assertTrue(os.path.isfile(os.path.join(self.root, "out1.step"))); self.assertIn(("file", {"op": "saved", "path": "out1.step"}), [(k, {a: v for a, v in kw.items()}) for k, kw in ev])
+            self.assertIn("read_file", seen[0]); seen.clear(); agent.run(L(["ok"]), b, "x", plan_mode="off", log=lambda s: None); self.assertNotIn("read_file", seen[0])    # no folder: no tools
+            r = agent.run(L([[("save_step", {"name": "zz"})], "ok"]), b, "x", plan_mode="off", log=lambda s: None, workspace=self.root)
+            self.assertFalse(os.path.exists(os.path.join(self.root, "zz.step"))); self.assertIn("no part to save", [m["content"] for m in r["history"] if m.get("role") == "tool"][0])
+            r = agent.run(L(["ok"]), b, "ask", plan_mode="off", log=lambda s: None, workspace=self.root, attachments="----- FILE: a -----\nHELLO"); self.assertIn("HELLO", r["history"][1]["content"])
+        finally: b.close()
+
+    def test_advisor_web_flags(self):
+        from cadfabric import advisors as A
+        c, _ = A.cli_argv({"preset": "claude", "web": True}, {}, "/w"); self.assertIn("WebSearch,WebFetch", c); self.assertNotIn("", c[c.index("--tools") + 1:c.index("--tools") + 2])
+        c0, _ = A.cli_argv({"preset": "claude"}, {}, "/w"); self.assertEqual(c0[c0.index("--tools") + 1], ""); self.assertNotIn("WebSearch,WebFetch", c0)
+        x, _ = A.cli_argv({"preset": "codex", "web": True, "model": "m"}, {}, "/w"); self.assertEqual(x[1], "--search"); self.assertEqual(x[2], "exec"); self.assertEqual(x[-1], "-")
+        x0, _ = A.cli_argv({"preset": "codex"}, {}, "/w"); self.assertNotIn("--search", x0)
+        ok = A.validate({"id": "w", "type": "cli", "preset": "claude", "web": True}); self.assertTrue(ok[0]["web"]); self.assertNotIn("web", A.validate({"id": "w", "type": "cli", "preset": "claude"})[0])
+        self.assertNotIn("web", A.validate({"id": "w", "type": "cli", "preset": "custom", "command": "x", "web": True})[0])           # only presets know how to enable it safely
+        self.assertNotIn("web", A.validate({"id": "w", "type": "api", "url": "http://1.2.3.4/v1", "web": True})[0])
+
+
+class WorkspaceWeb(Settings):
+    def test_folder_setting_files_endpoint_and_attachments(self):
+        sess = self.srv.sess; root = os.path.join(self.dir, "proj"); os.makedirs(root); open(os.path.join(root, "a.txt"), "w").write("DIAMETER 42"); open(os.path.join(root, ".env"), "w").write("S")
+        self.assertEqual(self.req("GET", "/api/files")[0], 400)                                                           # no folder yet
+        body = {"url": self.fake_url, "model": "q", "planner": "nothink", "workspace": root}
+        self.assertEqual(self.req("POST", "/api/settings", dict(body, workspace="/no/such/dir"))[0], 400); self.assertEqual(self.req("POST", "/api/settings", body)[0], 200)
+        s, d = self.req("GET", "/api/files"); self.assertEqual(s, 200); self.assertEqual([e["name"] for e in d["entries"]], ["a.txt"])
+        self.assertEqual(self.req("GET", "/api/files?path=..")[0], 400)
+        self.assertEqual(self.req("POST", "/api/send", {"text": "x", "planner": "nothink", "files": ["../x"]})[0], 400); self.assertEqual(self.req("POST", "/api/send", {"text": "x", "planner": "nothink", "files": [".env"]})[0], 400)
+        sess.local = False
+        try: self.assertEqual(self.req("GET", "/api/files")[0], 403); self.assertEqual(self.req("POST", "/api/send", {"text": "x", "planner": "nothink", "files": ["a.txt"]})[0], 400)
+        finally: sess.local = True
+        s, d = self.req("GET", "/api/config"); self.assertEqual(d["settings"]["workspace"], root)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

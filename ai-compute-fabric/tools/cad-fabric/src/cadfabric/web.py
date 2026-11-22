@@ -3,7 +3,7 @@ Security: binds 127.0.0.1 unless told otherwise; every request needs the access 
 the Host header must be one we serve (blocks DNS rebinding); Origin, when present, must match; request bodies are capped."""
 import hmac, http.server, json, os, re, secrets, socketserver, threading, time, urllib.parse
 from http import cookies
-from . import advisors, agent, config, history as history_mod, llm as llm_mod, viewers
+from . import advisors, agent, config, history as history_mod, llm as llm_mod, viewers, workspace as ws_mod
 from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
@@ -30,21 +30,25 @@ class Session:
             return {"busy": self.busy, "events": self.events[since:], "next": len(self.events), "measure": self.measure, "has_part": self.measure is not None,
                     "follow_up": self.history is not None}
 
-    def send(self, text, planner):
+    def send(self, text, planner, files=()):
         with self.lock:
             if self.busy:
                 return False
             self.busy, self.stop = True, False
         if not self.sid:
             self.sid, self.created, self.title = history_mod.new_id(), time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(text.split())[:60]
-        self.emit("user", text=text, planner=planner if self.history is None else "(follow-up: no plan)")
-        self.thread = threading.Thread(target=self._work, args=(text, planner), daemon=True)
+        self.emit("user", files=list(files), text=text, planner=planner if self.history is None else "(follow-up: no plan)")
+        self.thread = threading.Thread(target=self._work, args=(text, planner, tuple(files)), daemon=True)
         self.thread.start()
         return True
 
-    def _work(self, text, planner):
+    def _work(self, text, planner, files=()):
         try:
-            r = agent.run(self.llm, self.backend, text, plan_mode=planner, log=lambda s: None, cfg=self.cfg,
+            root = self.cfg.get("workspace") or ""
+            block, _used, err = ws_mod.attachments(root, files) if files else ("", [], "")
+            if err:
+                raise ValueError("attached file: " + err)
+            r = agent.run(self.llm, self.backend, text, plan_mode=planner, log=lambda s: None, cfg=self.cfg, workspace=root or None, attachments=block,
                           history=self.history, should_stop=lambda: self.stop, on_event=lambda kind, **kw: self.emit(kind, **kw),
                           opener=(lambda: self.open_in_viewer()[1]) if self.local else None)
             self.history = r["history"]
@@ -144,7 +148,7 @@ def public_settings(cfg):
     except SystemExit:
         has_key = False
     return {"url": cfg["url"], "model": cfg["model"], "planner": cfg["planner"], "relay": cfg.get("relay") or {}, "has_key": has_key, "advisors": advisors.meta(cfg),
-            "viewer": cfg.get("viewer") or {"kind": "auto", "command": ""}, "viewer_label": viewers.resolve(cfg)[1], "viewers_detected": viewers.detected(),
+            "viewer": cfg.get("viewer") or {"kind": "auto", "command": ""}, "viewer_label": viewers.resolve(cfg)[1], "viewers_detected": viewers.detected(), "workspace": cfg.get("workspace") or "",
             "configured": bool(cfg.get("_path")), "config_path": cfg.get("_path") or config.user_config_path()}
 
 
@@ -200,6 +204,11 @@ def make_handler(sess, token, hosts, data_dir):
                                  "local": sess.local, "settings": public_settings(sess.cfg)})
             elif u.path == "/api/history":
                 self._send(200, {"sessions": history_mod.list_sessions(data_dir) if sess.local else [], "current": sess.sid}, extra=cookie)
+            elif u.path == "/api/files":
+                if not sess.local:
+                    return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
+                r, err = ws_mod.listing(sess.cfg.get("workspace") or "", (q.get("path") or [""])[0])
+                self._send(200 if r else 400, dict(r, root=os.path.basename((sess.cfg.get("workspace") or "").rstrip("/\\"))) if r else {"error": err})
             elif u.path == "/api/part.svg":
                 try:
                     self._send(200, sess.backend.preview_svg(), "image/svg+xml")
@@ -237,7 +246,13 @@ def make_handler(sess, token, hosts, data_dir):
                     return self._send(400, {"error": "unknown planner"})
                 if advisors.is_external(sess.cfg, planner) and not body.get("confirm_external"):
                     return self._send(409, {"error": "this planner sends your request to an external service; confirm_external is required"})
-                ok = sess.send(text, planner)
+                files = body.get("files") or []
+                if files and (not sess.local or not isinstance(files, list) or len(files) > 8 or not all(isinstance(x, str) and len(x) < 300 for x in files)):
+                    return self._send(400, {"error": "attached files are only available locally (at most 8)"})
+                _b, _u, ferr = ws_mod.attachments(sess.cfg.get("workspace") or "", files) if files else ("", [], "")
+                if ferr:
+                    return self._send(400, {"error": ferr})
+                ok = sess.send(text, planner, files)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
             elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open"):
                 if not sess.local:
@@ -260,7 +275,7 @@ def make_handler(sess, token, hosts, data_dir):
                     if isinstance(a, dict):
                         a.pop("key_file", None)                                               # the browser never chooses which file is read as a key
                 adv_in = body.get("advisors", [{k: v for k, v in a.items() if k != "key_file"} for a in saved.values()])
-                clean, err = config.validate_settings({"url": body.get("url", cur["url"]), "model": body.get("model", cur["model"]), "advisors": adv_in, "viewer": body.get("viewer", cur.get("viewer") or {}),
+                clean, err = config.validate_settings({"url": body.get("url", cur["url"]), "model": body.get("model", cur["model"]), "advisors": adv_in, "viewer": body.get("viewer", cur.get("viewer") or {}), "workspace": body.get("workspace", cur.get("workspace") or ""),
                                                        "planner": body.get("planner", cur["planner"]), "relay": body.get("relay", cur.get("relay") or {})})
                 if err:
                     return self._send(400, {"error": err})

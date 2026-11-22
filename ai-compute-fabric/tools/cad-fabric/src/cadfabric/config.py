@@ -7,7 +7,7 @@ Environment overrides: CADFABRIC_URL, CADFABRIC_MODEL, CADFABRIC_KEY (the key it
 import json, os, sys
 
 DEFAULTS = {"url": "http://127.0.0.1:18080/v1/chat/completions", "model": "", "key_file": None, "planner": "nothink",
-            "relay": {"host": "", "workdir": "", "codex": "codex"}, "codex_bin": None, "data_dir": None, "advisors": [], "viewer": {"kind": "auto", "command": ""}}
+            "relay": {"host": "", "workdir": "", "codex": "codex"}, "codex_bin": None, "data_dir": None, "advisors": [], "viewer": {"kind": "auto", "command": ""}, "workspace": ""}
 PLANNERS = ("off", "nothink", "think", "codex", "codex-relay")
 
 
@@ -94,6 +94,12 @@ def validate_settings(s):
         if err:
             return None, err
         out["viewer"] = vw
+    if "workspace" in s:
+        from . import workspace
+        ws, err = workspace.check_folder(s.get("workspace"))
+        if err:
+            return None, err
+        out["workspace"] = ws
     if "advisors" in s:
         lst, err = advisors.validate_list(s.get("advisors"))
         if err:

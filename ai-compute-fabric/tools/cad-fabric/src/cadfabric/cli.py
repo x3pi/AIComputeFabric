@@ -139,6 +139,44 @@ def _wait_quit(srv):
     srv.shutdown(); srv.sess.close()
 
 
+def _desktop_window(url, srv):
+    """Show the app in its own window (pywebview). Blocks until the window is closed. -> True if a window was shown, False if it is not available
+    (pywebview or the system web view missing): the caller then uses the browser. Folder picking is offered to the page through a tiny local API."""
+    import threading
+    try:
+        import webview
+    except Exception:                                      # noqa: BLE001 - not installed / no GUI toolkit
+        return False
+
+    class Api:
+        def pick_folder(self):
+            try:
+                r = win.create_file_dialog(webview.FOLDER_DIALOG)
+                return r[0] if r else ""
+            except Exception:                              # noqa: BLE001
+                return ""
+
+    try:
+        win = webview.create_window("CadFabric", url, width=1280, height=860, min_size=(900, 600), js_api=Api())
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        threading.Thread(target=lambda: _watch_quit(srv, win), daemon=True).start()
+        webview.start()
+    except Exception as e:                                 # noqa: BLE001
+        print("desktop window failed (%s: %s); using the browser" % (type(e).__name__, str(e)[:120]), flush=True)
+        return False
+    return True
+
+
+def _watch_quit(srv, win):
+    import time
+    while not srv.sess.quit:
+        time.sleep(0.5)
+    try:
+        win.destroy()
+    except Exception:                                      # noqa: BLE001
+        pass
+
+
 def cmd_app(a):
     import socket, threading, urllib.request, webbrowser
     from . import web
@@ -169,10 +207,18 @@ def cmd_app(a):
     with open(state, "w", encoding="utf-8") as f:
         json.dump({"port": srv.port, "token": srv.token, "pid": os.getpid()}, f)
     print("cadfabric app: " + url, flush=True)
-    if not a.no_browser:
+    window = False
+    if not a.no_browser and not getattr(a, "browser", False):
+        window = _desktop_window(url, srv)                  # a native window (WebView2 on Windows); falls back to the browser
+    elif not a.no_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
     try:
-        _wait_quit(srv)
+        if window:                                         # the window closed: the app quits with it
+            srv.shutdown(); srv.sess.close()
+        else:
+            if not a.no_browser and not getattr(a, "browser", False):
+                threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+            _wait_quit(srv)
     finally:
         try:
             os.unlink(state)
@@ -217,7 +263,7 @@ def main(argv=None):
     p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner"); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
     sub.add_parser("tasks").set_defaults(fn=cmd_tasks)
     p = sub.add_parser("serve"); p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8765); p.add_argument("--allow-remote", action="store_true"); p.add_argument("--open", action="store_true"); p.set_defaults(fn=cmd_serve)
-    p = sub.add_parser("app"); p.add_argument("--port", type=int, default=8765); p.add_argument("--no-browser", action="store_true"); p.set_defaults(fn=cmd_app)
+    p = sub.add_parser("app"); p.add_argument("--port", type=int, default=8765); p.add_argument("--no-browser", action="store_true"); p.add_argument("--browser", action="store_true", help="use the web browser instead of the app window"); p.set_defaults(fn=cmd_app)
     p = sub.add_parser("bench"); p.add_argument("--modes", default="off,nothink"); p.add_argument("--reps", type=int, default=3); p.add_argument("--tasks"); p.add_argument("--out"); p.set_defaults(fn=cmd_bench)
     a = ap.parse_args(argv)
     return a.fn(a)

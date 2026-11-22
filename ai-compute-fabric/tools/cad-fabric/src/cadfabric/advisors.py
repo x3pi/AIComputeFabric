@@ -14,14 +14,16 @@ BUILTIN_EXTERNAL = ("codex", "codex-relay")
 # `at`: where the extra flags go (codex needs the final "-" to stay last, so they go right after "exec").
 CLI_PRESETS = {
     "codex": {"label": "Codex CLI", "exe": "codex", "args": ["exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "-C", "{cwd}", "-"],
-              "model_flag": ["-m"], "effort_flag": lambda e: ["-c", 'model_reasoning_effort="%s"' % e], "efforts": ("low", "medium", "high"), "at": 1, "models": ()},
+              "web_args": ["--search"], "web_at": 0, "model_flag": ["-m"], "effort_flag": lambda e: ["-c", 'model_reasoning_effort="%s"' % e], "efforts": ("low", "medium", "high"), "at": 1, "models": ()},
     "claude": {"label": "Claude Code CLI", "exe": "claude", "args": ["-p", "--tools", "", "--no-session-persistence", "--disable-slash-commands", "--strict-mcp-config",
                                                                       "--output-format", "text"],
-               "model_flag": ["--model"], "effort_flag": lambda e: ["--effort", e], "efforts": ("low", "medium", "high", "xhigh", "max"), "at": None,
+               "web_tools": ["--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch"], "model_flag": ["--model"], "effort_flag": lambda e: ["--effort", e], "efforts": ("low", "medium", "high", "xhigh", "max"), "at": None,
                "models": ("haiku", "sonnet", "opus")},
 }
 _MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@\-]{0,79}$")
 API_KINDS = ("openai", "anthropic")
+WEB_PREFIX = ("You are an advisor for a CAD automation agent. You MAY search the web or open public web pages to check standards, standard part dimensions or formulas; "
+              "name the source in one short line. Do not run any command and do not read or write any local file. Answer in plain text, concisely.\n\n")
 PREFIX = ("You are an advisor for a CAD automation agent. Answer ONLY from the text below, in plain text, concisely. "
           "Do not run any command, do not read or write any file, do not browse.\n\n")
 _ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,23}$")
@@ -96,6 +98,8 @@ def validate(a):
             if effort and effort not in CLI_PRESETS[preset]["efforts"]:
                 return None, "effort must be one of: " + ", ".join(CLI_PRESETS[preset]["efforts"])
             out.update({k: v for k, v in (("model", model), ("effort", effort)) if v})
+            if a.get("web"):
+                out["web"] = True                                                    # may search / fetch web pages; local files stay out of reach
         if preset == "custom":
             cmd = str(a.get("command", "")).strip()
             if not cmd or len(cmd) > 500 or re.search(r"[\x00\r\n]", cmd):
@@ -148,7 +152,7 @@ def meta(cfg):
     out = [{"id": b, "label": BUILTIN_LABELS[b], "external": b in BUILTIN_EXTERNAL, "builtin": True} for b in BUILTIN]
     for a in cfg.get("advisors") or []:
         d = {"id": a["id"], "label": a["label"], "external": bool(a.get("external")), "builtin": False, "type": a["type"]}
-        d.update({k: a[k] for k in ("kind", "url", "model", "effort", "preset", "command") if a.get(k)})
+        d.update({k: a[k] for k in ("kind", "url", "model", "effort", "preset", "command", "web") if a.get(k)})
         d["has_key"] = bool(a.get("key_file") and os.path.isfile(os.path.expanduser(a["key_file"])))
         out.append(d)
     return out
@@ -211,9 +215,15 @@ def cli_argv(a, cfg, cwd):
         if not exe:
             raise RuntimeError("%s not found on this machine (install it and log in)" % p["label"])
         base = [x.replace("{cwd}", cwd) for x in p["args"]]
+        pre = []
+        if a.get("web"):
+            if "web_tools" in p:                                                      # claude: swap the empty tool list for web tools only
+                i = base.index("--tools"); base[i:i + 2] = p["web_tools"]
+            else:                                                                     # codex: a top-level flag, before `exec`
+                pre = p["web_args"]
         extra = (p["model_flag"] + [a["model"]] if a.get("model") else []) + (p["effort_flag"](a["effort"]) if a.get("effort") else [])
         at = len(base) if p["at"] is None else p["at"]
-        return [exe] + base[:at] + extra + base[at:], False
+        return [exe] + pre + base[:at] + extra + base[at:], False
     parts = shlex.split(a["command"], posix=(os.name != "nt"))
     exe = shutil.which(parts[0]) or (parts[0] if os.path.isfile(parts[0]) else None)
     if not exe:
@@ -223,7 +233,7 @@ def cli_argv(a, cfg, cwd):
 
 
 def _ask_cli(a, prompt, cfg, timeout):
-    text = PREFIX + prompt[:30000]
+    text = (WEB_PREFIX if a.get("web") else PREFIX) + prompt[:30000]
     with tempfile.TemporaryDirectory(prefix="cadfabric-adv-") as wd:
         argv, in_args = cli_argv(a, cfg, wd)
         if in_args:
