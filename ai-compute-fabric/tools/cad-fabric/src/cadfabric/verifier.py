@@ -8,7 +8,7 @@ Ideas taken from the literature (closed loop with numeric kernel measurements, s
   * At the end `final_verdict` compares the real part with the last milestone and the planned bounding box.
   * `sketch_outside` is a geometry preflight: a sketch entirely outside the part can never cut it.
 Everything here is pure Python standard library with no SolidWorks access, so it is unit-testable offline (test_verifier.py)."""
-import ast, math, re
+import ast, math, os, re
 
 TOL = 1e-3            # relative volume tolerance for exact formulas (hand-written formulas for curved geometry are ~1e-4 off)
 TOL_APPROX = 2e-3     # when the advisor marks a formula as a simplification. Must stay BELOW real misses seen on the cup (0.36% and 0.40%) and above the
@@ -203,6 +203,12 @@ PLAN_PROMPT = (
     "- final_bbox_size: formulas for the overall bounding-box size of the finished part, or null when the request does not determine it.\n"
     "- Prefer the simplest tool that does the job. The executor does not know the tools' geometry conventions, so say which axis or plane each step uses. "
     "Do not invent requirements.")
+
+
+PLAN_PROMPT_READINGS = PLAN_PROMPT
+PLAN_PROMPT_PLAIN = re.sub(r'- First fill "readings".*?\n', '', PLAN_PROMPT.replace('{"readings": [{"quote": "exact words from the request", "meaning": "what they are geometrically: overall size, wall thickness, hole diameter, depth, position, ...", "step": 1}], ', '{', 1), count=1, flags=re.S)
+if os.environ.get("CADFABRIC_PLAN_READINGS") == "0":            # switch for A/B measurements
+    PLAN_PROMPT = PLAN_PROMPT_PLAIN
 
 
 def delta_text(d):

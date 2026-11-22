@@ -125,7 +125,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
         budget = max(MAX_STEPS, 20)
     else:
         budget = min(HARD_STEPS, max(MAX_STEPS, 10 + 5 * (len(spec["milestones"]) if spec else 0)))
-    run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); n_consult = 0; consult_step = -99; warns_at_consult = 0; ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
+    run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); n_consult = 0; advice = []; final_reviewed = False; consult_step = -99; warns_at_consult = 0; ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
     for step in range(budget):
         if should_stop and should_stop():
             stopped = True
@@ -152,11 +152,27 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
         if not calls:
             final = m["content"]
             bad = tracker.final_verdict(*_vb(backend), spec) if tracker else []
+            mf = backend.measure()
+            if mf is not None and mf.valid is False:                                            # a broken solid is never a finished part, whatever else the checks say
+                bad = bad + ["the solid is not valid (self-intersecting or not watertight); rebuild the faulty operation"]
             if bad and gates < GATE_MAX:
                 gates += 1
                 note = "HARNESS FINAL CHECK failed: " + "; ".join(bad) + ". Fix the part (use undo() if needed) or explain with arithmetic why the plan is wrong."
                 msgs.append({"role": "user", "content": note}); trace.append({"gate": note}); log("  gate: " + note[:160]); ev("gate", text=note[:400])
                 continue
+            if not final_reviewed and mf is not None and (consult or consult_mod.possible(cfg or getattr(llm, "cfg", None) or {}, plan_mode)):
+                final_reviewed = True                                                           # independent look before the answer is accepted (once per run)
+                ev("phase", what="consult", mode=plan_mode); t1 = time.time()
+                prompt = consult_mod.digest(request, V.describe(spec) if spec else "", trace, mf.text(), "the model says it is finished; verify the part against every requirement", final=True, earlier=advice)
+                reply, cerr = consult(prompt) if consult else consult_mod.ask(cfg or getattr(llm, "cfg", None) or {}, plan_mode, prompt)
+                reply = (reply or "").strip()[:consult_mod.REPLY_MAX]
+                ok_final = bool(reply) and not cerr and consult_mod.verdict_ok(reply)
+                ev("consult", text=reply, error=str(cerr)[:200] if cerr or not reply else "", sec=round(time.time() - t1, 1), why="kiểm tra trước khi kết thúc", n=n_consult + 1, final=True, verdict="ok" if ok_final else ("problems" if reply and not cerr else "none"))
+                if reply and not cerr and not ok_final:
+                    advice.append(reply); n_consult += 1
+                    msgs.append({"role": "user", "content": "ADVISOR REVIEW before you finish (an independent advisor checked your part against the request and found problems; it is advice, verify it on the real part and follow the request, not the review):\n" + reply})
+                    trace.append({"gate": "advisor final review"}); final = ""
+                    continue
             break
         for c in calls:
             try:
@@ -256,11 +272,12 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
             n_consult += 1; consult_step = nsteps; warns_at_consult = warns
             ev("phase", what="consult", mode=plan_mode)
             mm1 = backend.measure()
-            prompt = consult_mod.digest(request, V.describe(spec) if spec else "", trace, mm1.text() if mm1 else "", why)
+            prompt = consult_mod.digest(request, V.describe(spec) if spec else "", trace, mm1.text() if mm1 else "", why, earlier=advice)
             t1 = time.time()
             reply, cerr = consult(prompt) if consult else consult_mod.ask(cfg or getattr(llm, "cfg", None) or {}, plan_mode, prompt)
             reply = (reply or "").strip()[:consult_mod.REPLY_MAX]
             if reply and not cerr:
+                advice.append(reply)
                 msgs.append({"role": "user", "content": "ADVISOR REVIEW (a more capable advisor looked at your work; it is advice, verify it on the real part and follow the request, not the review):\n" + reply})
                 trace.append({"gate": "advisor review"}); ev("consult", text=reply, sec=round(time.time() - t1, 1), why=why, n=n_consult)
             else:

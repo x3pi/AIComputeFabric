@@ -1199,6 +1199,38 @@ class LongRun(unittest.TestCase):
         self.assertFalse(any("ADVISOR REVIEW" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
         r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40); self.assertEqual(r["consults"], 0); self.assertFalse([1 for k, _ in ev if k == "consult"])   # no advisor chosen: nothing is sent
 
+    def test_final_review_ok_lets_the_answer_through_and_problems_send_the_model_back(self):
+        calls = []
+        def ok(p): calls.append(p); return "VERDICT: OK\nevery requirement is met", ""
+        r, ev, llm = self.run_agent([[("execute_cadquery", {"code": self.BOX})], "done"], consult=ok, request="make the box")
+        self.assertEqual((r["final"], len(calls), r["consults"]), ("done", 1, 0)); self.assertIn("independent reviewer", calls[0]); self.assertIn("CURRENT MEASUREMENT", calls[0])
+        self.assertEqual([x["verdict"] for k, x in ev if k == "consult"], ["ok"])
+        bad = []
+        def prob(p): bad.append(p); return "VERDICT: PROBLEMS\nDIAGNOSIS: the box is not hollow.\nNEXT: shell it.", ""
+        script = [[("execute_cadquery", {"code": self.BOX})], "done", [("execute_cadquery", {"code": "result = result.faces('>Z').shell(-1)"})], "really done"]
+        r, ev, llm = self.run_agent(script, consult=prob, request="make a hollow box")
+        self.assertEqual((r["final"], len(bad), r["consults"]), ("really done", 1, 1))                                            # reviewed once, then the answer is accepted
+        self.assertTrue(any("ADVISOR REVIEW before you finish" in str(m.get("content")) and "not hollow" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
+        self.assertEqual([x["verdict"] for k, x in ev if k == "consult"], ["problems"])
+
+    def test_earlier_advice_is_given_back_to_the_advisor_and_a_broken_solid_is_not_final(self):
+        seen = []
+        def adv(p): seen.append(p); return ("DIAGNOSIS: try another axis" if len(seen) == 1 else "VERDICT: OK"), ""
+        script = [[("execute_cadquery", {"code": self.BOX})]] * 3 + ["done"]
+        r, ev, _ = self.run_agent(script, consult=adv, request="make the box", max_steps=20)
+        self.assertEqual(len(seen), 2); self.assertNotIn("EARLIER ADVICE", seen[0]); self.assertIn("EARLIER ADVICE", seen[1]); self.assertIn("try another axis", seen[1])
+        b = CadQueryBackend(timeout=30)
+        try:
+            real = b.measure
+            def broken():
+                m = real(); 
+                if m: m.valid = False
+                return m
+            b.measure = broken
+            r = agent.run(FakeLLM([[("execute_cadquery", {"code": self.BOX})], "done", "still done"]), b, "make the box", plan_mode="off", log=lambda s: None)
+            self.assertTrue(any("not valid" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
+        finally: b.close()
+
     def test_unchanged_volume_and_failing_cells_are_caught(self):
         same = [[("execute_cadquery", {"code": self.BOX.replace("10, 10, 10", "10, 10, 10") + "  # variant %d" % i})] for i in range(30)]
         r, _, _ = self.run_agent(same, max_steps=40); self.assertIn("did not change", r["stuck"]); self.assertEqual(r["steps"], 9)
