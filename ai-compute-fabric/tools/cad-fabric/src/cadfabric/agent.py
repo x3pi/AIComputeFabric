@@ -32,6 +32,10 @@ OPEN_TOOL = {"type": "function", "function": {"name": "open_in_viewer", "descrip
                                               "parameters": {"type": "object", "properties": {}}}}
 
 
+SKILL_TOOL = {"type": "function", "function": {"name": "use_skill", "description": "Read an installed reference skill by name (see the SKILLS list in the system prompt), or one of its extra files. Only when it clearly fits the request.",
+              "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "file": {"type": "string"}}, "required": ["name"]}}}
+
+
 def _ws_tools():
     P = lambda props, req: {"type": "object", "properties": props, "required": req}
     S = {"type": "string"}
@@ -73,7 +77,7 @@ def _ws_call(name, args, root, backend, ev):
 WS_NAMES = ("list_files", "read_file", "search_files", "save_step")
 
 
-def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None, workspace=None, attachments="", lessons=""):
+def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None, workspace=None, attachments="", lessons="", skill_catalog="", skill_reader=None):
     """-> dict: ok, final text, final measure, steps, checks, warnings, plan. plan_mode: off | nothink | think | codex | codex-relay. `planner(request)->(spec, raw)` overrides."""
     t0 = time.time()
     ev = on_event or (lambda kind, **kw: None)         # structured events for a UI: plan, cell, gate
@@ -94,7 +98,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
         ev("plan", mode=plan_mode, ok=bool(spec), describe=V.describe(spec) if spec else "", milestones=len(spec["milestones"]) if spec else 0,
            pitfalls=[str(x)[:300] for x in (pj.get("pitfalls") or [])][:6], note=raw_plan[:raw_plan.index(")") + 1] if raw_plan.startswith("(") and ")" in raw_plan else "")
     log("plan (%s): %s" % (plan_mode, "none" if not spec else "%d volume milestones" % len(spec["milestones"])) if plan_mode != "off" else "plan: off")
-    msgs = history if follow_up else [{"role": "system", "content": SYSTEM + (lessons or "")}]
+    msgs = history if follow_up else [{"role": "system", "content": SYSTEM + (lessons or "") + (skill_catalog or "")}]
     user = request
     if spec:
         user += ("\n\nADVISOR PLAN (advice only; verify each step on the real part). The numbers were computed by the harness from the advisor's formulas. "
@@ -107,7 +111,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
             stopped = True
             break
         ev("phase", what="llm", step=step + 1)
-        m = llm.chat(msgs, tools=TOOLS + ([OPEN_TOOL] if opener else []) + (_ws_tools() if workspace else []), think=False)
+        m = llm.chat(msgs, tools=TOOLS + ([OPEN_TOOL] if opener else []) + (_ws_tools() if workspace else []) + ([SKILL_TOOL] if (skill_catalog and skill_reader) else []), think=False)
         tokens += (m.pop("_usage", {}) or {}).get("completion_tokens", 0)
         msgs.append(m)
         calls = m.get("tool_calls") or []
@@ -152,6 +156,11 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                     ev("open", ok=bool(r.get("ok")), viewer=r.get("viewer", ""), detail=r.get("detail", ""), path=r.get("path", ""))
                 trace.append({"tool": name, "ok": text.startswith("OK")})
                 log("  open_in_viewer: " + text[:120])
+            elif name == "use_skill" and skill_reader:
+                text = skill_reader(str(args.get("name", "")), str(args.get("file", "")))
+                ev("skill", name=str(args.get("name", ""))[:64], ok=not text.startswith("ERROR"))
+                trace.append({"tool": name, "ok": not text.startswith("ERROR")})
+                log("  use_skill: " + text[:80].replace("\n", " "))
             elif name in WS_NAMES and workspace:
                 text = _ws_call(name, args, workspace, backend, ev)
                 trace.append({"tool": name, "ok": not text.startswith("ERROR")})
@@ -164,7 +173,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                 trace.append({"tool": name, "ok": ok})
             else:
                 text = "unknown tool"
-            msgs.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": text[:(20000 if name in WS_NAMES else 4000)]})
+            msgs.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": text[:(20000 if name in WS_NAMES or name == "use_skill" else 4000)]})
     mm = backend.measure()
     return {"final": final, "measure": mm.as_dict() if mm else None, "steps": len([t for t in trace if t.get("tool")]), "warnings": warns, "gates": gates,
             "checks": tracker.checks if tracker else 0, "plan": spec["milestones"] if spec else None, "plan_raw": raw_plan[:1500], "trace": trace, "tokens": tokens,

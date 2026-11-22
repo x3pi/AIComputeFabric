@@ -4,7 +4,7 @@ the Host header must be one we serve (blocks DNS rebinding); Origin, when presen
 import hmac, http.server, json, os, re, secrets, socketserver, subprocess, sys, threading, time, urllib.parse
 from http import cookies
 from . import advisors, agent, config, history as history_mod, llm as llm_mod, viewers, workspace as ws_mod
-from . import cq_backend, lessons as lessons_mod
+from . import cq_backend, lessons as lessons_mod, skills as skills_mod
 from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
@@ -75,7 +75,10 @@ class Session:
             if lused:
                 self.emit("lessons_used", n=len(lused))
                 lessons_mod.mark_used(config.data_dir(self.cfg), lused)
+            dd = config.data_dir(self.cfg)
+            sblock = "" if self.history is not None or not self.local else skills_mod.catalog(dd, root)
             r = agent.run(self.llm, self.backend, text, plan_mode=planner, log=lambda s: None, cfg=self.cfg, workspace=root or None, attachments=block, lessons=lblock,
+                          skill_catalog=sblock, skill_reader=(lambda n, f: skills_mod.use(dd, root, n, f)) if sblock else None,
                           history=self.history, should_stop=lambda: self.stop, on_event=lambda kind, **kw: self.emit(kind, **kw),
                           opener=(lambda: self.open_in_viewer()[1]) if self.local else None)
             self.history = r["history"]
@@ -344,6 +347,15 @@ def make_handler(sess, token, hosts, data_dir):
                 every = (q.get("all") or [""])[0] == "1"
                 self._send(200, {"sessions": history_mod.list_sessions(data_dir, None if every else sess.cfg.get("workspace") or "") if sess.local else [], "current": sess.sid,
                                  "project": sess.cfg.get("workspace") or "", "all": every}, extra=cookie)
+            elif u.path == "/api/skills":
+                if not sess.local:
+                    return self._send(403, {"error": "skills are only available when the chat is bound to this computer"})
+                ws = sess.cfg.get("workspace") or ""
+                q = urllib.parse.parse_qs(u.query)
+                if q.get("name"):                                                   # view one skill (any status) so the user can read it before approving
+                    t, files, err = skills_mod.read_text(data_dir, ws, q["name"][0], (q.get("file") or ["SKILL.md"])[0], approved_only=False)
+                    return self._send(404 if err else 200, {"error": err} if err else {"text": t, "files": files})
+                self._send(200, {"skills": skills_mod.list_for(data_dir, ws), "project": ws})
             elif u.path == "/api/lessons":
                 if not sess.local:
                     return self._send(403, {"error": "lessons are only available when the chat is bound to this computer"})
@@ -456,7 +468,7 @@ def make_handler(sess, token, hosts, data_dir):
                         return self._send(400, {"error": uerr})
                 ok = sess.send(text, planner, files, ups)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender", "/api/lessons"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender", "/api/lessons", "/api/skills"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
                 if u.path == "/api/quit":
@@ -483,6 +495,23 @@ def make_handler(sess, token, hosts, data_dir):
                             return self._send(400, {"error": "only STEP files open in the CAD program"})
                         r = viewers.open_file(full, sess.cfg)
                     return self._send(200 if r.get("ok") else 500, r)
+                if u.path == "/api/skills":
+                    ws = sess.cfg.get("workspace") or ""
+                    op = str(body.get("op", "")) if isinstance(body, dict) else ""
+                    name = str(body.get("name", "")) if isinstance(body, dict) else ""
+                    if op in ("install", "install_local"):
+                        src = str(body.get("url" if op == "install" else "path", ""))
+                        res, err = (skills_mod.install(data_dir, ws, src, body.get("scope")) if op == "install" else skills_mod.install_local(data_dir, ws, src, body.get("scope")))
+                        return self._send(200 if res and res["added"] else 400, dict(res or {}, error=err or "; ".join("%s: %s" % x for x in (res or {}).get("skipped", []))[:300]))
+                    if op == "delete":
+                        return self._send(200 if skills_mod.delete(data_dir, ws, name) else 404, {"ok": True})
+                    if op in ("approve", "reject", "pending"):
+                        x, err = skills_mod.set_field(data_dir, ws, name, status={"approve": "approved", "reject": "rejected", "pending": "pending"}[op])
+                    elif op == "scope":
+                        x, err = skills_mod.set_field(data_dir, ws, name, scope=body.get("scope"))
+                    else:
+                        return self._send(400, {"error": "unknown op"})
+                    return self._send(200 if x else 400, {"ok": bool(x), "skill": x, "error": err})
                 if u.path == "/api/lessons":
                     ws = sess.cfg.get("workspace") or ""
                     op = body.get("op") if isinstance(body, dict) else ""

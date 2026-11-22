@@ -64,7 +64,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 #relay{display:none;gap:8px;flex-direction:column}#relay.show{display:flex}
 .row{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}#tst{flex:1;font-size:13px;min-width:160px}
 #dropov{position:fixed;inset:0;background:#0b6bcb33;border:3px dashed var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;z-index:50;pointer-events:none}#dropov[hidden]{display:none}
-.tabs{display:flex;border-bottom:1px solid var(--line)}.tabs button{flex:1;border:0;background:none;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent}.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs{display:flex;border-bottom:1px solid var(--line)}.tabs button{flex:1;border:0;background:none;padding:11px 6px;white-space:nowrap;font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent}.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
 #sflist .opt{padding:7px 14px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px;overflow-wrap:anywhere}#sflist .opt:hover{background:var(--bg)}#sflist .opt.dim{opacity:.5;cursor:default}
 .sfhead{display:flex;gap:6px;align-items:center;padding:8px 14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}.sfhead b{font-size:13px;overflow-wrap:anywhere}
 #sfimg{display:block;max-width:100%;margin:10px auto;background:#fff;border:1px solid var(--line)}#sftext{margin:0;padding:10px 14px;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -121,11 +121,13 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
    <div class="hint" id="hint">Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /stop dừng</div>
   </div>
  </div>
- <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button><button type="button" id="tablessons">Bài học</button></div>
+ <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button><button type="button" id="tablessons">Bài học</button><button type="button" id="tabskills">Skill</button></div>
  <div id="pane_part"><div id="preview">chưa có chi tiết</div><table id="meas"></table>
   <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
  <div id="pane_lessons" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="lreflect">Rút bài học từ cuộc này</button><button type="button" class="btn small" id="ladd">+ Thêm</button></div>
   <div class="mute small" id="lnote" style="padding:0 14px 8px"></div><div id="llist"></div></div>
+ <div id="pane_skills" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="skadd">+ Cài từ GitHub</button><button type="button" class="btn small" id="skloc">Từ thư mục máy</button></div>
+  <div class="mute small" id="sknote" style="padding:0 14px 8px"></div><div id="sklist"></div></div>
  <div id="pane_files" hidden><div class="mute small" id="sfpath" style="padding:8px 14px"></div><div id="sflist"></div></div></aside>
 </div>
 
@@ -136,6 +138,14 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <label class="f" id="l_scopew">Phạm vi<select id="l_scope"><option value="project">Chỉ dự án này</option><option value="global">Mọi dự án</option></select></label>
  <div class="small det no" id="l_err"></div>
  <div class="row"><button type="button" class="btn" id="l_cancel">Huỷ</button><button type="button" class="btn primary" id="l_save">Lưu</button></div></div></dialog>
+
+<dialog id="skdlg"><div class="hbox"><h2 id="skt">Cài skill</h2>
+ <label class="f" id="sk_lbl">Link GitHub (repo hoặc thư mục: github.com/chủ/repo hoặc .../tree/nhánh/thư-mục)<input id="sk_src" autocomplete="off"></label>
+ <label class="f">Phạm vi<select id="sk_scope"><option value="project">Chỉ dự án này</option><option value="global">Mọi dự án</option></select></label>
+ <div class="small mute">Skill mới ở trạng thái chờ duyệt. Chỉ phần chỉ dẫn được dùng; mã trong scripts/ không bao giờ được chạy.</div>
+ <div class="small det no" id="sk_err"></div>
+ <div class="row"><button type="button" class="btn" id="sk_cancel">Huỷ</button><button type="button" class="btn primary" id="sk_go">Cài</button></div></div></dialog>
+<dialog id="skview"><div class="hbox"><h2 id="skvt">Skill</h2><div class="small mute" id="skvn"></div><pre id="skvb" style="white-space:pre-wrap;max-height:55vh;overflow:auto;font-size:12.5px"></pre><div class="row"><button type="button" class="btn" id="skv_close">Đóng</button></div></div></dialog>
 
 <dialog id="pdlg"><div class="hbox">
  <h2>Dự án (thư mục làm việc)</h2><div class="mute small" id="pcur"></div>
@@ -248,6 +258,7 @@ function render(ev){if(ev.kind==="phase"){phase={what:ev.what,step:ev.step,t0:Da
  else if(ev.kind==="gate")put(el("div","chk","⚠ Cổng kiểm cuối chặn: "+ev.text))
  else if(ev.kind==="final"){const f=md(ev.text);f.appendChild(el("div","foot",ev.steps+" bước · "+ev.sec+" s"+(ev.warnings?" · "+ev.warnings+" cảnh báo kiểm tra":"")+(ev.gates?" · "+ev.gates+" lần cổng kiểm cuối chặn":"")));put(f)}
  else if(ev.kind==="lessons"){if(ev.added){const c=el("div","chk ok","💡 Đã rút "+ev.added+" bài học mới từ cuộc này — chờ bạn duyệt ở tab Bài học");c.style.cursor="pointer";c.onclick=()=>showTab("lessons");put(c)}loadLessons()}
+ else if(ev.kind==="skill"){put(el("div","chk "+(ev.ok?"ok":"bad"),"📖 Qwen đọc skill: "+ev.name))}
  else if(ev.kind==="lessons_used"){put(el("div","chk ok","📚 Đã áp dụng "+ev.n+" bài học đã duyệt"))}
  else if(ev.kind==="file"){if(ev.op==="saved"&&$("pane_files")&&!$("pane_files").hidden)setTimeout(()=>sfOpen(sfdir),300);put(el("div","chk ok",ev.op==="saved"?"✓ Đã lưu "+ev.path+" vào thư mục làm việc":"📄 Đã đọc "+ev.path))}
  else if(ev.kind==="open")put(el("div","chk"+(ev.ok?" ok":" bad"),(ev.ok?"✓ Đã gửi tới "+ev.viewer+(ev.path?" — "+ev.path:""):"✗ Không mở được: "+ev.detail)))
@@ -383,8 +394,26 @@ async function openFiles(rel){fdir=rel||"";const {ok,d}=await api("/api/files"+(
   L.appendChild(r)}
  if(!$("fdlg").open)$("fdlg").showModal()}
 let sfdir="";
-function showTab(t){$("pane_files").hidden=t!=="files";$("pane_part").hidden=t!=="part";$("pane_lessons").hidden=t!=="lessons";for(const k of ["part","files","lessons"])$("tab"+k).classList.toggle("on",k===t);if(t==="files")sfOpen(sfdir);if(t==="lessons")loadLessons()}
+function showTab(t){$("pane_skills").hidden=t!=="skills";$("pane_files").hidden=t!=="files";$("pane_part").hidden=t!=="part";$("pane_lessons").hidden=t!=="lessons";for(const k of ["part","files","lessons","skills"])$("tab"+k).classList.toggle("on",k===t);if(t==="files")sfOpen(sfdir);if(t==="lessons")loadLessons();if(t==="skills")loadSkills()}
 $("tabpart").onclick=()=>showTab("part");$("tabfiles").onclick=()=>showTab("files");$("tablessons").onclick=()=>showTab("lessons");
+/* ---- skills: SKILL.md folders from GitHub, advice only, used after approval ---- */
+let SK=[],skMode="url";
+async function loadSkills(){const {ok,d}=await api("/api/skills");if(!ok)return;SK=d.skills||[];drawSkills()}
+function drawSkills(){const L=$("sklist");L.replaceChildren();const n=SK.filter(x=>x.status==="pending").length;$("tabskills").textContent="Skill";if(n)$("tabskills").appendChild(el("span","bd",String(n)));
+ $("sknote").textContent="Skill là tài liệu hướng dẫn của người khác (định dạng SKILL.md). Chỉ skill đã duyệt mới được Qwen đọc, khi nó thấy hợp. Mã trong scripts/ không bao giờ được chạy.";
+ for(const [st,label] of [["pending","Chờ bạn duyệt"],["approved","Đã duyệt (Qwen dùng được)"],["rejected","Đã bỏ"]]){const xs=SK.filter(x=>x.status===st);if(!xs.length)continue;L.appendChild(el("div","lh",label+" · "+xs.length));
+  for(const x of xs){const c=el("div","les");const h=el("b",0,x.name);h.appendChild(el("span","tag",x.scope==="global"?"mọi dự án":"dự án này"));c.appendChild(h);c.appendChild(el("div",0,x.description));
+   c.appendChild(el("div","why","Nguồn: "+x.source+" · "+x.files+" tệp"+(x.uses?" · đã dùng "+x.uses+" lần":"")));for(const t of x.notes||[])c.appendChild(el("div","why","⚠ "+t));
+   const a=el("div","acts");const mk=(t,fn,cls)=>{const b=el("button","btn small"+(cls?" "+cls:""),t);b.type="button";b.onclick=fn;a.appendChild(b)};
+   mk("Đọc",()=>viewSkill(x.name),st==="pending"?"":"");if(st!=="approved")mk("Duyệt",()=>skillOp("approve",x.name),"primary");if(st==="pending")mk("Bỏ",()=>skillOp("reject",x.name));if(st==="approved")mk("Tạm dừng",()=>skillOp("pending",x.name));if(st==="rejected")mk("Đưa lại",()=>skillOp("pending",x.name));
+   mk(x.scope==="global"?"Chỉ dự án này":"Dùng mọi dự án",()=>skillOp("scope",x.name,{scope:x.scope==="global"?"project":"global"}));mk("Gỡ",()=>{if(confirm("Gỡ skill này?"))skillOp("delete",x.name)});c.appendChild(a);L.appendChild(c)}}
+ if(!SK.length)L.appendChild(el("div","mute small","Chưa có skill nào. Bấm “Cài từ GitHub” và dán link repo hoặc thư mục chứa SKILL.md."))}
+async function skillOp(op,name,extra){const r=await api("/api/skills",Object.assign({op,name},extra||{}));if(!r.ok&&r.d.error)toast(r.d.error);loadSkills()}
+async function viewSkill(name){const {ok,d}=await api("/api/skills?name="+encodeURIComponent(name));if(!ok){toast(d.error||"Không đọc được");return}$("skvt").textContent=name;$("skvn").textContent=(d.files&&d.files.length?"Tệp kèm theo: "+d.files.join(", "):"Không có tệp kèm theo");$("skvb").textContent=d.text;$("skview").showModal()}
+function openSkillForm(mode){skMode=mode;$("skt").textContent=mode==="url"?"Cài skill từ GitHub":"Cài skill từ thư mục máy";$("sk_lbl").firstChild.textContent=mode==="url"?"Link GitHub (repo hoặc thư mục: github.com/chủ/repo hoặc .../tree/nhánh/thư-mục)":"Đường dẫn thư mục chứa SKILL.md (một skill hoặc nhiều skill)";$("sk_src").value="";$("sk_err").textContent="";$("sk_scope").value=WS?"project":"global";$("sk_scope").querySelector("option[value=project]").disabled=!WS;$("skdlg").showModal()}
+$("skadd").onclick=()=>openSkillForm("url");$("skloc").onclick=()=>openSkillForm("path");$("sk_cancel").onclick=()=>$("skdlg").close();$("skv_close").onclick=()=>$("skview").close();$("tabskills").onclick=()=>showTab("skills");
+$("sk_go").onclick=async()=>{const v=$("sk_src").value.trim();if(!v)return;$("sk_go").disabled=true;$("sk_err").textContent="Đang tải…";const r=await api("/api/skills",skMode==="url"?{op:"install",url:v,scope:$("sk_scope").value}:{op:"install_local",path:v,scope:$("sk_scope").value});$("sk_go").disabled=false;
+ if(!r.ok){$("sk_err").textContent="Không cài được: "+(r.d.error||r.status);return}$("skdlg").close();toast("Đã cài "+r.d.added.length+" skill, chờ bạn đọc và duyệt"+(r.d.skipped&&r.d.skipped.length?" ("+r.d.skipped.length+" bị bỏ qua)":""));loadSkills()};
 /* ---- lessons: general practices rolled out of finished work, used only after approval ---- */
 let LES=[],lesEdit=null;
 async function loadLessons(){const {ok,d}=await api("/api/lessons");if(!ok)return;LES=d.lessons||[];drawLessons(d)}
