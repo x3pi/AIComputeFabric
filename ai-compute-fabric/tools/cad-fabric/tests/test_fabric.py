@@ -737,6 +737,14 @@ class WorkspaceWeb(Settings):
             finally: sess.local = True
         finally: sess.picker = None
 
+    def test_browse_lists_only_visible_folders(self):
+        root = os.path.join(self.dir, "br"); os.makedirs(os.path.join(root, "sub")); os.makedirs(os.path.join(root, ".hid")); open(os.path.join(root, "f.txt"), "w").write("x")
+        s, d = self.req("GET", "/api/browse?path=" + root); self.assertEqual((s, d["dirs"], d["path"]), (200, ["sub"], root))
+        self.assertEqual(self.req("GET", "/api/browse?path=" + root + "/f.txt")[0], 400)
+        self.srv.sess.local = False
+        try: self.assertEqual(self.req("GET", "/api/browse?path=" + root)[0], 403)
+        finally: self.srv.sess.local = True
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

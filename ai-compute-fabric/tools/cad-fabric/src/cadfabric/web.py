@@ -210,6 +210,17 @@ def make_handler(sess, token, hosts, data_dir):
                     return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
                 r, err = ws_mod.listing(sess.cfg.get("workspace") or "", (q.get("path") or [""])[0])
                 self._send(200 if r else 400, dict(r, root=os.path.basename((sess.cfg.get("workspace") or "").rstrip("/\\"))) if r else {"error": err})
+            elif u.path == "/api/browse":
+                if not sess.local:
+                    return self._send(403, {"error": "folder browsing is only available when the chat is bound to this computer"})
+                cur = os.path.abspath(os.path.expanduser((q.get("path") or [""])[0] or sess.cfg.get("workspace") or "~"))
+                if not os.path.isdir(cur):
+                    return self._send(400, {"error": "not a folder"})
+                try:
+                    names = sorted((n for n in os.listdir(cur) if not n.startswith(".") and os.path.isdir(os.path.join(cur, n))), key=str.lower)
+                except OSError as e:
+                    return self._send(400, {"error": str(e)[:120]})
+                self._send(200, {"path": cur, "parent": os.path.dirname(cur) if os.path.dirname(cur) != cur else "", "dirs": names[:500]})
             elif u.path == "/api/part.svg":
                 try:
                     self._send(200, sess.backend.preview_svg(), "image/svg+xml")

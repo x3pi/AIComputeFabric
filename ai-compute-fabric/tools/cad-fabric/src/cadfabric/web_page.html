@@ -82,7 +82,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
    <div class="box">
     <textarea id="text" rows="1" maxlength="8000" placeholder="Mô tả chi tiết cần tạo, hoặc yêu cầu chỉnh sửa chi tiết hiện tại…"></textarea>
     <div class="chipsrow" id="attached" hidden></div>
-    <div class="tools"><button class="btn small" id="attbtn" title="Đính kèm tệp trong thư mục làm việc để Qwen và cố vấn đọc" hidden>📎 Tệp</button><span class="mute small">Cố vấn</span><select id="planner" title="Ai lập kế hoạch kiểm tra thể tích"></select><span class="sp"></span>
+    <div class="tools"><button class="btn small" id="attbtn" title="Đính kèm tệp trong thư mục làm việc để Qwen và cố vấn đọc" hidden>📎 Tệp</button><button class="btn small" id="advchip" type="button" title="Cố vấn lập kế hoạch kiểm tra thể tích. Đổi trong Cài đặt.">Cố vấn: …</button><select id="planner" hidden></select><span class="sp"></span>
      <button class="btn primary" id="send">Gửi</button><button class="btn" id="stop" hidden>Dừng</button></div>
    </div>
    <div class="hint" id="hint">Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /stop dừng</div>
@@ -91,6 +91,12 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <aside id="side"><h3>Chi tiết hiện tại</h3><div id="preview">chưa có chi tiết</div><table id="meas"></table>
   <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></aside>
 </div>
+
+<dialog id="bdlg"><div class="hbox">
+ <h2>Chọn thư mục làm việc</h2><div class="mute small" id="bpath"></div>
+ <div class="adv" id="blist"></div>
+ <div class="row"><span class="sp"></span><button type="button" class="btn" id="bcancel">Huỷ</button><button type="button" class="btn primary" id="bok">Chọn thư mục này</button></div>
+</div></dialog>
 
 <dialog id="fdlg"><div class="hbox">
  <h2>Tệp trong thư mục làm việc</h2><div class="mute small" id="fpath"></div>
@@ -112,7 +118,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <label class="f">Tên model (để trống nếu máy chủ tự chọn)<input id="s_model" list="models" autocomplete="off"><datalist id="models"></datalist></label>
  <label class="f">Khoá API <span id="keystate"></span><input id="s_key" type="password" autocomplete="off" placeholder="để trống = giữ nguyên"></label>
  <label class="f" id="w_w">Thư mục làm việc (Qwen và cố vấn đọc được các tệp văn bản trong đó; chỉ đọc, tệp bí mật như .env, khoá bị chặn)
-  <span class="row"><input id="w_dir" autocomplete="off" placeholder="ví dụ: C:\\Users\\ban\\DuAn  (để trống = không dùng)" style="flex:1"><button type="button" class="btn small" id="w_pick" hidden>Chọn…</button></span></label>
+  <span class="row"><input id="w_dir" autocomplete="off" placeholder="ví dụ: C:\\Users\\ban\\DuAn  (để trống = không dùng)" style="flex:1"><button type="button" class="btn small" id="w_pick">Chọn…</button></span></label>
  <label class="f">Mở chi tiết xem trong (nút "Mở trong CAD", lệnh /open, hoặc nhờ trong chat: "mở bằng SolidWorks cho tôi xem")
   <select id="v_kind"><option value="auto">Tự động: SolidWorks nếu có, không thì chương trình mặc định</option><option value="solidworks">SolidWorks</option><option value="default">Chương trình mặc định của hệ điều hành cho .step</option><option value="custom">Lệnh tự đặt…</option></select></label>
  <div class="small det" id="v_det"></div>
@@ -222,7 +228,7 @@ let ADVS=[],DET={},PRESETS={},custom=[],advKeys={},editId=null;
 const slug=t=>t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,24)||"advisor";
 function isPrivate(u){try{const h=new URL(u).hostname;return /^(localhost|::1|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)||h.endsWith(".local")}catch(e){return false}}
 function setAdvisors(list){const cur=$("planner").value;ADVS=list;ext=list.filter(a=>a.external).map(a=>a.id);custom=list.filter(a=>!a.builtin).map(a=>Object.assign({},a));
- const sel=$("planner");sel.replaceChildren();for(const a of list){const o=el("option",0,a.label);o.value=a.id;sel.appendChild(o)}if(list.some(a=>a.id===cur))sel.value=cur;buildAdv()}
+ const sel=$("planner");sel.replaceChildren();for(const a of list){const o=el("option",0,a.label);o.value=a.id;sel.appendChild(o)}if(list.some(a=>a.id===cur))sel.value=cur;buildAdv();chip()}
 function advDesc(a){if(a.builtin)return ADV[a.id][1];if(a.type==="api")return(a.kind==="anthropic"?"API Anthropic":"API OpenAI-compatible")+" · "+a.url+(a.model?" · "+a.model:"");
  return"CLI trên máy này · "+(a.preset==="custom"?a.command:({claude:"Claude Code",codex:"Codex"})[a.preset]+(a.model?" · model "+a.model:"")+(a.effort?" · suy nghĩ "+a.effort:"")+(a.web?" · tra internet":""))}
 function relist(){const keep=(document.querySelector("#adv input:checked")||{}).value;setAdvisors(ADVS.filter(a=>a.builtin).concat(custom));if(keep)pick(ADVS.some(a=>a.id===keep)?keep:"nothink")}
@@ -269,6 +275,7 @@ function loadSettings(s){$("w_dir").value=s.workspace||"";setWs(s.workspace||"")
 function form(){const p=(document.querySelector("#adv input:checked")||{}).value;
  const strip=a=>{const o={};for(const k of["id","label","type","external","kind","url","model","effort","preset","command","web"])if(a[k]!==undefined&&a[k]!=="")o[k]=a[k];return o};
  return{url:$("s_url").value.trim(),model:$("s_model").value.trim(),key:$("s_key").value,planner:p,relay:{host:$("r_host").value.trim(),workdir:$("r_dir").value.trim(),codex:$("r_codex").value.trim()||"codex"},advisors:custom.map(strip),advisor_keys:advKeys,viewer:{kind:$("v_kind").value,command:$("v_cmd").value.trim()},workspace:$("w_dir").value.trim()}}
+function chip(){const sel=$("planner"),o=sel.options[sel.selectedIndex];$("advchip").textContent="Cố vấn: "+(o?o.textContent:"—")}
 function openSettings(){$("tst").textContent="";$("dlg").showModal()}
 async function openHistory(){const {d}=await api("/api/history");const L=$("hlist");L.replaceChildren();const ss=d.sessions||[];$("hnone").hidden=ss.length>0;$("hclear").hidden=!ss.length;
  for(const x of ss){const r=el("div","opt");const t=el("div");t.style.flex="1";const h=el("b",0,x.title||"(không tên)");t.appendChild(h);
@@ -291,17 +298,25 @@ async function openFiles(rel){fdir=rel||"";const {ok,d}=await api("/api/files"+(
   L.appendChild(r)}
  if(!$("fdlg").open)$("fdlg").showModal()}
 $("attbtn").onclick=()=>openFiles("");$("fclose").onclick=()=>$("fdlg").close();
-$("w_pick").onclick=async()=>{const {d}=await api("/api/pick_folder",{});if(d&&d.path)$("w_dir").value=d.path};
+$("advchip").onclick=openSettings;let bcur="";
+async function browse(p){const {ok,d}=await api("/api/browse"+(p?"?path="+encodeURIComponent(p):""));if(!ok){alert(d.error||"không mở được thư mục");return}
+ bcur=d.path;$("bpath").textContent=d.path;const l=$("blist");l.replaceChildren();
+ if(d.parent){const r=el("div","opt","⬆ ..");r.style.cursor="pointer";r.onclick=()=>browse(d.parent);l.appendChild(r)}
+ for(const n of d.dirs){const r=el("div","opt","📁 "+n);r.style.cursor="pointer";r.onclick=()=>browse(d.path.replace(/[\\\/]$/,"")+(d.path.includes("\\")?"\\":"/")+n);l.appendChild(r)}
+ if(!d.dirs.length)l.appendChild(el("div","mute small","(không có thư mục con)"))}
+$("w_pick").onclick=async()=>{if(window.PICKER){const {d}=await api("/api/pick_folder",{});if(d&&d.path)$("w_dir").value=d.path;return}
+ await browse($("w_dir").value.trim());$("bdlg").showModal()};
+$("bcancel").onclick=()=>$("bdlg").close();$("bok").onclick=()=>{$("w_dir").value=bcur;$("bdlg").close()};
 $("histbtn").onclick=openHistory;$("hclose").onclick=()=>$("hdlg").close();$("hclear").onclick=async()=>{if(!confirm("Xoá toàn bộ lịch sử?"))return;await api("/api/history/clear",{});openHistory()};
 $("setbtn").onclick=openSettings;$("cbtn").onclick=()=>$("dlg").close();
 $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=await api("/api/test",form());if(!r.ok){$("tst").textContent=r.d.error||("lỗi "+r.status);return}
  $("tst").textContent=(r.d.ok?"✓ ":"✗ ")+r.d.detail;const dl=$("models");dl.replaceChildren();(r.d.models||[]).forEach(m=>{const o=el("option");o.value=m;dl.appendChild(o)});
  if(r.d.ok&&!$("s_model").value&&r.d.models&&r.d.models.length===1)$("s_model").value=r.d.models[0]}
 $("sf").onsubmit=async e=>{e.preventDefault();const r=await api("/api/settings",form());if(!r.ok){$("tst").textContent="✗ "+(r.d.error||r.status);return}
- DET=DET;loadSettings(r.d.settings);$("planner").value=r.d.settings.planner;$("dlg").close();if(!col().querySelector(".user"))hero(false),hero(true)};
+ DET=DET;loadSettings(r.d.settings);$("planner").value=r.d.settings.planner;chip();$("dlg").close();if(!col().querySelector(".user"))hero(false),hero(true)};
 $("quitbtn").onclick=async()=>{if(confirm("Tắt ứng dụng CadFabric?")){await api("/api/quit",{});document.body.textContent="Đã tắt CadFabric. Bạn có thể đóng tab này."}};
-(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local;$("w_pick").hidden=!d.picker;setWs(d.settings.workspace||"");
- DET=d.cli_detected||{};PRESETS=d.cli_presets||{};loadSettings(d.settings);$("planner").value=d.default;
+(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local;window.PICKER=!!d.picker;setWs(d.settings.workspace||"");
+ DET=d.cli_detected||{};PRESETS=d.cli_presets||{};loadSettings(d.settings);$("planner").value=d.default;chip();
  if(!local){$("localnote").textContent="Đang truy cập từ xa: không sửa được cài đặt (chỉ sửa được trên máy chạy ứng dụng).";document.querySelectorAll("#dlg input,#tbtn,#sbtn").forEach(x=>x.disabled=true)}
  hero(true);poll();setInterval(poll,800);if(!d.settings.configured&&local)setTimeout(openSettings,300)})();
 </script>
