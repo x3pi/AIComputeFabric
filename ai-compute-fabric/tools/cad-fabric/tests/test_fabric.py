@@ -982,10 +982,10 @@ class LessonsCore(unittest.TestCase):
         from cadfabric import lessons as L
         added, sk = L.add(self.d, self.P, [self.GOOD, dict(self.GOOD, title="Cut holes through fully", rule="Make the cutting tool longer than the part so a hole passes all the way through."),
                                            {"title": "Hole 8 mm", "rule": "drill 8 mm holes everywhere please"}]); self.assertEqual((len(added), [w for _, w in sk]), (1, ["already known", "too specific: a concrete measurement"]))
-        lid = added[0]["id"]; self.assertEqual(L.approved_block(self.d, self.P, "x"), ("", []))                                         # pending: never used
+        lid = added[0]["id"]; self.assertEqual(L.approved_block(self.d, self.P, "x")[:2], ("", []))                                         # pending: never used
         L.update(self.d, self.P, lid, status="rejected"); self.assertEqual(L.add(self.d, self.P, [self.GOOD])[0], [])                    # a rejected idea is not proposed again
-        L.update(self.d, self.P, lid, status="approved"); txt, used = L.approved_block(self.d, self.P, "x"); self.assertEqual(used, [lid]); self.assertIn("Cut through holes fully", txt); self.assertIn("LESSONS LEARNED", txt)
-        other = os.path.join(self.d, "other"); os.makedirs(other); self.assertEqual(L.approved_block(self.d, other, "x"), ("", []))      # project lesson: not in another project
+        L.update(self.d, self.P, lid, status="approved"); txt, used, _c = L.approved_block(self.d, self.P, "x"); self.assertEqual(used, [lid]); self.assertIn("Cut through holes fully", txt); self.assertIn("LESSONS LEARNED", txt)
+        other = os.path.join(self.d, "other"); os.makedirs(other); self.assertEqual(L.approved_block(self.d, other, "x")[:2], ("", []))      # project lesson: not in another project
         L.update(self.d, self.P, lid, scope="global"); self.assertEqual(L.approved_block(self.d, other, "x")[1], [lid])                   # global: everywhere
         self.assertEqual(oct(os.stat(os.path.join(self.d, "lessons.json")).st_mode & 0o777), "0o600")
 
@@ -997,7 +997,7 @@ class LessonsCore(unittest.TestCase):
                   "sketch": "close every wire before extruding it", "extrude": "pick the extrusion direction deliberately for both sides", "workplane": "move the origin so later features sit where intended"}
         for t, r in topics.items():
             L.add(self.d, self.P, [{"title": "Practice for %s work" % t, "rule": "When doing %s work, %s." % (t, r)}], status="approved")
-        txt, used = L.approved_block(self.d, self.P, "I need a loft between two profiles"); self.assertEqual(len(used), L.MAX_USED); self.assertIn("loft", txt)
+        txt, used, _c = L.approved_block(self.d, self.P, "I need a loft between two profiles"); self.assertEqual(len(used), L.MAX_USED); self.assertIn("loft", txt)
 
     def test_reflection_keeps_only_general_lessons_and_signals(self):
         from cadfabric import lessons as L
@@ -1008,11 +1008,45 @@ class LessonsCore(unittest.TestCase):
         self.assertTrue(L.signals([{"kind": "cell", "ok": False}])); self.assertTrue(L.signals([{"kind": "gate"}])); self.assertTrue(L.signals([{"kind": "plan", "pitfalls": ["x"]}]))
         self.assertFalse(L.signals([{"kind": "user"}, {"kind": "cell", "ok": True}, {"kind": "final", "warnings": 0}]))
 
+    def test_flexible_use_like_skills(self):
+        from cadfabric import lessons as L
+        mk = lambda t, r, **k: L.add(self.d, self.P, [{"title": t, "rule": r, "when": k.get("when", "")}], status="approved")[0][0]
+        a = mk("Close every wire first", "Close each wire before extruding so the solid is valid."); b = mk("Longer cutting tool", "Make a cutting tool longer than the stock so a bore passes through.", when="through bores")
+        self.assertEqual((a["id"] and L.list_for(self.d, self.P)[0]["slug"], L.list_for(self.d, self.P)[1]["slug"]), ("close-every-wire-first", "longer-cutting-tool"))
+        self.assertEqual(L.mentions(self.d, self.P, "use #longer-cutting-tool and #fff, #1, a#close-every-wire-first, #nope"), ([b["id"]], []))      # colours, numbers, glued text, unknown names ignored
+        P2 = L.add(self.d, self.P, [{"title": "Pending idea about shells", "rule": "Shell a body after all of the cuts are done."}])[0][0]
+        self.assertEqual(L.mentions(self.d, self.P, "#pending-idea-about-shells"), ([], ["pending-idea-about-shells"]))                                # named but not approved -> blocked
+        L.update(self.d, self.P, b["id"], auto=False); t, used, cat = L.approved_block(self.d, self.P, "bore through"); self.assertEqual(used, [a["id"]])  # auto off: not offered
+        t, used, cat = L.approved_block(self.d, self.P, "bore through", force=[b["id"]]); self.assertIn(b["id"], used)                                   # but named with #: used
+        self.assertIn("ERROR", L.read_one(self.d, self.P, "longer-cutting-tool")); self.assertIn("LESSON (advice", L.read_one(self.d, self.P, "#longer-cutting-tool", explicit=True))
+        L.update(self.d, self.P, b["id"], auto=True)
+        t, used, cat = L.approved_block(self.d, self.P, "extrude the wire", follow_up=True); self.assertEqual(used, [a["id"]])                           # follow-up: only what matches THIS request
+        self.assertEqual(L.approved_block(self.d, self.P, "extrude the wire", follow_up=True, exclude={a["id"]})[1], [])                                  # ...and not repeated
+        self.assertEqual(L.approved_block(self.d, self.P, "totally unrelated words", follow_up=True)[1], [])
+        words = "fillet chamfer revolve sweep loft shell mirror pattern boolean sketch extrude spline offset thread rib boss slot groove taper draft emboss knurl bevel dome flange".split()
+        for i, w in enumerate(words): mk("Handling %s features" % w, "Check %sone, %stwo and %sthree separately." % (w, w, w))
+        t, used, cat = L.approved_block(self.d, self.P, "topic3 job"); self.assertTrue(cat); self.assertEqual(used, []); self.assertIn("MORE LESSONS", t); self.assertIn("handling-loft-features", t); self.assertLessEqual(len(t), L.CATALOG_BUDGET + 400)
+        t, used, cat = L.approved_block(self.d, self.P, "x", force=[a["id"]]); self.assertEqual(used, [a["id"]]); self.assertTrue(cat)
+        md = L.export_skill_md([a, b], "my-lessons", "General practices"); self.assertIn("name: my-lessons", md); self.assertIn("Close every wire first", md)
+        from cadfabric import skills as S
+        self.assertEqual(S.parse_frontmatter(md)[0]["name"], "my-lessons")
+
+    def test_agent_use_lesson_tool_only_in_catalog_mode(self):
+        seen = []
+        class Cap(FakeLLM):
+            def chat(self, messages, tools=None, **kw): seen.append([t["function"]["name"] for t in (tools or [])]); return FakeLLM.chat(self, messages, tools=tools, **kw)
+        b = CadQueryBackend(timeout=20); ev = []
+        try:
+            r = agent.run(Cap([[("use_lesson", {"name": "x"})], "ok"]), b, "hi", plan_mode="off", log=lambda s: None, lesson_reader=lambda n: "LESSON (advice): " + n, on_event=lambda k, **kw: ev.append((k, kw)))
+            self.assertIn("use_lesson", seen[0]); self.assertTrue(any(k == "lesson" and kw["ok"] for k, kw in ev)); self.assertTrue(any("LESSON (advice): x" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))
+            seen.clear(); agent.run(Cap(["ok"]), b, "hi", plan_mode="off", log=lambda s: None); self.assertNotIn("use_lesson", seen[0])
+        finally: b.close()
+
     def test_agent_system_prompt_carries_only_the_approved_block(self):
         from cadfabric import lessons as L
         class Cap(FakeLLM):
             def chat(self, messages, tools=None, **kw): self.sys = messages[0]["content"]; return FakeLLM.chat(self, messages, tools=tools, **kw)
-        L.add(self.d, self.P, [self.GOOD], status="approved"); blk, _ = L.approved_block(self.d, self.P, "x"); b = CadQueryBackend(timeout=20)
+        L.add(self.d, self.P, [self.GOOD], status="approved"); blk = L.approved_block(self.d, self.P, "x")[0]; b = CadQueryBackend(timeout=20)
         try:
             llm = Cap(["ok"]); agent.run(llm, b, "hi", plan_mode="off", log=lambda s: None, lessons=blk); self.assertIn("Cut through holes fully", llm.sys)
             llm = Cap(["ok"]); agent.run(llm, b, "hi", plan_mode="off", log=lambda s: None); self.assertNotIn("LESSONS LEARNED", llm.sys)

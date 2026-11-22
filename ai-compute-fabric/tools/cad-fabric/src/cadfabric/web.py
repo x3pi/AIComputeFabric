@@ -32,6 +32,7 @@ class Session:
         self.llm, self.cfg, self.local, self.quit = llm, cfg, local, False
         self.pinned = cfg.get("workspace") or ""   # this window's project; a different folder opens another window
         self.reflecting = False
+        self.lessons_given = set()              # lesson ids already in this conversation's prompt
         self.autofile = None                    # the STEP file this conversation keeps up to date in the project folder
         self.picker = None                      # set by the desktop window: () -> folder path or ''
         self.backend = backend or CadQueryBackend()
@@ -79,14 +80,24 @@ class Session:
                 if names:
                     self.emit("skill", name=", ".join(names), ok=True, explicit=True)
                     block = "\n\n".join(x for x in (block, skills_mod.explicit_block(dd0, root, names)) if x)
-            lblock, lused = ("", []) if self.history is not None else lessons_mod.approved_block(config.data_dir(self.cfg), root, text)
+            dd0 = config.data_dir(self.cfg)
+            fids, fblocked = lessons_mod.mentions(dd0, root, text) if self.local else ([], [])          # #name: the user names a lesson
+            for n in fblocked:
+                self.emit("lesson_blocked", name=n)
+            follow = self.history is not None
+            ltext, lused, lcat = lessons_mod.approved_block(dd0, root, text, exclude=self.lessons_given, force=fids, follow_up=follow) if self.local else ("", [], False)
+            lblock = "" if follow else ltext
+            if follow and ltext:                                                      # follow-up: the system prompt is fixed, so this turn's lessons travel with the request
+                block = "\n\n".join(x for x in (block, ltext.strip().replace("LESSONS LEARNED", "LESSONS LEARNED (relevant to this request)", 1)) if x)
             if lused:
-                self.emit("lessons_used", n=len(lused))
-                lessons_mod.mark_used(config.data_dir(self.cfg), lused)
+                self.lessons_given.update(lused)
+                self.emit("lessons_used", n=len(lused), names=[x["title"][:50] for x in lessons_mod.list_for(dd0, root) if x["id"] in lused][:5], explicit=len(fids))
+                lessons_mod.mark_used(dd0, lused)
             dd = config.data_dir(self.cfg)
             sblock = "" if self.history is not None or not self.local else skills_mod.catalog(dd, root)
             r = agent.run(self.llm, self.backend, text, plan_mode=planner, log=lambda s: None, cfg=self.cfg, workspace=root or None, attachments=block, lessons=lblock,
                           skill_catalog=sblock, skill_reader=(lambda n, f: skills_mod.use(dd, root, n, f)) if sblock else None,
+                          lesson_reader=(lambda n: lessons_mod.read_one(dd, root, n)) if lcat else None,
                           history=self.history, should_stop=lambda: self.stop, on_event=lambda kind, **kw: self.emit(kind, **kw),
                           opener=(lambda: self.open_in_viewer()[1]) if self.local else None)
             self.history = r["history"]
@@ -263,6 +274,7 @@ class Session:
             if self.busy:
                 return False
             self.events, self.history, self.measure = [], None, None
+            self.lessons_given = set()
             self.sid, self.created, self.title = None, "", ""
             self.autofile = None
         self.backend.reset()
@@ -538,6 +550,22 @@ def make_handler(sess, token, hosts, data_dir):
                     if op == "add":                                                  # the user's own lesson: same generality check, approved at once
                         added, skipped = lessons_mod.add(data_dir, ws, [{k: body.get(k, "") for k in ("title", "rule", "when")}], source="user", scope=body.get("scope"), status="approved")
                         return self._send(200 if added else 400, {"ok": bool(added), "error": (skipped[0][1] if skipped else "")})
+                    if op == "auto":
+                        x, err = lessons_mod.update(data_dir, ws, lid, auto=bool(body.get("value")))
+                        return self._send(200 if x else 400, {"ok": bool(x), "error": err})
+                    if op == "to_skill":                                             # several approved lessons -> one SKILL.md, pending like any skill
+                        items = [x for x in lessons_mod.list_for(data_dir, ws) if x["status"] == "approved" and (not body.get("ids") or x["id"] in body["ids"])]
+                        sname = str(body.get("name", "")).strip().lower().replace(" ", "-")
+                        if not items or not skills_mod.NAME.match(sname):
+                            return self._send(400, {"error": "need approved lessons and a skill name (a-z, 0-9, -)"})
+                        import tempfile, shutil as _sh
+                        tmp = tempfile.mkdtemp(prefix="cflesson-")
+                        try:
+                            os.makedirs(os.path.join(tmp, sname)); open(os.path.join(tmp, sname, "SKILL.md"), "w", encoding="utf-8").write(lessons_mod.export_skill_md(items, sname, str(body.get("description", "")) or "General practices from approved lessons"))
+                            m, e = skills_mod.import_folder(data_dir, ws, os.path.join(tmp, sname), "lessons (%d)" % len(items), body.get("scope"))
+                        finally:
+                            _sh.rmtree(tmp, ignore_errors=True)
+                        return self._send(200 if m else 400, {"ok": bool(m), "name": sname, "count": len(items), "error": e})
                     if op in ("approve", "reject", "pending"):
                         x, err = lessons_mod.update(data_dir, ws, lid, status={"approve": "approved", "reject": "rejected", "pending": "pending"}[op])
                     elif op == "scope":

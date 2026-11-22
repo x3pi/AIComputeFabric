@@ -36,6 +36,10 @@ SKILL_TOOL = {"type": "function", "function": {"name": "use_skill", "description
               "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "file": {"type": "string"}}, "required": ["name"]}}}
 
 
+LESSON_TOOL = {"type": "function", "function": {"name": "use_lesson", "description": "Read one lesson from the MORE LESSONS list in the system prompt, by its short name. Only when it clearly fits the request.",
+               "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}}
+
+
 def _ws_tools():
     P = lambda props, req: {"type": "object", "properties": props, "required": req}
     S = {"type": "string"}
@@ -77,7 +81,7 @@ def _ws_call(name, args, root, backend, ev):
 WS_NAMES = ("list_files", "read_file", "search_files", "save_step")
 
 
-def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None, workspace=None, attachments="", lessons="", skill_catalog="", skill_reader=None):
+def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None, workspace=None, attachments="", lessons="", skill_catalog="", skill_reader=None, lesson_reader=None):
     """-> dict: ok, final text, final measure, steps, checks, warnings, plan. plan_mode: off | nothink | think | codex | codex-relay. `planner(request)->(spec, raw)` overrides."""
     t0 = time.time()
     ev = on_event or (lambda kind, **kw: None)         # structured events for a UI: plan, cell, gate
@@ -111,7 +115,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
             stopped = True
             break
         ev("phase", what="llm", step=step + 1)
-        m = llm.chat(msgs, tools=TOOLS + ([OPEN_TOOL] if opener else []) + (_ws_tools() if workspace else []) + ([SKILL_TOOL] if (skill_catalog and skill_reader) else []), think=False)
+        m = llm.chat(msgs, tools=TOOLS + ([OPEN_TOOL] if opener else []) + (_ws_tools() if workspace else []) + ([SKILL_TOOL] if (skill_catalog and skill_reader) else []) + ([LESSON_TOOL] if lesson_reader else []), think=False)
         tokens += (m.pop("_usage", {}) or {}).get("completion_tokens", 0)
         msgs.append(m)
         calls = m.get("tool_calls") or []
@@ -156,6 +160,11 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                     ev("open", ok=bool(r.get("ok")), viewer=r.get("viewer", ""), detail=r.get("detail", ""), path=r.get("path", ""))
                 trace.append({"tool": name, "ok": text.startswith("OK")})
                 log("  open_in_viewer: " + text[:120])
+            elif name == "use_lesson" and lesson_reader:
+                text = lesson_reader(str(args.get("name", "")))
+                ev("lesson", name=str(args.get("name", ""))[:64], ok=not text.startswith("ERROR"))
+                trace.append({"tool": name, "ok": not text.startswith("ERROR")})
+                log("  use_lesson: " + text[:80].replace("\n", " "))
             elif name == "use_skill" and skill_reader:
                 text = skill_reader(str(args.get("name", "")), str(args.get("file", "")))
                 ev("skill", name=str(args.get("name", ""))[:64], ok=not text.startswith("ERROR"))

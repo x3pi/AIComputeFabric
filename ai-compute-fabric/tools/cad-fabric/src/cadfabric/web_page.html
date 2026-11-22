@@ -125,7 +125,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button><button type="button" id="tablessons">Bài học</button><button type="button" id="tabskills">Skill</button></div>
  <div id="pane_part"><div id="preview">chưa có chi tiết</div><table id="meas"></table>
   <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
- <div id="pane_lessons" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="lreflect">Rút bài học từ cuộc này</button><button type="button" class="btn small" id="ladd">+ Thêm</button></div>
+ <div id="pane_lessons" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="lreflect">Rút bài học từ cuộc này</button><button type="button" class="btn small" id="ladd">+ Thêm</button><button type="button" class="btn small" id="lskill" title="Gộp các bài đã duyệt thành một skill (chờ duyệt)">Gộp thành skill</button></div>
   <div class="mute small" id="lnote" style="padding:0 14px 8px"></div><div id="llist"></div></div>
  <div id="pane_skills" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="skadd">+ Cài từ GitHub</button><button type="button" class="btn small" id="skloc">Từ thư mục máy</button></div>
   <div class="mute small" id="sknote" style="padding:0 14px 8px"></div><div id="sklist"></div></div>
@@ -261,7 +261,9 @@ function render(ev){if(ev.kind==="phase"){phase={what:ev.what,step:ev.step,t0:Da
  else if(ev.kind==="lessons"){if(ev.added){const c=el("div","chk ok","💡 Đã rút "+ev.added+" bài học mới từ cuộc này — chờ bạn duyệt ở tab Bài học");c.style.cursor="pointer";c.onclick=()=>showTab("lessons");put(c)}loadLessons()}
  else if(ev.kind==="skill"){put(el("div","chk "+(ev.ok?"ok":"bad"),(ev.explicit?"📖 Dùng skill bạn chỉ định: ":"📖 Qwen đọc skill: ")+ev.name))}
  else if(ev.kind==="skill_blocked"){put(el("div","chk bad","Skill $"+ev.name+" chưa được duyệt nên không dùng — duyệt ở tab Skill"))}
- else if(ev.kind==="lessons_used"){put(el("div","chk ok","📚 Đã áp dụng "+ev.n+" bài học đã duyệt"))}
+ else if(ev.kind==="lessons_used"){put(el("div","chk ok","📚 Đã áp dụng "+ev.n+" bài học đã duyệt"+(ev.names&&ev.names.length?": "+ev.names.join("; "):"")))}
+ else if(ev.kind==="lesson"){put(el("div","chk "+(ev.ok?"ok":"bad"),"📚 Qwen đọc bài học: "+ev.name))}
+ else if(ev.kind==="lesson_blocked"){put(el("div","chk bad","Bài học #"+ev.name+" chưa được duyệt nên không dùng — duyệt ở tab Bài học"))}
  else if(ev.kind==="file"){if(ev.op==="saved"&&$("pane_files")&&!$("pane_files").hidden)setTimeout(()=>sfOpen(sfdir),300);put(el("div","chk ok",ev.op==="saved"?"✓ Đã lưu "+ev.path+" vào thư mục làm việc":"📄 Đã đọc "+ev.path))}
  else if(ev.kind==="open")put(el("div","chk"+(ev.ok?" ok":" bad"),(ev.ok?"✓ Đã gửi tới "+ev.viewer+(ev.path?" — "+ev.path:""):"✗ Không mở được: "+ev.detail)))
  else if(ev.kind==="error")put(el("div","err","Lỗi: "+ev.text))}
@@ -401,8 +403,8 @@ function showTab(t){$("pane_skills").hidden=t!=="skills";$("pane_files").hidden=
 $("tabpart").onclick=()=>showTab("part");$("tabfiles").onclick=()=>showTab("files");$("tablessons").onclick=()=>showTab("lessons");
 /* ---- $ picker: typing $ at the end of the message lists the approved skills ---- */
 let skPick=null;
-function skillPicker(){const t=$("text"),m=/(?:^|\s)\$([a-z0-9-]*)$/.exec(t.value);if(skPick){skPick.remove();skPick=null}if(!m||!SK.length)return;const q=m[1];const xs=SK.filter(x=>x.status==="approved"&&x.name.startsWith(q)).slice(0,6);if(!xs.length)return;
- skPick=el("div","skpick");for(const x of xs){const b=el("button",0,"$"+x.name+" — "+x.description.slice(0,60));b.type="button";b.onmousedown=e=>{e.preventDefault();t.value=t.value.replace(/\$[a-z0-9-]*$/,"$"+x.name+" ");skPick.remove();skPick=null;t.focus()};skPick.appendChild(b)}t.parentNode.appendChild(skPick)}
+function skillPicker(){const t=$("text"),m=/(?:^|\s)([$#])([a-z0-9-]*)$/.exec(t.value);if(skPick){skPick.remove();skPick=null}if(!m)return;const hash=m[1]==="#",q=m[2];const xs=(hash?LES.filter(x=>x.status==="approved"&&x.slug.startsWith(q)).map(x=>({name:x.slug,description:x.title})):SK.filter(x=>x.status==="approved"&&x.name.startsWith(q))).slice(0,6);if(!xs.length)return;
+ skPick=el("div","skpick");for(const x of xs){const b=el("button",0,m[1]+x.name+" — "+x.description.slice(0,60));b.type="button";b.onmousedown=e=>{e.preventDefault();t.value=t.value.replace(/[$#][a-z0-9-]*$/,m[1]+x.name+" ");skPick.remove();skPick=null;t.focus()};skPick.appendChild(b)}t.parentNode.appendChild(skPick)}
 $("text").addEventListener("input",skillPicker);
 /* ---- skills: SKILL.md folders from GitHub, advice only, used after approval ---- */
 let SK=[],skMode="url";
@@ -430,14 +432,16 @@ function drawLessons(d){lessonBadge();const L=$("llist");L.replaceChildren();$("
  const groups=[["pending","Chờ bạn duyệt"],["approved","Đã duyệt (đang dùng)"],["rejected","Đã bỏ"]];
  for(const [st,label] of groups){const xs=LES.filter(x=>x.status===st);if(!xs.length)continue;L.appendChild(el("div","lh",label+" · "+xs.length));
   for(const x of xs){const c=el("div","les");const h=el("b",0,x.title);h.appendChild(el("span","tag",x.scope==="global"?"mọi dự án":"dự án này"));c.appendChild(h);c.appendChild(el("div",0,x.rule));
-   if(x.when)c.appendChild(el("div","why","Khi nào: "+x.when));if(x.evidence)c.appendChild(el("div","why","Từ: "+x.evidence));if(x.uses)c.appendChild(el("div","why","Đã dùng "+x.uses+" lần"));
+   c.appendChild(el("div","why","Gọi bằng #"+x.slug));if(x.when)c.appendChild(el("div","why","Khi nào: "+x.when));if(x.evidence)c.appendChild(el("div","why","Từ: "+x.evidence));if(x.uses)c.appendChild(el("div","why","Đã dùng "+x.uses+" lần"));
    const a=el("div","acts");const mk=(t,fn,cls)=>{const b=el("button","btn small"+(cls?" "+cls:""),t);b.type="button";b.onclick=fn;a.appendChild(b)};
-   if(st!=="approved")mk("Duyệt",()=>lessonOp("approve",x.id),"primary");if(st==="pending")mk("Bỏ",()=>lessonOp("reject",x.id));if(st==="approved")mk("Tạm dừng",()=>lessonOp("pending",x.id));if(st==="rejected")mk("Đưa lại",()=>lessonOp("pending",x.id));
+   if(st==="approved")mk(x.auto===false?"Tự động: tắt (chỉ khi gõ #"+x.slug+")":"Tự động: bật",()=>lessonOp("auto",x.id,{value:x.auto===false}));if(st!=="approved")mk("Duyệt",()=>lessonOp("approve",x.id),"primary");if(st==="pending")mk("Bỏ",()=>lessonOp("reject",x.id));if(st==="approved")mk("Tạm dừng",()=>lessonOp("pending",x.id));if(st==="rejected")mk("Đưa lại",()=>lessonOp("pending",x.id));
    mk("Sửa",()=>openLessonForm(x));mk(x.scope==="global"?"Chỉ dự án này":"Dùng mọi dự án",()=>lessonOp("scope",x.id,{scope:x.scope==="global"?"project":"global"}));mk("Xoá",()=>{if(confirm("Xoá bài học này?"))lessonOp("delete",x.id)});
    c.appendChild(a);L.appendChild(c)}}
  if(!LES.length)L.appendChild(el("div","mute small","Chưa có bài học nào. Sau một cuộc trò chuyện có lỗi hoặc cảnh báo app tự đề xuất; hoặc bấm “Rút bài học từ cuộc này”."));L.lastChild&&0}
 async function lessonOp(op,id,extra){const r=await api("/api/lessons",Object.assign({op,id},extra||{}));if(!r.ok&&r.d.error)toast(r.d.error);loadLessons()}
 function openLessonForm(x){lesEdit=x||null;$("ldt").textContent=x?"Sửa bài học (sửa xong phải duyệt lại)":"Thêm bài học";$("l_title").value=x?x.title:"";$("l_rule").value=x?x.rule:"";$("l_when").value=x?x.when||"":"";$("l_err").textContent="";$("l_scopew").hidden=!!x;$("l_scope").value=WS?"project":"global";$("l_scope").querySelector("option[value=project]").disabled=!WS;$("ldlg").showModal()}
+$("lskill").onclick=async()=>{const n=LES.filter(x=>x.status==="approved").length;if(!n){toast("Chưa có bài học nào đã duyệt");return}const name=prompt("Tên skill (a-z, 0-9, dấu gạch ngang):","bai-hoc-"+(WS?WS.split(/[\\/]/).pop().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""):"chung"));if(!name)return;const desc=prompt("Mô tả một dòng (khi nào dùng skill này):","Quy tắc chung rút từ các lần dựng chi tiết, dùng khi dựng hoặc sửa chi tiết CadQuery");if(desc===null)return;
+ const r=await api("/api/lessons",{op:"to_skill",name,description:desc,scope:WS?"project":"global"});toast(r.ok?"Đã tạo skill "+r.d.name+" từ "+r.d.count+" bài học, chờ bạn duyệt ở tab Skill":(r.d.error||"Không tạo được"));if(r.ok)loadSkills()};
 $("ladd").onclick=()=>openLessonForm(null);$("l_cancel").onclick=()=>$("ldlg").close();
 $("l_save").onclick=async()=>{const body={title:$("l_title").value.trim(),rule:$("l_rule").value.trim(),when:$("l_when").value.trim()};const r=lesEdit?await api("/api/lessons",Object.assign({op:"edit",id:lesEdit.id},body)):await api("/api/lessons",Object.assign({op:"add",scope:$("l_scope").value},body));
  if(!r.ok){$("l_err").textContent="Không lưu được: "+(r.d.error||r.status);return}$("ldlg").close();loadLessons()};
