@@ -317,7 +317,7 @@ class Settings(unittest.TestCase):
         import tempfile, threading, http.client, http.server
         from cadfabric import web
         cls.http = http.client
-        cls.dir = tempfile.mkdtemp(); os.environ["CADFABRIC_CONFIG"] = os.path.join(cls.dir, "config.json"); os.environ["XDG_DATA_HOME"] = cls.dir
+        cls.dir = tempfile.mkdtemp(); os.environ["CADFABRIC_CONFIG"] = os.path.join(cls.dir, "config.json"); os.environ["XDG_DATA_HOME"] = cls.dir; os.environ["XDG_CONFIG_HOME"] = cls.dir
         class Fake(http.server.BaseHTTPRequestHandler):
             def log_message(self, *a): pass
             def _j(self, code, o): b = json.dumps(o).encode(); self.send_response(code); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
@@ -764,6 +764,16 @@ class WorkspaceWeb(Settings):
         self.assertEqual(self.req("POST", "/api/send", dict(base, uploads=ok))[0], 200)
         sess.thread.join(60); self.assertFalse(sess.busy)                                                                    # do not leave a job running for the next test
         self.assertEqual([e["files"] for e in sess.events if e["kind"] == "user"][-1], ["spec.txt"])
+
+    def test_view_file_endpoint_confined(self):
+        root = os.path.join(self.dir, "vf"); os.makedirs(os.path.join(root, "d")); open(os.path.join(root, "d", "n.txt"), "w").write("hello\nworld"); open(os.path.join(root, "key.txt"), "w").write("S")
+        body = {"url": self.fake_url, "model": "q", "planner": "nothink", "workspace": root}; self.assertEqual(self.req("POST", "/api/settings", body)[0], 200)
+        self.assertEqual(self.req("GET", "/api/file?path=d/n.txt"), (200, {"path": "d/n.txt", "text": "hello\nworld"}))
+        for bad in ("../x", "key.txt", "d", "nope.txt", "/etc/passwd"):
+            self.assertEqual(self.req("GET", "/api/file?path=" + bad)[0], 400, bad)
+        self.srv.sess.local = False
+        try: self.assertEqual(self.req("GET", "/api/file?path=d/n.txt")[0], 403)
+        finally: self.srv.sess.local = True
 
 
 if __name__ == "__main__":

@@ -64,6 +64,10 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 #relay{display:none;gap:8px;flex-direction:column}#relay.show{display:flex}
 .row{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}#tst{flex:1;font-size:13px;min-width:160px}
 #dropov{position:fixed;inset:0;background:#0b6bcb33;border:3px dashed var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;z-index:50;pointer-events:none}#dropov[hidden]{display:none}
+.tabs{display:flex;border-bottom:1px solid var(--line)}.tabs button{flex:1;border:0;background:none;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent}.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+#sflist .opt{padding:7px 14px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px;overflow-wrap:anywhere}#sflist .opt:hover{background:var(--bg)}#sflist .opt.dim{opacity:.5;cursor:default}
+.sfhead{display:flex;gap:6px;align-items:center;padding:8px 14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}.sfhead b{font-size:13px;overflow-wrap:anywhere}
+#sftext{margin:0;padding:10px 14px;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -90,8 +94,11 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
    <div class="hint" id="hint">Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /stop dừng</div>
   </div>
  </div>
- <aside id="side"><h3>Chi tiết hiện tại</h3><div id="preview">chưa có chi tiết</div><table id="meas"></table>
-  <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></aside>
+ <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button></div>
+ <div id="pane_part"><div id="preview">chưa có chi tiết</div><table id="meas"></table>
+  <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
+ <div id="pane_files" hidden><div class="mute small" id="sfpath" style="padding:8px 14px"></div><div id="sflist"></div>
+  <div id="sfview" hidden><div class="sfhead"><b id="sfname"></b><span class="sp"></span><button type="button" class="btn small" id="sfatt">Đính kèm vào chat</button><button type="button" class="btn small" id="sfclose">✕</button></div><pre id="sftext"></pre></div></div></aside>
 </div>
 
 <dialog id="pdlg"><div class="hbox">
@@ -296,7 +303,7 @@ async function openHistory(){const {d}=await api("/api/history");const L=$("hlis
  if(!$("hdlg").open)$("hdlg").showModal()}
 
 let WS="",att=[],ups=[],RECENT=[],fdir="",bmode=null;
-function setWs(w){WS=w;$("projbtn").textContent=w?"📁 "+(w.split(/[\\\/]/).filter(Boolean).pop()||w):"📁 Chọn dự án";$("projbtn").title=w||"Dự án = thư mục làm việc";$("attbtn").hidden=!w||!local;if(!w){att=[];drawAtt()}}
+function setWs(w){WS=w;if(typeof sfRefresh==="function")sfRefresh();$("projbtn").textContent=w?"📁 "+(w.split(/[\\\/]/).filter(Boolean).pop()||w):"📁 Chọn dự án";$("projbtn").title=w||"Dự án = thư mục làm việc";$("attbtn").hidden=!w||!local;if(!w){att=[];drawAtt()}}
 function drawAtt(){const a=$("attached");a.replaceChildren();a.hidden=!att.length&&!ups.length;for(const u of ups){const c=el("span","fchip","📎 "+u.name+"  ✕");c.title="Bỏ tệp này";c.onclick=()=>{ups=ups.filter(x=>x!==u);drawAtt()};a.appendChild(c)}for(const f of att){const c=el("span","fchip","📄 "+f+"  ✕");c.title="Bỏ tệp này";c.onclick=()=>{att=att.filter(x=>x!==f);drawAtt()};a.appendChild(c)}}
 async function openFiles(rel){fdir=rel||"";const {ok,d}=await api("/api/files"+(fdir?"?path="+encodeURIComponent(fdir):""));if(!ok){alert(d.error||"Không đọc được thư mục");return}
  $("fpath").textContent=(d.root||"")+"/"+d.path;const L=$("flist");L.replaceChildren();
@@ -306,6 +313,24 @@ async function openFiles(rel){fdir=rel||"";const {ok,d}=await api("/api/files"+(
   else{const on=att.includes(full);r.textContent=(on?"☑ ":(e.text?"☐ ":"· "))+e.name+"  ("+e.size+" B"+(e.text?"":", không phải văn bản")+")";if(e.text)r.onclick=()=>{if(att.includes(full))att=att.filter(x=>x!==full);else if(att.length<8)att.push(full);drawAtt();openFiles(fdir)};else r.style.opacity=".5"}
   L.appendChild(r)}
  if(!$("fdlg").open)$("fdlg").showModal()}
+let sfdir="",sffile="";
+function showTab(t){const f=t==="files";$("pane_files").hidden=!f;$("pane_part").hidden=f;$("tabfiles").classList.toggle("on",f);$("tabpart").classList.toggle("on",!f);if(f)sfOpen(sfdir)}
+$("tabpart").onclick=()=>showTab("part");$("tabfiles").onclick=()=>showTab("files");
+function sfRefresh(){sfdir="";sffile="";if($("sfview"))$("sfview").hidden=true;if($("pane_files")&&!$("pane_files").hidden)sfOpen("")}
+async function sfOpen(rel){const L=$("sflist");L.replaceChildren();$("sfview").hidden=true;sffile="";
+ if(!WS){$("sfpath").textContent="Chưa chọn dự án";const b=el("div","opt","📁 Chọn dự án…");b.onclick=()=>$("projbtn").click();L.appendChild(b);return}
+ const {ok,d}=await api("/api/files"+(rel?"?path="+encodeURIComponent(rel):""));if(!ok){$("sfpath").textContent=d.error||"Không đọc được thư mục";return}
+ sfdir=d.path;$("sfpath").textContent=(d.root||"")+"/"+d.path;
+ if(d.path){const u=el("div","opt","⬆ ..");u.onclick=()=>sfOpen(d.path.split("/").slice(0,-1).join("/"));L.appendChild(u)}
+ for(const e of d.entries){const full=(d.path?d.path+"/":"")+e.name;const r=el("div","opt");
+  if(e.dir){r.textContent="📁 "+e.name;r.onclick=()=>sfOpen(full)}
+  else{r.textContent=(e.text?"📄 ":"· ")+e.name+"  ("+e.size+" B)";if(e.text)r.onclick=()=>sfView(full);else r.classList.add("dim")}
+  L.appendChild(r)}
+ if(!d.entries.length)L.appendChild(el("div","mute small","(thư mục trống)"));if(d.truncated)L.appendChild(el("div","mute small","(chỉ hiện 400 mục đầu)"))}
+async function sfView(rel){const {ok,d}=await api("/api/file?path="+encodeURIComponent(rel));if(!ok){alert(d.error||"Không đọc được tệp");return}
+ sffile=rel;$("sfname").textContent=rel;$("sftext").textContent=d.text;$("sfview").hidden=false;$("sfatt").textContent=att.includes(rel)?"Đã đính kèm":"Đính kèm vào chat";$("sfview").scrollIntoView({block:"nearest"})}
+$("sfclose").onclick=()=>{$("sfview").hidden=true;sffile=""};
+$("sfatt").onclick=()=>{if(!sffile||att.includes(sffile))return;if(att.length+ups.length>=8){alert("Tối đa 8 tệp đính kèm");return}att.push(sffile);drawAtt();$("sfatt").textContent="Đã đính kèm"};
 $("attbtn").onclick=()=>openFiles("");$("fclose").onclick=()=>$("fdlg").close();
 $("advchip").onclick=openSettings;let bcur="";
 async function browse(p){const {ok,d}=await api("/api/browse"+(p?"?path="+encodeURIComponent(p):""));if(!ok){alert(d.error||"không mở được thư mục");return}

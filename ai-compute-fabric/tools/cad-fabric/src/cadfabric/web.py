@@ -229,6 +229,12 @@ def make_handler(sess, token, hosts, data_dir):
                     return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
                 r, err = ws_mod.listing(sess.cfg.get("workspace") or "", (q.get("path") or [""])[0])
                 self._send(200 if r else 400, dict(r, root=os.path.basename((sess.cfg.get("workspace") or "").rstrip("/\\"))) if r else {"error": err})
+            elif u.path == "/api/file":
+                if not sess.local:
+                    return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
+                rel = (q.get("path") or [""])[0]
+                text, err = ws_mod.read_text(sess.cfg.get("workspace") or "", rel)
+                self._send(200 if text is not None else 400, {"path": rel, "text": text} if text is not None else {"error": err})
             elif u.path == "/api/browse":
                 if not sess.local:
                     return self._send(403, {"error": "folder browsing is only available when the chat is bound to this computer"})
