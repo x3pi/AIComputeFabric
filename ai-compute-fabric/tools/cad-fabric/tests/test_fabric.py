@@ -806,6 +806,36 @@ class WorkspaceWeb(Settings):
         try: self.assertEqual(self.req("GET", "/api/raw?path=p.png")[0], 403)
         finally: sess.local = True
 
+    def test_static_libraries_reveal_and_open_endpoints(self):
+        from cadfabric import viewers
+        root = os.path.join(self.dir, "ctx"); os.makedirs(os.path.join(root, "d")); open(os.path.join(root, "d", "a.txt"), "w").write("x"); open(os.path.join(root, "run.py"), "w").write("print(1)"); open(os.path.join(root, "k.step"), "w").write("ISO")
+        self.assertEqual(self.req("POST", "/api/settings", {"url": self.fake_url, "model": "q", "planner": "nothink", "workspace": root})[0], 200)
+        # bundled viewer libraries: served with the right type, nothing outside the folder
+        for name, ctype in (("viewer3d.js", "text/javascript"), ("vendor/hljs.min.js", "text/javascript"), ("vendor/hljs-light.css", "text/css")):
+            c = self.http.HTTPConnection("127.0.0.1", self.port); c.request("GET", "/static/" + name, headers={"Cookie": "cft=tok"}); r = c.getresponse(); r.read(); self.assertEqual((r.status, r.getheader("Content-Type").split(";")[0]), (200, ctype), name)
+        for bad in ("../web.py", "%2e%2e/web.py", "vendor/../../web.py", "nope.js", "vendor"):
+            c = self.http.HTTPConnection("127.0.0.1", self.port); c.request("GET", "/static/" + bad, headers={"Cookie": "cft=tok"}); r = c.getresponse(); r.read(); self.assertEqual(r.status, 404, bad)
+        c = self.http.HTTPConnection("127.0.0.1", self.port); c.request("GET", "/static/viewer3d.js"); r = c.getresponse(); r.read(); self.assertEqual(r.status, 401 if r.status == 401 else 403)      # token still required
+        seen = []; real = (viewers.reveal, viewers.open_default, viewers.open_file)
+        viewers.reveal = lambda p: seen.append(("reveal", p)) or {"ok": True, "detail": "r"}; viewers.open_default = lambda p: seen.append(("open", p)) or {"ok": True, "detail": "o"}; viewers.open_file = lambda p, cfg: seen.append(("cad", p)) or {"ok": True, "detail": "c"}
+        try:
+            rp = os.path.realpath(root)
+            self.assertEqual(self.req("POST", "/api/reveal", {"path": "d/a.txt"})[0], 200); self.assertEqual(self.req("POST", "/api/reveal", {"path": ""})[0], 200)
+            self.assertEqual(self.req("POST", "/api/open_file", {"path": "d/a.txt"})[0], 200); self.assertEqual(self.req("POST", "/api/open_cad", {"path": "k.step"})[0], 200)
+            self.assertEqual(seen, [("reveal", os.path.join(rp, "d", "a.txt")), ("reveal", rp), ("open", os.path.join(rp, "d", "a.txt")), ("cad", os.path.join(rp, "k.step"))])
+            for path, body in (("/api/reveal", "../x"), ("/api/reveal", "nope.txt"), ("/api/open_file", "d"), ("/api/open_cad", "d/a.txt"), ("/api/reveal", "/etc/passwd")):
+                self.assertEqual(self.req("POST", path, {"path": body})[0], 400, (path, body))
+            self.srv.sess.local = False
+            try: self.assertEqual(self.req("POST", "/api/reveal", {"path": "d"})[0], 403)
+            finally: self.srv.sess.local = True
+        finally: viewers.reveal, viewers.open_default, viewers.open_file = real
+        self.assertEqual(len(seen), 4)
+        self.assertFalse(viewers.open_default(os.path.join(root, "run.py"))["ok"])                                    # a script is never started by the default handler
+        self.assertEqual(self.req("GET", "/api/stepmesh?path=d/a.txt")[0], 400); self.assertEqual(self.req("GET", "/api/stepmesh?path=k.step")[0], 422)             # not a real STEP file: refused, no crash
+        sess = self.srv.sess; sess.reset(); sess.backend.execute("import cadquery as cq\nresult = cq.Workplane('XY').box(10, 20, 30).faces('>Z').workplane().hole(4)"); sess.backend.export_step(os.path.join(root, "real.step"))
+        s_, d_ = self.req("GET", "/api/stepmesh?path=real.step"); self.assertEqual(s_, 200); self.assertEqual(d_["size"], [10.0, 20.0, 30.0]); self.assertGreaterEqual(len(d_["faces"]), 7)
+        self.assertTrue(all(len(f["i"]) % 3 == 0 and max(f["i"]) < len(f["p"]) // 3 for f in d_["faces"]))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

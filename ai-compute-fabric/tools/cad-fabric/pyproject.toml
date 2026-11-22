@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cadfabric"
-version = "0.5.5"
+version = "0.5.6"
 description = "Backend-agnostic CAD agent: a local LLM writes CadQuery, the kernel measures every step, formulas from a planner verify the result"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,7 +20,7 @@ cadfabric = "cadfabric.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-cadfabric = ["web_page.html"]
+cadfabric = ["web_page.html", "static/*.js", "static/vendor/*", "static/licenses/*"]
 
 [project.gui-scripts]
 cadfabric-app = "cadfabric.cli:app_main"

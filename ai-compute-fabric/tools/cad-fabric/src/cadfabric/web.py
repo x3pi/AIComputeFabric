@@ -215,12 +215,28 @@ def make_handler(sess, token, hosts, data_dir):
         def log_message(self, *a):
             pass
 
+        def _static(self, rel):
+            """Bundled viewer libraries (syntax colouring, Markdown, 3D). Whitelisted names only, long cache: they never change within a version."""
+            base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+            full = os.path.realpath(os.path.join(base, *rel.split("/"))) if re.match(r"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$", rel) and ".." not in rel else ""
+            if not full or not full.startswith(base + os.sep) or not os.path.isfile(full):
+                return self._send(404, {"error": "not found"})
+            ctype = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".wasm": "application/wasm", ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8"}.get(os.path.splitext(full)[1].lower())
+            if not ctype:
+                return self._send(404, {"error": "not found"})
+            with open(full, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(data))); self.send_header("Cache-Control", "private, max-age=86400")
+            self.send_header("X-Content-Type-Options", "nosniff"); self.send_header("Referrer-Policy", "no-referrer")
+            self.end_headers(); self.wfile.write(data)
+
         def _send(self, code, body, ctype="application/json", extra=()):
             b = body if isinstance(body, bytes) else (body if isinstance(body, str) else json.dumps(body)).encode()
             self.send_response(code)
             self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(b))); self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff"); self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:")
+            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:")
             for k, v in extra:
                 self.send_header(k, v)
             self.end_headers(); self.wfile.write(b)
@@ -249,6 +265,8 @@ def make_handler(sess, token, hosts, data_dir):
             if fresh is None:
                 return
             cookie = [("Set-Cookie", "cft=%s; HttpOnly; SameSite=Strict; Path=/" % token)] if fresh else []
+            if u.path.startswith("/static/"):
+                return self._static(u.path[len("/static/"):])
             if u.path == "/":
                 with open(PAGE, "rb") as f:
                     self._send(200, f.read(), "text/html; charset=utf-8", cookie)
@@ -271,6 +289,20 @@ def make_handler(sess, token, hosts, data_dir):
                 rel = (q.get("path") or [""])[0]
                 text, err = ws_mod.read_text(sess.cfg.get("workspace") or "", rel)
                 self._send(200 if text is not None else 400, {"path": rel, "text": text} if text is not None else {"error": err})
+            elif u.path == "/api/stepmesh":
+                if not sess.local:
+                    return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
+                full, _m, err = ws_mod.binary_file(sess.cfg.get("workspace") or "", (q.get("path") or [""])[0], "step")
+                if err:
+                    return self._send(400, {"error": err})
+                try:
+                    r = subprocess.run([sys.executable, "-I", os.path.join(os.path.dirname(os.path.abspath(__file__)), "stepmesh.py"), full], capture_output=True, timeout=90,
+                                       env=cq_backend.worker_env(), **cq_backend.NOWIN)
+                except subprocess.TimeoutExpired:
+                    return self._send(504, {"error": "the 3D conversion took too long"})
+                if r.returncode != 0 or not r.stdout.startswith(b"{"):
+                    return self._send(422, {"error": "this STEP file could not be converted for 3D"})
+                self._send(200, r.stdout)
             elif u.path in ("/api/raw", "/api/preview"):
                 if not sess.local:
                     return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
@@ -353,11 +385,31 @@ def make_handler(sess, token, hosts, data_dir):
                         return self._send(400, {"error": uerr})
                 ok = sess.send(text, planner, files, ups)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder", "/api/project"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
                 if u.path == "/api/quit":
                     sess.quit = True; self._send(200, {"ok": True}); return
+                if u.path in ("/api/reveal", "/api/open_file", "/api/open_cad"):
+                    rel = body.get("path") if isinstance(body, dict) else ""
+                    root = sess.cfg.get("workspace") or ""
+                    if rel in ("", "."):                                                    # the project folder itself
+                        full, err = (os.path.realpath(root), "") if root else (None, "no working folder is set")
+                    else:
+                        full, err = ws_mod.resolve(root, rel)
+                    if err or not full or not os.path.exists(full):
+                        return self._send(400, {"error": err or "no such file"})
+                    if u.path == "/api/reveal":
+                        r = viewers.reveal(full)
+                    elif os.path.isdir(full):
+                        return self._send(400, {"error": "that is a folder"})
+                    elif u.path == "/api/open_file":
+                        r = viewers.open_default(full)
+                    else:
+                        if os.path.splitext(full)[1].lower() not in (".step", ".stp"):
+                            return self._send(400, {"error": "only STEP files open in the CAD program"})
+                        r = viewers.open_file(full, sess.cfg)
+                    return self._send(200 if r.get("ok") else 500, r)
                 if u.path == "/api/project":
                     return self._send(*sess.set_project(body.get("path") if isinstance(body, dict) else ""))
                 if u.path == "/api/pick_folder":

@@ -4,7 +4,7 @@
   default     os.startfile / open / xdg-open (needs a program associated with .step; a fresh Windows PC usually has none)
   custom      your own command (no shell; `{file}` is replaced by the path, otherwise the path is appended)
 Local use only: the web layer refuses this when the app is reachable from other computers."""
-import glob, os, re, shlex, subprocess, sys
+import glob, os, re, shlex, shutil, subprocess, sys, urllib.parse
 
 KINDS = ("auto", "solidworks", "default", "custom")
 LABELS = {"auto": "SolidWorks / CAD", "solidworks": "SolidWorks", "default": "chương trình mặc định", "custom": "chương trình tự đặt"}
@@ -82,3 +82,41 @@ def open_file(path, cfg):
 def _spawn(argv):
     kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}      # detached: the viewer outlives this app
     subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+
+
+SAFE_OPEN = {".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".ini", ".cfg", ".toml", ".log", ".dxf", ".step", ".stp", ".iges", ".igs", ".png", ".jpg", ".jpeg",
+             ".gif", ".webp", ".bmp", ".pdf", ".stl", ".obj"}          # types that cannot run code when the default program opens them (no .py, .js, .html, .svg, .bat ...)
+
+
+def reveal(path):
+    """Show a file or folder in the system file manager (file selected where the OS supports it). -> {ok, detail}. Never raises."""
+    try:
+        if os.name == "nt":
+            _spawn(["explorer", "/select," + os.path.normpath(path)] if os.path.isfile(path) else ["explorer", os.path.normpath(path)])
+        elif sys.platform == "darwin":
+            _spawn(["open", "-R", path] if os.path.isfile(path) else ["open", path])
+        else:
+            if os.path.isfile(path) and shutil.which("dbus-send"):
+                r = subprocess.run(["dbus-send", "--session", "--print-reply", "--dest=org.freedesktop.FileManager1", "/org/freedesktop/FileManager1",
+                                    "org.freedesktop.FileManager1.ShowItems", "array:string:file://" + urllib.parse.quote(path), "string:"],
+                                   stdin=subprocess.DEVNULL, capture_output=True, timeout=5)
+                if r.returncode == 0:
+                    return {"ok": True, "detail": "shown in the file manager"}
+            _spawn(["xdg-open", os.path.dirname(path) if os.path.isfile(path) else path])
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"ok": False, "detail": "no file manager could be started: %s" % str(e)[:100]}
+    return {"ok": True, "detail": "shown in the file manager"}
+
+
+def open_default(path):
+    """Open a file with the program the OS associates with it. Only types in SAFE_OPEN. -> {ok, detail}."""
+    if os.path.splitext(path)[1].lower() not in SAFE_OPEN:
+        return {"ok": False, "detail": "this type of file is not opened from here (use Show in folder)"}
+    try:
+        if os.name == "nt":
+            os.startfile(path)                                                    # noqa: S606 - extension checked above
+        else:
+            _spawn(["open" if sys.platform == "darwin" else "xdg-open", path])
+    except OSError as e:
+        return {"ok": False, "detail": "no program is associated with this file: %s" % str(e)[:100]}
+    return {"ok": True, "detail": "opened"}
