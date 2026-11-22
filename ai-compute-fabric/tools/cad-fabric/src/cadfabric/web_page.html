@@ -68,6 +68,12 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 #sflist .opt{padding:7px 14px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px;overflow-wrap:anywhere}#sflist .opt:hover{background:var(--bg)}#sflist .opt.dim{opacity:.5;cursor:default}
 .sfhead{display:flex;gap:6px;align-items:center;padding:8px 14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}.sfhead b{font-size:13px;overflow-wrap:anywhere}
 #sfimg{display:block;max-width:100%;margin:10px auto;background:#fff;border:1px solid var(--line)}#sftext{margin:0;padding:10px 14px;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+#tabbar{display:flex;gap:2px;padding:6px 12px 0;border-bottom:1px solid var(--line);overflow-x:auto;background:var(--panel)}#tabbar[hidden]{display:none}
+#tabbar .tab{display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:13px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;cursor:pointer;white-space:nowrap;color:var(--mute)}
+#tabbar .tab.on{background:var(--bg);border-color:var(--line);color:var(--ink);margin-bottom:-1px}#tabbar .tab i{font-style:normal;opacity:.6;padding:0 2px}#tabbar .tab i:hover{opacity:1}
+#viewer{display:none;flex:1;min-height:0;flex-direction:column}.chat.viewing #viewer{display:flex}.chat.viewing #log,.chat.viewing .composer{display:none}
+#vbody{flex:1;overflow:auto}#vimg{display:block;max-width:100%;margin:16px auto;background:#fff;border:1px solid var(--line)}#vimg[hidden]{display:none}
+#vtext{margin:0;padding:14px 18px;font:13px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -83,7 +89,9 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 </header>
 <div class="layout">
  <div class="chat">
+  <div id="tabbar" hidden></div>
   <div id="log"><div class="col" id="col"></div></div>
+  <div id="viewer"><div class="sfhead"><b id="vname"></b><span class="sp"></span><button type="button" class="btn small" id="vatt">Đính kèm vào chat</button></div><div id="vbody"><img id="vimg" hidden alt=""><pre id="vtext"></pre></div></div>
   <div class="composer">
    <div class="box">
     <textarea id="text" rows="1" maxlength="8000" placeholder="Mô tả chi tiết cần tạo, hoặc yêu cầu chỉnh sửa chi tiết hiện tại…"></textarea>
@@ -97,8 +105,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button></div>
  <div id="pane_part"><div id="preview">chưa có chi tiết</div><table id="meas"></table>
   <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
- <div id="pane_files" hidden><div class="mute small" id="sfpath" style="padding:8px 14px"></div><div id="sflist"></div>
-  <div id="sfview" hidden><div class="sfhead"><b id="sfname"></b><span class="sp"></span><button type="button" class="btn small" id="sfatt">Đính kèm vào chat</button><button type="button" class="btn small" id="sfclose">✕</button></div><img id="sfimg" hidden alt=""><pre id="sftext"></pre></div></div></aside>
+ <div id="pane_files" hidden><div class="mute small" id="sfpath" style="padding:8px 14px"></div><div id="sflist"></div></div></aside>
 </div>
 
 <dialog id="pdlg"><div class="hbox">
@@ -313,11 +320,11 @@ async function openFiles(rel){fdir=rel||"";const {ok,d}=await api("/api/files"+(
   else{const on=att.includes(full);r.textContent=(on?"☑ ":(e.text?"☐ ":"· "))+e.name+"  ("+e.size+" B"+(e.text?"":", không phải văn bản")+")";if(e.text)r.onclick=()=>{if(att.includes(full))att=att.filter(x=>x!==full);else if(att.length<8)att.push(full);drawAtt();openFiles(fdir)};else r.style.opacity=".5"}
   L.appendChild(r)}
  if(!$("fdlg").open)$("fdlg").showModal()}
-let sfdir="",sffile="";
+let sfdir="";
 function showTab(t){const f=t==="files";$("pane_files").hidden=!f;$("pane_part").hidden=f;$("tabfiles").classList.toggle("on",f);$("tabpart").classList.toggle("on",!f);if(f)sfOpen(sfdir)}
 $("tabpart").onclick=()=>showTab("part");$("tabfiles").onclick=()=>showTab("files");
-function sfRefresh(){sfdir="";sffile="";if($("sfview"))$("sfview").hidden=true;if($("pane_files")&&!$("pane_files").hidden)sfOpen("")}
-async function sfOpen(rel){const L=$("sflist");L.replaceChildren();$("sfview").hidden=true;sffile="";
+function sfRefresh(){sfdir="";if(typeof closeAllTabs==="function"&&tabs.length)closeAllTabs();if($("pane_files")&&!$("pane_files").hidden)sfOpen("")}
+async function sfOpen(rel){const L=$("sflist");L.replaceChildren();
  if(!WS){$("sfpath").textContent="Chưa chọn dự án";const b=el("div","opt","📁 Chọn dự án…");b.onclick=()=>$("projbtn").click();L.appendChild(b);return}
  const {ok,d}=await api("/api/files"+(rel?"?path="+encodeURIComponent(rel):""));if(!ok){$("sfpath").textContent=d.error||"Không đọc được thư mục";return}
  sfdir=d.path;$("sfpath").textContent=(d.root||"")+"/"+d.path;
@@ -327,13 +334,22 @@ async function sfOpen(rel){const L=$("sflist");L.replaceChildren();$("sfview").h
   else{r.textContent=({text:"📄 ",image:"🖼 ",step:"🧊 "}[e.kind]||"· ")+e.name+"  ("+e.size+" B)";if(e.kind)r.onclick=()=>sfView(full,e.kind);else r.classList.add("dim")}
   L.appendChild(r)}
  if(!d.entries.length)L.appendChild(el("div","mute small","(thư mục trống)"));if(d.truncated)L.appendChild(el("div","mute small","(chỉ hiện 400 mục đầu)"))}
-async function sfView(rel,kind){const pic=$("sfimg");pic.hidden=true;pic.removeAttribute("src");$("sftext").hidden=false;$("sftext").textContent="";let text="";
- if(kind==="text"){const {ok,d}=await api("/api/file?path="+encodeURIComponent(rel));if(!ok){alert(d.error||"Không đọc được tệp");return}text=d.text}
- else{$("sftext").hidden=true;pic.alt=rel;pic.onerror=()=>{pic.hidden=true;$("sftext").hidden=false;$("sftext").textContent="Không xem trước được tệp này (quá lớn, hỏng hoặc không dựng được)."};
-  pic.src=(kind==="image"?"/api/raw?path=":"/api/preview?path=")+encodeURIComponent(rel);pic.hidden=false;if(kind==="step"){$("sftext").hidden=false;$("sftext").textContent="Đang dựng hình…";pic.onload=()=>{$("sftext").hidden=true}}}
- sffile=rel;$("sfname").textContent=rel;$("sftext").textContent=kind==="text"?text:$("sftext").textContent;$("sfview").hidden=false;$("sfatt").hidden=kind==="image";$("sfatt").textContent=att.includes(rel)?"Đã đính kèm":"Đính kèm vào chat";$("sfview").scrollIntoView({block:"nearest"})}
-$("sfclose").onclick=()=>{$("sfview").hidden=true;sffile=""};
-$("sfatt").onclick=()=>{if(!sffile||att.includes(sffile))return;if(att.length+ups.length>=8){alert("Tối đa 8 tệp đính kèm");return}att.push(sffile);drawAtt();$("sfatt").textContent="Đã đính kèm"};
+let tabs=[],curTab="chat";
+function drawTabs(){const bar=$("tabbar");bar.replaceChildren();bar.hidden=!tabs.length;if(!tabs.length)return;
+ const mk=(id,label,closable)=>{const t=el("span","tab"+(curTab===id?" on":""));t.appendChild(document.createTextNode(label));t.title=id;t.onclick=()=>activate(id);
+  if(closable){const x=el("i",0,"✕");x.title="Đóng tab";x.onclick=e=>{e.stopPropagation();closeTab(id)};t.appendChild(x)}bar.appendChild(t)};
+ mk("chat","💬 Trò chuyện",false);for(const t of tabs)mk(t.rel,({text:"📄 ",image:"🖼 ",step:"🧊 "}[t.kind]||"")+t.rel.split("/").pop(),true)}
+function closeTab(id){tabs=tabs.filter(t=>t.rel!==id);if(curTab===id)curTab=tabs.length?tabs[tabs.length-1].rel:"chat";activate(curTab)}
+async function activate(id){curTab=id;const chat=id==="chat"||!tabs.some(t=>t.rel===id);if(chat)curTab="chat";document.querySelector(".chat").classList.toggle("viewing",!chat);drawTabs();if(chat)return;
+ const t=tabs.find(x=>x.rel===id),pic=$("vimg"),tx=$("vtext");$("vname").textContent=t.rel;$("vatt").hidden=t.kind==="image";$("vatt").textContent=att.includes(t.rel)?"Đã đính kèm":"Đính kèm vào chat";
+ pic.hidden=true;pic.removeAttribute("src");tx.hidden=false;tx.textContent="";
+ if(t.kind==="text"){if(t.text===undefined){const {ok,d}=await api("/api/file?path="+encodeURIComponent(t.rel));t.text=ok?d.text:"Không đọc được tệp: "+(d.error||"")}if(curTab===id)tx.textContent=t.text;return}
+ pic.onerror=()=>{if(curTab!==id)return;pic.hidden=true;tx.hidden=false;tx.textContent="Không xem trước được tệp này (quá lớn, hỏng hoặc không dựng được)."};
+ pic.onload=()=>{if(curTab===id)tx.hidden=true};if(t.kind==="step")tx.textContent="Đang dựng hình…";else tx.hidden=true;
+ pic.src=(t.kind==="image"?"/api/raw?path=":"/api/preview?path=")+encodeURIComponent(t.rel);pic.hidden=false}
+function sfView(rel,kind){if(!tabs.some(t=>t.rel===rel))tabs.push({rel,kind});activate(rel)}
+function closeAllTabs(){tabs=[];curTab="chat";activate("chat")}
+$("vatt").onclick=()=>{const f=curTab;if(f==="chat"||att.includes(f))return;if(att.length+ups.length>=8){alert("Tối đa 8 tệp đính kèm");return}att.push(f);drawAtt();$("vatt").textContent="Đã đính kèm"};
 $("attbtn").onclick=()=>openFiles("");$("fclose").onclick=()=>$("fdlg").close();
 $("advchip").onclick=openSettings;let bcur="";
 async function browse(p){const {ok,d}=await api("/api/browse"+(p?"?path="+encodeURIComponent(p):""));if(!ok){alert(d.error||"không mở được thư mục");return}
