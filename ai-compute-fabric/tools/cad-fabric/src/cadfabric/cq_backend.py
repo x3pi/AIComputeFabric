@@ -72,7 +72,7 @@ class CadQueryBackend(Backend):
         if r.get("ok"):
             self.history.append(code)
         return ExecResult(ok=bool(r.get("ok")), output=r.get("output", ""), error=r.get("error", ""),
-                          measure=Measure(**r["measure"]) if r.get("measure") else None, changed=bool(r.get("changed")))
+                          measure=Measure(**r["measure"]) if r.get("measure") else None, changed=bool(r.get("changed")), delta=r.get("delta"))
 
     def measure(self):
         r = self._rpc({"op": "exec", "code": "pass"})

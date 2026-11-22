@@ -189,9 +189,12 @@ def sketch_outside(d, bb):
 
 PLAN_PROMPT = (
     "You are planning a CAD job that a smaller model will carry out through the tools listed below. Reply with ONE JSON object and nothing else:\n"
-    '{"steps": [{"do": "short imperative step naming the tool, the axis and the plane", "volume_after": "<formula or null>", "approx": false}], '
+    '{"readings": [{"quote": "exact words from the request", "meaning": "what they are geometrically: overall size, wall thickness, hole diameter, depth, position, ...", "step": 1}], '
+    '"steps": [{"do": "short imperative step naming the tool, the axis and the plane", "volume_after": "<formula or null>", "approx": false}], '
     '"final_bbox_size": ["<formula>", "<formula>", "<formula>"], "pitfalls": ["what commonly goes wrong with this request and how to check it"]}\n'
     "Rules:\n"
+    '- First fill "readings": cover EVERY quantity and every action phrase of the request, each pointing to the step that builds it. A number next to a word like wall or thickness is a thickness, never a hole diameter. '
+    "Words like hollow out, shell, cavity or open top mean removing the interior: that is its own step with its own volume formula. Never add a step the request does not ask for.\n"
     "- Do NOT do arithmetic yourself. `volume_after` is a FORMULA (a string) that the harness evaluates by code: the volume in mm3 of the WHOLE part after that step. "
     "Allowed: numbers, + - * / ** %, parentheses, pi, e, sqrt, sin, cos, tan, atan, radians, abs, min, max. Example: \"pi*20**2*50 - pi*17**2*47\".\n"
     "- Use null for steps that leave the solid unchanged (planes, sketches, views). Put a formula on every step that adds or removes material.\n"
@@ -200,3 +203,16 @@ PLAN_PROMPT = (
     "- final_bbox_size: formulas for the overall bounding-box size of the finished part, or null when the request does not determine it.\n"
     "- Prefer the simplest tool that does the job. The executor does not know the tools' geometry conventions, so say which axis or plane each step uses. "
     "Do not invent requirements.")
+
+
+def delta_text(d):
+    """One line for the model: where this cell took material away and where it added some (kernel-measured bounding boxes of those regions).
+    Lets the model check a cut against the request without guessing which axis or side it landed on."""
+    if not d:
+        return ""
+    parts = []
+    for key, word in (("removed", "REMOVED"), ("added", "ADDED")):
+        g = d.get(key)
+        if g:
+            parts.append("%s %.2f mm3 within x[%.2f..%.2f] y[%.2f..%.2f] z[%.2f..%.2f]" % (word, g["volume"], g["min"][0], g["max"][0], g["min"][1], g["max"][1], g["min"][2], g["max"][2]))
+    return ("CHANGE: " + "; ".join(parts) + " (bounding box of the region, axes are the world axes)") if parts else ""

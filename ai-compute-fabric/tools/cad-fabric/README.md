@@ -44,6 +44,10 @@ Tab **Tệp** ở panel phải liệt kê thư mục dự án; bấm một tệp
 - **Chống kẹt**: cùng một đoạn mã 3 lần liền, thể tích không đổi 5 cell liền, 5 cell lỗi liền, hoặc cùng một lỗi 3 lần (dù mã khác) thì Qwen được nhắc một lần; tới 6, 9 hoặc 10 thì lượt chạy kết thúc với lý do rõ ràng và nút **Tiếp tục** thay vì đốt hết số bước.
 - **Số bước linh hoạt**: ít nhất 14 bước, cộng 5 bước cho mỗi mốc trong kế hoạch của cố vấn (tối đa 120, `CADFABRIC_HARD_STEPS`); tin nhắn sửa tiếp có ít nhất 20 bước. Hết số bước thì bấm **Tiếp tục** để chạy thêm từ đúng chỗ đang dở.
 
+### Hỏi cố vấn khi kẹt
+
+Khi bạn chọn Codex, Claude hoặc một cố vấn CLI/API làm cố vấn, và Qwen bị kẹt (lặp mã, thể tích không đổi, lỗi liên tục) hoặc chi tiết cứ lệch kế hoạch, app tự gửi cho cố vấn một bản tóm tắt: đề bài, kế hoạch, 4 ô mã gần nhất kèm kết quả và số đo hiện tại. Cố vấn chẩn đoán nguyên nhân gốc (hiểu sai đề, cắt nhầm trục, kế hoạch sai) và nêu bước tiếp theo bằng văn bản. Lời khuyên hiện thành thẻ "Cố vấn xem lại" và được đưa cho Qwen như gợi ý để tự kiểm lại trên chi tiết thật. Tối đa 2 lần mỗi lượt, cách nhau ít nhất 3 bước. Không chọn cố vấn thì không gửi gì ra ngoài. Cố vấn bên ngoài nhận thêm mã và số đo của lượt đó, nên vẫn nằm trong xác nhận "gửi ra ngoài" đã hỏi khi bạn chọn cố vấn.
+
 ### Hỏi "có skill gì?"
 
 Hỏi trong chat "bạn có skill gì?" hoặc "liệt kê skill": CadFabric tự trả lời từ kho skill và bài học (skill dùng được, skill chỉ gọi bằng `$tên`, skill chờ duyệt, số bài học), không qua Qwen nên không bịa. Hỏi "**cố vấn** có skill gì?", "Codex có skill gì?" hoặc "Claude có skill gì?": cố vấn **đang chọn** ở ô Cố vấn được hỏi bằng một câu cố định (không gửi gì của dự án) và liệt kê skill của chính nó (Codex liệt kê skill của Codex, Claude liệt kê skill của Claude); với Claude CLI, app chỉ bật công cụ `Skill` cho câu hỏi này. Nếu nêu tên một cố vấn khác với cố vấn đang chọn thì không gọi, và câu trả lời bảo chọn cố vấn đó trước (tránh gửi dữ liệu tới dịch vụ chưa xác nhận). Cố vấn API không có skill; Qwen làm cố vấn thì chưa có cố vấn bên ngoài để hỏi.

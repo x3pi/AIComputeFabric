@@ -102,6 +102,21 @@ def measure(shape):
             "solids": len(shape.Solids()), "valid": bool(shape.isValid())}
 
 
+def _region(sh):
+    if sh is None or sh.isNull() or sh.Volume() < 1e-6:
+        return None
+    bb = sh.BoundingBox()
+    return {"volume": round(float(sh.Volume()), 3), "min": [round(bb.xmin, 3), round(bb.ymin, 3), round(bb.zmin, 3)], "max": [round(bb.xmax, 3), round(bb.ymax, 3), round(bb.zmax, 3)]}
+
+
+def delta(before, after):
+    """What this cell removed from / added to the part, as regions measured by the kernel. Lets the model SEE where a cut or a feature actually landed."""
+    try:
+        return {"removed": _region(before.cut(after)), "added": _region(after.cut(before))}
+    except BaseException:                                # noqa: BLE001 - a failed boolean must never break the cell
+        return None
+
+
 def run(code):
     bad = check(code)
     if bad:
@@ -118,10 +133,14 @@ def run(code):
         line = next((f for f in reversed(tb) if f.filename == "<cell>"), None)
         where = " (line %d: %s)" % (line.lineno, (line.line or code.splitlines()[line.lineno - 1] if line and line.lineno <= len(code.splitlines()) else "").strip()[:160]) if line else ""
         return {"ok": False, "error": "%s: %s%s" % (type(e).__name__, str(e)[:400], where), "output": out.getvalue()[-2000:]}
+    prev = as_shape(STATE["part"]) if STATE["part"] is not None else None
     part = pick_part(before)
     if part is not None:
         STATE["part"] = part
-    return {"ok": True, "output": out.getvalue()[-2000:], "changed": part is not None}
+    r = {"ok": True, "output": out.getvalue()[-2000:], "changed": part is not None}
+    if part is not None and prev is not None and as_shape(part) is not None and os.environ.get("CADFABRIC_NO_DELTA") != "1":
+        r["delta"] = delta(prev, as_shape(part))
+    return r
 
 
 def handle(req):

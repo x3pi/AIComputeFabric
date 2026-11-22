@@ -3,7 +3,7 @@ The executor model never sees the plan's arithmetic as its own: the harness eval
 import json, os, re, time
 from . import verifier as V
 from . import planners, workspace as ws_mod
-from . import ledger as ledger_mod
+from . import ledger as ledger_mod, consult as consult_mod
 
 MAX_STEPS = int(os.environ.get("CADFABRIC_MAX_STEPS", "14"))
 GATE_MAX = 2
@@ -86,7 +86,7 @@ def _ws_call(name, args, root, backend, ev):
 WS_NAMES = ("list_files", "read_file", "search_files", "save_step")
 
 
-def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None, workspace=None, attachments="", lessons="", skill_catalog="", skill_reader=None, lesson_reader=None, ledger=None, max_steps=None):
+def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None, workspace=None, attachments="", lessons="", skill_catalog="", skill_reader=None, lesson_reader=None, ledger=None, max_steps=None):
     """-> dict: ok, final text, final measure, steps, checks, warnings, plan. plan_mode: off | nothink | think | codex | codex-relay. `planner(request)->(spec, raw)` overrides."""
     t0 = time.time()
     ev = on_event or (lambda kind, **kw: None)         # structured events for a UI: plan, cell, gate
@@ -125,7 +125,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
         budget = max(MAX_STEPS, 20)
     else:
         budget = min(HARD_STEPS, max(MAX_STEPS, 10 + 5 * (len(spec["milestones"]) if spec else 0)))
-    run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
+    run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); n_consult = 0; consult_step = -99; warns_at_consult = 0; ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
     for step in range(budget):
         if should_stop and should_stop():
             stopped = True
@@ -170,6 +170,9 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                 text = ("OK" if res.ok else "ERROR: " + res.error) + ("\nprinted: " + res.output.strip() if res.output.strip() else "")
                 if res.measure:
                     text += "\nMEASURE: " + res.measure.text()
+                    dt = "" if os.environ.get("CADFABRIC_NO_DELTA") == "1" else V.delta_text(res.delta)
+                    if dt:
+                        text += "\n" + dt
                 if res.ok and res.measure and tracker:
                     obs = tracker.observe("execute", res.measure.volume, feature=bool(V.FEATURE.search(str(args.get("code", "")))))
                     if obs:
@@ -188,7 +191,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                                     "(recall('words') shows how earlier steps dealt with it)." % res.error.strip().splitlines()[-1][:160])
                 if vol is not None:
                     last_vol = vol
-                trace.append({"tool": name, "ok": res.ok, "vol": res.measure.volume if res.measure else None, "err": res.error[:200]})
+                trace.append({"tool": name, "ok": res.ok, "vol": res.measure.volume if res.measure else None, "err": res.error[:200], "code": str(args.get("code", ""))[:700]})
                 log("  step %d: %s%s" % (len(trace), "ok" if res.ok else "ERROR " + res.error[:100], "  volume %.2f mm3" % res.measure.volume if res.measure else ""))
                 chk = text[text.index("HARNESS CHECK"):][:300].replace("\n", " ") if "HARNESS CHECK" in text else ""
                 if chk:
@@ -235,6 +238,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
             msgs.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": text[:(20000 if name in WS_NAMES or name == "use_skill" else 4000)]})
         if err_note:
             msgs.append({"role": "user", "content": err_note}); trace.append({"gate": err_note}); ev("gate", text=err_note[:400]); err_note = ""
+        why = ""
         for kind in ("repeat", "same_volume", "failing"):                       # progress guard: tell the model once, then end the run instead of burning steps
             if run[kind] >= STOP[kind]:
                 stuck = (STUCK_TEXT[kind] % run[kind]) + "; the run was ended"
@@ -244,13 +248,29 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
                 nudged.add(kind)
                 note = ("PROGRESS CHECK: " + STUCK_TEXT[kind] % run[kind] + ". Stop repeating it. Re-read the request, list which features are still missing, and try a different approach "
                         "(recall('words') searches your earlier steps). If you cannot, say so plainly in your answer.")
-                msgs.append({"role": "user", "content": note}); trace.append({"gate": note}); ev("gate", text=note[:400])
+                msgs.append({"role": "user", "content": note}); trace.append({"gate": note}); ev("gate", text=note[:400]); why = why or STUCK_TEXT[kind] % run[kind]
+        if not stuck and not why and warns - warns_at_consult >= 2:
+            why = "the part keeps disagreeing with the plan's checks (%d warnings)" % (warns - warns_at_consult)
+        nsteps = len([t for t in trace if t.get("tool")])
+        if why and not stuck and n_consult < consult_mod.MAX_PER_RUN and nsteps - consult_step >= consult_mod.COOLDOWN and (consult or consult_mod.possible(cfg or getattr(llm, "cfg", None) or {}, plan_mode)):
+            n_consult += 1; consult_step = nsteps; warns_at_consult = warns
+            ev("phase", what="consult", mode=plan_mode)
+            mm1 = backend.measure()
+            prompt = consult_mod.digest(request, V.describe(spec) if spec else "", trace, mm1.text() if mm1 else "", why)
+            t1 = time.time()
+            reply, cerr = consult(prompt) if consult else consult_mod.ask(cfg or getattr(llm, "cfg", None) or {}, plan_mode, prompt)
+            reply = (reply or "").strip()[:consult_mod.REPLY_MAX]
+            if reply and not cerr:
+                msgs.append({"role": "user", "content": "ADVISOR REVIEW (a more capable advisor looked at your work; it is advice, verify it on the real part and follow the request, not the review):\n" + reply})
+                trace.append({"gate": "advisor review"}); ev("consult", text=reply, sec=round(time.time() - t1, 1), why=why, n=n_consult)
+            else:
+                ev("consult", text="", error=str(cerr or "empty reply")[:200], sec=round(time.time() - t1, 1), why=why, n=n_consult)
         if stuck:
             break
     mm = backend.measure()
     return {"final": final, "measure": mm.as_dict() if mm else None, "steps": len([t for t in trace if t.get("tool")]), "warnings": warns, "gates": gates,
             "checks": tracker.checks if tracker else 0, "plan": spec["milestones"] if spec else None, "plan_raw": raw_plan[:1500], "trace": trace, "tokens": tokens,
-            "sec": round(time.time() - t0, 1), "ended_by_limit": not final and not stopped and not stuck, "stopped": stopped, "stuck": stuck, "budget": budget, "ctx_tokens": ctx_tokens, "history": msgs}
+            "sec": round(time.time() - t0, 1), "ended_by_limit": not final and not stopped and not stuck, "stopped": stopped, "stuck": stuck, "budget": budget, "consults": n_consult, "ctx_tokens": ctx_tokens, "history": msgs}
 
 
 def _vb(backend):

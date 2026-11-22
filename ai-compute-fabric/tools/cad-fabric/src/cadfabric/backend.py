@@ -32,6 +32,7 @@ class ExecResult:
     output: str = ""              # what the code printed
     error: str = ""               # short error text (exception type + message + the offending line)
     measure: Measure = None       # of the part after this cell (None if there is no part yet)
+    delta: dict = None            # what the cell removed/added, as kernel-measured regions {removed:{volume,min,max}|None, added:...}
     changed: bool = False         # the part differs from before this cell (new/modified shape)
 
 

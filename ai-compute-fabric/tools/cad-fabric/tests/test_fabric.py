@@ -1184,6 +1184,21 @@ class LongRun(unittest.TestCase):
         self.assertEqual([k for k, _ in ev].count("stuck"), 1); self.assertTrue(any(k == "gate" and "PROGRESS CHECK" in x["text"] for k, x in ev))                   # told once, then ended
         self.assertTrue(any("PROGRESS CHECK" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
 
+    def test_stuck_run_asks_the_advisor_and_the_advice_reaches_the_model(self):
+        asked = []
+        def adv(prompt): asked.append(prompt); return "DIAGNOSIS: the cup was never hollowed.\nNEXT: shell the top face first.", ""
+        r, ev, llm = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40, consult=adv, request="make the box")
+        self.assertEqual(len(asked), 1); self.assertEqual(r["consults"], 1)                                                    # once per kind of trouble, not every step
+        self.assertIn("make the box", asked[0]); self.assertIn("box(", asked[0]); self.assertIn("LAST CELLS", asked[0]); self.assertIn("same code", asked[0])
+        self.assertTrue(any("ADVISOR REVIEW" in str(m.get("content")) and "shell the top face" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
+        c = [x for k, x in ev if k == "consult"]; self.assertEqual((len(c), bool(c[0]["text"]), c[0]["n"]), (1, True, 1))
+
+    def test_advisor_failure_never_breaks_the_run_and_off_means_no_calls(self):
+        r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40, consult=lambda p: ("", "exit 1: not logged in"), request="make the box")
+        self.assertTrue(r["stuck"]); c = [x for k, x in ev if k == "consult"]; self.assertTrue(c and c[0]["error"] and not c[0]["text"])
+        self.assertFalse(any("ADVISOR REVIEW" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
+        r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40); self.assertEqual(r["consults"], 0); self.assertFalse([1 for k, _ in ev if k == "consult"])   # no advisor chosen: nothing is sent
+
     def test_unchanged_volume_and_failing_cells_are_caught(self):
         same = [[("execute_cadquery", {"code": self.BOX.replace("10, 10, 10", "10, 10, 10") + "  # variant %d" % i})] for i in range(30)]
         r, _, _ = self.run_agent(same, max_steps=40); self.assertIn("did not change", r["stuck"]); self.assertEqual(r["steps"], 9)
@@ -1329,6 +1344,19 @@ class ShapeCheck(unittest.TestCase):
         code = "from cadfabric import cli\ntry:\n    cli.main(['--version'])\nexcept SystemExit:\n    pass\nprint('\\u0110 \\u1ed1ng')"
         r = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr[-300:]); self.assertIn("ống".encode("utf-8"), r.stdout)
+
+    def test_cell_reports_where_material_was_removed_or_added(self):
+        from cadfabric import verifier as V
+        b = CadQueryBackend(timeout=30)
+        try:
+            b.execute("import cadquery as cq\nresult = cq.Workplane('XY').circle(10).extrude(50)")
+            r = b.execute("result = result.cut(cq.Workplane('XY').box(6, 3, 20, centered=(True, False, False)).translate((0, 7, 30)))")
+            g = r.delta["removed"]; self.assertAlmostEqual(g["volume"], 341.75, delta=0.1); self.assertEqual((g["min"][1], g["max"][2]), (7.0, 50.0)); self.assertIsNone(r.delta["added"])
+            self.assertIn("REMOVED", V.delta_text(r.delta)); self.assertIn("y[7.00..10.00]", V.delta_text(r.delta))
+            r = b.execute("result = result.union(cq.Workplane('XY').box(4, 4, 4).translate((0, 0, 60)))"); self.assertAlmostEqual(r.delta["added"]["volume"], 64.0, delta=0.01); self.assertIsNone(r.delta["removed"])
+            r = b.execute("print('no change')"); self.assertEqual(V.delta_text(r.delta), ""); self.assertEqual(V.delta_text(None), "")
+        finally: b.close()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
