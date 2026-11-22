@@ -88,6 +88,9 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 *{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--mute) 45%,transparent) transparent}
 ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--mute) 40%,transparent);border-radius:8px;border:2px solid transparent;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--mute) 70%,transparent);background-clip:content-box}::-webkit-scrollbar-corner{background:transparent}
 #fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:200}#fx[hidden]{display:none}
+.les{padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px;display:flex;flex-direction:column;gap:5px}.les b{font-size:13.5px}.les .why{color:var(--mute);font-size:12px}.les .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:3px}
+.les .tag{font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--mute);margin-left:6px}.lh{padding:8px 14px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);background:var(--bg);border-bottom:1px solid var(--line)}
+#tablessons .bd{background:var(--accent);color:#fff;border-radius:9px;padding:0 6px;margin-left:5px;font-size:11px}
 </style>
 <link rel="stylesheet" href="/static/vendor/hljs-light.css" media="(prefers-color-scheme: light)"><link rel="stylesheet" href="/static/vendor/hljs-dark.css" media="(prefers-color-scheme: dark)">
 </head>
@@ -100,7 +103,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <button class="btn small" id="histbtn" title="Các chi tiết đã thiết kế">Lịch sử</button>
  <button class="btn small" id="newbtn">Chi tiết mới</button>
  <button class="btn small" id="setbtn">Cài đặt</button>
- <button class="btn small" id="quitbtn" title="Tắt ứng dụng" hidden>Thoát</button>
+ <button class="btn small" id="quitbtn" title="Tắt ứng dụng (đóng tab trình duyệt không tắt ứng dụng)" hidden>Thoát</button>
 </header>
 <div class="layout">
  <div class="chat">
@@ -118,11 +121,21 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
    <div class="hint" id="hint">Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /stop dừng</div>
   </div>
  </div>
- <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button></div>
+ <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button><button type="button" id="tablessons">Bài học</button></div>
  <div id="pane_part"><div id="preview">chưa có chi tiết</div><table id="meas"></table>
   <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
+ <div id="pane_lessons" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="lreflect">Rút bài học từ cuộc này</button><button type="button" class="btn small" id="ladd">+ Thêm</button></div>
+  <div class="mute small" id="lnote" style="padding:0 14px 8px"></div><div id="llist"></div></div>
  <div id="pane_files" hidden><div class="mute small" id="sfpath" style="padding:8px 14px"></div><div id="sflist"></div></div></aside>
 </div>
+
+<dialog id="ldlg"><div class="hbox"><h2 id="ldt">Bài học</h2>
+ <label class="f">Tiêu đề (ngắn)<input id="l_title" maxlength="70"></label>
+ <label class="f">Quy tắc chung (không ghi kích thước, tên chi tiết hay số liệu của một bài cụ thể)<textarea id="l_rule" rows="3" maxlength="280"></textarea></label>
+ <label class="f">Áp dụng khi nào<input id="l_when" maxlength="140"></label>
+ <label class="f" id="l_scopew">Phạm vi<select id="l_scope"><option value="project">Chỉ dự án này</option><option value="global">Mọi dự án</option></select></label>
+ <div class="small det no" id="l_err"></div>
+ <div class="row"><button type="button" class="btn" id="l_cancel">Huỷ</button><button type="button" class="btn primary" id="l_save">Lưu</button></div></div></dialog>
 
 <dialog id="pdlg"><div class="hbox">
  <h2>Dự án (thư mục làm việc)</h2><div class="mute small" id="pcur"></div>
@@ -161,6 +174,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <label class="f">Mở chi tiết xem trong (nút "Mở trong CAD", lệnh /open, hoặc nhờ trong chat: "mở bằng SolidWorks cho tôi xem")
   <select id="v_kind"><option value="auto">Tự động: SolidWorks nếu có, không thì chương trình mặc định</option><option value="solidworks">SolidWorks</option><option value="default">Chương trình mặc định của hệ điều hành cho .step</option><option value="blender">Blender (chuyển STEP sang STL rồi nhập vào cảnh mới)</option><option value="custom">Lệnh tự đặt…</option></select></label>
  <div class="small det" id="v_det"></div>
+ <label class="chk"><input type="checkbox" id="s_lauto"><span>Tự đề xuất bài học sau cuộc trò chuyện có lỗi hoặc cảnh báo (thêm một lượt gọi Qwen; bài học vẫn phải chờ bạn duyệt)</span></label>
  <label class="f" id="v_cmdw" hidden>Lệnh ({file} = đường dẫn STEP; nếu không có {file} thì đường dẫn được thêm vào cuối)<input id="v_cmd" autocomplete="off" placeholder='ví dụ: "C:\\Program Files\\FreeCAD\\bin\\FreeCAD.exe"'></label>
  <div class="adv" id="adv"></div>
  <button type="button" class="btn small" id="addadv" style="align-self:flex-start">+ Thêm cố vấn (URL API hoặc CLI)</button>
@@ -233,6 +247,8 @@ function render(ev){if(ev.kind==="phase"){phase={what:ev.what,step:ev.step,t0:Da
   if(ev.check)put(el("div","chk","⚠ "+ev.check))}
  else if(ev.kind==="gate")put(el("div","chk","⚠ Cổng kiểm cuối chặn: "+ev.text))
  else if(ev.kind==="final"){const f=md(ev.text);f.appendChild(el("div","foot",ev.steps+" bước · "+ev.sec+" s"+(ev.warnings?" · "+ev.warnings+" cảnh báo kiểm tra":"")+(ev.gates?" · "+ev.gates+" lần cổng kiểm cuối chặn":"")));put(f)}
+ else if(ev.kind==="lessons"){if(ev.added){const c=el("div","chk ok","💡 Đã rút "+ev.added+" bài học mới từ cuộc này — chờ bạn duyệt ở tab Bài học");c.style.cursor="pointer";c.onclick=()=>showTab("lessons");put(c)}loadLessons()}
+ else if(ev.kind==="lessons_used"){put(el("div","chk ok","📚 Đã áp dụng "+ev.n+" bài học đã duyệt"))}
  else if(ev.kind==="file"){if(ev.op==="saved"&&$("pane_files")&&!$("pane_files").hidden)setTimeout(()=>sfOpen(sfdir),300);put(el("div","chk ok",ev.op==="saved"?"✓ Đã lưu "+ev.path+" vào thư mục làm việc":"📄 Đã đọc "+ev.path))}
  else if(ev.kind==="open")put(el("div","chk"+(ev.ok?" ok":" bad"),(ev.ok?"✓ Đã gửi tới "+ev.viewer+(ev.path?" — "+ev.path:""):"✗ Không mở được: "+ev.detail)))
  else if(ev.kind==="error")put(el("div","err","Lỗi: "+ev.text))}
@@ -336,11 +352,11 @@ $("v_kind").onchange=viewerSync;
 function setViewerLabel(l){$("openbtn").textContent="Mở trong "+l}
 async function openViewer(){$("openst").textContent="đang mở…";const r=await api("/api/open",{});$("openst").textContent=r.ok?((r.d.ok?"✓ ":"✗ ")+r.d.detail+(r.d.path?" — "+r.d.path:"")):("✗ "+(r.d.error||r.status))}
 $("openbtn").onclick=openViewer;
-function loadSettings(s){$("w_dir").value=s.workspace||"";setWs(s.workspace||"");const vw=s.viewer||{};$("v_kind").value=vw.kind||"auto";$("v_cmd").value=vw.command||"";VW=s.viewers_detected||VW;viewerSync();setViewerLabel(s.viewer_label||"CAD");cfgd=cfgd||{};cfgd.configured=s.configured;$("s_url").value=s.url;$("s_model").value=s.model;$("s_key").value="";$("keystate").textContent=s.has_key?"(đã lưu một khoá)":"(chưa có khoá)";
+function loadSettings(s){$("s_lauto").checked=s.lessons_auto!==false;$("w_dir").value=s.workspace||"";setWs(s.workspace||"");const vw=s.viewer||{};$("v_kind").value=vw.kind||"auto";$("v_cmd").value=vw.command||"";VW=s.viewers_detected||VW;viewerSync();setViewerLabel(s.viewer_label||"CAD");cfgd=cfgd||{};cfgd.configured=s.configured;$("s_url").value=s.url;$("s_model").value=s.model;$("s_key").value="";$("keystate").textContent=s.has_key?"(đã lưu một khoá)":"(chưa có khoá)";
  const r=s.relay||{};$("r_host").value=r.host||"";$("r_dir").value=r.workdir||"";$("r_codex").value=r.codex||"codex";$("cfgpath").textContent="Lưu tại: "+s.config_path;advKeys={};$("advform").hidden=true;setAdvisors(s.advisors);pick(s.planner)}
 function form(){const p=(document.querySelector("#adv input:checked")||{}).value;
  const strip=a=>{const o={};for(const k of["id","label","type","external","kind","url","model","effort","preset","command","web"])if(a[k]!==undefined&&a[k]!=="")o[k]=a[k];return o};
- return{url:$("s_url").value.trim(),model:$("s_model").value.trim(),key:$("s_key").value,planner:p,relay:{host:$("r_host").value.trim(),workdir:$("r_dir").value.trim(),codex:$("r_codex").value.trim()||"codex"},advisors:custom.map(strip),advisor_keys:advKeys,viewer:{kind:$("v_kind").value,command:$("v_cmd").value.trim()}}}
+ return{url:$("s_url").value.trim(),model:$("s_model").value.trim(),key:$("s_key").value,planner:p,relay:{host:$("r_host").value.trim(),workdir:$("r_dir").value.trim(),codex:$("r_codex").value.trim()||"codex"},lessons_auto:$("s_lauto").checked,advisors:custom.map(strip),advisor_keys:advKeys,viewer:{kind:$("v_kind").value,command:$("v_cmd").value.trim()}}}
 function chip(){const sel=$("planner"),o=sel.options[sel.selectedIndex];$("advchip").textContent="Cố vấn: "+(o?o.textContent:"—")}
 function openSettings(){$("tst").textContent="";$("dlg").showModal()}
 let hall=false;
@@ -367,8 +383,29 @@ async function openFiles(rel){fdir=rel||"";const {ok,d}=await api("/api/files"+(
   L.appendChild(r)}
  if(!$("fdlg").open)$("fdlg").showModal()}
 let sfdir="";
-function showTab(t){const f=t==="files";$("pane_files").hidden=!f;$("pane_part").hidden=f;$("tabfiles").classList.toggle("on",f);$("tabpart").classList.toggle("on",!f);if(f)sfOpen(sfdir)}
-$("tabpart").onclick=()=>showTab("part");$("tabfiles").onclick=()=>showTab("files");
+function showTab(t){$("pane_files").hidden=t!=="files";$("pane_part").hidden=t!=="part";$("pane_lessons").hidden=t!=="lessons";for(const k of ["part","files","lessons"])$("tab"+k).classList.toggle("on",k===t);if(t==="files")sfOpen(sfdir);if(t==="lessons")loadLessons()}
+$("tabpart").onclick=()=>showTab("part");$("tabfiles").onclick=()=>showTab("files");$("tablessons").onclick=()=>showTab("lessons");
+/* ---- lessons: general practices rolled out of finished work, used only after approval ---- */
+let LES=[],lesEdit=null;
+async function loadLessons(){const {ok,d}=await api("/api/lessons");if(!ok)return;LES=d.lessons||[];drawLessons(d)}
+function lessonBadge(){const n=LES.filter(x=>x.status==="pending").length;const t=$("tablessons");t.textContent="Bài học";if(n){const b=el("span","bd",String(n));t.appendChild(b)}}
+function drawLessons(d){lessonBadge();const L=$("llist");L.replaceChildren();$("lnote").textContent=(d&&d.reflecting?"Đang rút bài học… ":"")+"Chỉ bài học đã duyệt mới được đưa cho Qwen, và chỉ ở cuộc trò chuyện mới. Bài học là quy tắc chung, không chứa kích thước hay số liệu của một bài cụ thể.";
+ const groups=[["pending","Chờ bạn duyệt"],["approved","Đã duyệt (đang dùng)"],["rejected","Đã bỏ"]];
+ for(const [st,label] of groups){const xs=LES.filter(x=>x.status===st);if(!xs.length)continue;L.appendChild(el("div","lh",label+" · "+xs.length));
+  for(const x of xs){const c=el("div","les");const h=el("b",0,x.title);h.appendChild(el("span","tag",x.scope==="global"?"mọi dự án":"dự án này"));c.appendChild(h);c.appendChild(el("div",0,x.rule));
+   if(x.when)c.appendChild(el("div","why","Khi nào: "+x.when));if(x.evidence)c.appendChild(el("div","why","Từ: "+x.evidence));if(x.uses)c.appendChild(el("div","why","Đã dùng "+x.uses+" lần"));
+   const a=el("div","acts");const mk=(t,fn,cls)=>{const b=el("button","btn small"+(cls?" "+cls:""),t);b.type="button";b.onclick=fn;a.appendChild(b)};
+   if(st!=="approved")mk("Duyệt",()=>lessonOp("approve",x.id),"primary");if(st==="pending")mk("Bỏ",()=>lessonOp("reject",x.id));if(st==="approved")mk("Tạm dừng",()=>lessonOp("pending",x.id));if(st==="rejected")mk("Đưa lại",()=>lessonOp("pending",x.id));
+   mk("Sửa",()=>openLessonForm(x));mk(x.scope==="global"?"Chỉ dự án này":"Dùng mọi dự án",()=>lessonOp("scope",x.id,{scope:x.scope==="global"?"project":"global"}));mk("Xoá",()=>{if(confirm("Xoá bài học này?"))lessonOp("delete",x.id)});
+   c.appendChild(a);L.appendChild(c)}}
+ if(!LES.length)L.appendChild(el("div","mute small","Chưa có bài học nào. Sau một cuộc trò chuyện có lỗi hoặc cảnh báo app tự đề xuất; hoặc bấm “Rút bài học từ cuộc này”."));L.lastChild&&0}
+async function lessonOp(op,id,extra){const r=await api("/api/lessons",Object.assign({op,id},extra||{}));if(!r.ok&&r.d.error)toast(r.d.error);loadLessons()}
+function openLessonForm(x){lesEdit=x||null;$("ldt").textContent=x?"Sửa bài học (sửa xong phải duyệt lại)":"Thêm bài học";$("l_title").value=x?x.title:"";$("l_rule").value=x?x.rule:"";$("l_when").value=x?x.when||"":"";$("l_err").textContent="";$("l_scopew").hidden=!!x;$("l_scope").value=WS?"project":"global";$("l_scope").querySelector("option[value=project]").disabled=!WS;$("ldlg").showModal()}
+$("ladd").onclick=()=>openLessonForm(null);$("l_cancel").onclick=()=>$("ldlg").close();
+$("l_save").onclick=async()=>{const body={title:$("l_title").value.trim(),rule:$("l_rule").value.trim(),when:$("l_when").value.trim()};const r=lesEdit?await api("/api/lessons",Object.assign({op:"edit",id:lesEdit.id},body)):await api("/api/lessons",Object.assign({op:"add",scope:$("l_scope").value},body));
+ if(!r.ok){$("l_err").textContent="Không lưu được: "+(r.d.error||r.status);return}$("ldlg").close();loadLessons()};
+$("lreflect").onclick=async()=>{if(busy){toast("Đợi lượt hiện tại xong");return}$("lreflect").disabled=true;$("lnote").textContent="Đang rút bài học… (vài chục giây)";const r=await api("/api/lessons",{op:"reflect"});$("lreflect").disabled=false;
+ toast(r.ok?(r.d.added?"Đã rút "+r.d.added+" bài học mới, chờ bạn duyệt":"Không có bài học mới đáng giữ"+(r.d.skipped&&r.d.skipped.length?" ("+r.d.skipped.length+" ý bị loại vì quá cụ thể hoặc trùng)":"")):(r.d.error||"Không rút được"));loadLessons()};
 function sfRefresh(){sfdir="";if(typeof closeAllTabs==="function"&&tabs.length)closeAllTabs();if($("pane_files")&&!$("pane_files").hidden)sfOpen("")}
 async function sfOpen(rel){const L=$("sflist");L.replaceChildren();
  if(!WS){$("sfpath").textContent="Chưa chọn dự án";const b=el("div","opt","📁 Chọn dự án…");b.onclick=()=>$("projbtn").click();L.appendChild(b);return}
@@ -495,7 +532,7 @@ $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=a
 $("sf").onsubmit=async e=>{e.preventDefault();const r=await api("/api/settings",form());if(!r.ok){$("tst").textContent="✗ "+(r.d.error||r.status);return}
  DET=DET;loadSettings(r.d.settings);$("planner").value=r.d.settings.planner;chip();$("dlg").close();if(!col().querySelector(".user"))hero(false),hero(true)};
 $("quitbtn").onclick=async()=>{if(confirm("Tắt ứng dụng CadFabric?")){await api("/api/quit",{});document.body.textContent="Đã tắt CadFabric. Bạn có thể đóng tab này."}};
-(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;RECENT=d.recent||[];$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local;window.PICKER=!!d.picker;setWs(d.settings.workspace||"");
+(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;RECENT=d.recent||[];loadLessons();$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local||!!d.picker;window.PICKER=!!d.picker;setWs(d.settings.workspace||"");
  DET=d.cli_detected||{};PRESETS=d.cli_presets||{};loadSettings(d.settings);$("planner").value=d.default;chip();
  if(!local){$("localnote").textContent="Đang truy cập từ xa: không sửa được cài đặt (chỉ sửa được trên máy chạy ứng dụng).";document.querySelectorAll("#dlg input,#tbtn,#sbtn").forEach(x=>x.disabled=true)}
  hero(true);poll();setInterval(poll,800);if(!d.settings.configured&&local)setTimeout(openSettings,300)})();

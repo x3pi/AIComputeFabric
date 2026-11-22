@@ -910,6 +910,79 @@ class WorkspaceWeb(Settings):
         self.assertEqual(self.req("POST", "/api/history/clear", {})[1]["deleted"], 1); self.assertEqual(titles("/api/history?all=1"), ["in B", "legacy"])   # only this project's
         self.assertEqual(self.req("POST", "/api/history/clear", {"all": True})[1]["deleted"], 2)
 
+    def test_lessons_endpoints_approval_and_scope(self):
+        from cadfabric import lessons as LS
+        sess = self.srv.sess; ws = os.path.join(self.dir, "lp"); os.makedirs(ws); self.assertEqual(self.req("POST", "/api/project", {"path": ""})[0], 200); self.assertEqual(self.req("POST", "/api/project", {"path": ws})[0], 200)
+        dd = self.web.config.data_dir(sess.cfg); open(os.path.join(dd, "lessons.json"), "w").write("{}")
+        post = lambda body: self.req("POST", "/api/lessons", body)
+        s, d = post({"op": "add", "title": "Cut holes through", "rule": "Make the cutting tool longer than the part so a hole passes all the way through.", "when": "any through hole", "scope": "project"}); self.assertEqual((s, d["ok"]), (200, True))
+        s, d = post({"op": "add", "title": "Bad example lesson", "rule": "Drill the 8 mm holes on the 70 mm circle", "scope": "project"}); self.assertEqual(s, 400); self.assertIn("too specific", d["error"])
+        lid = self.req("GET", "/api/lessons")[1]["lessons"][0]["id"]
+        self.assertEqual(self.req("GET", "/api/lessons")[1]["lessons"][0]["status"], "approved")                                        # the user's own lesson is approved at once
+        self.assertEqual(post({"op": "edit", "id": lid, "rule": "Use 12 mm everywhere"})[0], 400)                                       # an edit is checked too
+        s, d = post({"op": "edit", "id": lid, "title": "Cut holes through the solid"}); self.assertEqual((s, d["lesson"]["status"]), (200, "pending"))     # changed text -> approve again
+        self.assertEqual(post({"op": "approve", "id": lid})[0], 200); self.assertEqual(post({"op": "scope", "id": lid, "scope": "global"})[0], 200)
+        self.assertEqual(self.req("POST", "/api/project", {"path": ""})[0], 200); self.assertEqual(len(self.req("GET", "/api/lessons")[1]["lessons"]), 1)         # global: visible without a project
+        self.assertEqual(post({"op": "scope", "id": lid, "scope": "project"})[0], 400)                                                   # no project: cannot be a project lesson
+        self.assertEqual(post({"op": "nope"})[0], 400); self.assertEqual(post({"op": "delete", "id": "zzz"})[0], 404)
+        self.assertEqual(post({"op": "delete", "id": lid})[0], 200); self.assertEqual(self.req("GET", "/api/lessons")[1]["lessons"], [])
+        sess.local = False
+        try: self.assertEqual(self.req("GET", "/api/lessons")[0], 403); self.assertEqual(post({"op": "reflect"})[0], 403)
+        finally: sess.local = True
+
+
+class LessonsCore(unittest.TestCase):
+    def setUp(self):
+        import tempfile; self.d = tempfile.mkdtemp(); self.P = os.path.join(self.d, "proj"); os.makedirs(self.P)
+    GOOD = {"title": "Cut through holes fully", "rule": "Make the cutting tool longer than the part so the hole passes all the way through.", "when": "any through hole", "evidence": "a hole stayed blind"}
+
+    def test_generality_guard_rejects_hardcoded_values(self):
+        from cadfabric import lessons as L
+        self.assertEqual(L.check(self.GOOD)[1], "")
+        for bad in ("Drill 8 mm holes", "Use a Ø10 bit", "the plate 100x50 needs", "set result = cq.Workplane('XY')", "volume is 75523.887", "see /home/pi/out.step", "angle 45° chamfer", "use M8 bolts", "cut 12.5 cm deep"):
+            self.assertIn("too specific", L.check(dict(self.GOOD, rule="Always check: " + bad))[1], bad)
+        self.assertEqual(L.check({"title": "x", "rule": "short"})[0], None); self.assertEqual(L.check("nope")[0], None)
+
+    def test_store_dedupe_scope_and_only_approved_reaches_the_model(self):
+        from cadfabric import lessons as L
+        added, sk = L.add(self.d, self.P, [self.GOOD, dict(self.GOOD, title="Cut holes through fully", rule="Make the cutting tool longer than the part so a hole passes all the way through."),
+                                           {"title": "Hole 8 mm", "rule": "drill 8 mm holes everywhere please"}]); self.assertEqual((len(added), [w for _, w in sk]), (1, ["already known", "too specific: a concrete measurement"]))
+        lid = added[0]["id"]; self.assertEqual(L.approved_block(self.d, self.P, "x"), ("", []))                                         # pending: never used
+        L.update(self.d, self.P, lid, status="rejected"); self.assertEqual(L.add(self.d, self.P, [self.GOOD])[0], [])                    # a rejected idea is not proposed again
+        L.update(self.d, self.P, lid, status="approved"); txt, used = L.approved_block(self.d, self.P, "x"); self.assertEqual(used, [lid]); self.assertIn("Cut through holes fully", txt); self.assertIn("LESSONS LEARNED", txt)
+        other = os.path.join(self.d, "other"); os.makedirs(other); self.assertEqual(L.approved_block(self.d, other, "x"), ("", []))      # project lesson: not in another project
+        L.update(self.d, self.P, lid, scope="global"); self.assertEqual(L.approved_block(self.d, other, "x")[1], [lid])                   # global: everywhere
+        self.assertEqual(oct(os.stat(os.path.join(self.d, "lessons.json")).st_mode & 0o777), "0o600")
+
+    def test_relevance_picks_the_most_related_when_there_are_many(self):
+        from cadfabric import lessons as L
+        topics = {"fillet": "round sharp edges only after every cut is finished", "chamfer": "bevel edges by selecting them with a clear filter", "revolve": "spin a closed profile around an axis that does not cross it",
+                  "sweep": "drag a profile along a smooth path without self intersections", "loft": "blend two profiles that have the same number of vertices", "shell": "hollow a body and choose which faces to open",
+                  "mirror": "reflect half of a symmetric body instead of drawing both", "pattern": "repeat a feature on a circle using polar locations", "boolean": "subtract tools that overlap the body completely",
+                  "sketch": "close every wire before extruding it", "extrude": "pick the extrusion direction deliberately for both sides", "workplane": "move the origin so later features sit where intended"}
+        for t, r in topics.items():
+            L.add(self.d, self.P, [{"title": "Practice for %s work" % t, "rule": "When doing %s work, %s." % (t, r)}], status="approved")
+        txt, used = L.approved_block(self.d, self.P, "I need a loft between two profiles"); self.assertEqual(len(used), L.MAX_USED); self.assertIn("loft", txt)
+
+    def test_reflection_keeps_only_general_lessons_and_signals(self):
+        from cadfabric import lessons as L
+        j = json.dumps({"lessons": [self.GOOD, {"title": "Plate rule", "rule": "The plate 120 mm wide needs 4 holes of 6 mm"}, "junk"]})
+        cands, _ = L.reflect(FakeLLM([j]), [{"kind": "user", "text": "make a plate"}, {"kind": "cell", "n": 1, "ok": False, "code": "result=1", "error": "boom"}])
+        added, sk = L.add(self.d, self.P, cands, source="s1"); self.assertEqual([a["title"] for a in added], [self.GOOD["title"]]); self.assertEqual(added[0]["status"], "pending"); self.assertEqual(len(sk), 2)
+        self.assertEqual(L.reflect(FakeLLM(["not json"]), [{"kind": "user", "text": "x"}])[0], []); self.assertEqual(L.reflect(FakeLLM([j]), [])[0], [])
+        self.assertTrue(L.signals([{"kind": "cell", "ok": False}])); self.assertTrue(L.signals([{"kind": "gate"}])); self.assertTrue(L.signals([{"kind": "plan", "pitfalls": ["x"]}]))
+        self.assertFalse(L.signals([{"kind": "user"}, {"kind": "cell", "ok": True}, {"kind": "final", "warnings": 0}]))
+
+    def test_agent_system_prompt_carries_only_the_approved_block(self):
+        from cadfabric import lessons as L
+        class Cap(FakeLLM):
+            def chat(self, messages, tools=None, **kw): self.sys = messages[0]["content"]; return FakeLLM.chat(self, messages, tools=tools, **kw)
+        L.add(self.d, self.P, [self.GOOD], status="approved"); blk, _ = L.approved_block(self.d, self.P, "x"); b = CadQueryBackend(timeout=20)
+        try:
+            llm = Cap(["ok"]); agent.run(llm, b, "hi", plan_mode="off", log=lambda s: None, lessons=blk); self.assertIn("Cut through holes fully", llm.sys)
+            llm = Cap(["ok"]); agent.run(llm, b, "hi", plan_mode="off", log=lambda s: None); self.assertNotIn("LESSONS LEARNED", llm.sys)
+        finally: b.close()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

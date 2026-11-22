@@ -4,7 +4,7 @@ the Host header must be one we serve (blocks DNS rebinding); Origin, when presen
 import hmac, http.server, json, os, re, secrets, socketserver, subprocess, sys, threading, time, urllib.parse
 from http import cookies
 from . import advisors, agent, config, history as history_mod, llm as llm_mod, viewers, workspace as ws_mod
-from . import cq_backend
+from . import cq_backend, lessons as lessons_mod
 from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
@@ -31,6 +31,7 @@ class Session:
     def __init__(self, llm, cfg, backend=None, local=True):
         self.llm, self.cfg, self.local, self.quit = llm, cfg, local, False
         self.pinned = cfg.get("workspace") or ""   # this window's project; a different folder opens another window
+        self.reflecting = False
         self.autofile = None                    # the STEP file this conversation keeps up to date in the project folder
         self.picker = None                      # set by the desktop window: () -> folder path or ''
         self.backend = backend or CadQueryBackend()
@@ -70,7 +71,11 @@ class Session:
             if uerr:
                 raise ValueError("dropped file: " + uerr)
             block = "\n\n".join(x for x in (block, ublock) if x)
-            r = agent.run(self.llm, self.backend, text, plan_mode=planner, log=lambda s: None, cfg=self.cfg, workspace=root or None, attachments=block,
+            lblock, lused = ("", []) if self.history is not None else lessons_mod.approved_block(config.data_dir(self.cfg), root, text)
+            if lused:
+                self.emit("lessons_used", n=len(lused))
+                lessons_mod.mark_used(config.data_dir(self.cfg), lused)
+            r = agent.run(self.llm, self.backend, text, plan_mode=planner, log=lambda s: None, cfg=self.cfg, workspace=root or None, attachments=block, lessons=lblock,
                           history=self.history, should_stop=lambda: self.stop, on_event=lambda kind, **kw: self.emit(kind, **kw),
                           opener=(lambda: self.open_in_viewer()[1]) if self.local else None)
             self.history = r["history"]
@@ -86,6 +91,32 @@ class Session:
             self.save_history()
             with self.lock:
                 self.busy = False
+            if self.cfg.get("lessons_auto", True) and self.local:
+                with self.lock:
+                    evs = list(self.events)
+                if lessons_mod.signals(evs):
+                    threading.Thread(target=self.reflect, args=(True,), daemon=True).start()
+
+    def reflect(self, auto=False):
+        """Roll candidate lessons out of this conversation (pending until the user approves). One run at a time. -> (status, body)."""
+        with self.lock:
+            if self.reflecting:
+                return 409, {"error": "already reflecting"}
+            self.reflecting = True
+            evs = list(self.events)
+        try:
+            cands, _raw = lessons_mod.reflect(self.llm, evs)
+            added, skipped = lessons_mod.add(config.data_dir(self.cfg), self.cfg.get("workspace") or "", cands, source=self.sid or "")
+            if added or not auto:
+                self.emit("lessons", added=len(added), skipped=[{"title": t, "why": w} for t, w in skipped][:6], auto=auto)
+            return 200, {"added": len(added), "skipped": [{"title": t, "why": w} for t, w in skipped]}
+        except Exception as e:                                                  # noqa: BLE001 - a failed reflection must never disturb the chat
+            if not auto:
+                self.emit("error", text="Rút bài học không được: %s" % str(e)[:200])
+            return 500, {"error": str(e)[:200]}
+        finally:
+            with self.lock:
+                self.reflecting = False
 
     def autosave(self):
         """Keep the current part in the project folder by default: <name>.step plus the CadQuery script <name>.py. One pair per conversation:
@@ -237,7 +268,7 @@ def public_settings(cfg):
     except SystemExit:
         has_key = False
     return {"url": cfg["url"], "model": cfg["model"], "planner": cfg["planner"], "relay": cfg.get("relay") or {}, "has_key": has_key, "advisors": advisors.meta(cfg),
-            "viewer": cfg.get("viewer") or {"kind": "auto", "command": ""}, "viewer_label": viewers.resolve(cfg)[1], "viewers_detected": viewers.detected(), "workspace": cfg.get("workspace") or "",
+            "viewer": cfg.get("viewer") or {"kind": "auto", "command": ""}, "viewer_label": viewers.resolve(cfg)[1], "viewers_detected": viewers.detected(), "workspace": cfg.get("workspace") or "", "lessons_auto": bool(cfg.get("lessons_auto", True)),
             "configured": bool(cfg.get("_path")), "config_path": cfg.get("_path") or config.user_config_path()}
 
 
@@ -313,6 +344,11 @@ def make_handler(sess, token, hosts, data_dir):
                 every = (q.get("all") or [""])[0] == "1"
                 self._send(200, {"sessions": history_mod.list_sessions(data_dir, None if every else sess.cfg.get("workspace") or "") if sess.local else [], "current": sess.sid,
                                  "project": sess.cfg.get("workspace") or "", "all": every}, extra=cookie)
+            elif u.path == "/api/lessons":
+                if not sess.local:
+                    return self._send(403, {"error": "lessons are only available when the chat is bound to this computer"})
+                ws = sess.cfg.get("workspace") or ""
+                self._send(200, {"lessons": lessons_mod.list_for(data_dir, ws), "project": ws, "reflecting": sess.reflecting, "auto": bool(sess.cfg.get("lessons_auto", True))})
             elif u.path == "/api/files":
                 if not sess.local:
                     return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
@@ -420,7 +456,7 @@ def make_handler(sess, token, hosts, data_dir):
                         return self._send(400, {"error": uerr})
                 ok = sess.send(text, planner, files, ups)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender", "/api/lessons"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
                 if u.path == "/api/quit":
@@ -447,6 +483,28 @@ def make_handler(sess, token, hosts, data_dir):
                             return self._send(400, {"error": "only STEP files open in the CAD program"})
                         r = viewers.open_file(full, sess.cfg)
                     return self._send(200 if r.get("ok") else 500, r)
+                if u.path == "/api/lessons":
+                    ws = sess.cfg.get("workspace") or ""
+                    op = body.get("op") if isinstance(body, dict) else ""
+                    lid = str(body.get("id", "")) if isinstance(body, dict) else ""
+                    if op == "reflect":
+                        if sess.busy:
+                            return self._send(409, {"error": "busy: wait for the current job"})
+                        return self._send(*sess.reflect(False))
+                    if op == "delete":
+                        return self._send(200 if lessons_mod.delete(data_dir, ws, lid) else 404, {"ok": True})
+                    if op == "add":                                                  # the user's own lesson: same generality check, approved at once
+                        added, skipped = lessons_mod.add(data_dir, ws, [{k: body.get(k, "") for k in ("title", "rule", "when")}], source="user", scope=body.get("scope"), status="approved")
+                        return self._send(200 if added else 400, {"ok": bool(added), "error": (skipped[0][1] if skipped else "")})
+                    if op in ("approve", "reject", "pending"):
+                        x, err = lessons_mod.update(data_dir, ws, lid, status={"approve": "approved", "reject": "rejected", "pending": "pending"}[op])
+                    elif op == "scope":
+                        x, err = lessons_mod.update(data_dir, ws, lid, scope=body.get("scope"))
+                    elif op == "edit":
+                        x, err = lessons_mod.update(data_dir, ws, lid, **{k: str(body.get(k, "")) for k in ("title", "rule", "when") if k in body})
+                    else:
+                        return self._send(400, {"error": "unknown op"})
+                    return self._send(200 if x else 400, {"ok": bool(x), "lesson": x, "error": err})
                 if u.path == "/api/project":
                     return self._send(*sess.set_project(body.get("path") if isinstance(body, dict) else ""))
                 if u.path == "/api/pick_folder":

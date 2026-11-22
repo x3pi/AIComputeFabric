@@ -36,6 +36,10 @@ Cố vấn được chọn ngay trên ô nhập từng lần gửi. Ứng dụng
 
 Tab **Tệp** ở panel phải liệt kê thư mục dự án; bấm một tệp để mở trong tab cạnh khung chat (mở nhiều tab, cuộn ngang, chuột phải vào tab để đóng). Cách hiển thị: mã có tô màu và số dòng (highlight.js), Markdown (marked + DOMPurify), CSV/TSV dạng bảng, ảnh, và STEP dạng **3D xoay được** (máy chủ chia lưới bằng CadQuery, trình duyệt vẽ bằng three.js), hoặc hình nét 2D. **Chuột phải** vào tệp: mở trong tab, đính kèm vào chat, mở trong chương trình CAD, mở bằng chương trình mặc định (chỉ loại tệp không chạy mã), hiện trong thư mục, sao chép đường dẫn. Thư viện giao diện nằm trong gói (`src/cadfabric/static`, giấy phép trong `static/licenses`), không tải gì từ Internet.
 
+### Bài học (rút kinh nghiệm có duyệt)
+
+Sau cuộc trò chuyện có lỗi, cảnh báo của chương trình kiểm tra hoặc lưu ý của cố vấn, app nhờ Qwen rút ra **bài học chung** (tab **Bài học** ở panel phải; nút "Rút bài học từ cuộc này" để rút thủ công). Bài học là quy tắc về phương pháp (cách dựng, cách dùng CadQuery, cách kiểm tra, cách hiểu đề mơ hồ), **không** chứa kích thước, tên chi tiết hay số liệu của một bài cụ thể: lời nhắc yêu cầu như vậy, và một bộ lọc trong code từ chối mọi bài học có số đo, đơn vị, kích thước, phép gán mã, đường dẫn hay URL, hoặc trùng ý bài học đã có (kể cả bài đã bị bỏ). Bài học mới ở trạng thái **chờ duyệt**; chỉ bài **đã duyệt** mới được đưa vào lời nhắc hệ thống của Qwen, và chỉ ở cuộc trò chuyện mới. Có thể sửa (sửa xong phải duyệt lại), tạm dừng, xoá, và đặt phạm vi "chỉ dự án này" hoặc "mọi dự án". Lưu trong `lessons.json` ở thư mục dữ liệu (chỉ người dùng đọc được). Tắt tự đề xuất trong Cài đặt.
+
 ## Cài đặt
 
 ### Ubuntu 22.04 / 24.04 (x86_64, offline)

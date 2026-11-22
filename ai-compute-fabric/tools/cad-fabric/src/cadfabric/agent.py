@@ -73,7 +73,7 @@ def _ws_call(name, args, root, backend, ev):
 WS_NAMES = ("list_files", "read_file", "search_files", "save_step")
 
 
-def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None, workspace=None, attachments=""):
+def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg=None, history=None, should_stop=None, on_event=None, opener=None, workspace=None, attachments="", lessons=""):
     """-> dict: ok, final text, final measure, steps, checks, warnings, plan. plan_mode: off | nothink | think | codex | codex-relay. `planner(request)->(spec, raw)` overrides."""
     t0 = time.time()
     ev = on_event or (lambda kind, **kw: None)         # structured events for a UI: plan, cell, gate
@@ -94,7 +94,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
         ev("plan", mode=plan_mode, ok=bool(spec), describe=V.describe(spec) if spec else "", milestones=len(spec["milestones"]) if spec else 0,
            pitfalls=[str(x)[:300] for x in (pj.get("pitfalls") or [])][:6], note=raw_plan[:raw_plan.index(")") + 1] if raw_plan.startswith("(") and ")" in raw_plan else "")
     log("plan (%s): %s" % (plan_mode, "none" if not spec else "%d volume milestones" % len(spec["milestones"])) if plan_mode != "off" else "plan: off")
-    msgs = history if follow_up else [{"role": "system", "content": SYSTEM}]
+    msgs = history if follow_up else [{"role": "system", "content": SYSTEM + (lessons or "")}]
     user = request
     if spec:
         user += ("\n\nADVISOR PLAN (advice only; verify each step on the real part). The numbers were computed by the harness from the advisor's formulas. "
