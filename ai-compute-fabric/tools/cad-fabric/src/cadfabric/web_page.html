@@ -87,6 +87,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 /* slim, quiet scrollbars everywhere */
 *{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--mute) 45%,transparent) transparent}
 ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--mute) 40%,transparent);border-radius:8px;border:2px solid transparent;background-clip:content-box}::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--mute) 70%,transparent);background-clip:content-box}::-webkit-scrollbar-corner{background:transparent}
+#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:200}#fx[hidden]{display:none}
 </style>
 <link rel="stylesheet" href="/static/vendor/hljs-light.css" media="(prefers-color-scheme: light)"><link rel="stylesheet" href="/static/vendor/hljs-dark.css" media="(prefers-color-scheme: dark)">
 </head>
@@ -246,6 +247,29 @@ async function showPart(m){const t=$("meas");t.replaceChildren();
  try{const r=await fetch("/api/part.svg?"+Date.now());if(r.ok){const d=new DOMParser().parseFromString(await r.text(),"image/svg+xml").documentElement;$("preview").replaceChildren(document.importNode(d,true))}}catch(e){}}
 function setBusy(b){busy=b;$("dot").className="dot"+(b?" busy":"");$("status").textContent=b?"đang làm…":"sẵn sàng";$("send").hidden=b;$("stop").hidden=!b;$("newbtn").disabled=b;$("histbtn").disabled=b;
  if(b&&!(workEl&&workEl.parentNode)){workEl=el("div","working","Đang làm");col().appendChild(workEl);$("log").scrollTop=1e9}if(!b&&workEl){workEl.remove();workEl=null;phase=null}}
+/* hidden: type /happy for a burst of fireworks, sparkles and falling blossoms */
+let fxRun=false;
+function happy(){if(fxRun)return;fxRun=true;const cv=$("fx"),ctx=cv.getContext("2d"),dpr=Math.min(devicePixelRatio||1,2);
+ const W=innerWidth,H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;cv.hidden=false;ctx.setTransform(dpr,0,0,dpr,0,0);
+ const calm=matchMedia("(prefers-reduced-motion: reduce)").matches,R=(a,b)=>a+Math.random()*(b-a),P=[],F=[],S=[],T=4800,t0=performance.now();
+ const hues=[345,35,50,160,200,275,315];let nextBurst=0,bursts=0;
+ const burst=(x,y,h)=>{const n=calm?24:70;for(let i=0;i<n;i++){const a=i/n*Math.PI*2+R(-.05,.05),v=R(1.5,calm?3:5.2);P.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:1,h:h+R(-14,14),r:R(1.2,2.6),tw:R(0,6)})}
+  for(let i=0;i<(calm?6:16);i++){const a=R(0,Math.PI*2),v=R(.4,2);P.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:1.4,h:50,r:R(1.5,3),tw:R(0,6),gold:true})}};
+ const petals=calm?12:46;for(let i=0;i<petals;i++)F.push({x:R(0,W),y:R(-H*.8,-10),vx:R(-.5,.7),vy:R(.8,2.1),a:R(0,6.28),va:R(-.04,.04),s:R(7,15),h:R(325,355),sw:R(0,6),dl:R(0,1800)});
+ const stars=calm?10:34;for(let i=0;i<stars;i++)S.push({x:R(0,W),y:R(0,H),r:R(8,20),at:R(300,T-900),dur:R(500,900)});
+ const flower=(f)=>{ctx.save();ctx.translate(f.x,f.y);ctx.rotate(f.a);for(let k=0;k<5;k++){ctx.rotate(1.2566);ctx.beginPath();ctx.ellipse(0,-f.s*.55,f.s*.34,f.s*.58,0,0,6.283);ctx.fillStyle="hsla("+f.h+",85%,"+(78+k*2)+"%,.88)";ctx.fill()}ctx.beginPath();ctx.arc(0,0,f.s*.17,0,6.283);ctx.fillStyle="hsl(45,95%,62%)";ctx.fill();ctx.restore()};
+ const flare=(x,y,r,k)=>{ctx.save();ctx.globalAlpha=k;const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,"rgba(255,255,255,1)");g.addColorStop(.25,"rgba(255,236,170,.8)");g.addColorStop(1,"rgba(255,200,90,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,6.283);ctx.fill();
+  ctx.strokeStyle="rgba(255,248,220,.9)";ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(x-r*1.6,y);ctx.lineTo(x+r*1.6,y);ctx.moveTo(x,y-r*1.6);ctx.lineTo(x,y+r*1.6);ctx.stroke();ctx.restore()};
+ function done(){cv.hidden=true;ctx.clearRect(0,0,W,H);fxRun=false}
+ (function frame(now){const t=now-t0;if(t>T){done();return}
+  ctx.globalCompositeOperation="destination-out";ctx.fillStyle="rgba(0,0,0,.22)";ctx.fillRect(0,0,W,H);ctx.globalCompositeOperation="lighter";
+  if(t>=nextBurst&&t<T-1700&&bursts<(calm?3:9)){burst(R(W*.12,W*.88),R(H*.12,H*.5),hues[bursts%hues.length]);bursts++;nextBurst=t+R(260,520)}
+  for(let i=P.length-1;i>=0;i--){const q=P[i];q.x+=q.vx;q.y+=q.vy;q.vx*=.985;q.vy=q.vy*.985+.045;q.life-=.011;if(q.life<=0){P.splice(i,1);continue}
+   const al=Math.min(1,q.life)*(.65+.35*Math.sin(q.tw+t/70));ctx.beginPath();ctx.arc(q.x,q.y,q.r,0,6.283);ctx.fillStyle=q.gold?"hsla(48,100%,72%,"+al+")":"hsla("+q.h+",100%,64%,"+al+")";ctx.fill()}
+  ctx.globalCompositeOperation="source-over";
+  for(const f of F){if(t<f.dl)continue;f.sw+=.03;f.x+=f.vx+Math.sin(f.sw)*.6;f.y+=f.vy;f.a+=f.va;const fade=t>T-900?Math.max(0,(T-t)/900):1;ctx.globalAlpha=fade;flower(f);ctx.globalAlpha=1}
+  for(const s of S){const k=(t-s.at)/s.dur;if(k>0&&k<1)flare(s.x,s.y,s.r*(.4+Math.sin(k*Math.PI)),Math.sin(k*Math.PI))}
+  requestAnimationFrame(frame)})(t0)}
 let polling=false;
 async function poll(){if(polling)return;polling=true;try{await poll1()}finally{polling=false}}
 async function poll1(){const mine=since;const {ok,d}=await api("/api/state?since="+since);if(!ok||mine!==since)return;
@@ -257,6 +281,7 @@ async function submit(){if(sending)return;sending=true;try{await submit1()}final
 async function submit1(){const text=$("text").value.trim();if(!text)return;
  if(text==="/new"){$("text").value="";grow();return newPart()}if(text==="/stop"){$("text").value="";grow();return api("/api/stop",{})}
  if(text==="/open"){$("text").value="";grow();return openViewer()}
+ if(text.toLowerCase()==="/happy"){$("text").value="";grow();return happy()}
  if(busy)return;const planner=$("planner").value;const body={text,planner};if(att.length)body.files=att.slice();if(ups.length)body.uploads=ups.map(u=>({name:u.name,text:u.text}));
  if(ext.includes(planner)){if(!okExt.has(planner)){if(!confirm("Cố vấn '"+planner+"' gửi nội dung yêu cầu ra dịch vụ bên ngoài. Tiếp tục? (chỉ hỏi một lần cho cố vấn này)"))return;okExt.add(planner)}
  if((att.length||ups.length)&&ext.includes(planner)&&!confirm("Nội dung của "+(att.length+ups.length)+" tệp đính kèm ("+att.concat(ups.map(u=>u.name)).join(", ")+") cũng sẽ được gửi cho cố vấn bên ngoài '"+planner+"'. Gửi?"))return;body.confirm_external=true}
@@ -471,5 +496,6 @@ $("quitbtn").onclick=async()=>{if(confirm("Tắt ứng dụng CadFabric?")){awai
 </script>
 <div id="dropov" hidden>Thả tệp vào đây để hỏi về tệp (văn bản: txt, md, csv, json, dxf, step, py…)</div>
 <div id="ctx" hidden></div><div id="toast" hidden></div>
+<canvas id="fx" hidden></canvas>
 </body>
 </html>
