@@ -141,23 +141,22 @@ def _wait_quit(srv):
 
 def _desktop_window(url, srv):
     """Show the app in its own window (pywebview). Blocks until the window is closed. -> True if a window was shown, False if it is not available
-    (pywebview or the system web view missing): the caller then uses the browser. Folder picking is offered to the page through a tiny local API."""
+    (pywebview or the system web view missing): the caller then uses the browser. Folder picking goes through a local endpoint (the page CSP forbids pywebview's js_api, which needs eval)."""
     import threading
     try:
         import webview
     except Exception:                                      # noqa: BLE001 - not installed / no GUI toolkit
         return False
 
-    class Api:
-        def pick_folder(self):
+    try:
+        win = webview.create_window("CadFabric", url, width=1280, height=860, min_size=(900, 600))
+        def pick():
             try:
                 r = win.create_file_dialog(webview.FOLDER_DIALOG)
                 return r[0] if r else ""
             except Exception:                              # noqa: BLE001
                 return ""
-
-    try:
-        win = webview.create_window("CadFabric", url, width=1280, height=860, min_size=(900, 600), js_api=Api())
+        srv.sess.picker = pick
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         threading.Thread(target=lambda: _watch_quit(srv, win), daemon=True).start()
         webview.start()

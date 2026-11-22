@@ -291,9 +291,7 @@ async function openFiles(rel){fdir=rel||"";const {ok,d}=await api("/api/files"+(
   L.appendChild(r)}
  if(!$("fdlg").open)$("fdlg").showModal()}
 $("attbtn").onclick=()=>openFiles("");$("fclose").onclick=()=>$("fdlg").close();
-function hasPicker(){return !!(window.pywebview&&window.pywebview.api&&window.pywebview.api.pick_folder)}
-$("w_pick").onclick=async()=>{const r=await window.pywebview.api.pick_folder();if(r)$("w_dir").value=r};
-window.addEventListener("pywebviewready",()=>{$("w_pick").hidden=!hasPicker()});setTimeout(()=>{$("w_pick").hidden=!hasPicker()},1500);
+$("w_pick").onclick=async()=>{const {d}=await api("/api/pick_folder",{});if(d&&d.path)$("w_dir").value=d.path};
 $("histbtn").onclick=openHistory;$("hclose").onclick=()=>$("hdlg").close();$("hclear").onclick=async()=>{if(!confirm("Xoá toàn bộ lịch sử?"))return;await api("/api/history/clear",{});openHistory()};
 $("setbtn").onclick=openSettings;$("cbtn").onclick=()=>$("dlg").close();
 $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=await api("/api/test",form());if(!r.ok){$("tst").textContent=r.d.error||("lỗi "+r.status);return}
@@ -302,7 +300,7 @@ $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=a
 $("sf").onsubmit=async e=>{e.preventDefault();const r=await api("/api/settings",form());if(!r.ok){$("tst").textContent="✗ "+(r.d.error||r.status);return}
  DET=DET;loadSettings(r.d.settings);$("planner").value=r.d.settings.planner;$("dlg").close();if(!col().querySelector(".user"))hero(false),hero(true)};
 $("quitbtn").onclick=async()=>{if(confirm("Tắt ứng dụng CadFabric?")){await api("/api/quit",{});document.body.textContent="Đã tắt CadFabric. Bạn có thể đóng tab này."}};
-(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local;setWs(d.settings.workspace||"");
+(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local;$("w_pick").hidden=!d.picker;setWs(d.settings.workspace||"");
  DET=d.cli_detected||{};PRESETS=d.cli_presets||{};loadSettings(d.settings);$("planner").value=d.default;
  if(!local){$("localnote").textContent="Đang truy cập từ xa: không sửa được cài đặt (chỉ sửa được trên máy chạy ứng dụng).";document.querySelectorAll("#dlg input,#tbtn,#sbtn").forEach(x=>x.disabled=true)}
  hero(true);poll();setInterval(poll,800);if(!d.settings.configured&&local)setTimeout(openSettings,300)})();

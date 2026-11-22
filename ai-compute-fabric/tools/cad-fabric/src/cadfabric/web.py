@@ -15,6 +15,7 @@ class Session:
 
     def __init__(self, llm, cfg, backend=None, local=True):
         self.llm, self.cfg, self.local, self.quit = llm, cfg, local, False
+        self.picker = None                      # set by the desktop window: () -> folder path or ''
         self.backend = backend or CadQueryBackend()
         self.lock = threading.Lock()
         self.events, self.busy, self.stop, self.history, self.measure = [], False, False, None, None
@@ -201,7 +202,7 @@ def make_handler(sess, token, hosts, data_dir):
             elif u.path == "/api/config":
                 self._send(200, {"planners": advisors.names(sess.cfg), "external": [n for n in advisors.names(sess.cfg) if advisors.is_external(sess.cfg, n)], "default": sess.cfg["planner"],
                                  "advisors": advisors.meta(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "cli_presets": advisors.presets_info(), "viewer_label": viewers.resolve(sess.cfg)[1], "version": __import__("cadfabric").__version__,
-                                 "local": sess.local, "settings": public_settings(sess.cfg)})
+                                 "local": sess.local, "picker": bool(sess.picker and sess.local), "settings": public_settings(sess.cfg)})
             elif u.path == "/api/history":
                 self._send(200, {"sessions": history_mod.list_sessions(data_dir) if sess.local else [], "current": sess.sid}, extra=cookie)
             elif u.path == "/api/files":
@@ -254,11 +255,15 @@ def make_handler(sess, token, hosts, data_dir):
                     return self._send(400, {"error": ferr})
                 ok = sess.send(text, planner, files)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
                 if u.path == "/api/quit":
                     sess.quit = True; self._send(200, {"ok": True}); return
+                if u.path == "/api/pick_folder":
+                    if not sess.picker:
+                        return self._send(404, {"error": "no native folder dialog in this mode"})
+                    return self._send(200, {"path": sess.picker() or ""})
                 cur = sess.cfg
                 saved = {a["id"]: a for a in cur.get("advisors") or []}
                 if u.path == "/api/open":

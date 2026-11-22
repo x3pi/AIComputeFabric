@@ -726,6 +726,17 @@ class WorkspaceWeb(Settings):
         finally: sess.local = True
         s, d = self.req("GET", "/api/config"); self.assertEqual(d["settings"]["workspace"], root)
 
+    def test_native_folder_picker_endpoint(self):
+        sess = self.srv.sess
+        self.assertFalse(self.req("GET", "/api/config")[1]["picker"]); self.assertEqual(self.req("POST", "/api/pick_folder", {})[0], 404)   # browser mode: no dialog
+        sess.picker = lambda: "/chosen/dir"
+        try:
+            self.assertTrue(self.req("GET", "/api/config")[1]["picker"]); self.assertEqual(self.req("POST", "/api/pick_folder", {}), (200, {"path": "/chosen/dir"}))
+            sess.local = False
+            try: self.assertEqual(self.req("POST", "/api/pick_folder", {})[0], 403)
+            finally: sess.local = True
+        finally: sess.picker = None
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

@@ -34,6 +34,16 @@ Cố vấn được chọn ngay trên ô nhập từng lần gửi. Ứng dụng
 
 ## Cài đặt
 
+### Ubuntu 22.04 / 24.04 (x86_64, offline)
+
+Dùng Python 3 của hệ thống (3.10 trở lên) với venv riêng trong `~/.local/share/cadfabric-app`, không cần sudo. Tạo bộ cài (cần mạng một lần để tải wheel):
+
+```bash
+./packaging/build_linux_bundle.sh          # -> dist/cadfabric-linux-<phiên bản>.tar.gz (khoảng 760 MB, wheel cho Python 3.10 và 3.12)
+```
+
+Trên máy Ubuntu: giải nén, chạy `bash install.sh` (tuỳ chọn `--url --model --planner --key-file --advisor-cli`), mở **CadFabric** từ menu ứng dụng hoặc `~/.local/bin/cadfabric app`. Gỡ bằng `uninstall.sh` (`--purge` xoá cả dữ liệu). Cửa sổ riêng cần `gir1.2-webkit2-4.1` và `python3-gi`; thiếu thì tự mở bằng trình duyệt. Hướng dẫn đầy đủ: `docs/HUONG-DAN-CAI-DAT-UBUNTU.md`. Đã chạy thật trên Ubuntu 24.04 (Python 3.12): cài, `doctor` 6/6, dựng chi tiết bằng Qwen, mở cửa sổ (Xvfb), gỡ. Chưa thử Python 3.10 và Ubuntu 22.04.
+
 ### Windows (nhiều máy, offline, không cần quyền quản trị)
 
 Bộ cài mang theo Python 3.12 riêng và toàn bộ thư viện, không đụng Python sẵn có. Tạo bộ cài trên Linux/macOS:
