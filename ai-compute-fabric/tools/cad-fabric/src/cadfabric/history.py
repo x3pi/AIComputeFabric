@@ -54,18 +54,25 @@ def load(data_dir, sid):
     return rec if isinstance(rec, dict) and rec.get("id") == sid and isinstance(rec.get("events"), list) else None
 
 
-def list_sessions(data_dir):
-    """-> newest first: [{id, title, created, updated, volume, steps}]. Unreadable files are skipped."""
+def norm(ws):
+    """Project key stored in a record: the real path of the folder ('' = no project)."""
+    return os.path.realpath(ws) if ws else ""
+
+
+def list_sessions(data_dir, workspace=None):
+    """-> newest first: [{id, title, created, updated, volume, steps, workspace}]. `workspace` given: only that project's conversations
+    (older records without a project belong to '' = no project). None: all of them. Unreadable files are skipped."""
+    want = None if workspace is None else norm(workspace)
     out = []
     d = _dir(data_dir)
     for f in os.listdir(d):
         if not (f.endswith(".json") and ID.match(f[:-5])):
             continue
         rec = load(data_dir, f[:-5])
-        if rec:
+        if rec and (want is None or norm(rec.get("workspace")) == want):
             m = rec.get("measure") or {}
             out.append({"id": rec["id"], "title": str(rec.get("title", ""))[:80], "created": rec.get("created", ""), "updated": rec.get("updated", ""),
-                        "volume": m.get("volume"), "steps": len(rec.get("cells") or [])})
+                        "volume": m.get("volume"), "steps": len(rec.get("cells") or []), "workspace": rec.get("workspace") or ""})
     return sorted(out, key=lambda r: r["id"], reverse=True)
 
 
@@ -77,11 +84,15 @@ def delete(data_dir, sid):
         return False
 
 
-def clear(data_dir):
+def clear(data_dir, workspace=None):
+    """Delete saved conversations: all, or only those of one project."""
     n = 0
     d = _dir(data_dir)
+    want = None if workspace is None else norm(workspace)
     for f in os.listdir(d):
         if f.endswith((".json", ".tmp")) and (ID.match(f.split(".")[0])):
+            if want is not None and f.endswith(".json") and norm((load(data_dir, f[:-5]) or {}).get("workspace")) != want:
+                continue
             try:
                 os.unlink(os.path.join(d, f)); n += 1
             except OSError:

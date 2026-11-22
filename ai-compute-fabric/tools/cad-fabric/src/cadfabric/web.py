@@ -11,11 +11,26 @@ PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
 MAX_BODY = 40_000
 
 
+def spawn_window(project, session=None):
+    """Start another CadFabric window for `project` (optionally with a saved conversation open). Detached: it outlives this one. -> {ok, detail}."""
+    exe = sys.executable
+    if os.name == "nt":
+        w = os.path.join(os.path.dirname(exe), "pythonw.exe")
+        exe = w if os.path.isfile(w) else exe
+    argv = [exe, "-m", "cadfabric", "app", "--project", project] + (["--session", session] if session else [])
+    try:
+        viewers._spawn(argv)
+    except OSError as e:
+        return {"ok": False, "detail": "could not open a new window: %s" % str(e)[:100]}
+    return {"ok": True, "detail": "opened a new window"}
+
+
 class Session:
     """The conversation, the part and the event log shared by all requests."""
 
     def __init__(self, llm, cfg, backend=None, local=True):
         self.llm, self.cfg, self.local, self.quit = llm, cfg, local, False
+        self.pinned = cfg.get("workspace") or ""   # this window's project; a different folder opens another window
         self.autofile = None                    # the STEP file this conversation keeps up to date in the project folder
         self.picker = None                      # set by the desktop window: () -> folder path or ''
         self.backend = backend or CadQueryBackend()
@@ -110,7 +125,8 @@ class Session:
             with self.lock:
                 evs = list(self.events)
             history_mod.save(config.data_dir(self.cfg), {"id": self.sid, "title": self.title, "created": self.created, "events": evs, "messages": self.history,
-                                                          "cells": list(getattr(self.backend, "history", [])), "measure": self.measure})
+                                                          "cells": list(getattr(self.backend, "history", [])), "measure": self.measure,
+                                                          "workspace": history_mod.norm(self.cfg.get("workspace") or "")})
         except (OSError, TypeError, ValueError):
             pass
 
@@ -119,6 +135,12 @@ class Session:
         rec = history_mod.load(config.data_dir(self.cfg), sid) if history_mod.valid(sid) else None
         if not rec:
             return 404, {"error": "no such saved session"}
+        rws, cur = rec.get("workspace") or "", self.cfg.get("workspace") or ""
+        if rws and history_mod.norm(rws) != history_mod.norm(cur):             # it belongs to another project: open that project's window
+            if not os.path.isdir(rws):
+                return 404, {"error": "the project folder of this conversation no longer exists: " + rws}
+            r = spawn_window(rws, sid)
+            return (200, {"ok": True, "opened_window": rws}) if r["ok"] else (500, {"error": r["detail"]})
         with self.lock:
             if self.busy:
                 return 409, {"error": "busy: wait for the current job"}
@@ -147,17 +169,28 @@ class Session:
                 return None
         path = config.save_settings(clean, key, advisor_keys)
         cfg = config.load()
+        if "workspace" in clean:
+            self.pinned = clean["workspace"] or ""
+        cfg["workspace"] = self.pinned                                          # another window's choice never leaks into this one
         self.cfg, self.llm = cfg, llm_mod.LLM(cfg)
         return path
 
     def set_project(self, path):
-        """Make `path` the working folder and remember it in the recent list. -> (http status, body)."""
+        """Choose the project. First project of this window: bound here. A different folder than the one this window already has: it opens in a NEW window,
+        this one keeps its project (and its conversations). -> (http status, body)."""
         ws, err = ws_mod.check_folder(path)
         if err:
             return 400, {"error": err}
+        cur = self.cfg.get("workspace") or ""
         if not ws:                                                      # empty = leave the project
             return (200, {"workspace": "", "recent": self.recent()}) if self.apply_settings({"workspace": "", "relay": {}}, None) is not None else (409, {"error": "busy"})
         recent = [ws] + [p for p in (self.cfg.get("recent") or []) if p != ws]
+        if cur and os.path.realpath(ws) != os.path.realpath(cur):
+            r = spawn_window(ws)
+            if not r["ok"]:
+                return 500, {"error": r["detail"]}
+            self.apply_settings({"recent": recent[:8], "relay": {}}, None)
+            return 200, {"workspace": cur, "recent": self.recent(), "opened_window": ws}
         if self.apply_settings({"workspace": ws, "recent": recent[:8], "relay": {}}, None) is None:
             return 409, {"error": "busy"}
         return 200, {"workspace": ws, "recent": self.recent()}
@@ -277,7 +310,9 @@ def make_handler(sess, token, hosts, data_dir):
                                  "advisors": advisors.meta(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "cli_presets": advisors.presets_info(), "viewer_label": viewers.resolve(sess.cfg)[1], "version": __import__("cadfabric").__version__,
                                  "recent": sess.recent() if sess.local else [], "local": sess.local, "picker": bool(sess.picker and sess.local), "settings": public_settings(sess.cfg)})
             elif u.path == "/api/history":
-                self._send(200, {"sessions": history_mod.list_sessions(data_dir) if sess.local else [], "current": sess.sid}, extra=cookie)
+                every = (q.get("all") or [""])[0] == "1"
+                self._send(200, {"sessions": history_mod.list_sessions(data_dir, None if every else sess.cfg.get("workspace") or "") if sess.local else [], "current": sess.sid,
+                                 "project": sess.cfg.get("workspace") or "", "all": every}, extra=cookie)
             elif u.path == "/api/files":
                 if not sess.local:
                     return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
@@ -454,7 +489,7 @@ def make_handler(sess, token, hosts, data_dir):
                     if sess.busy:
                         return self._send(409, {"error": "busy"})
                     sess.sid = None
-                    return self._send(200, {"ok": True, "deleted": history_mod.clear(data_dir)})
+                    return self._send(200, {"ok": True, "deleted": history_mod.clear(data_dir, None if body.get("all") else sess.cfg.get("workspace") or "")})
                 if not history_mod.valid(sid):
                     return self._send(400, {"error": "bad id"})
                 if u.path == "/api/history/load":

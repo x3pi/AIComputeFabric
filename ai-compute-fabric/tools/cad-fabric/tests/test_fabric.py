@@ -747,11 +747,18 @@ class WorkspaceWeb(Settings):
 
     def test_project_switch_recent_and_dropped_files(self):
         sess = self.srv.sess; a = os.path.join(self.dir, "pa"); b = os.path.join(self.dir, "pb"); os.makedirs(a); os.makedirs(b)
-        self.assertEqual(self.req("POST", "/api/project", {"path": "/no/such"})[0], 400)
-        s, d = self.req("POST", "/api/project", {"path": a}); self.assertEqual((s, d["workspace"]), (200, a))
-        s, d = self.req("POST", "/api/project", {"path": b}); self.assertEqual(d["recent"][:2], [b, a])
-        s, d = self.req("POST", "/api/project", {"path": a}); self.assertEqual(d["recent"][:2], [a, b])
-        self.assertEqual(self.req("GET", "/api/config")[1]["recent"][:2], [a, b]); self.assertEqual(self.req("GET", "/api/config")[1]["settings"]["workspace"], a)
+        from cadfabric import web as web_pkg
+        spawned = []; real = web_pkg.spawn_window; web_pkg.spawn_window = lambda proj, sid=None: spawned.append((proj, sid)) or {"ok": True, "detail": "x"}
+        try:
+            self.assertEqual(self.req("POST", "/api/project", {"path": ""})[0], 200)                                             # this window has no project yet
+            self.assertEqual(self.req("POST", "/api/project", {"path": "/no/such"})[0], 400)
+            s, d = self.req("POST", "/api/project", {"path": a}); self.assertEqual((s, d["workspace"], spawned), (200, a, []))     # first project: bound in this window
+            s, d = self.req("POST", "/api/project", {"path": b})                                                                 # another folder: a NEW window, this one keeps its project
+            self.assertEqual((s, d["workspace"], d["opened_window"], spawned), (200, a, b, [(b, None)])); self.assertEqual(d["recent"][:2], [b, a])
+            self.assertEqual(self.req("GET", "/api/config")[1]["settings"]["workspace"], a)
+            s, d = self.req("POST", "/api/project", {"path": a}); self.assertEqual((d["workspace"], len(spawned), d["recent"][:2]), (a, 1, [a, b]))   # same project: nothing new
+            self.assertEqual(self.req("GET", "/api/config")[1]["recent"][:2], [a, b])
+        finally: web_pkg.spawn_window = real
         s, d = self.req("POST", "/api/project", {"path": ""}); self.assertEqual((s, d["workspace"]), (200, ""))
         sess.local = False
         try: self.assertEqual(self.req("POST", "/api/project", {"path": a})[0], 403)
@@ -880,6 +887,28 @@ class WorkspaceWeb(Settings):
         finally:
             if old is None: os.environ.pop("BLENDER", None)
             else: os.environ["BLENDER"] = old
+
+    def test_history_belongs_to_the_project_and_other_projects_open_in_their_window(self):
+        from cadfabric import web as web_pkg, history as H
+        sess = self.srv.sess; pa = os.path.join(self.dir, "hp-a"); pb = os.path.join(self.dir, "hp-b"); os.makedirs(pa); os.makedirs(pb)
+        data = os.environ["XDG_DATA_HOME"]; dd = web_pkg.config.data_dir(sess.cfg)
+        self.assertEqual(self.req("POST", "/api/project", {"path": ""})[0], 200); self.assertEqual(self.req("POST", "/api/project", {"path": pa})[0], 200)
+        sess.reset(); sess.backend.execute("import cadquery as cq\nresult = cq.Workplane('XY').box(5, 5, 5)"); sess.measure = sess.backend.measure().as_dict(); sess.sid = H.new_id(); sess.title = "in A"; sess.created = "x"
+        sess.save_history(); mine = sess.sid
+        for i, (ws, t) in enumerate(((pb, "in B"), ("", "legacy"))):
+            H.save(dd, {"id": "20250101-00000%d-abcd" % i, "title": t, "created": "x", "events": [], "messages": None, "cells": [], "measure": None, "workspace": ws} if ws else
+                   {"id": "20250101-00000%d-abcd" % i, "title": t, "created": "x", "events": [], "messages": None, "cells": [], "measure": None})
+        titles = lambda url: sorted(x["title"] for x in self.req("GET", url)[1]["sessions"])
+        self.assertEqual(titles("/api/history"), ["in A"]); self.assertEqual(titles("/api/history?all=1"), ["in A", "in B", "legacy"])
+        self.assertEqual(self.req("GET", "/api/history")[1]["project"], pa)
+        spawned = []; real = web_pkg.spawn_window; web_pkg.spawn_window = lambda proj, sid=None: spawned.append((proj, sid)) or {"ok": True, "detail": "x"}
+        try:
+            s, d = self.req("POST", "/api/history/load", {"id": "20250101-000000-abcd"}); self.assertEqual((s, d["opened_window"], spawned), (200, os.path.realpath(pb), [(os.path.realpath(pb), "20250101-000000-abcd")]))
+            self.assertEqual(self.req("POST", "/api/history/load", {"id": mine})[0], 200); self.assertEqual(len(spawned), 1)           # own project: loaded here
+            self.assertEqual(self.req("POST", "/api/history/load", {"id": "20250101-000001-abcd"})[0], 200); self.assertEqual(len(spawned), 1)   # legacy record: loaded here
+        finally: web_pkg.spawn_window = real
+        self.assertEqual(self.req("POST", "/api/history/clear", {})[1]["deleted"], 1); self.assertEqual(titles("/api/history?all=1"), ["in B", "legacy"])   # only this project's
+        self.assertEqual(self.req("POST", "/api/history/clear", {"all": True})[1]["deleted"], 2)
 
 
 if __name__ == "__main__":

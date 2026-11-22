@@ -139,7 +139,7 @@ def _wait_quit(srv):
     srv.shutdown(); srv.sess.close()
 
 
-def _desktop_window(url, srv):
+def _desktop_window(url, srv, title="CadFabric"):
     """Show the app in its own window (pywebview). Blocks until the window is closed. -> True if a window was shown, False if it is not available
     (pywebview or the system web view missing): the caller then uses the browser. Folder picking goes through a local endpoint (the page CSP forbids pywebview's js_api, which needs eval)."""
     import threading
@@ -149,16 +149,18 @@ def _desktop_window(url, srv):
         return False
 
     try:
-        win = webview.create_window("CadFabric", url, width=1280, height=860, min_size=(900, 600))
+        win = webview.create_window(title, url, width=1280, height=860, min_size=(900, 600))
         def pick():
             try:
                 r = win.create_file_dialog(webview.FOLDER_DIALOG)
                 return r[0] if r else ""
             except Exception:                              # noqa: BLE001
                 return ""
-        srv.sess.picker = pick
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        threading.Thread(target=lambda: _watch_quit(srv, win), daemon=True).start()
+        if srv is not None:
+            srv.sess.picker = pick
+        if srv is not None:                                 # srv None = only show a window for an app that is already running
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            threading.Thread(target=lambda: _watch_quit(srv, win), daemon=True).start()
         webview.start()
     except Exception as e:                                 # noqa: BLE001
         print("desktop window failed (%s: %s); using the browser" % (type(e).__name__, str(e)[:120]), flush=True)
@@ -179,17 +181,37 @@ def _watch_quit(srv, win):
 def cmd_app(a):
     import socket, threading, urllib.request, webbrowser
     from . import web
+    import hashlib
+    from . import workspace as ws_mod
     cfg = config.load()
     data = config.data_dir(cfg)
     if sys.stdout is None or sys.stderr is None:            # started with pythonw / a shortcut: no console, log to a file
         sys.stdout = sys.stderr = open(os.path.join(data, "app.log"), "a", buffering=1, encoding="utf-8")
-    state = os.path.join(data, "app.json")
+    if getattr(a, "project", None):                          # one window per project: this one is for that folder
+        ws, err = ws_mod.check_folder(a.project)
+        if err or not ws:
+            print("project: " + (err or "empty")); return 2
+        cfg["workspace"] = ws
+    project = cfg.get("workspace") or ""
+    key = hashlib.sha1(os.path.realpath(project).encode()).hexdigest()[:10] if project else "none"
+    state = os.path.join(data, "app.json" if key == "none" else "app-%s.json" % key)
+    title = "CadFabric" + (" — " + (os.path.basename(project.rstrip("/\\")) or project) if project else "")
     try:                                                    # a running app: just open it again
         with open(state, encoding="utf-8") as f:
             st = json.load(f)
         rq = urllib.request.Request("http://127.0.0.1:%d/api/config" % st["port"], headers={"Cookie": "cft=" + st["token"]})
         urllib.request.urlopen(rq, timeout=3).read()
-        webbrowser.open("http://127.0.0.1:%d/?t=%s" % (st["port"], st["token"]))
+        old = "http://127.0.0.1:%d/?t=%s" % (st["port"], st["token"])
+        if getattr(a, "session", None):                      # open that saved conversation in the running window of this project
+            try:
+                rq2 = urllib.request.Request(old.split("?")[0] + "api/history/load", data=json.dumps({"id": a.session}).encode(),
+                                             headers={"Cookie": "cft=" + st["token"], "X-Requested-With": "cadfabric", "Content-Type": "application/json"})
+                urllib.request.urlopen(rq2, timeout=60).read()
+            except OSError:
+                pass
+        if not a.no_browser and not getattr(a, "browser", False) and _desktop_window(old, None, title):
+            return 0                                         # a window for the running app (closing it leaves the app running)
+        webbrowser.open(old)
         print("already running on port %d" % st["port"]); return 0
     except (OSError, ValueError, KeyError):
         pass
@@ -204,11 +226,13 @@ def cmd_app(a):
         print("no free port near %d" % a.port); return 2
     url = "http://127.0.0.1:%d/?t=%s" % (srv.port, srv.token)
     with open(state, "w", encoding="utf-8") as f:
-        json.dump({"port": srv.port, "token": srv.token, "pid": os.getpid()}, f)
+        json.dump({"port": srv.port, "token": srv.token, "pid": os.getpid(), "project": project}, f)
+    if getattr(a, "session", None):
+        srv.sess.load_history(a.session)
     print("cadfabric app: " + url, flush=True)
     window = False
     if not a.no_browser and not getattr(a, "browser", False):
-        window = _desktop_window(url, srv)                  # a native window (WebView2 on Windows); falls back to the browser
+        window = _desktop_window(url, srv, title)                  # a native window (WebView2 on Windows); falls back to the browser
     elif not a.no_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
     try:
@@ -262,7 +286,7 @@ def main(argv=None):
     p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner"); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
     sub.add_parser("tasks").set_defaults(fn=cmd_tasks)
     p = sub.add_parser("serve"); p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8765); p.add_argument("--allow-remote", action="store_true"); p.add_argument("--open", action="store_true"); p.set_defaults(fn=cmd_serve)
-    p = sub.add_parser("app"); p.add_argument("--port", type=int, default=8765); p.add_argument("--no-browser", action="store_true"); p.add_argument("--browser", action="store_true", help="use the web browser instead of the app window"); p.set_defaults(fn=cmd_app)
+    p = sub.add_parser("app"); p.add_argument("--port", type=int, default=8765); p.add_argument("--project", help="folder of the project this window is for (a different project = a different window)"); p.add_argument("--session", help="open this saved conversation");  p.add_argument("--no-browser", action="store_true"); p.add_argument("--browser", action="store_true", help="use the web browser instead of the app window"); p.set_defaults(fn=cmd_app)
     p = sub.add_parser("bench"); p.add_argument("--modes", default="off,nothink"); p.add_argument("--reps", type=int, default=3); p.add_argument("--tasks"); p.add_argument("--out"); p.set_defaults(fn=cmd_bench)
     a = ap.parse_args(argv)
     return a.fn(a)

@@ -127,7 +127,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 <dialog id="pdlg"><div class="hbox">
  <h2>Dự án (thư mục làm việc)</h2><div class="mute small" id="pcur"></div>
  <div class="adv" id="plist"></div>
- <div class="mute small">Qwen và cố vấn đọc được tệp văn bản trong dự án (không ghi đè tệp nào). Kéo thả tệp vào khung chat để hỏi về tệp đó, không cần chọn dự án.</div>
+ <div class="mute small">Mỗi cửa sổ gắn với một dự án và lịch sử riêng của dự án đó. Chọn một thư mục khác sẽ mở dự án đó trong cửa sổ mới. Qwen và cố vấn đọc được tệp văn bản trong dự án (không ghi đè tệp nào). Kéo thả tệp vào khung chat để hỏi về tệp đó, không cần chọn dự án.</div>
  <div class="row"><button type="button" class="btn" id="pnone">Bỏ dự án</button><span class="sp"></span><button type="button" class="btn" id="pclose">Đóng</button><button type="button" class="btn primary" id="popen">Mở thư mục…</button></div>
 </div></dialog>
 
@@ -145,9 +145,9 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 </div></dialog>
 
 <dialog id="hdlg"><div class="hbox">
- <h2>Lịch sử thiết kế</h2><div class="mute small">Lưu trên máy này, tự động sau mỗi lượt. Mở lại để xem và sửa tiếp chi tiết.</div>
+ <h2>Lịch sử thiết kế</h2><div class="mute small">Lưu trên máy này, tự động sau mỗi lượt. Lịch sử gắn với dự án (thư mục làm việc). Mở lại để xem và sửa tiếp chi tiết.</div><div class="small" id="hproj" style="overflow-wrap:anywhere"></div>
  <div class="adv" id="hlist"></div><div class="mute small" id="hnone" hidden>Chưa có chi tiết nào được lưu.</div>
- <div class="row"><button type="button" class="btn" id="hclear">Xoá tất cả</button><span class="sp"></span><button type="button" class="btn" id="hclose">Đóng</button></div>
+ <div class="row"><button type="button" class="btn" id="hclear">Xoá của dự án này</button><button type="button" class="btn" id="hall">Xem tất cả dự án</button><span class="sp"></span><button type="button" class="btn" id="hclose">Đóng</button></div>
 </div></dialog>
 
 <dialog id="dlg"><form method="dialog" id="sf">
@@ -157,7 +157,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <label class="f">Tên model (để trống nếu máy chủ tự chọn)<input id="s_model" list="models" autocomplete="off"><datalist id="models"></datalist></label>
  <label class="f">Khoá API <span id="keystate"></span><input id="s_key" type="password" autocomplete="off" placeholder="để trống = giữ nguyên"></label>
  <label class="f" id="w_w">Thư mục làm việc (Qwen và cố vấn đọc được các tệp văn bản trong đó; chỉ đọc, tệp bí mật như .env, khoá bị chặn)
-  <span class="row"><input id="w_dir" autocomplete="off" placeholder="ví dụ: C:\\Users\\ban\\DuAn  (để trống = không dùng)" style="flex:1"><button type="button" class="btn small" id="w_pick">Chọn…</button></span></label>
+  <span class="row"><input id="w_dir" autocomplete="off" placeholder="(chưa chọn dự án)" style="flex:1" readonly><button type="button" class="btn small" id="w_pick">Đổi dự án…</button></span></label>
  <label class="f">Mở chi tiết xem trong (nút "Mở trong CAD", lệnh /open, hoặc nhờ trong chat: "mở bằng SolidWorks cho tôi xem")
   <select id="v_kind"><option value="auto">Tự động: SolidWorks nếu có, không thì chương trình mặc định</option><option value="solidworks">SolidWorks</option><option value="default">Chương trình mặc định của hệ điều hành cho .step</option><option value="blender">Blender (chuyển STEP sang STL rồi nhập vào cảnh mới)</option><option value="custom">Lệnh tự đặt…</option></select></label>
  <div class="small det" id="v_det"></div>
@@ -340,20 +340,23 @@ function loadSettings(s){$("w_dir").value=s.workspace||"";setWs(s.workspace||"")
  const r=s.relay||{};$("r_host").value=r.host||"";$("r_dir").value=r.workdir||"";$("r_codex").value=r.codex||"codex";$("cfgpath").textContent="Lưu tại: "+s.config_path;advKeys={};$("advform").hidden=true;setAdvisors(s.advisors);pick(s.planner)}
 function form(){const p=(document.querySelector("#adv input:checked")||{}).value;
  const strip=a=>{const o={};for(const k of["id","label","type","external","kind","url","model","effort","preset","command","web"])if(a[k]!==undefined&&a[k]!=="")o[k]=a[k];return o};
- return{url:$("s_url").value.trim(),model:$("s_model").value.trim(),key:$("s_key").value,planner:p,relay:{host:$("r_host").value.trim(),workdir:$("r_dir").value.trim(),codex:$("r_codex").value.trim()||"codex"},advisors:custom.map(strip),advisor_keys:advKeys,viewer:{kind:$("v_kind").value,command:$("v_cmd").value.trim()},workspace:$("w_dir").value.trim()}}
+ return{url:$("s_url").value.trim(),model:$("s_model").value.trim(),key:$("s_key").value,planner:p,relay:{host:$("r_host").value.trim(),workdir:$("r_dir").value.trim(),codex:$("r_codex").value.trim()||"codex"},advisors:custom.map(strip),advisor_keys:advKeys,viewer:{kind:$("v_kind").value,command:$("v_cmd").value.trim()}}}
 function chip(){const sel=$("planner"),o=sel.options[sel.selectedIndex];$("advchip").textContent="Cố vấn: "+(o?o.textContent:"—")}
 function openSettings(){$("tst").textContent="";$("dlg").showModal()}
-async function openHistory(){const {d}=await api("/api/history");const L=$("hlist");L.replaceChildren();const ss=d.sessions||[];$("hnone").hidden=ss.length>0;$("hclear").hidden=!ss.length;
- for(const x of ss){const r=el("div","opt");const t=el("div");t.style.flex="1";const h=el("b",0,x.title||"(không tên)");t.appendChild(h);
-  t.appendChild(el("div","mute small",x.updated+" · "+x.steps+" bước"+(x.volume!=null?" · "+Math.round(x.volume*1000)/1000+" mm³":"")+(x.id===d.current?" · đang mở":"")));r.appendChild(t);
-  const o=el("button","btn small primary","Mở");o.type="button";o.onclick=async()=>{if(busy)return;const q=await api("/api/history/load",{id:x.id});if(!q.ok){alert(q.d.error||"Không mở được");return}
+let hall=false;
+async function openHistory(){const {d}=await api("/api/history"+(hall?"?all=1":""));const L=$("hlist");L.replaceChildren();const ss=d.sessions||[];$("hnone").hidden=ss.length>0;$("hclear").hidden=!ss.length;
+ $("hproj").textContent=hall?"Tất cả dự án":(d.project?"Dự án: "+d.project:"Chưa chọn dự án (các cuộc trò chuyện không thuộc dự án nào)");$("hall").textContent=hall?"Chỉ dự án này":"Xem tất cả dự án";$("hclear").textContent=hall?"Xoá tất cả":"Xoá của dự án này";
+ for(const x of ss){const r=el("div","opt");const t=el("div");t.style.flex="1";const h=el("b",0,x.title||"(không tên)");t.appendChild(h);const other=(x.workspace||"")!==(d.project||"");
+  t.appendChild(el("div","mute small",x.updated+" · "+x.steps+" bước"+(x.volume!=null?" · "+Math.round(x.volume*1000)/1000+" mm³":"")+(x.id===d.current?" · đang mở":"")+(hall?" · 📁 "+(x.workspace?x.workspace.split(/[\\\/]/).filter(Boolean).pop():"không dự án"):"")));r.appendChild(t);
+  const o=el("button","btn small primary",other&&x.workspace?"Mở (cửa sổ dự án)":"Mở");o.type="button";o.onclick=async()=>{if(busy)return;const q=await api("/api/history/load",{id:x.id});if(!q.ok){alert(q.d.error||"Không mở được");return}
+   if(q.d.opened_window){$("hdlg").close();toast("Đã mở trong cửa sổ của dự án "+q.d.opened_window.split(/[\\\/]/).filter(Boolean).pop());return}
    $("hdlg").close();col().replaceChildren();since=0;lastVol=null;poll();if(q.d.replay_failed)alert("Có "+q.d.replay_failed+" bước không dựng lại được; chi tiết có thể khác bản đã lưu.")};
   const dl=el("button","btn small","Xoá");dl.type="button";dl.onclick=async()=>{if(!confirm("Xoá mục này khỏi lịch sử?"))return;await api("/api/history/delete",{id:x.id});openHistory()};
   r.appendChild(o);r.appendChild(dl);L.appendChild(r)}
  if(!$("hdlg").open)$("hdlg").showModal()}
 
 let WS="",att=[],ups=[],RECENT=[],fdir="",bmode=null;
-function setWs(w){WS=w;if(typeof sfRefresh==="function")sfRefresh();$("projbtn").textContent=w?"📁 "+(w.split(/[\\\/]/).filter(Boolean).pop()||w):"📁 Chọn dự án";$("projbtn").title=w||"Dự án = thư mục làm việc";$("attbtn").hidden=!w||!local;if(!w){att=[];drawAtt()}}
+function setWs(w){WS=w;document.title="CadFabric"+(w?" — "+(w.split(/[\\\/]/).filter(Boolean).pop()||w):"");if(typeof sfRefresh==="function")sfRefresh();$("projbtn").textContent=w?"📁 "+(w.split(/[\\\/]/).filter(Boolean).pop()||w):"📁 Chọn dự án";$("projbtn").title=w||"Dự án = thư mục làm việc";$("attbtn").hidden=!w||!local;if(!w){att=[];drawAtt()}}
 function drawAtt(){const a=$("attached");a.replaceChildren();a.hidden=!att.length&&!ups.length;for(const u of ups){const c=el("span","fchip","📎 "+u.name+"  ✕");c.title="Bỏ tệp này";c.onclick=()=>{ups=ups.filter(x=>x!==u);drawAtt()};a.appendChild(c)}for(const f of att){const c=el("span","fchip","📄 "+f+"  ✕");c.title="Bỏ tệp này";c.onclick=()=>{att=att.filter(x=>x!==f);drawAtt()};a.appendChild(c)}}
 async function openFiles(rel){fdir=rel||"";const {ok,d}=await api("/api/files"+(fdir?"?path="+encodeURIComponent(fdir):""));if(!ok){alert(d.error||"Không đọc được thư mục");return}
  $("fpath").textContent=(d.root||"")+"/"+d.path;const L=$("flist");L.replaceChildren();
@@ -463,11 +466,12 @@ async function browse(p){const {ok,d}=await api("/api/browse"+(p?"?path="+encode
  if(!d.dirs.length)l.appendChild(el("div","mute small","(không có thư mục con)"))}
 async function chooseFolder(start,done){if(window.PICKER){const {d}=await api("/api/pick_folder",{});if(d&&d.path)done(d.path);return}
  bmode=done;await browse(start||"");$("bdlg").showModal()}
-$("w_pick").onclick=()=>chooseFolder($("w_dir").value.trim(),p=>{$("w_dir").value=p});
+$("w_pick").onclick=()=>{$("dlg").close();$("projbtn").click()};
 function drawProj(){$("pcur").textContent=WS?"Đang dùng: "+WS:"Chưa chọn dự án";const l=$("plist");l.replaceChildren();
  for(const p of RECENT){const r=el("div","opt",(p===WS?"✔ ":"📁 ")+p);r.style.cursor="pointer";r.onclick=()=>setProject(p);l.appendChild(r)}
  if(!RECENT.length)l.appendChild(el("div","mute small","(chưa có dự án gần đây)"))}
 async function setProject(p){const r=await api("/api/project",{path:p});if(!r.ok){alert(r.d.error||"không đặt được dự án");return}
+ if(r.d.opened_window){RECENT=r.d.recent||RECENT;drawProj();if($("pdlg").open)$("pdlg").close();toast("Đã mở dự án "+r.d.opened_window.split(/[\\\/]/).filter(Boolean).pop()+" trong cửa sổ mới");return}
  WS=r.d.workspace;RECENT=r.d.recent||[];setWs(WS);if(cfgd)cfgd.workspace=WS;const w=$("w_dir");if(w)w.value=WS;att=[];drawAtt();drawProj();if($("pdlg").open)$("pdlg").close()}
 $("sfpath").oncontextmenu=e=>{if(WS)fileMenu(e,sfdir,null,true)};$("projbtn").oncontextmenu=e=>{if(WS)showCtx(e,[{label:"Hiện thư mục dự án",fn:()=>post("/api/reveal","","Đã mở thư mục dự án")},{label:"Sao chép đường dẫn dự án",fn:()=>copyText(WS)},{label:"Đổi dự án…",fn:()=>$("projbtn").click()}])};$("projbtn").onclick=()=>{drawProj();$("pdlg").showModal()};$("pclose").onclick=()=>$("pdlg").close();$("pnone").onclick=()=>setProject("");
 $("popen").onclick=()=>chooseFolder(WS,setProject);
@@ -483,7 +487,7 @@ addEventListener("drop",async e=>{if(!isFiles(e))return;e.preventDefault();dragN
 const TEXTX=new Set(".txt .md .csv .tsv .json .yaml .yml .xml .ini .cfg .toml .log .py .dxf .step .stp .iges .igs .svg .html .htm .sql .js .ts .c .h .cpp .rst .tex .nc .gcode .scad .obj .stl".split(" "));
 function okTextName(n){const i=n.lastIndexOf(".");return i>=0&&TEXTX.has(n.slice(i).toLowerCase())}
 $("bcancel").onclick=()=>{bmode=null;$("bdlg").close()};$("bok").onclick=()=>{$("bdlg").close();if(bmode)bmode(bcur);bmode=null};
-$("histbtn").onclick=openHistory;$("hclose").onclick=()=>$("hdlg").close();$("hclear").onclick=async()=>{if(!confirm("Xoá toàn bộ lịch sử?"))return;await api("/api/history/clear",{});openHistory()};
+$("histbtn").onclick=openHistory;$("hclose").onclick=()=>$("hdlg").close();$("hall").onclick=()=>{hall=!hall;openHistory()};$("hclear").onclick=async()=>{if(!confirm(hall?"Xoá lịch sử của TẤT CẢ dự án?":"Xoá lịch sử của dự án này?"))return;await api("/api/history/clear",hall?{all:true}:{});openHistory()};
 $("setbtn").onclick=openSettings;$("cbtn").onclick=()=>$("dlg").close();
 $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=await api("/api/test",form());if(!r.ok){$("tst").textContent=r.d.error||("lỗi "+r.status);return}
  $("tst").textContent=(r.d.ok?"✓ ":"✗ ")+r.d.detail;const dl=$("models");dl.replaceChildren();(r.d.models||[]).forEach(m=>{const o=el("option");o.value=m;dl.appendChild(o)});
