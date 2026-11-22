@@ -153,6 +153,27 @@ def search(root, needle, rel="", max_hits=30):
     return hits, ""
 
 
+def uploads(items):
+    """Files dropped into the chat (name + text, no path on disk). -> (block, names, error). Same limits as attachments."""
+    if not isinstance(items, list) or len(items) > 8:
+        return "", [], "at most 8 dropped files"
+    out, names, left = [], [], MAX_ATTACH_TOTAL
+    for it in items:
+        name = os.path.basename(str((it or {}).get("name", "")).replace("\\", "/")) if isinstance(it, dict) else ""
+        text = it.get("text") if isinstance(it, dict) else None
+        if not name or len(name) > 120 or re.search(r"[\x00\r\n]", name) or not isinstance(text, str):
+            return "", [], "bad dropped file"
+        if os.path.splitext(name)[1].lower() not in TEXT_EXT:
+            return "", [], "%s: only text files can be dropped" % name
+        if _denied([name]):
+            return "", [], "%s: that file is protected" % name
+        if "\x00" in text[:4096]:
+            return "", [], "%s: this file is binary" % name
+        text = text[:min(MAX_READ, max(left, 0))]
+        out.append("----- FILE (dropped): %s -----\n%s" % (name, text)); names.append(name); left -= len(text)
+    return "\n\n".join(out), names, ""
+
+
 def new_step_path(root, name):
     """A fresh path for a STEP export inside the folder (never an existing file). -> (path, error)."""
     n = str(name or "part").strip()

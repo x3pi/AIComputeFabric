@@ -31,24 +31,28 @@ class Session:
             return {"busy": self.busy, "events": self.events[since:], "next": len(self.events), "measure": self.measure, "has_part": self.measure is not None,
                     "follow_up": self.history is not None}
 
-    def send(self, text, planner, files=()):
+    def send(self, text, planner, files=(), uploads=None):
         with self.lock:
             if self.busy:
                 return False
             self.busy, self.stop = True, False
         if not self.sid:
             self.sid, self.created, self.title = history_mod.new_id(), time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(text.split())[:60]
-        self.emit("user", files=list(files), text=text, planner=planner if self.history is None else "(follow-up: no plan)")
-        self.thread = threading.Thread(target=self._work, args=(text, planner, tuple(files)), daemon=True)
+        self.emit("user", files=list(files) + [u["name"] for u in (uploads or [])], text=text, planner=planner if self.history is None else "(follow-up: no plan)")
+        self.thread = threading.Thread(target=self._work, args=(text, planner, tuple(files), uploads or []), daemon=True)
         self.thread.start()
         return True
 
-    def _work(self, text, planner, files=()):
+    def _work(self, text, planner, files=(), uploads=()):
         try:
             root = self.cfg.get("workspace") or ""
             block, _used, err = ws_mod.attachments(root, files) if files else ("", [], "")
             if err:
                 raise ValueError("attached file: " + err)
+            ublock, _n, uerr = ws_mod.uploads(list(uploads)) if uploads else ("", [], "")
+            if uerr:
+                raise ValueError("dropped file: " + uerr)
+            block = "\n\n".join(x for x in (block, ublock) if x)
             r = agent.run(self.llm, self.backend, text, plan_mode=planner, log=lambda s: None, cfg=self.cfg, workspace=root or None, attachments=block,
                           history=self.history, should_stop=lambda: self.stop, on_event=lambda kind, **kw: self.emit(kind, **kw),
                           opener=(lambda: self.open_in_viewer()[1]) if self.local else None)
@@ -112,6 +116,21 @@ class Session:
         cfg = config.load()
         self.cfg, self.llm = cfg, llm_mod.LLM(cfg)
         return path
+
+    def set_project(self, path):
+        """Make `path` the working folder and remember it in the recent list. -> (http status, body)."""
+        ws, err = ws_mod.check_folder(path)
+        if err:
+            return 400, {"error": err}
+        if not ws:                                                      # empty = leave the project
+            return (200, {"workspace": "", "recent": self.recent()}) if self.apply_settings({"workspace": "", "relay": {}}, None) is not None else (409, {"error": "busy"})
+        recent = [ws] + [p for p in (self.cfg.get("recent") or []) if p != ws]
+        if self.apply_settings({"workspace": ws, "recent": recent[:8], "relay": {}}, None) is None:
+            return 409, {"error": "busy"}
+        return 200, {"workspace": ws, "recent": self.recent()}
+
+    def recent(self):
+        return [p for p in (self.cfg.get("recent") or []) if isinstance(p, str) and os.path.isdir(p)]
 
     def open_in_viewer(self):
         """Export the part to <data dir>/exports and open it in the chosen CAD program. -> (http status, body)."""
@@ -202,7 +221,7 @@ def make_handler(sess, token, hosts, data_dir):
             elif u.path == "/api/config":
                 self._send(200, {"planners": advisors.names(sess.cfg), "external": [n for n in advisors.names(sess.cfg) if advisors.is_external(sess.cfg, n)], "default": sess.cfg["planner"],
                                  "advisors": advisors.meta(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "cli_presets": advisors.presets_info(), "viewer_label": viewers.resolve(sess.cfg)[1], "version": __import__("cadfabric").__version__,
-                                 "local": sess.local, "picker": bool(sess.picker and sess.local), "settings": public_settings(sess.cfg)})
+                                 "recent": sess.recent() if sess.local else [], "local": sess.local, "picker": bool(sess.picker and sess.local), "settings": public_settings(sess.cfg)})
             elif u.path == "/api/history":
                 self._send(200, {"sessions": history_mod.list_sessions(data_dir) if sess.local else [], "current": sess.sid}, extra=cookie)
             elif u.path == "/api/files":
@@ -264,13 +283,22 @@ def make_handler(sess, token, hosts, data_dir):
                 _b, _u, ferr = ws_mod.attachments(sess.cfg.get("workspace") or "", files) if files else ("", [], "")
                 if ferr:
                     return self._send(400, {"error": ferr})
-                ok = sess.send(text, planner, files)
+                ups = body.get("uploads") or []
+                if ups:
+                    if not sess.local or len(files) + len(ups) > 8:
+                        return self._send(400, {"error": "dropped files are only available locally (at most 8 files in total)"})
+                    _b, _u, uerr = ws_mod.uploads(ups)
+                    if uerr:
+                        return self._send(400, {"error": uerr})
+                ok = sess.send(text, planner, files, ups)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder", "/api/project"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
                 if u.path == "/api/quit":
                     sess.quit = True; self._send(200, {"ok": True}); return
+                if u.path == "/api/project":
+                    return self._send(*sess.set_project(body.get("path") if isinstance(body, dict) else ""))
                 if u.path == "/api/pick_folder":
                     if not sess.picker:
                         return self._send(404, {"error": "no native folder dialog in this mode"})

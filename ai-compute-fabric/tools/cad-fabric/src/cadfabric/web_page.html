@@ -63,12 +63,14 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 .det.ok{color:var(--ok)}.det.no{color:var(--warn)}
 #relay{display:none;gap:8px;flex-direction:column}#relay.show{display:flex}
 .row{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}#tst{flex:1;font-size:13px;min-width:160px}
+#dropov{position:fixed;inset:0;background:#0b6bcb33;border:3px dashed var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;z-index:50;pointer-events:none}#dropov[hidden]{display:none}
 </style>
 </head>
 <body>
 <header>
  <span class="logo">Cad<i>Fabric</i></span><span class="mute small" id="ver"></span><span class="dot" id="dot"></span><span class="mute small" id="status">sẵn sàng</span>
  <span class="sp"></span>
+ <button class="btn small" id="projbtn" title="Dự án = thư mục làm việc. Qwen và cố vấn đọc được tệp trong đó">📁 Chọn dự án</button>
  <button class="btn small" id="partbtn" title="Chi tiết hiện tại">Chi tiết</button>
  <button class="btn small" id="histbtn" title="Các chi tiết đã thiết kế">Lịch sử</button>
  <button class="btn small" id="newbtn">Chi tiết mới</button>
@@ -91,6 +93,13 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <aside id="side"><h3>Chi tiết hiện tại</h3><div id="preview">chưa có chi tiết</div><table id="meas"></table>
   <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></aside>
 </div>
+
+<dialog id="pdlg"><div class="hbox">
+ <h2>Dự án (thư mục làm việc)</h2><div class="mute small" id="pcur"></div>
+ <div class="adv" id="plist"></div>
+ <div class="mute small">Qwen và cố vấn đọc được tệp văn bản trong dự án (không ghi đè tệp nào). Kéo thả tệp vào khung chat để hỏi về tệp đó, không cần chọn dự án.</div>
+ <div class="row"><button type="button" class="btn" id="pnone">Bỏ dự án</button><span class="sp"></span><button type="button" class="btn" id="pclose">Đóng</button><button type="button" class="btn primary" id="popen">Mở thư mục…</button></div>
+</div></dialog>
 
 <dialog id="bdlg"><div class="hbox">
  <h2>Chọn thư mục làm việc</h2><div class="mute small" id="bpath"></div>
@@ -217,10 +226,10 @@ async function submit(){if(sending)return;sending=true;try{await submit1()}final
 async function submit1(){const text=$("text").value.trim();if(!text)return;
  if(text==="/new"){$("text").value="";grow();return newPart()}if(text==="/stop"){$("text").value="";grow();return api("/api/stop",{})}
  if(text==="/open"){$("text").value="";grow();return openViewer()}
- if(busy)return;const planner=$("planner").value;const body={text,planner};if(att.length)body.files=att.slice();
+ if(busy)return;const planner=$("planner").value;const body={text,planner};if(att.length)body.files=att.slice();if(ups.length)body.uploads=ups.map(u=>({name:u.name,text:u.text}));
  if(ext.includes(planner)){if(!okExt.has(planner)){if(!confirm("Cố vấn '"+planner+"' gửi nội dung yêu cầu ra dịch vụ bên ngoài. Tiếp tục? (chỉ hỏi một lần cho cố vấn này)"))return;okExt.add(planner)}
- if(att.length&&ext.includes(planner)&&!confirm("Nội dung của "+att.length+" tệp đính kèm ("+att.join(", ")+") cũng sẽ được gửi cho cố vấn bên ngoài '"+planner+"'. Gửi?"))return;body.confirm_external=true}
- const r=await api("/api/send",body);if(r.ok){$("text").value="";grow();att=[];drawAtt()}else put(el("div","err","Không gửi được: "+(r.d.error||r.status)));poll()}
+ if((att.length||ups.length)&&ext.includes(planner)&&!confirm("Nội dung của "+(att.length+ups.length)+" tệp đính kèm ("+att.concat(ups.map(u=>u.name)).join(", ")+") cũng sẽ được gửi cho cố vấn bên ngoài '"+planner+"'. Gửi?"))return;body.confirm_external=true}
+ const r=await api("/api/send",body);if(r.ok){$("text").value="";grow();att=[];ups=[];drawAtt()}else put(el("div","err","Không gửi được: "+(r.d.error||r.status)));poll()}
 function grow(){const t=$("text");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,200)+"px"}
 $("text").oninput=grow;$("text").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing&&!e.repeat){e.preventDefault();submit()}};
 $("send").onclick=submit;$("stop").onclick=()=>api("/api/stop",{});$("newbtn").onclick=newPart;$("partbtn").onclick=()=>$("side").classList.toggle("open");
@@ -286,9 +295,9 @@ async function openHistory(){const {d}=await api("/api/history");const L=$("hlis
   r.appendChild(o);r.appendChild(dl);L.appendChild(r)}
  if(!$("hdlg").open)$("hdlg").showModal()}
 
-let WS="",att=[],fdir="";
-function setWs(w){WS=w;$("attbtn").hidden=!w||!local;if(!w){att=[];drawAtt()}}
-function drawAtt(){const a=$("attached");a.replaceChildren();a.hidden=!att.length;for(const f of att){const c=el("span","fchip","📄 "+f+"  ✕");c.title="Bỏ tệp này";c.onclick=()=>{att=att.filter(x=>x!==f);drawAtt()};a.appendChild(c)}}
+let WS="",att=[],ups=[],RECENT=[],fdir="",bmode=null;
+function setWs(w){WS=w;$("projbtn").textContent=w?"📁 "+(w.split(/[\\\/]/).filter(Boolean).pop()||w):"📁 Chọn dự án";$("projbtn").title=w||"Dự án = thư mục làm việc";$("attbtn").hidden=!w||!local;if(!w){att=[];drawAtt()}}
+function drawAtt(){const a=$("attached");a.replaceChildren();a.hidden=!att.length&&!ups.length;for(const u of ups){const c=el("span","fchip","📎 "+u.name+"  ✕");c.title="Bỏ tệp này";c.onclick=()=>{ups=ups.filter(x=>x!==u);drawAtt()};a.appendChild(c)}for(const f of att){const c=el("span","fchip","📄 "+f+"  ✕");c.title="Bỏ tệp này";c.onclick=()=>{att=att.filter(x=>x!==f);drawAtt()};a.appendChild(c)}}
 async function openFiles(rel){fdir=rel||"";const {ok,d}=await api("/api/files"+(fdir?"?path="+encodeURIComponent(fdir):""));if(!ok){alert(d.error||"Không đọc được thư mục");return}
  $("fpath").textContent=(d.root||"")+"/"+d.path;const L=$("flist");L.replaceChildren();
  if(d.path){const u=el("div","opt","⬆ ..");u.onclick=()=>openFiles(d.path.split("/").slice(0,-1).join("/"));L.appendChild(u)}
@@ -304,9 +313,28 @@ async function browse(p){const {ok,d}=await api("/api/browse"+(p?"?path="+encode
  if(d.parent){const r=el("div","opt","⬆ ..");r.style.cursor="pointer";r.onclick=()=>browse(d.parent);l.appendChild(r)}
  for(const n of d.dirs){const r=el("div","opt","📁 "+n);r.style.cursor="pointer";r.onclick=()=>browse(d.path.replace(/[\\\/]$/,"")+(d.path.includes("\\")?"\\":"/")+n);l.appendChild(r)}
  if(!d.dirs.length)l.appendChild(el("div","mute small","(không có thư mục con)"))}
-$("w_pick").onclick=async()=>{if(window.PICKER){const {d}=await api("/api/pick_folder",{});if(d&&d.path)$("w_dir").value=d.path;return}
- await browse($("w_dir").value.trim());$("bdlg").showModal()};
-$("bcancel").onclick=()=>$("bdlg").close();$("bok").onclick=()=>{$("w_dir").value=bcur;$("bdlg").close()};
+async function chooseFolder(start,done){if(window.PICKER){const {d}=await api("/api/pick_folder",{});if(d&&d.path)done(d.path);return}
+ bmode=done;await browse(start||"");$("bdlg").showModal()}
+$("w_pick").onclick=()=>chooseFolder($("w_dir").value.trim(),p=>{$("w_dir").value=p});
+function drawProj(){$("pcur").textContent=WS?"Đang dùng: "+WS:"Chưa chọn dự án";const l=$("plist");l.replaceChildren();
+ for(const p of RECENT){const r=el("div","opt",(p===WS?"✔ ":"📁 ")+p);r.style.cursor="pointer";r.onclick=()=>setProject(p);l.appendChild(r)}
+ if(!RECENT.length)l.appendChild(el("div","mute small","(chưa có dự án gần đây)"))}
+async function setProject(p){const r=await api("/api/project",{path:p});if(!r.ok){alert(r.d.error||"không đặt được dự án");return}
+ WS=r.d.workspace;RECENT=r.d.recent||[];setWs(WS);if(cfgd)cfgd.workspace=WS;const w=$("w_dir");if(w)w.value=WS;att=[];drawAtt();drawProj();if($("pdlg").open)$("pdlg").close()}
+$("projbtn").onclick=()=>{drawProj();$("pdlg").showModal()};$("pclose").onclick=()=>$("pdlg").close();$("pnone").onclick=()=>setProject("");
+$("popen").onclick=()=>chooseFolder(WS,setProject);
+let dragN=0;const isFiles=e=>e.dataTransfer&&[...(e.dataTransfer.types||[])].includes("Files");
+addEventListener("dragenter",e=>{if(isFiles(e)){dragN++;$("dropov").hidden=false}});addEventListener("dragleave",e=>{if(isFiles(e)&&--dragN<=0){dragN=0;$("dropov").hidden=true}});
+addEventListener("dragover",e=>{if(isFiles(e))e.preventDefault()});
+addEventListener("drop",async e=>{if(!isFiles(e))return;e.preventDefault();dragN=0;$("dropov").hidden=true;
+ for(const f of [...e.dataTransfer.files]){if(ups.length+att.length>=8){put(el("div","err","Tối đa 8 tệp đính kèm"));break}
+  if(!okTextName(f.name)){put(el("div","err",f.name+": chỉ kéo thả được tệp văn bản (txt, md, csv, json, dxf, step, py…)"));continue}
+  if(f.size>60000){put(el("div","err",f.name+": lớn hơn 60 KB, hãy đặt tệp vào dự án rồi nhờ Qwen đọc"));continue}
+  try{const text=await f.text();if(text.slice(0,4096).includes("\u0000")){put(el("div","err",f.name+": tệp nhị phân"));continue}ups.push({name:f.name,text})}catch(x){put(el("div","err",f.name+": không đọc được"))}}
+ drawAtt()});
+const TEXTX=new Set(".txt .md .csv .tsv .json .yaml .yml .xml .ini .cfg .toml .log .py .dxf .step .stp .iges .igs .svg .html .htm .sql .js .ts .c .h .cpp .rst .tex .nc .gcode .scad .obj .stl".split(" "));
+function okTextName(n){const i=n.lastIndexOf(".");return i>=0&&TEXTX.has(n.slice(i).toLowerCase())}
+$("bcancel").onclick=()=>{bmode=null;$("bdlg").close()};$("bok").onclick=()=>{$("bdlg").close();if(bmode)bmode(bcur);bmode=null};
 $("histbtn").onclick=openHistory;$("hclose").onclick=()=>$("hdlg").close();$("hclear").onclick=async()=>{if(!confirm("Xoá toàn bộ lịch sử?"))return;await api("/api/history/clear",{});openHistory()};
 $("setbtn").onclick=openSettings;$("cbtn").onclick=()=>$("dlg").close();
 $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=await api("/api/test",form());if(!r.ok){$("tst").textContent=r.d.error||("lỗi "+r.status);return}
@@ -315,10 +343,11 @@ $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=a
 $("sf").onsubmit=async e=>{e.preventDefault();const r=await api("/api/settings",form());if(!r.ok){$("tst").textContent="✗ "+(r.d.error||r.status);return}
  DET=DET;loadSettings(r.d.settings);$("planner").value=r.d.settings.planner;chip();$("dlg").close();if(!col().querySelector(".user"))hero(false),hero(true)};
 $("quitbtn").onclick=async()=>{if(confirm("Tắt ứng dụng CadFabric?")){await api("/api/quit",{});document.body.textContent="Đã tắt CadFabric. Bạn có thể đóng tab này."}};
-(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local;window.PICKER=!!d.picker;setWs(d.settings.workspace||"");
+(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;RECENT=d.recent||[];$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local;window.PICKER=!!d.picker;setWs(d.settings.workspace||"");
  DET=d.cli_detected||{};PRESETS=d.cli_presets||{};loadSettings(d.settings);$("planner").value=d.default;chip();
  if(!local){$("localnote").textContent="Đang truy cập từ xa: không sửa được cài đặt (chỉ sửa được trên máy chạy ứng dụng).";document.querySelectorAll("#dlg input,#tbtn,#sbtn").forEach(x=>x.disabled=true)}
  hero(true);poll();setInterval(poll,800);if(!d.settings.configured&&local)setTimeout(openSettings,300)})();
 </script>
+<div id="dropov" hidden>Thả tệp vào đây để hỏi về tệp (văn bản: txt, md, csv, json, dxf, step, py…)</div>
 </body>
 </html>

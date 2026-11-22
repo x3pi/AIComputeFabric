@@ -745,6 +745,26 @@ class WorkspaceWeb(Settings):
         try: self.assertEqual(self.req("GET", "/api/browse?path=" + root)[0], 403)
         finally: self.srv.sess.local = True
 
+    def test_project_switch_recent_and_dropped_files(self):
+        sess = self.srv.sess; a = os.path.join(self.dir, "pa"); b = os.path.join(self.dir, "pb"); os.makedirs(a); os.makedirs(b)
+        self.assertEqual(self.req("POST", "/api/project", {"path": "/no/such"})[0], 400)
+        s, d = self.req("POST", "/api/project", {"path": a}); self.assertEqual((s, d["workspace"]), (200, a))
+        s, d = self.req("POST", "/api/project", {"path": b}); self.assertEqual(d["recent"], [b, a])
+        s, d = self.req("POST", "/api/project", {"path": a}); self.assertEqual(d["recent"], [a, b])
+        self.assertEqual(self.req("GET", "/api/config")[1]["recent"], [a, b]); self.assertEqual(self.req("GET", "/api/config")[1]["settings"]["workspace"], a)
+        s, d = self.req("POST", "/api/project", {"path": ""}); self.assertEqual((s, d["workspace"]), (200, ""))
+        sess.local = False
+        try: self.assertEqual(self.req("POST", "/api/project", {"path": a})[0], 403)
+        finally: sess.local = True
+        base = {"text": "x", "planner": "nothink"}
+        ok = [{"name": "spec.txt", "text": "DIAMETER 42"}]
+        for bad in ([{"name": "k.pem", "text": "x"}], [{"name": "a.exe", "text": "x"}], [{"name": ".env", "text": "x"}], [{"name": "a.txt", "text": 5}], [{"name": "a.txt", "text": "x"}] * 9, "str"):
+            self.assertEqual(self.req("POST", "/api/send", dict(base, uploads=bad))[0], 400, bad)
+        from cadfabric import workspace as ws_mod; blk, names, err = ws_mod.uploads(ok); self.assertEqual((names, err), (["spec.txt"], "")); self.assertIn("DIAMETER 42", blk)
+        self.assertEqual(self.req("POST", "/api/send", dict(base, uploads=ok))[0], 200)
+        sess.thread.join(60); self.assertFalse(sess.busy)                                                                    # do not leave a job running for the next test
+        self.assertEqual([e["files"] for e in sess.events if e["kind"] == "user"][-1], ["spec.txt"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
