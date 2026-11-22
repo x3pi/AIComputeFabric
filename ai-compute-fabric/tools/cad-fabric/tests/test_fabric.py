@@ -839,15 +839,47 @@ class WorkspaceWeb(Settings):
     def test_page_script_has_no_duplicate_function_names(self):
         """A second `function render` once replaced the chat renderer (JS hoisting): messages silently stopped showing. Names must be unique."""
         import re, collections
-        html = open(os.path.join(os.path.dirname(web_mod_file()), "web_page.html"), encoding="utf-8").read()
+        from cadfabric import web as web_pkg
+        html = open(os.path.join(os.path.dirname(web_pkg.__file__), "web_page.html"), encoding="utf-8").read()
         js = re.findall(r"<script>(.*?)</script>", html, re.S)[-1]
         names = collections.Counter(re.findall(r"^(?:async )?function ([A-Za-z0-9_$]+)\(", js, re.M))
         self.assertEqual({n: c for n, c in names.items() if c > 1}, {})
 
-
-def web_mod_file():
-    from cadfabric import web
-    return web.__file__
+    def test_open_in_blender_converts_step_and_launches(self):
+        import struct, subprocess, py_compile
+        from cadfabric import viewers
+        root = os.path.join(self.dir, "bl"); os.makedirs(root); out = os.path.join(root, "args.txt"); fake = os.path.join(root, "fakeblender.sh")
+        open(fake, "w").write('#!/bin/sh\nfor a in "$@"; do echo "$a"; done > "%s"\n' % out); os.chmod(fake, 0o755)
+        sess = self.srv.sess; sess.reset(); sess.backend.execute("import cadquery as cq\nresult = cq.Workplane('XY').box(10, 20, 30)"); sess.backend.export_step(os.path.join(root, "p.step"))
+        self.assertEqual(self.req("POST", "/api/settings", {"url": self.fake_url, "model": "q", "planner": "nothink", "workspace": root})[0], 200)
+        old = os.environ.get("BLENDER"); os.environ["BLENDER"] = fake
+        try:
+            self.assertEqual(viewers.blender_path(), fake); self.assertEqual(viewers.detected()["blender"], fake)
+            self.assertEqual(self.req("POST", "/api/open_blender", {"path": "p.step"})[0], 200)
+            for _ in range(50):
+                if os.path.isfile(out) and os.path.getsize(out): break
+                time.sleep(0.1)
+            args = open(out).read().split("\n")[:-1]
+            self.assertEqual(args[0], "--python"); self.assertTrue(args[1].endswith("blender_import.py")); self.assertEqual(args[2], "--"); stl = args[3]; self.assertTrue(stl.endswith(".stl"))
+            raw = open(stl, "rb").read(); n = struct.unpack("<I", raw[80:84])[0] if not raw.startswith(b"solid") else 12                                  # a box is 12 triangles
+            self.assertEqual(n, 12) if not raw.startswith(b"solid") else self.assertIn(b"endsolid", raw)
+            py_compile.compile(args[1], doraise=True)
+            self.assertEqual(self.req("POST", "/api/open_blender", {"path": "../x.step"})[0], 400); self.assertEqual(self.req("POST", "/api/open_blender", {"path": "nope.step"})[0], 400)
+            open(os.path.join(root, "t.txt"), "w").write("x"); self.assertEqual(self.req("POST", "/api/open_blender", {"path": "t.txt"})[0], 500)       # not a mesh/CAD type
+            # as the chosen viewer the current part goes to Blender too
+            self.assertEqual(self.req("POST", "/api/settings", {"url": self.fake_url, "model": "q", "planner": "nothink", "workspace": root, "viewer": {"kind": "blender"}})[0], 200)
+            sess.measure = sess.backend.measure().as_dict(); os.unlink(out); self.assertEqual(self.req("POST", "/api/open", {})[0], 200)
+            for _ in range(80):
+                if os.path.isfile(out) and os.path.getsize(out): break
+                time.sleep(0.1)
+            self.assertIn("blender_import.py", open(out).read())
+            os.environ["BLENDER"] = os.path.join(root, "missing"); old_which = viewers.shutil.which; viewers.shutil.which = lambda n: None
+            try:
+                if viewers.blender_path() is None: self.assertFalse(viewers.open_blender(os.path.join(root, "p.step"))["ok"])
+            finally: viewers.shutil.which = old_which
+        finally:
+            if old is None: os.environ.pop("BLENDER", None)
+            else: os.environ["BLENDER"] = old
 
 
 if __name__ == "__main__":

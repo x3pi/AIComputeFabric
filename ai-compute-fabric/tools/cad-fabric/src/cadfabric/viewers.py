@@ -2,12 +2,13 @@
   auto        SolidWorks if it is installed, otherwise the operating system's default program for .step
   solidworks  SLDWORKS.exe found under Program Files (a running SolidWorks takes the file into its existing window)
   default     os.startfile / open / xdg-open (needs a program associated with .step; a fresh Windows PC usually has none)
+  blender     Blender: the STEP is converted to STL (Blender has no STEP reader) and imported into a fresh scene
   custom      your own command (no shell; `{file}` is replaced by the path, otherwise the path is appended)
 Local use only: the web layer refuses this when the app is reachable from other computers."""
 import glob, os, re, shlex, shutil, subprocess, sys, urllib.parse
 
-KINDS = ("auto", "solidworks", "default", "custom")
-LABELS = {"auto": "SolidWorks / CAD", "solidworks": "SolidWorks", "default": "chương trình mặc định", "custom": "chương trình tự đặt"}
+KINDS = ("auto", "solidworks", "default", "blender", "custom")
+LABELS = {"auto": "SolidWorks / CAD", "solidworks": "SolidWorks", "default": "chương trình mặc định", "blender": "Blender", "custom": "chương trình tự đặt"}
 
 
 def solidworks_path():
@@ -21,8 +22,62 @@ def solidworks_path():
     return None
 
 
+def blender_path():
+    """Blender executable: $BLENDER, PATH, then the usual install places. None when not found."""
+    env = os.environ.get("BLENDER")
+    if env and os.path.isfile(env):
+        return env
+    hit = shutil.which("blender")
+    if hit:
+        return hit
+    if os.name == "nt":
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")):
+            if base:
+                hits = sorted(glob.glob(os.path.join(base, "Blender Foundation", "Blender*", "blender.exe")), key=lambda p: [int(x) for x in re.findall(r"\d+", os.path.basename(os.path.dirname(p)))] or [0])
+                if hits:
+                    return hits[-1]
+    elif sys.platform == "darwin":
+        p = "/Applications/Blender.app/Contents/MacOS/Blender"
+        return p if os.path.isfile(p) else None
+    else:
+        for p in ("/snap/bin/blender", "/usr/local/bin/blender", "/opt/blender/blender"):
+            if os.path.isfile(p):
+                return p
+    return None
+
+
+def open_blender(path):
+    """Open a STEP/STL/OBJ file in Blender (STEP is converted to STL first). -> {ok, detail, viewer}. Never raises."""
+    exe = blender_path()
+    label = LABELS["blender"]
+    if not exe:
+        return {"ok": False, "viewer": label, "detail": "Blender not found (install it, or set the BLENDER environment variable to its program)"}
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in (".step", ".stp", ".stl", ".obj"):
+        return {"ok": False, "viewer": label, "detail": "Blender opens STEP, STL and OBJ files from here"}
+    here = os.path.dirname(os.path.abspath(__file__))
+    target = path
+    if ext in (".step", ".stp"):
+        import tempfile, hashlib
+        d = os.path.join(tempfile.gettempdir(), "cadfabric-blender-%s" % (os.environ.get("USERNAME") or os.environ.get("USER") or "u"))
+        os.makedirs(d, exist_ok=True)
+        target = os.path.join(d, "%s-%s.stl" % (re.sub(r"[^A-Za-z0-9_-]+", "_", os.path.splitext(os.path.basename(path))[0])[:40], hashlib.sha1(os.path.realpath(path).encode()).hexdigest()[:8]))
+        try:
+            from .cq_backend import worker_env, NOWIN
+            r = subprocess.run([sys.executable, "-I", os.path.join(here, "stepconvert.py"), path, target], capture_output=True, timeout=120, env=worker_env(), **NOWIN)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "viewer": label, "detail": "converting the STEP file took too long"}
+        if r.returncode != 0 or not os.path.isfile(target):
+            return {"ok": False, "viewer": label, "detail": "this STEP file could not be converted for Blender"}
+    try:
+        _spawn([exe, "--python", os.path.join(here, "blender_import.py"), "--", target])
+    except OSError as e:
+        return {"ok": False, "viewer": label, "detail": "Blender could not be started: %s" % str(e)[:100]}
+    return {"ok": True, "viewer": label, "detail": "sent to Blender"}
+
+
 def detected():
-    return {"solidworks": solidworks_path()}
+    return {"solidworks": solidworks_path(), "blender": blender_path()}
 
 
 def validate(v):
@@ -61,6 +116,8 @@ def open_file(path, cfg):
             if not exe:
                 return {"ok": False, "viewer": label, "detail": "SolidWorks not found on this computer (set another viewer in Settings)"}
             _spawn([exe, path])
+        elif kind == "blender":
+            return open_blender(path)
         elif kind == "custom":
             parts = shlex.split((cfg.get("viewer") or {}).get("command", ""), posix=(os.name != "nt"))
             argv = [x.replace("{file}", path) for x in parts]

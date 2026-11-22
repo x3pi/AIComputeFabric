@@ -159,7 +159,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <label class="f" id="w_w">Thư mục làm việc (Qwen và cố vấn đọc được các tệp văn bản trong đó; chỉ đọc, tệp bí mật như .env, khoá bị chặn)
   <span class="row"><input id="w_dir" autocomplete="off" placeholder="ví dụ: C:\\Users\\ban\\DuAn  (để trống = không dùng)" style="flex:1"><button type="button" class="btn small" id="w_pick">Chọn…</button></span></label>
  <label class="f">Mở chi tiết xem trong (nút "Mở trong CAD", lệnh /open, hoặc nhờ trong chat: "mở bằng SolidWorks cho tôi xem")
-  <select id="v_kind"><option value="auto">Tự động: SolidWorks nếu có, không thì chương trình mặc định</option><option value="solidworks">SolidWorks</option><option value="default">Chương trình mặc định của hệ điều hành cho .step</option><option value="custom">Lệnh tự đặt…</option></select></label>
+  <select id="v_kind"><option value="auto">Tự động: SolidWorks nếu có, không thì chương trình mặc định</option><option value="solidworks">SolidWorks</option><option value="default">Chương trình mặc định của hệ điều hành cho .step</option><option value="blender">Blender (chuyển STEP sang STL rồi nhập vào cảnh mới)</option><option value="custom">Lệnh tự đặt…</option></select></label>
  <div class="small det" id="v_det"></div>
  <label class="f" id="v_cmdw" hidden>Lệnh ({file} = đường dẫn STEP; nếu không có {file} thì đường dẫn được thêm vào cuối)<input id="v_cmd" autocomplete="off" placeholder='ví dụ: "C:\\Program Files\\FreeCAD\\bin\\FreeCAD.exe"'></label>
  <div class="adv" id="adv"></div>
@@ -326,10 +326,11 @@ $("a_test").onclick=async()=>{const r=advFromForm();if(r.error){$("a_tst").textC
  const x=await api("/api/advisor_test",{advisor:r.adv,key:$("a_key").value});$("a_tst").textContent=x.ok?((x.d.ok?"✓ ":"✗ ")+x.d.detail+(x.d.sec?" ("+x.d.sec+" s)":"")):("✗ "+(x.d.error||x.status))};
 $("a_ok").onclick=()=>{const r=advFromForm();if(r.error){$("a_tst").textContent="✗ "+r.error;return}const i=custom.findIndex(a=>a.id===r.adv.id);if(i>=0)custom[i]=r.adv;else custom.push(r.adv);
  const k=$("a_key").value.trim();if(k){advKeys[r.adv.id]=k;r.adv.has_key=true}$("advform").hidden=true;relist();pick(r.adv.id)};
-let VW={solidworks:null};
+let VW={solidworks:null,blender:null};
 function viewerSync(){const k=$("v_kind").value;$("v_cmdw").hidden=k!=="custom";const d=$("v_det");
  if(k==="custom"){d.className="small det no";d.textContent="Chương trình tự đặt chạy với quyền của bạn trên máy này."}
  else if(k==="default"){d.className="small det no";d.textContent="Cần có chương trình gán cho .step; máy Windows mới thường chưa có."}
+ else if(k==="blender"){d.className="small det "+(VW.blender?"ok":"no");d.textContent=VW.blender?"✓ thấy Blender tại "+VW.blender:"✗ không thấy Blender (cài Blender hoặc đặt biến môi trường BLENDER)"}
  else{d.className="small det "+(VW.solidworks?"ok":"no");d.textContent=VW.solidworks?"✓ thấy SolidWorks tại "+VW.solidworks:"✗ không thấy SolidWorks trên máy này"}}
 $("v_kind").onchange=viewerSync;
 function setViewerLabel(l){$("openbtn").textContent="Mở trong "+l}
@@ -447,6 +448,7 @@ function fileMenu(e,rel,kind,isDir){const items=[];
  else{if(kind)items.push({label:"Mở trong tab mới",fn:()=>sfView(rel,kind)});
   if(kind==="text"||kind==="step")items.push({label:att.includes(rel)?"Đã đính kèm vào chat":"Đính kèm vào chat",off:att.includes(rel),fn:()=>{if(att.length+ups.length>=8){toast("Tối đa 8 tệp đính kèm");return}att.push(rel);drawAtt();toast("Đã đính kèm "+rel)}});
   if(kind==="step")items.push({label:"Mở trong chương trình CAD",fn:()=>post("/api/open_cad",rel)});
+  if(/\.(step|stp|stl|obj)$/i.test(rel))items.push({label:"Mở bằng Blender",fn:()=>post("/api/open_blender",rel)});
   items.push({label:"Mở bằng chương trình mặc định",fn:()=>post("/api/open_file",rel)})}
  items.push("-",{label:"Hiện trong thư mục",fn:()=>post("/api/reveal",rel,"Đã mở thư mục chứa tệp")},{label:"Sao chép đường dẫn đầy đủ",fn:()=>copyText(fullPath(rel))},{label:"Sao chép đường dẫn tương đối",fn:()=>copyText(rel||".")});
  showCtx(e,items)}

@@ -385,12 +385,12 @@ def make_handler(sess, token, hosts, data_dir):
                         return self._send(400, {"error": uerr})
                 ok = sess.send(text, planner, files, ups)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
                 if u.path == "/api/quit":
                     sess.quit = True; self._send(200, {"ok": True}); return
-                if u.path in ("/api/reveal", "/api/open_file", "/api/open_cad"):
+                if u.path in ("/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender"):
                     rel = body.get("path") if isinstance(body, dict) else ""
                     root = sess.cfg.get("workspace") or ""
                     if rel in ("", "."):                                                    # the project folder itself
@@ -405,6 +405,8 @@ def make_handler(sess, token, hosts, data_dir):
                         return self._send(400, {"error": "that is a folder"})
                     elif u.path == "/api/open_file":
                         r = viewers.open_default(full)
+                    elif u.path == "/api/open_blender":
+                        r = viewers.open_blender(full)
                     else:
                         if os.path.splitext(full)[1].lower() not in (".step", ".stp"):
                             return self._send(400, {"error": "only STEP files open in the CAD program"})
