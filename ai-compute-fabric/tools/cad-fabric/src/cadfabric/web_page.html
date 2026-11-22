@@ -40,7 +40,7 @@ pre{margin:8px 0 0;background:var(--code);border-radius:8px;padding:9px 11px;ove
 .foot{color:var(--mute);font-size:12.5px;margin-top:6px}
 .err{color:var(--bad);border:1px solid var(--bad);border-radius:10px;padding:8px 12px}
 .working{color:var(--mute);font-size:14px}.working:after{content:"";display:inline-block;width:1.2em;animation:d 1.2s steps(4) infinite;overflow:hidden;vertical-align:bottom}@keyframes d{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
-.composer{padding:6px 16px 14px}
+.composer{padding:6px 16px 14px;position:relative}
 .box{max-width:780px;margin:0 auto;border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:8px 10px 8px 12px;display:flex;flex-direction:column;gap:6px}.box:focus-within{border-color:var(--accent)}
 textarea{border:0;outline:0;background:transparent;resize:none;width:100%;max-height:200px;min-height:26px}
 .tools{display:flex;gap:8px;align-items:center}.tools select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:4px 8px;font-size:13px}.tools .sp{flex:1}
@@ -91,6 +91,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 .les{padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px;display:flex;flex-direction:column;gap:5px}.les b{font-size:13.5px}.les .why{color:var(--mute);font-size:12px}.les .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:3px}
 .les .tag{font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--mute);margin-left:6px}.lh{padding:8px 14px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);background:var(--bg);border-bottom:1px solid var(--line)}
 #tablessons .bd{background:var(--accent);color:#fff;border-radius:9px;padding:0 6px;margin-left:5px;font-size:11px}
+.skpick{position:absolute;left:12px;bottom:58px;background:var(--bg2,#fff);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px #0002;display:flex;flex-direction:column;max-width:80%;z-index:5}.skpick button{border:0;background:none;text-align:left;padding:7px 12px;font-size:13px;cursor:pointer}.skpick button:hover{background:var(--line)}
 </style>
 <link rel="stylesheet" href="/static/vendor/hljs-light.css" media="(prefers-color-scheme: light)"><link rel="stylesheet" href="/static/vendor/hljs-dark.css" media="(prefers-color-scheme: dark)">
 </head>
@@ -258,7 +259,8 @@ function render(ev){if(ev.kind==="phase"){phase={what:ev.what,step:ev.step,t0:Da
  else if(ev.kind==="gate")put(el("div","chk","⚠ Cổng kiểm cuối chặn: "+ev.text))
  else if(ev.kind==="final"){const f=md(ev.text);f.appendChild(el("div","foot",ev.steps+" bước · "+ev.sec+" s"+(ev.warnings?" · "+ev.warnings+" cảnh báo kiểm tra":"")+(ev.gates?" · "+ev.gates+" lần cổng kiểm cuối chặn":"")));put(f)}
  else if(ev.kind==="lessons"){if(ev.added){const c=el("div","chk ok","💡 Đã rút "+ev.added+" bài học mới từ cuộc này — chờ bạn duyệt ở tab Bài học");c.style.cursor="pointer";c.onclick=()=>showTab("lessons");put(c)}loadLessons()}
- else if(ev.kind==="skill"){put(el("div","chk "+(ev.ok?"ok":"bad"),"📖 Qwen đọc skill: "+ev.name))}
+ else if(ev.kind==="skill"){put(el("div","chk "+(ev.ok?"ok":"bad"),(ev.explicit?"📖 Dùng skill bạn chỉ định: ":"📖 Qwen đọc skill: ")+ev.name))}
+ else if(ev.kind==="skill_blocked"){put(el("div","chk bad","Skill $"+ev.name+" chưa được duyệt nên không dùng — duyệt ở tab Skill"))}
  else if(ev.kind==="lessons_used"){put(el("div","chk ok","📚 Đã áp dụng "+ev.n+" bài học đã duyệt"))}
  else if(ev.kind==="file"){if(ev.op==="saved"&&$("pane_files")&&!$("pane_files").hidden)setTimeout(()=>sfOpen(sfdir),300);put(el("div","chk ok",ev.op==="saved"?"✓ Đã lưu "+ev.path+" vào thư mục làm việc":"📄 Đã đọc "+ev.path))}
  else if(ev.kind==="open")put(el("div","chk"+(ev.ok?" ok":" bad"),(ev.ok?"✓ Đã gửi tới "+ev.viewer+(ev.path?" — "+ev.path:""):"✗ Không mở được: "+ev.detail)))
@@ -308,6 +310,7 @@ async function submit(){if(sending)return;sending=true;try{await submit1()}final
 async function submit1(){const text=$("text").value.trim();if(!text)return;
  if(text==="/new"){$("text").value="";grow();return newPart()}if(text==="/stop"){$("text").value="";grow();return api("/api/stop",{})}
  if(text==="/open"){$("text").value="";grow();return openViewer()}
+ if(text.toLowerCase()==="/skills"){$("text").value="";grow();return showTab("skills")}
  if(text.toLowerCase()==="/happy"){$("text").value="";grow();return happy()}
  if(busy)return;const planner=$("planner").value;const body={text,planner};if(att.length)body.files=att.slice();if(ups.length)body.uploads=ups.map(u=>({name:u.name,text:u.text}));
  if(ext.includes(planner)){if(!okExt.has(planner)){if(!confirm("Cố vấn '"+planner+"' gửi nội dung yêu cầu ra dịch vụ bên ngoài. Tiếp tục? (chỉ hỏi một lần cho cố vấn này)"))return;okExt.add(planner)}
@@ -396,16 +399,21 @@ async function openFiles(rel){fdir=rel||"";const {ok,d}=await api("/api/files"+(
 let sfdir="";
 function showTab(t){$("pane_skills").hidden=t!=="skills";$("pane_files").hidden=t!=="files";$("pane_part").hidden=t!=="part";$("pane_lessons").hidden=t!=="lessons";for(const k of ["part","files","lessons","skills"])$("tab"+k).classList.toggle("on",k===t);if(t==="files")sfOpen(sfdir);if(t==="lessons")loadLessons();if(t==="skills")loadSkills()}
 $("tabpart").onclick=()=>showTab("part");$("tabfiles").onclick=()=>showTab("files");$("tablessons").onclick=()=>showTab("lessons");
+/* ---- $ picker: typing $ at the end of the message lists the approved skills ---- */
+let skPick=null;
+function skillPicker(){const t=$("text"),m=/(?:^|\s)\$([a-z0-9-]*)$/.exec(t.value);if(skPick){skPick.remove();skPick=null}if(!m||!SK.length)return;const q=m[1];const xs=SK.filter(x=>x.status==="approved"&&x.name.startsWith(q)).slice(0,6);if(!xs.length)return;
+ skPick=el("div","skpick");for(const x of xs){const b=el("button",0,"$"+x.name+" — "+x.description.slice(0,60));b.type="button";b.onmousedown=e=>{e.preventDefault();t.value=t.value.replace(/\$[a-z0-9-]*$/,"$"+x.name+" ");skPick.remove();skPick=null;t.focus()};skPick.appendChild(b)}t.parentNode.appendChild(skPick)}
+$("text").addEventListener("input",skillPicker);
 /* ---- skills: SKILL.md folders from GitHub, advice only, used after approval ---- */
 let SK=[],skMode="url";
-async function loadSkills(){const {ok,d}=await api("/api/skills");if(!ok)return;SK=d.skills||[];drawSkills()}
+async function loadSkills(){await api("/api/skills",{op:"scan"});const {ok,d}=await api("/api/skills");if(!ok)return;SK=d.skills||[];drawSkills()}
 function drawSkills(){const L=$("sklist");L.replaceChildren();const n=SK.filter(x=>x.status==="pending").length;$("tabskills").textContent="Skill";if(n)$("tabskills").appendChild(el("span","bd",String(n)));
- $("sknote").textContent="Skill là tài liệu hướng dẫn của người khác (định dạng SKILL.md). Chỉ skill đã duyệt mới được Qwen đọc, khi nó thấy hợp. Mã trong scripts/ không bao giờ được chạy.";
+ $("sknote").textContent="Skill là tài liệu hướng dẫn của người khác (định dạng SKILL.md). Chỉ skill đã duyệt mới được dùng: Qwen tự chọn khi mô tả khớp yêu cầu, hoặc bạn gõ $tên-skill trong chat để chỉ định. Tự động tìm trong .agents/skills của dự án và của bạn. Mã trong scripts/ không bao giờ được chạy.";
  for(const [st,label] of [["pending","Chờ bạn duyệt"],["approved","Đã duyệt (Qwen dùng được)"],["rejected","Đã bỏ"]]){const xs=SK.filter(x=>x.status===st);if(!xs.length)continue;L.appendChild(el("div","lh",label+" · "+xs.length));
   for(const x of xs){const c=el("div","les");const h=el("b",0,x.name);h.appendChild(el("span","tag",x.scope==="global"?"mọi dự án":"dự án này"));c.appendChild(h);c.appendChild(el("div",0,x.description));
    c.appendChild(el("div","why","Nguồn: "+x.source+" · "+x.files+" tệp"+(x.uses?" · đã dùng "+x.uses+" lần":"")));for(const t of x.notes||[])c.appendChild(el("div","why","⚠ "+t));
    const a=el("div","acts");const mk=(t,fn,cls)=>{const b=el("button","btn small"+(cls?" "+cls:""),t);b.type="button";b.onclick=fn;a.appendChild(b)};
-   mk("Đọc",()=>viewSkill(x.name),st==="pending"?"":"");if(st!=="approved")mk("Duyệt",()=>skillOp("approve",x.name),"primary");if(st==="pending")mk("Bỏ",()=>skillOp("reject",x.name));if(st==="approved")mk("Tạm dừng",()=>skillOp("pending",x.name));if(st==="rejected")mk("Đưa lại",()=>skillOp("pending",x.name));
+   mk("Đọc",()=>viewSkill(x.name),"");if(st==="approved")mk(x.implicit===false?"Tự động: tắt (chỉ khi gõ $"+x.name+")":"Tự động: bật",()=>skillOp("implicit",x.name,{value:x.implicit===false}));if(st!=="approved")mk("Duyệt",()=>skillOp("approve",x.name),"primary");if(st==="pending")mk("Bỏ",()=>skillOp("reject",x.name));if(st==="approved")mk("Tạm dừng",()=>skillOp("pending",x.name));if(st==="rejected")mk("Đưa lại",()=>skillOp("pending",x.name));
    mk(x.scope==="global"?"Chỉ dự án này":"Dùng mọi dự án",()=>skillOp("scope",x.name,{scope:x.scope==="global"?"project":"global"}));mk("Gỡ",()=>{if(confirm("Gỡ skill này?"))skillOp("delete",x.name)});c.appendChild(a);L.appendChild(c)}}
  if(!SK.length)L.appendChild(el("div","mute small","Chưa có skill nào. Bấm “Cài từ GitHub” và dán link repo hoặc thư mục chứa SKILL.md."))}
 async function skillOp(op,name,extra){const r=await api("/api/skills",Object.assign({op,name},extra||{}));if(!r.ok&&r.d.error)toast(r.d.error);loadSkills()}
@@ -561,7 +569,7 @@ $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=a
 $("sf").onsubmit=async e=>{e.preventDefault();const r=await api("/api/settings",form());if(!r.ok){$("tst").textContent="✗ "+(r.d.error||r.status);return}
  DET=DET;loadSettings(r.d.settings);$("planner").value=r.d.settings.planner;chip();$("dlg").close();if(!col().querySelector(".user"))hero(false),hero(true)};
 $("quitbtn").onclick=async()=>{if(confirm("Tắt ứng dụng CadFabric?")){await api("/api/quit",{});document.body.textContent="Đã tắt CadFabric. Bạn có thể đóng tab này."}};
-(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;RECENT=d.recent||[];loadLessons();$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local||!!d.picker;window.PICKER=!!d.picker;setWs(d.settings.workspace||"");
+(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;RECENT=d.recent||[];loadLessons();api("/api/skills").then(r=>{if(r.ok){SK=r.d.skills||[];drawSkills()}});$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local||!!d.picker;window.PICKER=!!d.picker;setWs(d.settings.workspace||"");
  DET=d.cli_detected||{};PRESETS=d.cli_presets||{};loadSettings(d.settings);$("planner").value=d.default;chip();
  if(!local){$("localnote").textContent="Đang truy cập từ xa: không sửa được cài đặt (chỉ sửa được trên máy chạy ứng dụng).";document.querySelectorAll("#dlg input,#tbtn,#sbtn").forEach(x=>x.disabled=true)}
  hero(true);poll();setInterval(poll,800);if(!d.settings.configured&&local)setTimeout(openSettings,300)})();

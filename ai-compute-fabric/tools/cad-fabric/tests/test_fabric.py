@@ -948,6 +948,23 @@ class WorkspaceWeb(Settings):
         try: self.assertEqual(self.req("GET", "/api/skills")[0], 403); self.assertEqual(post({"op": "install_local", "path": src})[0], 403)
         finally: self.srv.sess.local = True
 
+    def test_explicit_dollar_skill_reaches_the_model(self):
+        from cadfabric import skills as S
+        import tempfile
+        ws = os.path.join(self.dir, "xs"); os.makedirs(ws); self.req("POST", "/api/project", {"path": ""}); self.req("POST", "/api/project", {"path": ws})
+        src = os.path.join(tempfile.mkdtemp(), "cq-holes"); os.makedirs(src); open(os.path.join(src, "SKILL.md"), "w").write(SkillsCore.SK)
+        self.req("POST", "/api/skills", {"op": "install_local", "path": src})
+        llm = FakeLLM(["ok", "ok"]); self.srv.sess.llm = llm; self.srv.sess.cfg["planner"] = "off"
+        def ask(text):
+            self.assertEqual(self.req("POST", "/api/send", {"text": text, "planner": "off"})[0], 200)
+            for _ in range(100):
+                if not self.srv.sess.busy: break
+                time.sleep(0.1)
+        ask("make a plate $cq-holes"); self.assertFalse(any("SKILL the user invoked" in x for x in llm.seen)); self.assertTrue(any(e["kind"] == "skill_blocked" for e in self.srv.sess.events))   # pending: blocked
+        self.req("POST", "/api/skills", {"op": "approve", "name": "cq-holes"}); self.req("POST", "/api/reset", {}); llm.seen.clear()
+        ask("make a plate $cq-holes"); self.assertTrue(any("SKILL the user invoked with $cq-holes" in x and "longer than the part" in x for x in llm.seen)); self.assertTrue(any(e["kind"] == "skill" and e.get("explicit") for e in self.srv.sess.events))
+        self.req("POST", "/api/skills", {"op": "delete", "name": "cq-holes"}); self.req("POST", "/api/history/clear", {"all": True}); self.req("POST", "/api/reset", {}); self.req("POST", "/api/project", {"path": ""})     # leave the shared test server as we found it
+
 
 class LessonsCore(unittest.TestCase):
     def setUp(self):
@@ -1046,6 +1063,30 @@ class SkillsCore(unittest.TestCase):
         self.assertIn("no SKILL.md", S.install(self.d, self.P, "https://github.com/o/n", fetch=lambda u: self.zip({"a.md": "x"}))[1])
         self.assertIn("download failed", S.install(self.d, self.P, "https://github.com/o/f", fetch=lambda u: (_ for _ in ()).throw(OSError("offline")))[1])
         self.assertIn("folder not found", S.install(self.d, self.P, "https://github.com/o/r/tree/main/nope", fetch=lambda u: self.zip({"a/SKILL.md": self.SK}))[1])
+
+    def test_codex_style_explicit_implicit_discovery_and_budget(self):
+        from cadfabric import skills as S
+        import tempfile
+        mk = lambda root, name, desc, extra=None: ([os.makedirs(os.path.join(root, name, "agents"), exist_ok=True), open(os.path.join(root, name, "SKILL.md"), "w").write("---\nname: %s\ndescription: %s\n---\nInstructions long enough for %s to count as a skill." % (name, desc, name)),
+                                                    extra and open(os.path.join(root, name, "agents", "openai.yaml"), "w").write(extra)])
+        proj = os.path.join(self.d, "p"); skd = os.path.join(proj, ".agents", "skills"); os.makedirs(skd)
+        mk(skd, "alpha", "Handles alpha parts"); mk(skd, "beta", "Only when named", "policy:\n  allow_implicit_invocation: false\n")
+        home = tempfile.mkdtemp(); old = os.environ.get("HOME"), os.environ.get("USERPROFILE"); os.environ["HOME"] = os.environ["USERPROFILE"] = home
+        try: found = S.discover(self.d, proj); again = S.discover(self.d, proj)
+        finally:
+            for k, v in zip(("HOME", "USERPROFILE"), old):
+                os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+        self.assertEqual((sorted(found), again), (["alpha", "beta"], []))                                                                       # found in the project folder, pending, not duplicated
+        self.assertEqual({m["status"] for m in S.list_for(self.d, proj)}, {"pending"}); self.assertEqual(S.catalog(self.d, proj), "")          # a cloned repository's text never reaches the prompt unapproved
+        self.assertEqual(S.mentions(self.d, proj, "use $alpha please"), ([], ["alpha"]))                                                       # explicit but not approved -> blocked
+        for n in ("alpha", "beta"): S.set_field(self.d, proj, n, status="approved")
+        self.assertFalse(S._read_meta(self.d, "beta")["implicit"]); self.assertIn("alpha", S.catalog(self.d, proj)); self.assertNotIn("- beta", S.catalog(self.d, proj))   # implicit off: not offered
+        self.assertIn("ERROR", S.use(self.d, proj, "beta")); self.assertIn("SKILL REFERENCE", S.use(self.d, proj, "beta", explicit=True))
+        self.assertEqual(S.mentions(self.d, proj, "costs $5, $HOME, $alpha and $beta, $nope, a$alpha"), (["alpha", "beta"], []))               # prices, env vars, unknown names, glued text are ignored
+        b = S.explicit_block(self.d, proj, ["alpha"]); self.assertIn("invoked with $alpha", b); self.assertIn("Instructions long enough", b)
+        S.set_field(self.d, proj, "beta", implicit=True); self.assertIn("- beta", S.catalog(self.d, proj))
+        for i in range(60): mk(skd, "bulk-%02d" % i, "Description number %d " % i + "x" * 280); S.import_folder(self.d, proj, os.path.join(skd, "bulk-%02d" % i), "t", "project"); S.set_field(self.d, proj, "bulk-%02d" % i, status="approved")
+        c = S.catalog(self.d, proj); self.assertLessEqual(len(c), S.CATALOG_BUDGET); self.assertIn("- bulk-59", c); self.assertIn("- alpha", c)    # over budget: descriptions shrink, no skill is dropped
 
     def test_agent_gets_catalog_and_tool_only_with_approved_skills(self):
         from cadfabric import skills as S

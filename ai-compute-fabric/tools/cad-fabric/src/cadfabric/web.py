@@ -71,6 +71,14 @@ class Session:
             if uerr:
                 raise ValueError("dropped file: " + uerr)
             block = "\n\n".join(x for x in (block, ublock) if x)
+            if self.local:                                                          # $skill-name: the user names a skill explicitly (Codex style)
+                dd0 = config.data_dir(self.cfg)
+                names, blocked = skills_mod.mentions(dd0, root, text)
+                for n in blocked:
+                    self.emit("skill_blocked", name=n)
+                if names:
+                    self.emit("skill", name=", ".join(names), ok=True, explicit=True)
+                    block = "\n\n".join(x for x in (block, skills_mod.explicit_block(dd0, root, names)) if x)
             lblock, lused = ("", []) if self.history is not None else lessons_mod.approved_block(config.data_dir(self.cfg), root, text)
             if lused:
                 self.emit("lessons_used", n=len(lused))
@@ -505,6 +513,11 @@ def make_handler(sess, token, hosts, data_dir):
                         return self._send(200 if res and res["added"] else 400, dict(res or {}, error=err or "; ".join("%s: %s" % x for x in (res or {}).get("skipped", []))[:300]))
                     if op == "delete":
                         return self._send(200 if skills_mod.delete(data_dir, ws, name) else 404, {"ok": True})
+                    if op == "scan":
+                        return self._send(200, {"added": skills_mod.discover(data_dir, ws)})
+                    if op == "implicit":
+                        x, err = skills_mod.set_field(data_dir, ws, name, implicit=bool(body.get("value")))
+                        return self._send(200 if x else 400, {"ok": bool(x), "error": err})
                     if op in ("approve", "reject", "pending"):
                         x, err = skills_mod.set_field(data_dir, ws, name, status={"approve": "approved", "reject": "rejected", "pending": "pending"}[op])
                     elif op == "scope":
