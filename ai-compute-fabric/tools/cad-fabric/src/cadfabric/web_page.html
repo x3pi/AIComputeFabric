@@ -67,7 +67,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 .tabs{display:flex;border-bottom:1px solid var(--line)}.tabs button{flex:1;border:0;background:none;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);cursor:pointer;border-bottom:2px solid transparent}.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
 #sflist .opt{padding:7px 14px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px;overflow-wrap:anywhere}#sflist .opt:hover{background:var(--bg)}#sflist .opt.dim{opacity:.5;cursor:default}
 .sfhead{display:flex;gap:6px;align-items:center;padding:8px 14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}.sfhead b{font-size:13px;overflow-wrap:anywhere}
-#sftext{margin:0;padding:10px 14px;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+#sfimg{display:block;max-width:100%;margin:10px auto;background:#fff;border:1px solid var(--line)}#sftext{margin:0;padding:10px 14px;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -98,7 +98,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <div id="pane_part"><div id="preview">chưa có chi tiết</div><table id="meas"></table>
   <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
  <div id="pane_files" hidden><div class="mute small" id="sfpath" style="padding:8px 14px"></div><div id="sflist"></div>
-  <div id="sfview" hidden><div class="sfhead"><b id="sfname"></b><span class="sp"></span><button type="button" class="btn small" id="sfatt">Đính kèm vào chat</button><button type="button" class="btn small" id="sfclose">✕</button></div><pre id="sftext"></pre></div></div></aside>
+  <div id="sfview" hidden><div class="sfhead"><b id="sfname"></b><span class="sp"></span><button type="button" class="btn small" id="sfatt">Đính kèm vào chat</button><button type="button" class="btn small" id="sfclose">✕</button></div><img id="sfimg" hidden alt=""><pre id="sftext"></pre></div></div></aside>
 </div>
 
 <dialog id="pdlg"><div class="hbox">
@@ -210,7 +210,7 @@ function render(ev){if(ev.kind==="phase"){phase={what:ev.what,step:ev.step,t0:Da
   if(ev.check)put(el("div","chk","⚠ "+ev.check))}
  else if(ev.kind==="gate")put(el("div","chk","⚠ Cổng kiểm cuối chặn: "+ev.text))
  else if(ev.kind==="final"){const f=md(ev.text);f.appendChild(el("div","foot",ev.steps+" bước · "+ev.sec+" s"+(ev.warnings?" · "+ev.warnings+" cảnh báo kiểm tra":"")+(ev.gates?" · "+ev.gates+" lần cổng kiểm cuối chặn":"")));put(f)}
- else if(ev.kind==="file")put(el("div","chk ok",ev.op==="saved"?"✓ Đã lưu "+ev.path+" vào thư mục làm việc":"📄 Đã đọc "+ev.path))
+ else if(ev.kind==="file"){if(ev.op==="saved"&&$("pane_files")&&!$("pane_files").hidden)setTimeout(()=>sfOpen(sfdir),300);put(el("div","chk ok",ev.op==="saved"?"✓ Đã lưu "+ev.path+" vào thư mục làm việc":"📄 Đã đọc "+ev.path))}
  else if(ev.kind==="open")put(el("div","chk"+(ev.ok?" ok":" bad"),(ev.ok?"✓ Đã gửi tới "+ev.viewer+(ev.path?" — "+ev.path:""):"✗ Không mở được: "+ev.detail)))
  else if(ev.kind==="error")put(el("div","err","Lỗi: "+ev.text))}
 function hero(show){const h=$("hero");if(show&&!h){const x=el("div","hero");x.id="hero";x.appendChild(el("h2",0,"Bạn muốn thiết kế chi tiết gì?"));x.appendChild(el("p",0,"Mô tả bằng tiếng Việt, kèm kích thước. Hệ thống dựng bằng CadQuery và đối chiếu thể tích thật."));
@@ -324,11 +324,14 @@ async function sfOpen(rel){const L=$("sflist");L.replaceChildren();$("sfview").h
  if(d.path){const u=el("div","opt","⬆ ..");u.onclick=()=>sfOpen(d.path.split("/").slice(0,-1).join("/"));L.appendChild(u)}
  for(const e of d.entries){const full=(d.path?d.path+"/":"")+e.name;const r=el("div","opt");
   if(e.dir){r.textContent="📁 "+e.name;r.onclick=()=>sfOpen(full)}
-  else{r.textContent=(e.text?"📄 ":"· ")+e.name+"  ("+e.size+" B)";if(e.text)r.onclick=()=>sfView(full);else r.classList.add("dim")}
+  else{r.textContent=({text:"📄 ",image:"🖼 ",step:"🧊 "}[e.kind]||"· ")+e.name+"  ("+e.size+" B)";if(e.kind)r.onclick=()=>sfView(full,e.kind);else r.classList.add("dim")}
   L.appendChild(r)}
  if(!d.entries.length)L.appendChild(el("div","mute small","(thư mục trống)"));if(d.truncated)L.appendChild(el("div","mute small","(chỉ hiện 400 mục đầu)"))}
-async function sfView(rel){const {ok,d}=await api("/api/file?path="+encodeURIComponent(rel));if(!ok){alert(d.error||"Không đọc được tệp");return}
- sffile=rel;$("sfname").textContent=rel;$("sftext").textContent=d.text;$("sfview").hidden=false;$("sfatt").textContent=att.includes(rel)?"Đã đính kèm":"Đính kèm vào chat";$("sfview").scrollIntoView({block:"nearest"})}
+async function sfView(rel,kind){const pic=$("sfimg");pic.hidden=true;pic.removeAttribute("src");$("sftext").hidden=false;$("sftext").textContent="";let text="";
+ if(kind==="text"){const {ok,d}=await api("/api/file?path="+encodeURIComponent(rel));if(!ok){alert(d.error||"Không đọc được tệp");return}text=d.text}
+ else{$("sftext").hidden=true;pic.alt=rel;pic.onerror=()=>{pic.hidden=true;$("sftext").hidden=false;$("sftext").textContent="Không xem trước được tệp này (quá lớn, hỏng hoặc không dựng được)."};
+  pic.src=(kind==="image"?"/api/raw?path=":"/api/preview?path=")+encodeURIComponent(rel);pic.hidden=false;if(kind==="step"){$("sftext").hidden=false;$("sftext").textContent="Đang dựng hình…";pic.onload=()=>{$("sftext").hidden=true}}}
+ sffile=rel;$("sfname").textContent=rel;$("sftext").textContent=kind==="text"?text:$("sftext").textContent;$("sfview").hidden=false;$("sfatt").hidden=kind==="image";$("sfatt").textContent=att.includes(rel)?"Đã đính kèm":"Đính kèm vào chat";$("sfview").scrollIntoView({block:"nearest"})}
 $("sfclose").onclick=()=>{$("sfview").hidden=true;sffile=""};
 $("sfatt").onclick=()=>{if(!sffile||att.includes(sffile))return;if(att.length+ups.length>=8){alert("Tối đa 8 tệp đính kèm");return}att.push(sffile);drawAtt();$("sfatt").textContent="Đã đính kèm"};
 $("attbtn").onclick=()=>openFiles("");$("fclose").onclick=()=>$("fdlg").close();

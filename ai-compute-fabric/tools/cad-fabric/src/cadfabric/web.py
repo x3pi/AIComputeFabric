@@ -1,9 +1,10 @@
 """Web chat for cadfabric: `cadfabric serve`. Stdlib only, one job at a time, one part per session.
 Security: binds 127.0.0.1 unless told otherwise; every request needs the access token (URL ?t=... once, then a cookie); POSTs need the X-Requested-With header;
 the Host header must be one we serve (blocks DNS rebinding); Origin, when present, must match; request bodies are capped."""
-import hmac, http.server, json, os, re, secrets, socketserver, threading, time, urllib.parse
+import hmac, http.server, json, os, re, secrets, socketserver, subprocess, sys, threading, time, urllib.parse
 from http import cookies
 from . import advisors, agent, config, history as history_mod, llm as llm_mod, viewers, workspace as ws_mod
+from . import cq_backend
 from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
@@ -15,6 +16,7 @@ class Session:
 
     def __init__(self, llm, cfg, backend=None, local=True):
         self.llm, self.cfg, self.local, self.quit = llm, cfg, local, False
+        self.autofile = None                    # the STEP file this conversation keeps up to date in the project folder
         self.picker = None                      # set by the desktop window: () -> folder path or ''
         self.backend = backend or CadQueryBackend()
         self.lock = threading.Lock()
@@ -65,9 +67,40 @@ class Session:
         except Exception as e:                                                   # noqa: BLE001 - show the failure in the chat
             self.emit("error", text="%s: %s" % (type(e).__name__, str(e)[:300]))
         finally:
+            self.autosave()
             self.save_history()
             with self.lock:
                 self.busy = False
+
+    def autosave(self):
+        """Keep the current part in the project folder by default: <name>.step plus the CadQuery script <name>.py. One pair per conversation:
+        the first turn picks a fresh name (never an existing file), later turns rewrite that pair. A disk problem must never break the chat."""
+        root = self.cfg.get("workspace") or ""
+        if not root or not self.local or not self.measure or not getattr(self.backend, "history", None):
+            return
+        try:
+            real = os.path.realpath(root)
+            if not (self.autofile and os.path.dirname(self.autofile) == real and os.path.isfile(self.autofile)):
+                import re, unicodedata
+                slug = unicodedata.normalize("NFKD", (self.title or "part").replace("đ", "d").replace("Đ", "D")).encode("ascii", "ignore").decode()
+                slug = re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-")[:40] or "part"
+                for i in range(100):                                       # the .py name must be free too
+                    p, err = ws_mod.new_step_path(root, slug + ("" if i == 0 else "-%d" % i))
+                    if err:
+                        return
+                    if not os.path.exists(p[:-5] + ".py"):
+                        break
+                self.autofile, first = p, True
+            else:
+                first = False
+            tmp = os.path.join(os.path.dirname(self.autofile), ".cadfabric-tmp.step")
+            self.backend.export_step(tmp)
+            os.replace(tmp, self.autofile)
+            with open(self.autofile[:-5] + ".py", "w", encoding="utf-8") as f:
+                f.write("# CadQuery script that rebuilds this part (written by CadFabric)\n" + "\n\n# ---- next step ----\n".join(self.backend.history) + "\n")
+            self.emit("file", op="saved", path=os.path.basename(self.autofile) + (" (+ .py)" if first else " (cập nhật)"))
+        except Exception:                                                  # noqa: BLE001
+            pass
 
     def save_history(self):
         """Write the conversation to disk (after every turn, even a failed one). A disk problem must never break the chat."""
@@ -101,7 +134,7 @@ class Session:
                 self.events = list(rec["events"])
                 self.history = rec.get("messages") if isinstance(rec.get("messages"), list) else None
                 self.measure = m.as_dict() if m else None
-                self.sid, self.created, self.title = rec["id"], rec.get("created", ""), rec.get("title", "")
+                self.sid, self.created, self.title = rec["id"], rec.get("created", ""), rec.get("title", ""); self.autofile = None
             return 200, {"ok": True, "id": sid, "replay_failed": bad, "has_part": m is not None}
         finally:
             with self.lock:
@@ -138,6 +171,8 @@ class Session:
             return 404, {"error": "no part yet"}
         d = os.path.join(config.data_dir(self.cfg), "exports"); os.makedirs(d, exist_ok=True)
         p = os.path.join(d, "part-%s.step" % time.strftime("%Y%m%d-%H%M%S"))
+        if self.autofile and os.path.isfile(self.autofile):                       # the part is already in the project folder: open that file
+            d, p = os.path.dirname(self.autofile), self.autofile
         try:
             self.backend.export_step(p)
         except Exception as e:                                                   # noqa: BLE001
@@ -154,6 +189,7 @@ class Session:
                 return False
             self.events, self.history, self.measure = [], None, None
             self.sid, self.created, self.title = None, "", ""
+            self.autofile = None
         self.backend.reset()
         return True
 
@@ -235,6 +271,25 @@ def make_handler(sess, token, hosts, data_dir):
                 rel = (q.get("path") or [""])[0]
                 text, err = ws_mod.read_text(sess.cfg.get("workspace") or "", rel)
                 self._send(200 if text is not None else 400, {"path": rel, "text": text} if text is not None else {"error": err})
+            elif u.path in ("/api/raw", "/api/preview"):
+                if not sess.local:
+                    return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
+                kind = "image" if u.path == "/api/raw" else "step"
+                full, mime, err = ws_mod.binary_file(sess.cfg.get("workspace") or "", (q.get("path") or [""])[0], kind)
+                if err:
+                    return self._send(400, {"error": err})
+                lock = [("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")]
+                if kind == "image":
+                    with open(full, "rb") as f:
+                        return self._send(200, f.read(), mime, lock)
+                try:
+                    r = subprocess.run([sys.executable, "-I", os.path.join(os.path.dirname(os.path.abspath(__file__)), "stepview.py"), full], capture_output=True, timeout=90,
+                                       env=cq_backend.worker_env(), **cq_backend.NOWIN)
+                except subprocess.TimeoutExpired:
+                    return self._send(504, {"error": "the preview took too long"})
+                if r.returncode != 0 or not r.stdout.startswith(b"<?xml") and not r.stdout.startswith(b"<svg"):
+                    return self._send(422, {"error": "this STEP file could not be drawn"})
+                self._send(200, r.stdout, "image/svg+xml", lock)
             elif u.path == "/api/browse":
                 if not sess.local:
                     return self._send(403, {"error": "folder browsing is only available when the chat is bound to this computer"})

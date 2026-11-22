@@ -7,6 +7,10 @@ TEXT_EXT = {".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".i
             ".htm", ".sql", ".js", ".ts", ".c", ".h", ".cpp", ".rst", ".tex", ".nc", ".gcode", ".scad", ".obj", ".stl"}
 DENY_NAMES = ("*.pem", "*.key", "*.p12", "*.pfx", "*.crt", "*.cer", "id_rsa*", "id_ed25519*", ".env*", "key*.txt", "*secret*", "*password*", "*credential*", "*.kdbx", "*.sqlite", "*.db")
 DENY_DIRS = {".git", ".ssh", ".gnupg", ".aws", ".config", "node_modules", "__pycache__", ".venv", "venv"}
+IMAGE_EXT = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp", ".svg": "image/svg+xml"}
+STEP_EXT = {".step", ".stp"}
+MAX_IMAGE = 8_000_000
+MAX_STEP = 20_000_000
 MAX_READ = 60_000
 MAX_LIST = 400
 MAX_ATTACH_TOTAL = 90_000
@@ -57,6 +61,28 @@ def resolve(root, rel):
     return full, ""
 
 
+def kind_of(name):
+    """How the file can be viewed: 'step' (drawn), 'image', 'text', or None."""
+    e = os.path.splitext(name)[1].lower()
+    return "step" if e in STEP_EXT else "image" if e in IMAGE_EXT else "text" if e in TEXT_EXT else None
+
+
+def binary_file(root, rel, kind):
+    """-> (absolute path, mime, error) for an image or a STEP file inside the folder, size-capped."""
+    full, err = resolve(root, rel)
+    if err:
+        return None, None, err
+    e = os.path.splitext(full)[1].lower()
+    if not os.path.isfile(full) or (kind == "image" and e not in IMAGE_EXT) or (kind == "step" and e not in STEP_EXT):
+        return None, None, "no such %s file: %s" % (kind, rel)
+    try:
+        if os.path.getsize(full) > (MAX_IMAGE if kind == "image" else MAX_STEP):
+            return None, None, "file is too large to preview"
+    except OSError as ex:
+        return None, None, str(ex)[:120]
+    return full, IMAGE_EXT.get(e, "application/octet-stream"), ""
+
+
 def listing(root, rel=""):
     """-> ({path, entries:[{name, dir, size}], truncated}, error). One level; folders first."""
     full, err = resolve(root, rel)
@@ -81,7 +107,7 @@ def listing(root, rel=""):
             size = None if d else os.path.getsize(p)
         except OSError:
             continue
-        rows.append({"name": n, "dir": d, "size": size, "text": (not d) and os.path.splitext(n)[1].lower() in TEXT_EXT})
+        rows.append({"name": n, "dir": d, "size": size, "text": (not d) and os.path.splitext(n)[1].lower() in TEXT_EXT, "kind": None if d else kind_of(n)})
     return {"path": str(rel or "").replace("\\", "/").strip("/"), "entries": rows[:MAX_LIST], "truncated": len(rows) > MAX_LIST}, ""
 
 

@@ -749,9 +749,9 @@ class WorkspaceWeb(Settings):
         sess = self.srv.sess; a = os.path.join(self.dir, "pa"); b = os.path.join(self.dir, "pb"); os.makedirs(a); os.makedirs(b)
         self.assertEqual(self.req("POST", "/api/project", {"path": "/no/such"})[0], 400)
         s, d = self.req("POST", "/api/project", {"path": a}); self.assertEqual((s, d["workspace"]), (200, a))
-        s, d = self.req("POST", "/api/project", {"path": b}); self.assertEqual(d["recent"], [b, a])
-        s, d = self.req("POST", "/api/project", {"path": a}); self.assertEqual(d["recent"], [a, b])
-        self.assertEqual(self.req("GET", "/api/config")[1]["recent"], [a, b]); self.assertEqual(self.req("GET", "/api/config")[1]["settings"]["workspace"], a)
+        s, d = self.req("POST", "/api/project", {"path": b}); self.assertEqual(d["recent"][:2], [b, a])
+        s, d = self.req("POST", "/api/project", {"path": a}); self.assertEqual(d["recent"][:2], [a, b])
+        self.assertEqual(self.req("GET", "/api/config")[1]["recent"][:2], [a, b]); self.assertEqual(self.req("GET", "/api/config")[1]["settings"]["workspace"], a)
         s, d = self.req("POST", "/api/project", {"path": ""}); self.assertEqual((s, d["workspace"]), (200, ""))
         sess.local = False
         try: self.assertEqual(self.req("POST", "/api/project", {"path": a})[0], 403)
@@ -774,6 +774,37 @@ class WorkspaceWeb(Settings):
         self.srv.sess.local = False
         try: self.assertEqual(self.req("GET", "/api/file?path=d/n.txt")[0], 403)
         finally: self.srv.sess.local = True
+
+    def test_autosave_step_and_script_into_the_project(self):
+        sess = self.srv.sess; sess.reset(); root = os.path.join(self.dir, "auto"); os.makedirs(root)
+        self.assertEqual(self.req("POST", "/api/project", {"path": root})[0], 200)
+        sess.backend.execute("import cadquery as cq\nresult = cq.Workplane('XY').box(10, 10, 10)"); sess.measure = sess.backend.measure().as_dict(); sess.title = "Đĩa tròn Ø100 dày 10"
+        sess.autosave(); files = sorted(os.listdir(root)); self.assertEqual(files, ["dia-tron-100-day-10.py", "dia-tron-100-day-10.step"])
+        self.assertIn("ISO-10303", open(os.path.join(root, files[1])).read()); self.assertIn("box(10, 10, 10)", open(os.path.join(root, files[0])).read())
+        sess.backend.execute("result = result.faces('>Z').workplane().hole(4)"); sess.autosave()                      # next turn: same pair, rewritten
+        self.assertEqual(sorted(os.listdir(root)), files); self.assertIn("hole(4)", open(os.path.join(root, files[0])).read())
+        sess.reset(); sess.backend.execute("import cadquery as cq\nresult = cq.Workplane('XY').box(5, 5, 5)"); sess.measure = sess.backend.measure().as_dict(); sess.title = "Đĩa tròn Ø100 dày 10"
+        sess.autosave(); self.assertEqual(len(os.listdir(root)), 4)                                                    # new conversation: new name, nothing overwritten
+        self.assertIn("box(10, 10, 10)", open(os.path.join(root, files[0])).read())
+        self.req("POST", "/api/project", {"path": ""}); n = len(os.listdir(root)); sess.autosave(); self.assertEqual(len(os.listdir(root)), n)   # no project: nothing written
+
+    def test_view_image_and_step_preview_confined(self):
+        import base64
+        root = os.path.join(self.dir, "vv"); os.makedirs(root); png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==")
+        open(os.path.join(root, "p.png"), "wb").write(png); open(os.path.join(root, "bad.step"), "w").write("not a step file")
+        sess = self.srv.sess; sess.reset(); sess.backend.execute("import cadquery as cq\nresult = cq.Workplane('XY').box(10, 20, 30)"); sess.backend.export_step(os.path.join(root, "box.step"))
+        self.assertEqual(self.req("POST", "/api/settings", {"url": self.fake_url, "model": "q", "planner": "nothink", "workspace": root})[0], 200)
+        conn = self.http.HTTPConnection("127.0.0.1", self.port); conn.request("GET", "/api/raw?path=p.png", headers={"Cookie": "cft=tok"}); r = conn.getresponse()
+        self.assertEqual((r.status, r.getheader("Content-Type"), r.read()), (200, "image/png", png))
+        conn = self.http.HTTPConnection("127.0.0.1", self.port); conn.request("GET", "/api/preview?path=box.step", headers={"Cookie": "cft=tok"}); r = conn.getresponse(); body = r.read()
+        self.assertEqual(r.status, 200); self.assertIn(b"<svg", body[:300]); self.assertIn("image/svg+xml", r.getheader("Content-Type"))
+        for url in ("/api/raw?path=../x.png", "/api/raw?path=box.step", "/api/preview?path=p.png", "/api/preview?path=nope.step"):
+            self.assertEqual(self.req("GET", url)[0], 400, url)
+        self.assertEqual(self.req("GET", "/api/preview?path=bad.step")[0], 422)
+        self.assertEqual([e["kind"] for e in self.req("GET", "/api/files")[1]["entries"]], ["step", "step", "image"])
+        sess.local = False
+        try: self.assertEqual(self.req("GET", "/api/raw?path=p.png")[0], 403)
+        finally: sess.local = True
 
 
 if __name__ == "__main__":
