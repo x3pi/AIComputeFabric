@@ -78,6 +78,9 @@ class Session:
                 if err:
                     raise ValueError("cố vấn không trả lời: " + err)
                 self.emit("answer", text=ans, who=q[0], sec=round(time.time() - t0, 1))
+                if self.history is None and not self.backend.measure():                  # a question is not a design: the next real request starts the conversation (and names the files)
+                    self.sid, self.created, self.title = None, "", ""
+                    self.ledger = ledger_mod.Ledger()
                 return
             block, _used, err = ws_mod.attachments(root, files) if files else ("", [], "")
             if err:
