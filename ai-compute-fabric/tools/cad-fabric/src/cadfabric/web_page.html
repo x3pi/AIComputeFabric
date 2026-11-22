@@ -246,7 +246,9 @@ async function showPart(m){const t=$("meas");t.replaceChildren();
  try{const r=await fetch("/api/part.svg?"+Date.now());if(r.ok){const d=new DOMParser().parseFromString(await r.text(),"image/svg+xml").documentElement;$("preview").replaceChildren(document.importNode(d,true))}}catch(e){}}
 function setBusy(b){busy=b;$("dot").className="dot"+(b?" busy":"");$("status").textContent=b?"đang làm…":"sẵn sàng";$("send").hidden=b;$("stop").hidden=!b;$("newbtn").disabled=b;$("histbtn").disabled=b;
  if(b&&!(workEl&&workEl.parentNode)){workEl=el("div","working","Đang làm");col().appendChild(workEl);$("log").scrollTop=1e9}if(!b&&workEl){workEl.remove();workEl=null;phase=null}}
-async function poll(){const {ok,d}=await api("/api/state?since="+since);if(!ok)return;
+let polling=false;
+async function poll(){if(polling)return;polling=true;try{await poll1()}finally{polling=false}}
+async function poll1(){const mine=since;const {ok,d}=await api("/api/state?since="+since);if(!ok||mine!==since)return;
  d.events.forEach(render);since=d.next;if(d.busy!==busy)setBusy(d.busy);if(!col().children.length||(col().children.length===1&&workEl))hero(true);
  $("hint").textContent=d.follow_up?"Tin nhắn tiếp theo sẽ chỉnh sửa chi tiết này (phần chỉnh sửa không có kế hoạch kiểm tra riêng).":"Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /open mở trong CAD · /stop dừng";
  const key=d.measure?d.measure.volume+"|"+d.measure.faces:null;if(key!==lastVol){lastVol=key;showPart(d.measure)}}
@@ -384,8 +386,8 @@ async function activate(id){curTab=id;const chat=id==="chat"||!tabs.some(t=>t.re
  const t=tabs.find(x=>x.rel===id);$("vname").textContent=t.rel;$("vatt").hidden=t.kind==="image";$("vatt").textContent=att.includes(t.rel)?"Đã đính kèm":"Đính kèm vào chat";
  const ms=modesFor(t);if(!t.mode)t.mode=ms.length?ms[0][0]:"";const bar=$("vmodes");bar.replaceChildren();
  for(const [k,l] of ms){const b=el("button","btn small"+(t.mode===k?" on":""),l);b.type="button";b.onclick=()=>{t.mode=k;activate(id)};bar.appendChild(b)}
- await render(t)}
-async function render(t){const id=t.rel,live=()=>curTab===id&&t.mode!==undefined;const pic=$("vimg"),tx=$("vtext"),d3=$("v3d"),md=$("vmd"),cd=$("vcode");
+ await renderTab(t)}
+async function renderTab(t){const id=t.rel,live=()=>curTab===id&&t.mode!==undefined;const pic=$("vimg"),tx=$("vtext"),d3=$("v3d"),md=$("vmd"),cd=$("vcode");
  for(const x of [pic,d3,md,cd])x.hidden=true;pic.removeAttribute("src");tx.hidden=false;tx.textContent="";$("vinfo").textContent="";
  const msg=m=>{tx.hidden=false;tx.textContent=m};
  if(t.kind==="image"){pic.onerror=()=>{if(live()){pic.hidden=true;msg("Không xem trước được ảnh này (quá lớn hoặc hỏng).")}};pic.onload=()=>{if(live()){tx.hidden=true;$("vinfo").textContent=pic.naturalWidth+"×"+pic.naturalHeight+" px"}};pic.src="/api/raw?path="+encodeURIComponent(t.rel);pic.hidden=false;tx.hidden=true;return}

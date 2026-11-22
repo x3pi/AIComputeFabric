@@ -836,6 +836,19 @@ class WorkspaceWeb(Settings):
         s_, d_ = self.req("GET", "/api/stepmesh?path=real.step"); self.assertEqual(s_, 200); self.assertEqual(d_["size"], [10.0, 20.0, 30.0]); self.assertGreaterEqual(len(d_["faces"]), 7)
         self.assertTrue(all(len(f["i"]) % 3 == 0 and max(f["i"]) < len(f["p"]) // 3 for f in d_["faces"]))
 
+    def test_page_script_has_no_duplicate_function_names(self):
+        """A second `function render` once replaced the chat renderer (JS hoisting): messages silently stopped showing. Names must be unique."""
+        import re, collections
+        html = open(os.path.join(os.path.dirname(web_mod_file()), "web_page.html"), encoding="utf-8").read()
+        js = re.findall(r"<script>(.*?)</script>", html, re.S)[-1]
+        names = collections.Counter(re.findall(r"^(?:async )?function ([A-Za-z0-9_$]+)\(", js, re.M))
+        self.assertEqual({n: c for n, c in names.items() if c > 1}, {})
+
+
+def web_mod_file():
+    from cadfabric import web
+    return web.__file__
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)
