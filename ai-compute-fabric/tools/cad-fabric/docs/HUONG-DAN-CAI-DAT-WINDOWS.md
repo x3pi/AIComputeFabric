@@ -43,7 +43,7 @@ Cố vấn lập một kế hoạch có công thức thể tích. Chương trìn
 | Không cố vấn | ở lại máy bạn | nhanh nhất |
 | Qwen lập kế hoạch (nhanh) | ở lại máy chủ Qwen của bạn | mặc định |
 | Qwen suy nghĩ sâu | ở lại máy chủ Qwen | chậm, có thể quá hạn với đề khó |
-| Codex hoặc Claude CLI | **gửi ra dịch vụ bên ngoài** | cần CLI đã cài và đăng nhập; ứng dụng hỏi xác nhận mỗi lần |
+| Codex hoặc Claude CLI | **gửi ra dịch vụ bên ngoài** | cần CLI đã cài và đăng nhập; ứng dụng hỏi xác nhận một lần cho mỗi cố vấn trong mỗi lần mở trang |
 | API do bạn thêm | tuỳ URL | OpenAI-compatible hoặc Anthropic |
 
 Thêm cố vấn: **Cài đặt, + Thêm cố vấn**, chọn **API (URL)** hoặc **CLI**. Với Claude và Codex chọn thêm model (yếu/nhanh hay mạnh) và mức suy nghĩ. Mỗi cố vấn có nút **Kiểm tra**.

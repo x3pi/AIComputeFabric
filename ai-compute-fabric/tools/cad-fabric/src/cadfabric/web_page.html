@@ -141,7 +141,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 
 <script>
 "use strict";
-const $=s=>document.getElementById(s);let since=0,busy=false,ext=[],local=true,lastVol=null,cfgd=null,workEl=null;
+const $=s=>document.getElementById(s);let since=0,busy=false,sending=false,okExt=new Set(),ext=[],local=true,lastVol=null,cfgd=null,workEl=null;
 const H={"X-Requested-With":"cadfabric","Content-Type":"application/json"};
 const ADV={off:["Không cố vấn","Qwen tự làm, không có kế hoạch kiểm tra. Nhanh nhất."],nothink:["Qwen lập kế hoạch (nhanh)","Qwen viết kế hoạch rồi hệ thống tự tính thể tích để đối chiếu. Dữ liệu ở lại máy chủ của bạn."],
  think:["Qwen suy nghĩ sâu (chậm)","Kế hoạch kỹ hơn nhưng có thể quá hạn trên máy chủ với đề khó."],codex:["Codex trên máy này","Chất lượng kế hoạch cao nhất đã đo. Nội dung yêu cầu được gửi ra dịch vụ ngoài. Cần cài và đăng nhập Codex."],
@@ -195,14 +195,15 @@ async function poll(){const {ok,d}=await api("/api/state?since="+since);if(!ok)r
  $("hint").textContent=d.follow_up?"Tin nhắn tiếp theo sẽ chỉnh sửa chi tiết này (phần chỉnh sửa không có kế hoạch kiểm tra riêng).":"Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /open mở trong CAD · /stop dừng";
  const key=d.measure?d.measure.volume+"|"+d.measure.faces:null;if(key!==lastVol){lastVol=key;showPart(d.measure)}}
 async function newPart(){if(busy)return;if(lastVol&&!confirm("Bắt đầu chi tiết mới? Chi tiết hiện tại sẽ bị xóa khỏi phiên."))return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;hero(true);poll()}
-async function submit(){const text=$("text").value.trim();if(!text)return;
+async function submit(){if(sending)return;sending=true;try{await submit1()}finally{sending=false}}
+async function submit1(){const text=$("text").value.trim();if(!text)return;
  if(text==="/new"){$("text").value="";grow();return newPart()}if(text==="/stop"){$("text").value="";grow();return api("/api/stop",{})}
  if(text==="/open"){$("text").value="";grow();return openViewer()}
  if(busy)return;const planner=$("planner").value;const body={text,planner};
- if(ext.includes(planner)){if(!confirm("Cố vấn '"+planner+"' gửi nội dung yêu cầu ra dịch vụ bên ngoài. Tiếp tục?"))return;body.confirm_external=true}
+ if(ext.includes(planner)){if(!okExt.has(planner)){if(!confirm("Cố vấn '"+planner+"' gửi nội dung yêu cầu ra dịch vụ bên ngoài. Tiếp tục? (chỉ hỏi một lần cho cố vấn này)"))return;okExt.add(planner)}body.confirm_external=true}
  const r=await api("/api/send",body);if(r.ok){$("text").value="";grow()}else put(el("div","err","Không gửi được: "+(r.d.error||r.status)));poll()}
 function grow(){const t=$("text");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,200)+"px"}
-$("text").oninput=grow;$("text").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();submit()}};
+$("text").oninput=grow;$("text").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing&&!e.repeat){e.preventDefault();submit()}};
 $("send").onclick=submit;$("stop").onclick=()=>api("/api/stop",{});$("newbtn").onclick=newPart;$("partbtn").onclick=()=>$("side").classList.toggle("open");
 let ADVS=[],DET={},PRESETS={},custom=[],advKeys={},editId=null;
 const slug=t=>t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,24)||"advisor";
