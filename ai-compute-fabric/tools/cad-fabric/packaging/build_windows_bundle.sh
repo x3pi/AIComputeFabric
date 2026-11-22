@@ -22,6 +22,7 @@ if [ -f "${VC_REDIST:-}" ]; then cp "$VC_REDIST" "$B/vc_redist.x64.exe"; else cu
 
 cp "$HERE/windows/install.cmd" "$HERE/windows/install.ps1" "$HERE/windows/uninstall.ps1" "$B/"
 cp "$HERE/windows/README.txt" "$B/README.txt"
+cp "$ROOT/docs/HUONG-DAN-CAI-DAT-WINDOWS.md" "$B/HUONG-DAN-CAI-DAT-WINDOWS.md"
 ( cd "$B" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS )
 ( cd "$WORK" && zip -qr -0 "$OUT/cadfabric-windows-$VERSION.zip" "cadfabric-windows-$VERSION" )
 ls -la "$OUT/cadfabric-windows-$VERSION.zip"; rm -rf "$WORK"
