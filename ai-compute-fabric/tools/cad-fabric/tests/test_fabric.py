@@ -232,7 +232,8 @@ class Web(unittest.TestCase):
         from cadfabric import web
         cls.web, cls.http = web, http.client
         cls.llm = FakeLLM([[("execute_cadquery", {"code": CYL})], "xong"])
-        cls.srv = web.serve(cls.llm, {"planner": "off", "relay": {}}, port=0, token="tok123", backend=CadQueryBackend(timeout=20), quiet=True)
+        import tempfile; cls.ddir = tempfile.mkdtemp()
+        cls.srv = web.serve(cls.llm, {"planner": "off", "relay": {}, "data_dir": cls.ddir}, port=0, token="tok123", backend=CadQueryBackend(timeout=20), quiet=True)
         cls.port = cls.srv.port; cls.srv.hosts.add("127.0.0.1:%d" % cls.port); cls.srv.hosts.add("localhost:%d" % cls.port)
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
     @classmethod
@@ -244,6 +245,34 @@ class Web(unittest.TestCase):
         c.request(method, path, json.dumps(body) if body is not None else None, h); r = c.getresponse(); data = r.read(); return r.status, data, dict(r.getheaders())
 
     AUTH = {"Cookie": "cft=tok123", "X-Requested-With": "cadfabric", "Content-Type": "application/json"}
+
+    def test_save_after_turn_reopen_and_refusals(self):
+        H = self.web.history_mod; sess = self.srv.sess
+        self.assertEqual(self.req("POST", "/api/history/clear", {}, self.AUTH)[0], 200); self.assertEqual(self.req("POST", "/api/reset", {}, self.AUTH)[0], 200)
+        self.assertEqual(json.loads(self.req("GET", "/api/history", None, self.AUTH)[1])["sessions"], [])
+        self.llm.script, self.llm.i = [[("execute_cadquery", {"code": CYL})], "xong"], 0
+        self.assertEqual(self.req("POST", "/api/send", {"text": "Tạo trụ để thử lịch sử", "planner": "off"}, self.AUTH)[0], 200)
+        for _ in range(100):
+            if not sess.busy and sess.measure: break
+            time.sleep(0.2)
+        self.assertTrue(sess.measure, "the scripted build did not finish")
+        d = json.loads(self.req("GET", "/api/history", None, self.AUTH)[1]); self.assertEqual(len(d["sessions"]), 1)
+        row = d["sessions"][0]; self.assertEqual(row["title"], "Tạo trụ để thử lịch sử"); self.assertAlmostEqual(row["volume"], sess.measure["volume"], 3); vol = sess.measure["volume"]
+        self.req("POST", "/api/reset", {}, self.AUTH); self.assertIsNone(sess.measure)
+        s, b, _ = self.req("POST", "/api/history/load", {"id": row["id"]}, self.AUTH); self.assertEqual(s, 200, b)
+        self.assertAlmostEqual(sess.measure["volume"], vol, 3)                                                  # the part was rebuilt by replaying the saved cells
+        st = json.loads(self.req("GET", "/api/state?since=0", None, self.AUTH)[1]); self.assertTrue(st["has_part"]); self.assertTrue(st["follow_up"])
+        self.assertIn("Tạo trụ để thử lịch sử", json.dumps(st["events"], ensure_ascii=False))
+        self.assertEqual(self.req("POST", "/api/history/load", {"id": "../../etc/passwd"}, self.AUTH)[0], 400)
+        self.assertEqual(self.req("POST", "/api/history/load", {"id": "20200101-000000-aaaa"}, self.AUTH)[0], 404)
+        self.assertEqual(self.req("POST", "/api/history/load", {"id": row["id"]}, {"Cookie": "cft=tok123"})[0], 403)  # CSRF header missing
+        sess.local = False
+        try:
+            self.assertEqual(self.req("POST", "/api/history/load", {"id": row["id"]}, self.AUTH)[0], 403)
+            self.assertEqual(json.loads(self.req("GET", "/api/history", None, self.AUTH)[1])["sessions"], [])
+        finally: sess.local = True
+        self.assertEqual(self.req("POST", "/api/history/delete", {"id": row["id"]}, self.AUTH)[0], 200)
+        self.assertEqual(json.loads(self.req("GET", "/api/history", None, self.AUTH)[1])["sessions"], [])
 
     def test_auth_host_csrf_and_size(self):
         self.assertEqual(self.req("GET", "/api/state")[0], 401)
@@ -288,7 +317,7 @@ class Settings(unittest.TestCase):
         import tempfile, threading, http.client, http.server
         from cadfabric import web
         cls.http = http.client
-        cls.dir = tempfile.mkdtemp(); os.environ["CADFABRIC_CONFIG"] = os.path.join(cls.dir, "config.json")
+        cls.dir = tempfile.mkdtemp(); os.environ["CADFABRIC_CONFIG"] = os.path.join(cls.dir, "config.json"); os.environ["XDG_DATA_HOME"] = cls.dir
         class Fake(http.server.BaseHTTPRequestHandler):
             def log_message(self, *a): pass
             def _j(self, code, o): b = json.dumps(o).encode(); self.send_response(code); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
@@ -304,7 +333,7 @@ class Settings(unittest.TestCase):
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
     @classmethod
     def tearDownClass(cls):
-        cls.srv.shutdown(); cls.srv.sess.close(); cls.fake.shutdown(); os.environ.pop("CADFABRIC_CONFIG", None)
+        cls.srv.shutdown(); cls.srv.sess.close(); cls.fake.shutdown(); os.environ.pop("CADFABRIC_CONFIG", None); os.environ.pop("XDG_DATA_HOME", None)
 
     AUTH = {"Cookie": "cft=tok", "X-Requested-With": "cadfabric", "Content-Type": "application/json"}
     def req(self, method, path, body=None, headers=None):
@@ -598,6 +627,29 @@ class ViewerWeb(Settings):
         try: self.assertEqual(self.req("POST", "/api/open", {})[0], 403)
         finally: sess.local = True
         s, d = self.req("GET", "/api/config"); self.assertEqual(d["viewer_label"], "chương trình tự đặt")
+
+
+class HistoryStore(unittest.TestCase):
+    def test_roundtrip_ids_prune_and_privacy(self):
+        import tempfile, stat
+        from cadfabric import history as H
+        d = tempfile.mkdtemp(); sid = H.new_id(); self.assertTrue(H.valid(sid))
+        H.save(d, {"id": sid, "title": "t", "created": "c", "events": [{"kind": "user", "text": "a"}, {"kind": "phase"}], "cells": ["x=1"], "measure": {"volume": 5.0}, "messages": []})
+        r = H.load(d, sid); self.assertEqual([e["kind"] for e in r["events"]], ["user"])                     # progress ticks are dropped
+        self.assertEqual(H.list_sessions(d)[0]["volume"], 5.0)
+        if os.name != "nt": self.assertEqual(stat.S_IMODE(os.stat(os.path.join(d, "history", sid + ".json")).st_mode), 0o600)
+        for bad in ("../x", "..\\x", sid + "/../..", "", None, 5, "20260101-000000-ZZZZ"):
+            self.assertFalse(H.valid(bad)); self.assertIsNone(H.load(d, bad) if H.valid(bad) else None)
+        with self.assertRaises(ValueError): H.save(d, {"id": "../evil", "events": []})
+        open(os.path.join(d, "history", "20200101-000000-aaaa.json"), "w").write("{broken")                    # a corrupt file is skipped, not fatal
+        self.assertEqual(len(H.list_sessions(d)), 1)
+        H.MAX_SESSIONS = 2
+        try:
+            for i in range(3): H.save(d, {"id": "2030010%d-000000-aaaa" % i, "events": []})
+            self.assertEqual(len([f for f in os.listdir(os.path.join(d, "history")) if f.startswith("2030")]), 2)  # oldest pruned
+        finally: H.MAX_SESSIONS = 100
+        self.assertIsNone(H.load(d, sid))                                                                          # the oldest was pruned
+        self.assertTrue(H.delete(d, "20300102-000000-aaaa")); self.assertIsNone(H.load(d, "20300102-000000-aaaa")); self.assertFalse(H.delete(d, "20300102-000000-aaaa"))
 
 
 if __name__ == "__main__":

@@ -142,3 +142,7 @@ python -m unittest discover -s tests
 ```
 
 Thêm bài benchmark: sửa `src/cadfabric/tasks.py` (văn bản đề + lời giải tham chiếu; đáp án do kernel tính, thêm công thức giải tích nếu có để test đối chiếu).
+
+## Lịch sử
+
+Mỗi cuộc trò chuyện tự lưu vào `<data dir>/history/<id>.json` (0600, tối đa 100). Nút **Lịch sử** mở lại: chat, ngữ cảnh của model và chi tiết (dựng lại bằng chạy lại các cell đã lưu). Chỉ dùng được khi app gắn với máy này (không `--allow-remote`). Đã đo: mở lại sau khi khởi động lại app, sửa tiếp thêm lỗ Ø6, thể tích 28 994,69 → 28 429,20 mm³ (giảm đúng 565,49 = π·3²·20).

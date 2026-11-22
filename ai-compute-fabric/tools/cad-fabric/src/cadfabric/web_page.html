@@ -55,7 +55,7 @@ table{width:calc(100% - 28px);margin:0 14px 10px;border-collapse:collapse;font-s
 dialog{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:14px;padding:0;width:min(560px,94vw);max-height:92vh}dialog::backdrop{background:#0006}
 dialog form{padding:18px 20px;display:flex;flex-direction:column;gap:12px}dialog h2{margin:0;font-size:18px}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mute)}label.f input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;font-size:14px;color:var(--ink)}
-.adv{display:flex;flex-direction:column;gap:6px}.opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer}.opt:has(input:checked){border-color:var(--accent)}
+.hbox{padding:18px 20px;display:flex;flex-direction:column;gap:10px;min-width:min(520px,86vw);max-height:80vh;overflow:auto}#hlist .btn{flex:none}.adv{display:flex;flex-direction:column;gap:6px}.opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer}.opt:has(input:checked){border-color:var(--accent)}
 .opt b{font-size:14px}.opt div>span:not(.tag){display:block;font-size:12.5px;color:var(--mute)}.tag{font-size:11px;border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:0 5px;margin-left:6px}
 .opt .acts{margin-left:auto;display:flex;gap:6px;flex-shrink:0}
 .advform{border:1px dashed var(--accent);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}.advform[hidden]{display:none}.advform .grp{display:flex;flex-direction:column;gap:8px}.advform .grp[hidden]{display:none}
@@ -70,6 +70,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <span class="logo">Cad<i>Fabric</i></span><span class="mute small" id="ver"></span><span class="dot" id="dot"></span><span class="mute small" id="status">sẵn sàng</span>
  <span class="sp"></span>
  <button class="btn small" id="partbtn" title="Chi tiết hiện tại">Chi tiết</button>
+ <button class="btn small" id="histbtn" title="Các chi tiết đã thiết kế">Lịch sử</button>
  <button class="btn small" id="newbtn">Chi tiết mới</button>
  <button class="btn small" id="setbtn">Cài đặt</button>
  <button class="btn small" id="quitbtn" title="Tắt ứng dụng" hidden>Thoát</button>
@@ -89,6 +90,12 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <aside id="side"><h3>Chi tiết hiện tại</h3><div id="preview">chưa có chi tiết</div><table id="meas"></table>
   <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></aside>
 </div>
+
+<dialog id="hdlg"><div class="hbox">
+ <h2>Lịch sử thiết kế</h2><div class="mute small">Lưu trên máy này, tự động sau mỗi lượt. Mở lại để xem và sửa tiếp chi tiết.</div>
+ <div class="adv" id="hlist"></div><div class="mute small" id="hnone" hidden>Chưa có chi tiết nào được lưu.</div>
+ <div class="row"><button type="button" class="btn" id="hclear">Xoá tất cả</button><span class="sp"></span><button type="button" class="btn" id="hclose">Đóng</button></div>
+</div></dialog>
 
 <dialog id="dlg"><form method="dialog" id="sf">
  <h2>Cài đặt</h2>
@@ -181,7 +188,7 @@ async function showPart(m){const t=$("meas");t.replaceChildren();
  for(const [k,v] of [["Thể tích (mm³)",fmt(m.volume)],["Bbox (mm)",m.bbox_size.map(fmt).join(" × ")],["Tâm khối lượng",m.com.map(fmt).join(", ")],["Mặt / cạnh / đỉnh",m.faces+" / "+m.edges+" / "+m.vertices],["Số solid",m.solids],["Hợp lệ",m.valid?"có":"KHÔNG"]]){const tr=t.insertRow();tr.insertCell().textContent=k;tr.insertCell().textContent=v}
  $("dl").hidden=false;$("openbtn").hidden=!local;
  try{const r=await fetch("/api/part.svg?"+Date.now());if(r.ok){const d=new DOMParser().parseFromString(await r.text(),"image/svg+xml").documentElement;$("preview").replaceChildren(document.importNode(d,true))}}catch(e){}}
-function setBusy(b){busy=b;$("dot").className="dot"+(b?" busy":"");$("status").textContent=b?"đang làm…":"sẵn sàng";$("send").hidden=b;$("stop").hidden=!b;$("newbtn").disabled=b;
+function setBusy(b){busy=b;$("dot").className="dot"+(b?" busy":"");$("status").textContent=b?"đang làm…":"sẵn sàng";$("send").hidden=b;$("stop").hidden=!b;$("newbtn").disabled=b;$("histbtn").disabled=b;
  if(b&&!(workEl&&workEl.parentNode)){workEl=el("div","working","Đang làm");col().appendChild(workEl);$("log").scrollTop=1e9}if(!b&&workEl){workEl.remove();workEl=null;phase=null}}
 async function poll(){const {ok,d}=await api("/api/state?since="+since);if(!ok)return;
  d.events.forEach(render);since=d.next;if(d.busy!==busy)setBusy(d.busy);if(!col().children.length||(col().children.length===1&&workEl))hero(true);
@@ -249,6 +256,15 @@ function form(){const p=(document.querySelector("#adv input:checked")||{}).value
  const strip=a=>{const o={};for(const k of["id","label","type","external","kind","url","model","effort","preset","command"])if(a[k]!==undefined&&a[k]!=="")o[k]=a[k];return o};
  return{url:$("s_url").value.trim(),model:$("s_model").value.trim(),key:$("s_key").value,planner:p,relay:{host:$("r_host").value.trim(),workdir:$("r_dir").value.trim(),codex:$("r_codex").value.trim()||"codex"},advisors:custom.map(strip),advisor_keys:advKeys,viewer:{kind:$("v_kind").value,command:$("v_cmd").value.trim()}}}
 function openSettings(){$("tst").textContent="";$("dlg").showModal()}
+async function openHistory(){const {d}=await api("/api/history");const L=$("hlist");L.replaceChildren();const ss=d.sessions||[];$("hnone").hidden=ss.length>0;$("hclear").hidden=!ss.length;
+ for(const x of ss){const r=el("div","opt");const t=el("div");t.style.flex="1";const h=el("b",0,x.title||"(không tên)");t.appendChild(h);
+  t.appendChild(el("div","mute small",x.updated+" · "+x.steps+" bước"+(x.volume!=null?" · "+Math.round(x.volume*1000)/1000+" mm³":"")+(x.id===d.current?" · đang mở":"")));r.appendChild(t);
+  const o=el("button","btn small primary","Mở");o.type="button";o.onclick=async()=>{if(busy)return;const q=await api("/api/history/load",{id:x.id});if(!q.ok){alert(q.d.error||"Không mở được");return}
+   $("hdlg").close();col().replaceChildren();since=0;lastVol=null;poll();if(q.d.replay_failed)alert("Có "+q.d.replay_failed+" bước không dựng lại được; chi tiết có thể khác bản đã lưu.")};
+  const dl=el("button","btn small","Xoá");dl.type="button";dl.onclick=async()=>{if(!confirm("Xoá mục này khỏi lịch sử?"))return;await api("/api/history/delete",{id:x.id});openHistory()};
+  r.appendChild(o);r.appendChild(dl);L.appendChild(r)}
+ if(!$("hdlg").open)$("hdlg").showModal()}
+$("histbtn").onclick=openHistory;$("hclose").onclick=()=>$("hdlg").close();$("hclear").onclick=async()=>{if(!confirm("Xoá toàn bộ lịch sử?"))return;await api("/api/history/clear",{});openHistory()};
 $("setbtn").onclick=openSettings;$("cbtn").onclick=()=>$("dlg").close();
 $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=await api("/api/test",form());if(!r.ok){$("tst").textContent=r.d.error||("lỗi "+r.status);return}
  $("tst").textContent=(r.d.ok?"✓ ":"✗ ")+r.d.detail;const dl=$("models");dl.replaceChildren();(r.d.models||[]).forEach(m=>{const o=el("option");o.value=m;dl.appendChild(o)});

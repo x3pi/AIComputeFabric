@@ -48,6 +48,10 @@ Cố vấn lập một kế hoạch có công thức thể tích. Chương trìn
 
 Thêm cố vấn: **Cài đặt, + Thêm cố vấn**, chọn **API (URL)** hoặc **CLI**. Với Claude và Codex chọn thêm model (yếu/nhanh hay mạnh) và mức suy nghĩ. Mỗi cố vấn có nút **Kiểm tra**.
 
+## Lịch sử thiết kế
+
+Mỗi cuộc trò chuyện tự lưu sau mỗi lượt, kể cả khi tắt ứng dụng. Bấm **Lịch sử** ở thanh trên để xem danh sách (tên, giờ, số bước, thể tích), **Mở** để dựng lại chi tiết và chat tiếp (Qwen vẫn nhớ ngữ cảnh), **Xoá** hoặc **Xoá tất cả** để dọn. Lưu tối đa 100 mục gần nhất tại `%LOCALAPPDATA%\cadfabric\history` (chỉ người dùng này đọc được). Khi mở lại, chi tiết được dựng lại bằng cách chạy lại các bước đã lưu; nếu có bước không dựng lại được, ứng dụng báo.
+
 ## Mở chi tiết trong SolidWorks
 
 Có ba cách:

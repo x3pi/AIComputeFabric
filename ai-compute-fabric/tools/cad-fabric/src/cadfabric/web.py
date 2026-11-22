@@ -3,7 +3,7 @@ Security: binds 127.0.0.1 unless told otherwise; every request needs the access 
 the Host header must be one we serve (blocks DNS rebinding); Origin, when present, must match; request bodies are capped."""
 import hmac, http.server, json, os, re, secrets, socketserver, threading, time, urllib.parse
 from http import cookies
-from . import advisors, agent, config, llm as llm_mod, viewers
+from . import advisors, agent, config, history as history_mod, llm as llm_mod, viewers
 from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
@@ -19,6 +19,7 @@ class Session:
         self.lock = threading.Lock()
         self.events, self.busy, self.stop, self.history, self.measure = [], False, False, None, None
         self.thread = None
+        self.sid, self.created, self.title = None, "", ""          # the saved-session record this conversation is written to
 
     def emit(self, kind, **kw):
         with self.lock:
@@ -34,6 +35,8 @@ class Session:
             if self.busy:
                 return False
             self.busy, self.stop = True, False
+        if not self.sid:
+            self.sid, self.created, self.title = history_mod.new_id(), time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(text.split())[:60]
         self.emit("user", text=text, planner=planner if self.history is None else "(follow-up: no plan)")
         self.thread = threading.Thread(target=self._work, args=(text, planner), daemon=True)
         self.thread.start()
@@ -52,6 +55,45 @@ class Session:
                       steps=r["steps"], sec=r["sec"])
         except Exception as e:                                                   # noqa: BLE001 - show the failure in the chat
             self.emit("error", text="%s: %s" % (type(e).__name__, str(e)[:300]))
+        finally:
+            self.save_history()
+            with self.lock:
+                self.busy = False
+
+    def save_history(self):
+        """Write the conversation to disk (after every turn, even a failed one). A disk problem must never break the chat."""
+        if not self.sid or not self.local:
+            return
+        try:
+            with self.lock:
+                evs = list(self.events)
+            history_mod.save(config.data_dir(self.cfg), {"id": self.sid, "title": self.title, "created": self.created, "events": evs, "messages": self.history,
+                                                          "cells": list(getattr(self.backend, "history", [])), "measure": self.measure})
+        except (OSError, TypeError, ValueError):
+            pass
+
+    def load_history(self, sid):
+        """Reopen a saved conversation: rebuild the part by replaying its cells, restore the chat and the model's context. -> (status, body)."""
+        rec = history_mod.load(config.data_dir(self.cfg), sid) if history_mod.valid(sid) else None
+        if not rec:
+            return 404, {"error": "no such saved session"}
+        with self.lock:
+            if self.busy:
+                return 409, {"error": "busy: wait for the current job"}
+            self.busy = True
+        try:
+            self.backend.reset()
+            bad = 0
+            for code in rec.get("cells") or []:
+                if isinstance(code, str) and not self.backend.execute(code).ok:
+                    bad += 1
+            m = self.backend.measure() if rec.get("cells") else None
+            with self.lock:
+                self.events = list(rec["events"])
+                self.history = rec.get("messages") if isinstance(rec.get("messages"), list) else None
+                self.measure = m.as_dict() if m else None
+                self.sid, self.created, self.title = rec["id"], rec.get("created", ""), rec.get("title", "")
+            return 200, {"ok": True, "id": sid, "replay_failed": bad, "has_part": m is not None}
         finally:
             with self.lock:
                 self.busy = False
@@ -87,6 +129,7 @@ class Session:
             if self.busy:
                 return False
             self.events, self.history, self.measure = [], None, None
+            self.sid, self.created, self.title = None, "", ""
         self.backend.reset()
         return True
 
@@ -155,6 +198,8 @@ def make_handler(sess, token, hosts, data_dir):
                 self._send(200, {"planners": advisors.names(sess.cfg), "external": [n for n in advisors.names(sess.cfg) if advisors.is_external(sess.cfg, n)], "default": sess.cfg["planner"],
                                  "advisors": advisors.meta(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "cli_presets": advisors.presets_info(), "viewer_label": viewers.resolve(sess.cfg)[1], "version": __import__("cadfabric").__version__,
                                  "local": sess.local, "settings": public_settings(sess.cfg)})
+            elif u.path == "/api/history":
+                self._send(200, {"sessions": history_mod.list_sessions(data_dir) if sess.local else [], "current": sess.sid}, extra=cookie)
             elif u.path == "/api/part.svg":
                 try:
                     self._send(200, sess.backend.preview_svg(), "image/svg+xml")
@@ -227,6 +272,22 @@ def make_handler(sess, token, hosts, data_dir):
                 akeys = {str(k): str(v).strip() for k, v in (body.get("advisor_keys") or {}).items() if isinstance(v, str) and v.strip() and len(v) < 500 and not re.search(r"[\r\n]", v)}
                 path = sess.apply_settings(clean, key, akeys)
                 self._send(200 if path else 409, {"ok": True, "path": path, "settings": public_settings(sess.cfg)} if path else {"error": "busy: wait for the current job"})
+            elif u.path in ("/api/history/load", "/api/history/delete", "/api/history/clear"):
+                if not sess.local:
+                    return self._send(403, {"error": "saved sessions are only available when the chat is bound to this computer"})
+                sid = body.get("id")
+                if u.path == "/api/history/clear":
+                    if sess.busy:
+                        return self._send(409, {"error": "busy"})
+                    sess.sid = None
+                    return self._send(200, {"ok": True, "deleted": history_mod.clear(data_dir)})
+                if not history_mod.valid(sid):
+                    return self._send(400, {"error": "bad id"})
+                if u.path == "/api/history/load":
+                    return self._send(*sess.load_history(sid))
+                if sid == sess.sid:
+                    sess.sid = None                                                         # deleting the open conversation: the next message starts a fresh record
+                self._send(200, {"ok": history_mod.delete(data_dir, sid)})
             elif u.path == "/api/stop":
                 sess.stop = True; self._send(200, {"ok": True})
             elif u.path == "/api/reset":
