@@ -968,7 +968,7 @@ class WorkspaceWeb(Settings):
     def test_skill_questions_are_answered_by_the_harness_and_the_selected_advisor(self):
         import sys, tempfile
         from cadfabric import skills as S
-        ws = os.path.join(self.dir, "skq"); os.makedirs(ws); self.req("POST", "/api/project", {"path": ""}); self.req("POST", "/api/project", {"path": ws})
+        self.req("POST", "/api/reset", {}); ws = os.path.join(self.dir, "skq"); os.makedirs(ws); self.req("POST", "/api/project", {"path": ""}); self.req("POST", "/api/project", {"path": ws})
         src = os.path.join(tempfile.mkdtemp(), "cq-holes"); os.makedirs(src); open(os.path.join(src, "SKILL.md"), "w").write(SkillsCore.SK)
         self.req("POST", "/api/skills", {"op": "install_local", "path": src}); sess = self.srv.sess
         llm = FakeLLM(["should not be called"]); sess.llm = llm
@@ -978,8 +978,9 @@ class WorkspaceWeb(Settings):
                 if not sess.busy: break
                 time.sleep(0.1)
             return [e for e in sess.events[n:] if e["kind"] in ("answer", "error", "final")]
+        HD = os.path.join(self.web.config.data_dir(sess.cfg), "history"); H0 = sorted(os.listdir(HD)) if os.path.isdir(HD) else []
         a = ask("bạn có skill gì?"); self.assertEqual((len(a), a[0]["kind"], a[0]["who"]), (1, "answer", "qwen")); self.assertIn("chờ bạn duyệt", a[0]["text"]); self.assertIn("cq-holes", a[0]["text"]); self.assertEqual(llm.seen, [])   # no model call
-        self.assertIsNone(sess.sid); self.assertEqual(os.listdir(os.path.join(self.web.config.data_dir(sess.cfg), "history")) if os.path.isdir(os.path.join(self.web.config.data_dir(sess.cfg), "history")) else [], [])   # a question leaves no saved conversation
+        self.assertIsNone(sess.sid); self.assertEqual(sorted(os.listdir(HD)) if os.path.isdir(HD) else [], H0)   # a question leaves no saved conversation
         self.req("POST", "/api/skills", {"op": "approve", "name": "cq-holes"}); a = ask("Liệt kê skill của Qwen"); self.assertIn("Qwen tự chọn", a[0]["text"]); self.assertEqual(llm.seen, [])
         a = ask("cố vấn có skill gì?", "nothink"); self.assertEqual(a[0]["who"], "advisor"); self.assertIn("chưa chọn cố vấn", a[0]["text"])                                           # Qwen is not an outside advisor
         cap = os.path.join(self.dir, "adv-prompt.txt"); script = os.path.join(self.dir, "fakecli.py")
