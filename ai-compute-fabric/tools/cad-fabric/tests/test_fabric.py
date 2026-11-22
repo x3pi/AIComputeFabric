@@ -1174,7 +1174,7 @@ class LongRun(unittest.TestCase):
         b = CadQueryBackend(timeout=30); ev = []
         try:
             llm = kw.pop("llm", None) or FakeLLM(script)
-            r = agent.run(llm, b, kw.pop("request", "build"), plan_mode="off", log=lambda s: None, on_event=lambda k, **x: ev.append((k, x)), **kw)
+            r = agent.run(llm, b, kw.pop("request", "build"), plan_mode="off", log=lambda s: None, on_event=lambda kind, **x: ev.append((kind, x)), **kw)
             return r, ev, llm
         finally: b.close()
 
@@ -1297,6 +1297,38 @@ class SkillQuestions(unittest.TestCase):
         cfg = {"codex_bin": exe}; t, e = P.ask_codex("LIST YOUR SKILLS", cfg, raw=True); self.assertEqual(e, ""); self.assertIn("skill-a", t); self.assertEqual(open(cap).read(), "LIST YOUR SKILLS")
         P.ask_codex("PLAN IT", cfg); self.assertIn("Answer ONLY from the text below", open(cap).read())                                                              # planning is unchanged
 
+
+class ShapeCheck(unittest.TestCase):
+    def test_same_shape_in_any_place_but_not_a_look_alike(self):
+        import cadquery as cq
+        from cadfabric import shapecheck as S
+        base = lambda: cq.Workplane("XY").box(80, 50, 10).faces(">Z").workplane()
+        ref = base().rect(40, 10).cutBlind(-5)
+        moved = ref.translate((5, 7, 9)).rotate((0, 0, 0), (0, 0, 1), 90)
+        f = S.fingerprint
+        self.assertTrue(S.same(f(moved), f(ref))[0])                                                      # placement and orientation do not matter
+        for name, other in (("off centre", base().center(10, 5).rect(40, 10).cutBlind(-5)), ("other pocket, same volume", base().rect(20, 20).cutBlind(-5)),
+                            ("through instead of blind", cq.Workplane("XY").box(80, 50, 10).cut(cq.Workplane("XY").box(40, 10, 10)).translate((0, 0, 0)))):
+            ok, bad = S.same(f(other), f(ref)); self.assertFalse(ok, name); self.assertTrue(bad)       # volume alone would have accepted the first two
+
+    def test_every_reference_matches_itself_through_the_worker(self):
+        from cadfabric import shapecheck as S, tasks
+        from cadfabric.cq_backend import CadQueryBackend
+        be = CadQueryBackend()
+        try:
+            for t in tasks.TASKS:
+                a = S.reference_print(be, tasks.TASKS[t]["ref"]); b = S.reference_print(be, tasks.TASKS[t]["ref"])
+                self.assertTrue(S.same(a, b)[0], t); self.assertAlmostEqual(a["volume"], tasks.exact(be, t), delta=1e-3 * a["volume"])
+        finally:
+            be.close()
+
+
+    def test_cli_main_makes_stdout_utf8_so_a_cp1252_pipe_cannot_crash_it(self):
+        import subprocess, sys
+        env = dict(os.environ, PYTHONIOENCODING="cp1252", PYTHONUTF8="0")
+        code = "from cadfabric import cli\ntry:\n    cli.main(['--version'])\nexcept SystemExit:\n    pass\nprint('\\u0110 \\u1ed1ng')"
+        r = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr[-300:]); self.assertIn("ống".encode("utf-8"), r.stdout)
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

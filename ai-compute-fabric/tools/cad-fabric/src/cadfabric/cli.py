@@ -7,7 +7,7 @@
   cadfabric serve           web chat on http://127.0.0.1:8765 (prints a one-time access URL); --open also opens the browser
   cadfabric bench           run the benchmark tasks (--modes off,codex --reps 3 --tasks a,b --out file.jsonl)
   cadfabric tasks           list the benchmark tasks and their kernel-computed answers"""
-import argparse, json, os, sys, time
+import sys, argparse, json, os, time
 from . import __version__, advisors, config
 
 
@@ -274,6 +274,11 @@ def cmd_bench(a):
 
 
 def main(argv=None):
+    for st in (sys.stdout, sys.stderr):                         # a Windows pipe or redirect is cp1252: Vietnamese text must not crash the command
+        try:
+            st.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser(prog="cadfabric", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", action="version", version=__version__)
     sub = ap.add_subparsers(dest="cmd", required=True)

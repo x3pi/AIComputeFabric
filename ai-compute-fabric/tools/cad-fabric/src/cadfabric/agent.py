@@ -238,7 +238,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, log=print, cfg
         for kind in ("repeat", "same_volume", "failing"):                       # progress guard: tell the model once, then end the run instead of burning steps
             if run[kind] >= STOP[kind]:
                 stuck = (STUCK_TEXT[kind] % run[kind]) + "; the run was ended"
-                ev("stuck", reason=stuck, kind=kind, steps=len(trace)); log("  stuck: " + stuck)
+                ev("stuck", reason=stuck, guard=kind, steps=len(trace)); log("  stuck: " + stuck)
                 break
             if run[kind] >= NUDGE[kind] and kind not in nudged:
                 nudged.add(kind)
