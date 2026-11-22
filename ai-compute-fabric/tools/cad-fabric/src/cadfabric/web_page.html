@@ -259,6 +259,7 @@ function render(ev){if(ev.kind==="phase"){phase={what:ev.what,step:ev.step,t0:Da
  else if(ev.kind==="gate")put(el("div","chk","⚠ Cổng kiểm cuối chặn: "+ev.text))
  else if(ev.kind==="final"){const f=md(ev.text);f.appendChild(el("div","foot",ev.steps+" bước · "+ev.sec+" s"+(ev.warnings?" · "+ev.warnings+" cảnh báo kiểm tra":"")+(ev.gates?" · "+ev.gates+" lần cổng kiểm cuối chặn":"")+(ev.peak_ctx?" · ngữ cảnh tối đa "+ev.peak_ctx+" token":"")));
   if(ev.resume){const b=el("button","btn small primary","Tiếp tục");b.type="button";b.style.marginTop="8px";b.onclick=()=>{b.disabled=true;$("text").value="Tiếp tục: hoàn thành các tính năng còn thiếu. Đừng lặp lại cách đã thất bại, thử cách khác.";submit1()};f.appendChild(b)}put(f)}
+ else if(ev.kind==="answer"){const f=md(ev.text);f.appendChild(el("div","foot",(ev.who==="advisor"?"trả lời của cố vấn":"trả lời của CadFabric (không qua Qwen)")+" · "+ev.sec+" s"));put(f)}
  else if(ev.kind==="stuck"){put(el("div","chk bad","⏹ Dừng vì kẹt: "+ev.reason+" (sau "+ev.steps+" bước)"))}
  else if(ev.kind==="compact"){const c=el("div","chk ok","🗜 Nén ngữ cảnh: "+Math.round(ev.chars_before/1000)+"k → "+Math.round(ev.chars_after/1000)+"k ký tự, "+ev.steps_dropped+" lượt cũ chuyển vào sổ làm việc");c.style.opacity=".7";put(c)}
  else if(ev.kind==="recall"){put(el("div","chk "+(ev.ok?"ok":"bad"),"📒 Qwen đọc lại sổ làm việc: "+ev.query))}

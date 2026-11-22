@@ -4,7 +4,7 @@ the Host header must be one we serve (blocks DNS rebinding); Origin, when presen
 import hmac, http.server, json, os, re, secrets, socketserver, subprocess, sys, threading, time, urllib.parse
 from http import cookies
 from . import advisors, agent, config, history as history_mod, llm as llm_mod, viewers, workspace as ws_mod
-from . import cq_backend, lessons as lessons_mod, skills as skills_mod, ledger as ledger_mod
+from . import cq_backend, lessons as lessons_mod, skills as skills_mod, ledger as ledger_mod, skillq
 from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
@@ -67,6 +67,18 @@ class Session:
     def _work(self, text, planner, files=(), uploads=()):
         try:
             root = self.cfg.get("workspace") or ""
+            q = skillq.detect(text) if (self.local and not files and not uploads) else None       # "what skills do you have?" is answered by the harness
+            if q:
+                t0 = time.time()
+                if q[0] == "qwen":
+                    ans, err = skillq.qwen_answer(config.data_dir(self.cfg), root), ""
+                else:
+                    self.emit("phase", what="advisor-skills")
+                    ans, err = skillq.advisor_answer(self.cfg, planner, q[1])
+                if err:
+                    raise ValueError("cố vấn không trả lời: " + err)
+                self.emit("answer", text=ans, who=q[0], sec=round(time.time() - t0, 1))
+                return
             block, _used, err = ws_mod.attachments(root, files) if files else ("", [], "")
             if err:
                 raise ValueError("attached file: " + err)

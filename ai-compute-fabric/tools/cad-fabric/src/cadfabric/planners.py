@@ -41,14 +41,14 @@ def find_codex(cfg):
     return None
 
 
-def ask_codex(prompt, cfg, timeout=300):
+def ask_codex(prompt, cfg, timeout=300, raw=False):
     """-> (text, err). Codex local."""
     exe = find_codex(cfg)
     if not exe:
         return "", "codex CLI not found (install it and log in, or set codex_bin)"
     try:
         with tempfile.TemporaryDirectory(prefix="cadfabric-codex-") as wd:
-            r = subprocess.run([exe, "exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "-C", wd, "-"], input=PREFIX + prompt[:30000],
+            r = subprocess.run([exe, "exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "-C", wd, "-"], input=(prompt[:30000] if raw else PREFIX + prompt[:30000]),
                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=wd, **NOWIN)
     except subprocess.TimeoutExpired:
         return "", "codex timed out after %ds" % timeout

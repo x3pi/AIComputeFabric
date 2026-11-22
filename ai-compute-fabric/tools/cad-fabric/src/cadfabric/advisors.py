@@ -169,12 +169,12 @@ def _read_key(a):
         return ""
 
 
-def ask(a, prompt, cfg=None, timeout=300, key=None):
+def ask(a, prompt, cfg=None, timeout=300, key=None, raw=False, skills=False):
     """-> (text, error). Never raises."""
     try:
         if a["type"] == "api":
             return _ask_api(a, prompt, timeout, key if key is not None else _read_key(a))
-        return _ask_cli(a, prompt, cfg, timeout)
+        return _ask_cli(a, prompt, cfg, timeout, raw, skills)
     except Exception as e:                                                   # noqa: BLE001 - an advisor must never crash the agent
         return "", "%s: %s" % (type(e).__name__, str(e)[:160])
 
@@ -207,7 +207,7 @@ def _ask_api(a, prompt, timeout, key):
     return (out.strip(), "") if out.strip() else ("", "the advisor returned no text")
 
 
-def cli_argv(a, cfg, cwd):
+def cli_argv(a, cfg, cwd, skills=False):
     """-> (argv, prompt_in_args). Pure function (tested)."""
     if a["preset"] in CLI_PRESETS:
         p = CLI_PRESETS[a["preset"]]
@@ -215,6 +215,9 @@ def cli_argv(a, cfg, cwd):
         if not exe:
             raise RuntimeError("%s not found on this machine (install it and log in)" % p["label"])
         base = [x.replace("{cwd}", cwd) for x in p["args"]]
+        if skills and "--tools" in base:                                            # claude only sees its skills through the Skill tool (and not with slash commands disabled): offer that one tool, nothing else
+            base = [x for x in base if x != "--disable-slash-commands"]
+            i = base.index("--tools"); base[i:i + 2] = ["--tools", "Skill"]
         pre = []
         if a.get("web"):
             if "web_tools" in p:                                                      # claude: swap the empty tool list for web tools only
@@ -232,10 +235,10 @@ def cli_argv(a, cfg, cwd):
     return [exe] + [x.replace("{cwd}", cwd) for x in parts[1:]], in_args
 
 
-def _ask_cli(a, prompt, cfg, timeout):
-    text = (WEB_PREFIX if a.get("web") else PREFIX) + prompt[:30000]
+def _ask_cli(a, prompt, cfg, timeout, raw=False, skills=False):
+    text = prompt[:30000] if raw else (WEB_PREFIX if a.get("web") else PREFIX) + prompt[:30000]
     with tempfile.TemporaryDirectory(prefix="cadfabric-adv-") as wd:
-        argv, in_args = cli_argv(a, cfg, wd)
+        argv, in_args = cli_argv(a, cfg, wd, skills)
         if in_args:
             argv = [x.replace("{prompt}", text) for x in argv]
         try:

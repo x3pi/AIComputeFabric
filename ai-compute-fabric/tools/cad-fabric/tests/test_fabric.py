@@ -965,6 +965,32 @@ class WorkspaceWeb(Settings):
         ask("make a plate $cq-holes"); self.assertTrue(any("SKILL the user invoked with $cq-holes" in x and "longer than the part" in x for x in llm.seen)); self.assertTrue(any(e["kind"] == "skill" and e.get("explicit") for e in self.srv.sess.events))
         self.req("POST", "/api/skills", {"op": "delete", "name": "cq-holes"}); self.req("POST", "/api/history/clear", {"all": True}); self.req("POST", "/api/reset", {}); self.req("POST", "/api/project", {"path": ""})     # leave the shared test server as we found it
 
+    def test_skill_questions_are_answered_by_the_harness_and_the_selected_advisor(self):
+        import sys, tempfile
+        from cadfabric import skills as S
+        ws = os.path.join(self.dir, "skq"); os.makedirs(ws); self.req("POST", "/api/project", {"path": ""}); self.req("POST", "/api/project", {"path": ws})
+        src = os.path.join(tempfile.mkdtemp(), "cq-holes"); os.makedirs(src); open(os.path.join(src, "SKILL.md"), "w").write(SkillsCore.SK)
+        self.req("POST", "/api/skills", {"op": "install_local", "path": src}); sess = self.srv.sess
+        llm = FakeLLM(["should not be called"]); sess.llm = llm
+        def ask(text, planner="off"):
+            n = len(sess.events); self.assertEqual(self.req("POST", "/api/send", {"text": text, "planner": planner})[0], 200)
+            for _ in range(150):
+                if not sess.busy: break
+                time.sleep(0.1)
+            return [e for e in sess.events[n:] if e["kind"] in ("answer", "error", "final")]
+        a = ask("bạn có skill gì?"); self.assertEqual((len(a), a[0]["kind"], a[0]["who"]), (1, "answer", "qwen")); self.assertIn("chờ bạn duyệt", a[0]["text"]); self.assertIn("cq-holes", a[0]["text"]); self.assertEqual(llm.seen, [])   # no model call
+        self.req("POST", "/api/skills", {"op": "approve", "name": "cq-holes"}); a = ask("Liệt kê skill của Qwen"); self.assertIn("Qwen tự chọn", a[0]["text"]); self.assertEqual(llm.seen, [])
+        a = ask("cố vấn có skill gì?", "nothink"); self.assertEqual(a[0]["who"], "advisor"); self.assertIn("chưa chọn cố vấn", a[0]["text"])                                           # Qwen is not an outside advisor
+        cap = os.path.join(self.dir, "adv-prompt.txt"); script = os.path.join(self.dir, "fakecli.py")
+        open(script, "w").write("import sys\nopen(%r, 'w').write(sys.stdin.read())\nprint('- demo-skill - a skill only the advisor has')\n" % cap)
+        sess.cfg["advisors"] = [{"id": "fakeadv", "label": "Fake CLI", "type": "cli", "preset": "custom", "command": "%s %s" % (sys.executable, script), "external": False}]
+        a = ask("Cố vấn có skill gì vậy?", "fakeadv"); self.assertEqual(a[0]["kind"], "answer"); self.assertIn("demo-skill", a[0]["text"]); self.assertIn("của chính nó", a[0]["text"])
+        sent = open(cap).read(); self.assertIn("agent skills", sent); self.assertNotIn("Answer ONLY from the text below", sent); self.assertNotIn(ws, sent)                                    # fixed prompt, no project data
+        a = ask("codex có skill gì?", "fakeadv"); self.assertIn("chọn Codex", a[0]["text"]); self.assertIn("Fake CLI", a[0]["text"])                                                      # named another advisor: not called
+        sess.cfg["advisors"] = [{"id": "apiadv", "label": "API adv", "type": "api", "kind": "openai", "url": "http://127.0.0.1:1/v1"}]; a = ask("cố vấn có skill nào", "apiadv"); self.assertIn("không có skill", a[0]["text"])
+        sess.cfg["advisors"] = [{"id": "badcli", "label": "Bad", "type": "cli", "preset": "custom", "command": "%s -c 'import sys; sys.exit(3)'" % sys.executable}]; a = ask("cố vấn có skill gì", "badcli"); self.assertEqual(a[0]["kind"], "error")
+        sess.cfg["advisors"] = []; self.req("POST", "/api/skills", {"op": "delete", "name": "cq-holes"}); self.req("POST", "/api/history/clear", {"all": True}); self.req("POST", "/api/reset", {}); self.req("POST", "/api/project", {"path": ""})
+
 
 class LessonsCore(unittest.TestCase):
     def setUp(self):
@@ -1244,6 +1270,30 @@ class LongRun(unittest.TestCase):
         self.assertLess(max(sizes), 4000 + 6 * 900 + LG.CARD_MAX + 1200); self.assertLess(sizes[-1], sizes[30] * 1.5)                                    # flat: bounded by threshold + tail + card, not by step count
         self.assertTrue(any(k == "recall" and x["ok"] for k, x in ev)); self.assertTrue(any("STEP 3" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))
         self.assertEqual(r["measure"]["volume"], 10 * 10 * 49)                                                                                         # the part is unaffected by what left the prompt
+
+
+class SkillQuestions(unittest.TestCase):
+    def test_detect(self):
+        from cadfabric import skillq as Q
+        yes = {"bạn có skill gì?": ("qwen", ""), "Liệt kê skill của qwen": ("qwen", ""), "what skills do you have": ("qwen", ""), "có những skill nào": ("qwen", ""), "danh sách kỹ năng": ("qwen", ""),
+               "cố vấn có skill gì": ("advisor", ""), "codex có những skill nào": ("advisor", "codex"), "Claude có skill gì": ("advisor", "claude"), "advisor skills list": ("advisor", "")}
+        for t, want in yes.items(): self.assertEqual(Q.detect(t), want, t)
+        for t in ("khoan lỗ Ø8 trên đĩa", "dựng hộp theo $cq-holes skill", "tạo skill mới từ bài học này", "skill", "dựng hộp dùng skill nào cũng được", "x " * 100 + "skill gì"): self.assertIsNone(Q.detect(t), t)
+
+    def test_claude_preset_shows_skills_only_for_this_question(self):
+        from cadfabric import advisors as A
+        a = {"id": "c", "type": "cli", "preset": "claude"}
+        self.assertIn("--disable-slash-commands", A.cli_argv(a, {}, "/tmp")[0]); self.assertNotIn("--disable-slash-commands", A.cli_argv(a, {}, "/tmp", skills=True)[0])
+        sk = A.cli_argv(a, {}, "/tmp", skills=True)[0]; self.assertEqual(sk[sk.index("--tools") + 1], "Skill"); self.assertNotIn("Bash", " ".join(sk))                # only the Skill tool, nothing that runs commands
+        self.assertEqual(A.cli_argv(a, {}, "/tmp")[0][A.cli_argv(a, {}, "/tmp")[0].index("--tools") + 1], "")                                                       # planning stays tool-free
+
+    def test_codex_asked_raw(self):
+        from cadfabric import planners as P
+        import sys, tempfile, stat
+        d = tempfile.mkdtemp(); cap = os.path.join(d, "in.txt"); exe = os.path.join(d, "codex")
+        open(exe, "w").write("#!%s\nimport sys\nopen(%r, 'w').write(sys.stdin.read())\nprint('- skill-a - from codex')\n" % (sys.executable, cap)); os.chmod(exe, os.stat(exe).st_mode | stat.S_IEXEC)
+        cfg = {"codex_bin": exe}; t, e = P.ask_codex("LIST YOUR SKILLS", cfg, raw=True); self.assertEqual(e, ""); self.assertIn("skill-a", t); self.assertEqual(open(cap).read(), "LIST YOUR SKILLS")
+        P.ask_codex("PLAN IT", cfg); self.assertIn("Answer ONLY from the text below", open(cap).read())                                                              # planning is unchanged
 
 
 if __name__ == "__main__":
