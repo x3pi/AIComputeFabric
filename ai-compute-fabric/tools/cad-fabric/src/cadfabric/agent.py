@@ -220,7 +220,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
                                     "(recall('words') shows how earlier steps dealt with it)." % res.error.strip().splitlines()[-1][:160])
                 if vol is not None:
                     last_vol = vol
-                trace.append({"tool": name, "ok": res.ok, "vol": res.measure.volume if res.measure else None, "err": res.error[:200], "code": str(args.get("code", ""))[:700]})
+                trace.append({"tool": name, "ok": res.ok, "vol": res.measure.volume if res.measure else None, "err": res.error, "code": str(args.get("code", "")), "out": str(getattr(res, "output", "") or "")})
                 log("  step %d: %s%s" % (len(trace), "ok" if res.ok else "ERROR " + res.error[:100], "  volume %.2f mm3" % res.measure.volume if res.measure else ""))
                 chk = text[text.index("HARNESS CHECK"):][:300].replace("\n", " ") if "HARNESS CHECK" in text else ""
                 if chk:

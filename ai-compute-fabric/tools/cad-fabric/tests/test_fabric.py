@@ -1189,7 +1189,7 @@ class LongRun(unittest.TestCase):
         def adv(prompt): asked.append(prompt); return "DIAGNOSIS: the cup was never hollowed.\nNEXT: shell the top face first.", ""
         r, ev, llm = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40, consult=adv, request="make the box")
         self.assertEqual(len(asked), 1); self.assertEqual(r["consults"], 1)                                                    # once per kind of trouble, not every step
-        self.assertIn("make the box", asked[0]); self.assertIn("box(", asked[0]); self.assertIn("LAST CELLS", asked[0]); self.assertIn("same code", asked[0])
+        self.assertIn("make the box", asked[0]); self.assertIn("box(", asked[0]); self.assertIn("ALL CELLS", asked[0]); self.assertIn("same code", asked[0])
         self.assertTrue(any("ADVISOR REVIEW" in str(m.get("content")) and "shell the top face" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
         c = [x for k, x in ev if k == "consult"]; self.assertEqual((len(c), bool(c[0]["text"]), c[0]["n"]), (1, True, 1))
 
@@ -1211,6 +1211,15 @@ class LongRun(unittest.TestCase):
         r2, _, _ = self.run_agent([bad(1), bad(2), bad(3), "done"], consult=adv, request="Continue: finish the missing features", history=r["history"], max_steps=10)
         mid = [p for p in asked if "failed since the last review" in p]
         self.assertTrue(mid); self.assertIn("quadcopter", mid[0]); self.assertIn("LATEST USER MESSAGE: Continue", mid[0])
+
+    def test_advisor_digest_has_everything_uncut(self):
+        from cadfabric import consult
+        long_code = "result = cq.Workplane('XY').box(1,1,1)\n" + "# pad %s\n" % ("x" * 3000) + "marker_end_of_code = 1"
+        trace = [{"tool": "execute_cadquery", "ok": i % 2 == 0, "vol": 1.0, "err": "" if i % 2 == 0 else "E" * 900 + "TAIL", "code": long_code, "out": "printed-%d" % i} for i in range(12)]
+        d = consult.digest("R" * 5000 + "REQ_END", "P" * 4000 + "PLAN_END", trace, "m", "why", earlier=["A" * 2000 + "ADV_END", "B" * 2000 + "ADV2_END"])
+        for needle in ("REQ_END", "PLAN_END", "marker_end_of_code", "TAIL", "ADV_END", "ADV2_END", "printed-11", "cell 1:", "cell 12:"):
+            self.assertIn(needle, d)
+        self.assertEqual(d.count("marker_end_of_code"), 12)                                                         # every cell, not the last four
 
     def test_advisor_failure_never_breaks_the_run_and_off_means_no_calls(self):
         r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40, consult=lambda p: ("", "exit 1: not logged in"), request="make the box")
