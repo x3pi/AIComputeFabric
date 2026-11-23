@@ -47,7 +47,9 @@ button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:10px 
 <div class="card"><div class="row"><div><b>Bật công cụ cho chat</b><span class="mut">Công tắc tổng. Tắt thì chat chạy như bình thường, không công cụ nào được gọi.</span></div>
 <label class="sw"><input type="checkbox" id="enabled" aria-label="Bật công cụ"><span class="sl"></span></label></div>
 <div class="row"><div><b>Ghi nguồn cuối câu trả lời</b><span class="mut">Thêm dòng "Nguồn dữ liệu: ... (lấy lúc ...)" khi có công cụ chạy.</span></div>
-<label class="sw"><input type="checkbox" id="footer" aria-label="Ghi nguồn"><span class="sl"></span></label></div></div>
+<label class="sw"><input type="checkbox" id="footer" aria-label="Ghi nguồn"><span class="sl"></span></label></div>
+<div class="row"><div><b>Áp dụng cho yêu cầu của Agent (có danh sách công cụ)</b><span class="mut">Langflow Agent và các client gọi hàm gửi kèm danh sách công cụ nên mặc định bị bỏ qua. Bật thì thời tiết, tin tức... vẫn được chèn khi tin nhắn cuối của người dùng khớp; không bao giờ chèn trong vòng gọi công cụ của Agent.</span></div>
+<label class="sw"><input type="checkbox" id="agent" aria-label="Áp dụng cho Agent"><span class="sl"></span></label></div></div>
 <div class="card" id="tools"></div>
 <button id="save">Lưu cài đặt</button> <button id="out" style="background:transparent;color:var(--mut);border:1px solid var(--line)">Đăng xuất</button>
 <div id="msg" role="status"></div><div class="mut" id="meta"></div></section></main><script src="/app.js"></script></body></html>"""
@@ -57,7 +59,7 @@ const $=id=>document.getElementById(id);let tok=null,info={};
 try{tok=sessionStorage.getItem("tok")}catch(e){}
 const msg=(t,c)=>{$("msg").textContent=t;$("msg").className=c||""};
 async function api(path,opt={}){const r=await fetch(path,{...opt,headers:{"Content-Type":"application/json",...(tok?{Authorization:"Bearer "+tok}:{})}});let d={};try{d=await r.json()}catch(e){}return{ok:r.ok,status:r.status,d}}
-function draw(c){$("enabled").checked=c.enabled;$("footer").checked=c.footer;const box=$("tools");box.textContent="";
+function draw(c){$("enabled").checked=c.enabled;$("footer").checked=c.footer;$("agent").checked=!!c.agent_requests;const box=$("tools");box.textContent="";
  for(const [n,[label,desc,lf]] of Object.entries(info)){const row=document.createElement("div");row.className="row";const l=document.createElement("div");
   const b=document.createElement("b");b.textContent=label;if(lf){const p=document.createElement("span");p.className="pill";p.id="lfpill";p.textContent="Langflow: đang kiểm tra";b.appendChild(p)}
   const s=document.createElement("span");s.className="mut";s.textContent=desc;l.append(b,s);const w=document.createElement("label");w.className="sw";
@@ -69,7 +71,7 @@ async function load(){const r=await api("/api/config");if(!r.ok){tok=null;try{se
 $("go").onclick=async()=>{msg("Đang đăng nhập…");const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("u").value.trim(),password:$("p").value})});
  const d=await r.json().catch(()=>({}));$("p").value="";if(!r.ok||!d.token){msg((d.error&&d.error.message)||d.error||("Đăng nhập thất bại ("+r.status+")"),"bad");return}tok=d.token;try{sessionStorage.setItem("tok",tok)}catch(e){}msg("");load()};
 $("save").onclick=async()=>{const tools={};document.querySelectorAll("input[data-tool]").forEach(i=>tools[i.dataset.tool]=i.checked);
- $("save").disabled=true;const r=await api("/api/config",{method:"PUT",body:JSON.stringify({enabled:$("enabled").checked,footer:$("footer").checked,tools})});$("save").disabled=false;
+ $("save").disabled=true;const r=await api("/api/config",{method:"PUT",body:JSON.stringify({enabled:$("enabled").checked,footer:$("footer").checked,agent_requests:$("agent").checked,tools})});$("save").disabled=false;
  if(r.ok){draw(r.d.config);status();msg("Đã lưu. Có hiệu lực từ câu hỏi kế tiếp.","ok")}else msg(r.status===401?"Phiên hết hạn, hãy đăng nhập lại.":("Lưu thất bại ("+r.status+")"),"bad");if(r.status===401)load()};
 $("out").onclick=()=>{tok=null;try{sessionStorage.removeItem("tok")}catch(e){}$("panel").hidden=true;$("login").hidden=false};
 $("p").addEventListener("keydown",e=>{if(e.key==="Enter")$("go").click()});
@@ -204,7 +206,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self._json(400, {"error": "invalid JSON"})
         cfg = C.save(new, who)
-        print(f"settings saved by {who}: enabled={cfg['enabled']} footer={cfg['footer']} tools={cfg['tools']}", file=sys.stderr, flush=True)
+        print(f"settings saved by {who}: enabled={cfg['enabled']} footer={cfg['footer']} agent_requests={cfg['agent_requests']} tools={cfg['tools']}", file=sys.stderr, flush=True)
         self._json(200, {"config": cfg})
 
 

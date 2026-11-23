@@ -19,15 +19,17 @@ TOOL_INFO = {  # name -> (label, description, uses_langflow)
     "news": ("Tin tức (gọi sang Langflow)", "Gọi flow Langflow → Google News. Tắt mục này là KHÔNG gọi Langflow nữa; cũng áp dụng cho giá xăng, chứng khoán và tiền tố /tin.", True),
     "web": ("Tra cứu Wikipedia", "Chỉ chạy khi người dùng nói \"tra cứu/tìm kiếm\" hoặc dùng /web.", False),
 }
-DEFAULTS = {"enabled": True, "footer": True, "tools": {n: True for n in TOOL_INFO}}
+DEFAULTS = {"enabled": True, "footer": True, "agent_requests": False, "tools": {n: True for n in TOOL_INFO}}
+# agent_requests: also run the tools for chat requests that carry a function-calling `tools`/`functions` list (Langflow agents, other agent clients).
+# Off by default; the router only ever acts on a request whose LAST message is from the user, never inside an agent's tool loop.
 
 _cache: tuple[float, dict] | None = None
 
 
 def _normalise(raw) -> dict:
-    out = {"enabled": True, "footer": True, "tools": dict(DEFAULTS["tools"])}
+    out = {"enabled": True, "footer": True, "agent_requests": False, "tools": dict(DEFAULTS["tools"])}
     if isinstance(raw, dict):
-        for k in ("enabled", "footer"):
+        for k in ("enabled", "footer", "agent_requests"):
             if isinstance(raw.get(k), bool):
                 out[k] = raw[k]
         if isinstance(raw.get("tools"), dict):
@@ -71,6 +73,11 @@ def save(new: dict, who: str) -> dict:
     os.replace(tmp, PATH)
     _cache = None
     return cfg
+
+
+def agent_requests_on() -> bool:
+    c = load()
+    return bool(c["enabled"] and c["agent_requests"])
 
 
 def tool_on(name: str) -> bool:

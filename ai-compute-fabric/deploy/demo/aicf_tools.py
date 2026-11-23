@@ -45,9 +45,12 @@ ALL_TOOLS = [D.TOOLS[0], D.TOOLS[1], D.TOOLS[2], D.TOOLS[3], D.TOOLS[4], NEWS_TO
 
 # ------------------------------------------------------------------ planning
 def plan(body: dict) -> tuple[list[tuple[D.Tool, str]], str | None]:
-    """-> ([(tool, query)], text_after_prefix_strip or None). Never touches agent traffic (tools/functions) or non-user last messages."""
+    """-> ([(tool, query)], text_after_prefix_strip or None). Never touches non-user last messages (so never an agent's tool loop). Requests that carry a
+    function-calling `tools`/`functions` list (agents) are left alone unless the admin switched `agent_requests` on."""
     msgs = body.get("messages")
-    if not isinstance(msgs, list) or not msgs or not isinstance(msgs[-1], dict) or msgs[-1].get("role") != "user" or body.get("tools") or body.get("functions"):
+    if not isinstance(msgs, list) or not msgs or not isinstance(msgs[-1], dict) or msgs[-1].get("role") != "user":
+        return [], None
+    if (body.get("tools") or body.get("functions")) and not C.agent_requests_on():
         return [], None
     text = N.user_text(msgs[-1]).strip()
     low = text.lower()
