@@ -15,7 +15,7 @@ for v in 310 312; do
   "$PYTHON" -m pip download --quiet --only-binary=:all: "${PL[@]}" --python-version "${v:0:1}.${v:1}" --implementation cp --abi "cp$v" -d "$D" --find-links "$D" "cadfabric[desktop]"
   cp -n "$D"/*.whl "$B/wheelhouse/" 2>/dev/null || true
 done
-cp "$HERE/linux/install.sh" "$HERE/linux/uninstall.sh" "$B/"; chmod +x "$B/install.sh" "$B/uninstall.sh"
+cp "$ROOT/assets/cadfabric-icon.svg" "$B/cadfabric.svg"; cp "$HERE/linux/install.sh" "$HERE/linux/uninstall.sh" "$B/"; chmod +x "$B/install.sh" "$B/uninstall.sh"
 cp "$ROOT/docs/HUONG-DAN-CAI-DAT-UBUNTU.md" "$B/HUONG-DAN-CAI-DAT-UBUNTU.md"
 ( cd "$B" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS )
 tar -C "$WORK" -czf "$OUT/cadfabric-linux-$VERSION.tar.gz" "cadfabric-linux-$VERSION"

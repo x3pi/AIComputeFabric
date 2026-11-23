@@ -25,7 +25,7 @@ echo "== embeddable Python $PY_VER and the Microsoft runtime"
 curl -fsSL -o "$B/python-$PY_VER-embed-amd64.zip" "https://www.python.org/ftp/python/$PY_VER/python-$PY_VER-embed-amd64.zip"
 if [ -f "${VC_REDIST:-}" ]; then cp "$VC_REDIST" "$B/vc_redist.x64.exe"; else curl -fsSL -o "$B/vc_redist.x64.exe" https://aka.ms/vs/17/release/vc_redist.x64.exe; fi
 
-cp "$HERE/windows/install.cmd" "$HERE/windows/install.ps1" "$HERE/windows/uninstall.ps1" "$B/"
+cp "$ROOT/assets/cadfabric.ico" "$B/cadfabric.ico"; cp "$HERE/windows/install.cmd" "$HERE/windows/install.ps1" "$HERE/windows/uninstall.ps1" "$B/"
 cp "$HERE/windows/README.txt" "$B/README.txt"
 cp "$ROOT/docs/HUONG-DAN-CAI-DAT-WINDOWS.md" "$B/HUONG-DAN-CAI-DAT-WINDOWS.md"
 ( cd "$B" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS )

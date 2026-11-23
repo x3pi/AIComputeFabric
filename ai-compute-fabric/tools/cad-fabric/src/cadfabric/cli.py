@@ -161,7 +161,11 @@ def _desktop_window(url, srv, title="CadFabric"):
         if srv is not None:                                 # srv None = only show a window for an app that is already running
             threading.Thread(target=srv.serve_forever, daemon=True).start()
             threading.Thread(target=lambda: _watch_quit(srv, win), daemon=True).start()
-        webview.start()
+        ico = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "cadfabric.png")
+        try:
+            webview.start(icon=ico) if os.path.isfile(ico) else webview.start()          # window icon (GTK/Qt); Windows takes the icon from the shortcut
+        except TypeError:
+            webview.start()
     except Exception as e:                                 # noqa: BLE001
         print("desktop window failed (%s: %s); using the browser" % (type(e).__name__, str(e)[:120]), flush=True)
         return False

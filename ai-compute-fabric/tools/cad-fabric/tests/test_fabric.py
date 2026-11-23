@@ -1390,5 +1390,18 @@ class ShapeCheck(unittest.TestCase):
         finally: b.close()
 
 
+    def test_brand_assets_are_valid_self_contained_vectors(self):
+        import xml.etree.ElementTree as ET, struct
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+        for n in ("cadfabric-icon.svg", "cadfabric-icon-small.svg", "cadfabric-mark.svg", "cadfabric-logo.svg", "cadfabric-logo-dark.svg"):
+            raw = open(os.path.join(root, n), encoding="utf-8").read(); t = ET.fromstring(raw)
+            self.assertTrue(t.tag.endswith("svg") and t.get("viewBox")); self.assertNotIn("<text", raw); self.assertNotIn("font-family", raw)          # wordmark is outlines, no font needed
+            self.assertNotIn("href=", raw); self.assertNotIn("<script", raw); self.assertNotIn("<image", raw)                                        # nothing external, nothing embedded raster
+        ico = open(os.path.join(root, "cadfabric.ico"), "rb").read(); n = struct.unpack("<H", ico[4:6])[0]
+        self.assertEqual(ico[:4], b"\x00\x00\x01\x00"); self.assertGreaterEqual(n, 6)                                                             # a real multi-size .ico
+        page = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "cadfabric", "web_page.html"), encoding="utf-8").read()
+        self.assertIn('class="mk"', page); self.assertIn('rel="icon"', page); self.assertIn("var(--m1)", page)
+        st = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "cadfabric", "static"); self.assertTrue(os.path.isfile(os.path.join(st, "cadfabric.png")))
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

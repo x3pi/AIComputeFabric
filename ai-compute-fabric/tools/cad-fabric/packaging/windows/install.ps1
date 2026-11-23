@@ -93,6 +93,8 @@ if (-not (Test-Path $app)) { throw 'cadfabric-app.exe was not created' }
 [IO.File]::WriteAllText((Join-Path $Prefix 'cadfabric.cmd'), "@`"%~dp0python\python.exe`" -m cadfabric %*`r`n")
 Copy-Item (Join-Path $here 'uninstall.ps1') $Prefix -Force
 if (-not $NoShortcuts) {
+    $icon = Join-Path $Prefix 'cadfabric.ico'
+    if (Test-Path (Join-Path $here 'cadfabric.ico')) { Copy-Item (Join-Path $here 'cadfabric.ico') $icon -Force }
     $sh = New-Object -ComObject WScript.Shell
     # one shortcut name per install: the default folder owns "CadFabric"; a custom -Prefix gets its own name so installs never overwrite each other
     $default = Join-Path $env:LOCALAPPDATA 'CadFabric'
@@ -100,7 +102,9 @@ if (-not $NoShortcuts) {
     $targets = @((Join-Path ([Environment]::GetFolderPath('Programs')) ($name + '.lnk')))
     if (-not $NoDesktopShortcut) { $targets += (Join-Path ([Environment]::GetFolderPath('Desktop')) ($name + '.lnk')) }
     foreach ($t in $targets) {
-        $l = $sh.CreateShortcut($t); $l.TargetPath = $app; $l.WorkingDirectory = $env:USERPROFILE; $l.Description = 'CadFabric - CAD design chat'; $l.Save()
+        $l = $sh.CreateShortcut($t); $l.TargetPath = $app; $l.WorkingDirectory = $env:USERPROFILE; $l.Description = 'CadFabric - CAD design chat'
+        if (Test-Path $icon) { $l.IconLocation = $icon }
+        $l.Save()
         Write-Host ('shortcut: ' + $t)
     }
 }

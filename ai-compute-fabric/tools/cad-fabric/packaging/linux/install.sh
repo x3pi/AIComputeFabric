@@ -55,9 +55,11 @@ step "Launchers"
 mkdir -p "$HOME/.local/bin"
 ln -sf "$PREFIX/venv/bin/cadfabric" "$HOME/.local/bin/cadfabric"
 cp "$HERE/uninstall.sh" "$PREFIX/uninstall.sh"; chmod +x "$PREFIX/uninstall.sh"
+if [ -f "$HERE/cadfabric.svg" ]; then cp "$HERE/cadfabric.svg" "$PREFIX/cadfabric.svg"; else
 cat > "$PREFIX/cadfabric.svg" <<'SVG'
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#c96442"/><path d="M32 12l18 10v20L32 52 14 42V22z" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round"/><path d="M14 22l18 10 18-10M32 32v20" fill="none" stroke="#fff" stroke-width="3"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="CadFabric"><title>CadFabric</title><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d97757"/><stop offset="1" stop-color="#b9532f"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#g)"/><path d="M12.08 20.50 L32.00 32.00 L32.00 55.00 L12.08 43.50 Z" fill="rgba(255,255,255,0.74)"/><path d="M32.00 32.00 L51.92 20.50 L51.92 43.50 L32.00 55.00 Z" fill="rgba(255,255,255,0.5)"/><path d="M32.00 9.00 L51.92 20.50 L32.00 32.00 L12.08 20.50 Z" fill="#ffffff"/><ellipse cx="32.00" cy="20.50" rx="10.12" ry="5.84" fill="#8f3b21"/></svg>
 SVG
+fi
 if [ $SHORTCUTS -eq 1 ]; then
   APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"; mkdir -p "$APPS"
   NAME="CadFabric"; [ "$PREFIX" = "${XDG_DATA_HOME:-$HOME/.local/share}/cadfabric-app" ] || NAME="CadFabric - $(basename "$PREFIX")"

@@ -44,6 +44,10 @@ Tab **Tệp** ở panel phải liệt kê thư mục dự án; bấm một tệp
 - **Chống kẹt**: cùng một đoạn mã 3 lần liền, thể tích không đổi 5 cell liền, 5 cell lỗi liền, hoặc cùng một lỗi 3 lần (dù mã khác) thì Qwen được nhắc một lần; tới 6, 9 hoặc 10 thì lượt chạy kết thúc với lý do rõ ràng và nút **Tiếp tục** thay vì đốt hết số bước.
 - **Số bước linh hoạt**: ít nhất 14 bước, cộng 5 bước cho mỗi mốc trong kế hoạch của cố vấn (tối đa 120, `CADFABRIC_HARD_STEPS`); tin nhắn sửa tiếp có ít nhất 20 bước. Hết số bước thì bấm **Tiếp tục** để chạy thêm từ đúng chỗ đang dở.
 
+### Logo và icon
+
+Bộ logo và icon vector nằm trong `assets/`: biểu tượng là một khối lập phương đẳng cự có lỗ khoan trên mặt trên (một thao tác CAD), màu cam đất cùng tông với giao diện. Có `cadfabric-icon.svg` (ô vuông bo góc), `cadfabric-icon-small.svg` (bản đơn giản cho 16 đến 32 px), `cadfabric-mark.svg` (chỉ khối), `cadfabric-logo.svg` và `cadfabric-logo-dark.svg` (ngang, chữ đã chuyển thành đường nét nên không cần cài phông), cùng `png/` và `cadfabric.ico` (7 kích thước). Tất cả sinh từ một hình học bằng `python assets/build_assets.py` (cần fonttools, cairosvg, Pillow, phông Inter theo giấy phép OFL). Giao diện dùng khối này làm favicon và logo tiêu đề (đổi màu theo chế độ sáng và tối); trình cài Windows gán `cadfabric.ico` cho shortcut, trình cài Linux dùng bản SVG cho launcher.
+
 ### Hỏi cố vấn khi kẹt
 
 Khi bạn chọn Codex, Claude hoặc một cố vấn CLI/API làm cố vấn, và Qwen bị kẹt (lặp mã, thể tích không đổi, lỗi liên tục) hoặc chi tiết cứ lệch kế hoạch, app tự gửi cho cố vấn một bản tóm tắt: đề bài, kế hoạch, 4 ô mã gần nhất kèm kết quả và số đo hiện tại. Cố vấn chẩn đoán nguyên nhân gốc (hiểu sai đề, cắt nhầm trục, kế hoạch sai) và nêu bước tiếp theo bằng văn bản. Lời khuyên hiện thành thẻ "Cố vấn xem lại" và được đưa cho Qwen như gợi ý để tự kiểm lại trên chi tiết thật. Tối đa 2 lần mỗi lượt, cách nhau ít nhất 3 bước. Không chọn cố vấn thì không gửi gì ra ngoài. Cố vấn bên ngoài nhận thêm mã và số đo của lượt đó, nên vẫn nằm trong xác nhận "gửi ra ngoài" đã hỏi khi bạn chọn cố vấn.

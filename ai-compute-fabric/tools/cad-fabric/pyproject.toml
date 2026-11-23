@@ -20,7 +20,7 @@ cadfabric = "cadfabric.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-cadfabric = ["web_page.html", "static/*.js", "static/vendor/*", "static/licenses/*"]
+cadfabric = ["web_page.html", "static/*.js", "static/*.png", "static/*.svg", "static/vendor/*", "static/licenses/*"]
 
 [project.gui-scripts]
 cadfabric-app = "cadfabric.cli:app_main"
