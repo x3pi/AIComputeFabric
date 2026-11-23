@@ -132,7 +132,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
         budget = max(MAX_STEPS, 20)
     else:
         budget = min(HARD_STEPS, max(MAX_STEPS, 10 + 5 * (len(spec["milestones"]) if spec else 0)))
-    run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); n_consult = 0; advice = []; final_reviewed = False; consult_step = -99; warns_at_consult = 0; ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
+    run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); n_consult = 0; fails_since = 0; advice = []; final_reviewed = False; consult_step = -99; warns_at_consult = 0; ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
     for step in range(budget):
         if should_stop and should_stop():
             stopped = True
@@ -204,6 +204,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
                 sig = ledger_mod.code_sig(args.get("code", "")); vol = round(res.measure.volume, 6) if (res.ok and res.measure) else None
                 run["repeat"] = run["repeat"] + 1 if sig == last_sig else 1
                 run["failing"] = 0 if res.ok else run["failing"] + 1
+                fails_since += 0 if res.ok else 1                 # failures need not be consecutive: errors mixed with successes still mean the model is guessing
                 run["same_volume"] = (run["same_volume"] + 1 if (vol is not None and vol == last_vol) else (1 if vol is not None else 0)) if res.ok else run["same_volume"]
                 last_sig = sig
                 if not res.ok:                                                    # the same error again and again (even with different code) is a loop of its own
@@ -274,9 +275,11 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
                 msgs.append({"role": "user", "content": note}); trace.append({"gate": note}); ev("gate", text=note[:400]); why = why or STUCK_TEXT[kind] % run[kind]
         if not stuck and not why and warns - warns_at_consult >= 2:
             why = "the part keeps disagreeing with the plan's checks (%d warnings)" % (warns - warns_at_consult)
+        if not stuck and not why and fails_since >= consult_mod.FAILS_TO_ASK:
+            why = "%d cells failed since the last review (errors mixed with successes: the approach itself may be wrong)" % fails_since
         nsteps = len([t for t in trace if t.get("tool")])
         if why and not stuck and n_consult < consult_mod.MAX_PER_RUN and nsteps - consult_step >= consult_mod.COOLDOWN and (consult or consult_mod.possible(cfg or getattr(llm, "cfg", None) or {}, plan_mode)):
-            n_consult += 1; consult_step = nsteps; warns_at_consult = warns
+            n_consult += 1; consult_step = nsteps; warns_at_consult = warns; fails_since = 0
             ev("phase", what="consult", mode=plan_mode)
             mm1 = backend.measure()
             prompt = consult_mod.digest(request, V.describe(spec) if spec else "", trace, mm1.text() if mm1 else "", why, earlier=advice)

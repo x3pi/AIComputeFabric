@@ -1193,6 +1193,16 @@ class LongRun(unittest.TestCase):
         self.assertTrue(any("ADVISOR REVIEW" in str(m.get("content")) and "shell the top face" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
         c = [x for k, x in ev if k == "consult"]; self.assertEqual((len(c), bool(c[0]["text"]), c[0]["n"]), (1, True, 1))
 
+    def test_advisor_is_asked_when_errors_are_mixed_with_successes(self):
+        asked = []
+        def adv(prompt): asked.append(prompt); return "VERDICT: OK\nDIAGNOSIS: the API names were guessed.", ""
+        bad = lambda i: [("execute_cadquery", {"code": 'result = cq.Workplane("XY").nosuchmethod(%d)' % i})]
+        good = lambda i: [("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(%d, 10, 10)' % (10 + i)})]
+        r, ev, _ = self.run_agent([bad(1), good(1), bad(2), good(2), bad(3), good(3), "done"], consult=adv, request="make something", max_steps=20)
+        mid = [p for p in asked if "failed since the last review" in p]
+        self.assertEqual(len(mid), 1); self.assertFalse(r["stuck"])                                                              # never 5 in a row, yet the advisor was asked
+        c = [x for k, x in ev if k == "consult" and not x.get("final")]; self.assertEqual(len(c), 1); self.assertIn("failed", c[0]["why"])
+
     def test_advisor_failure_never_breaks_the_run_and_off_means_no_calls(self):
         r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40, consult=lambda p: ("", "exit 1: not logged in"), request="make the box")
         self.assertTrue(r["stuck"]); c = [x for k, x in ev if k == "consult"]; self.assertTrue(c and c[0]["error"] and not c[0]["text"])

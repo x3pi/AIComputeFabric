@@ -5,6 +5,7 @@ Only used when the user picked a CLI/API advisor (or Codex) as the planner, so n
 from . import advisors, planners
 
 MAX_PER_RUN = 2
+FAILS_TO_ASK = 3                                 # failed cells (not necessarily in a row) before the advisor is asked
 COOLDOWN = 3                                     # steps between two consultations
 REPLY_MAX = 2500
 
