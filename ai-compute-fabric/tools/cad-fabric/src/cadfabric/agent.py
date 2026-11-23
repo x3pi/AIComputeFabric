@@ -7,7 +7,8 @@ from . import ledger as ledger_mod, consult as consult_mod
 
 MAX_STEPS = int(os.environ.get("CADFABRIC_MAX_STEPS", "14"))
 GATE_MAX = 2
-HARD_STEPS = int(os.environ.get("CADFABRIC_HARD_STEPS", "120"))
+HARD_STEPS = int(os.environ.get("CADFABRIC_HARD_STEPS", "200"))   # the budget grows by EXTEND_BY while the part keeps changing, up to this
+EXTEND_BY = 10
 NUDGE = {"repeat": 3, "same_volume": 5, "failing": 5}          # consecutive cells before the model is told it is stuck
 STOP = {"repeat": 6, "same_volume": 9, "failing": 10}          # and before the run is ended as stuck
 STUCK_TEXT = {"repeat": "you ran the same code %d times in a row", "same_volume": "the part did not change for %d cells in a row", "failing": "%d cells in a row failed"}
@@ -138,7 +139,12 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
     else:
         budget = min(HARD_STEPS, max(MAX_STEPS, 10 + 5 * (len(spec["milestones"]) if spec else 0)))
     run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); n_consult = 0; fails_since = 0; advice = []; final_reviewed = False; consult_step = -99; warns_at_consult = 0; ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
-    for step in range(budget):
+    step = -1; last_change = 0
+    while step + 1 < budget:
+        step += 1
+        if step >= budget - 2 and step - last_change <= 4 and budget < HARD_STEPS and not max_steps:
+            budget = min(HARD_STEPS, budget + EXTEND_BY)               # still making progress at the limit: keep going instead of asking the user to press Continue
+            ev("extend", budget=budget)
         if should_stop and should_stop():
             stopped = True
             break
@@ -211,6 +217,8 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
                     note = ("HARNESS CHECK: the volume fell from %.1f to %.1f mm3 and a new body appeared where most of the old part was removed. This cell REPLACED the part instead of adding to it "
                             "(assigning `result` to a new object throws the old one away). If that was not the intention, call the undo tool and `.union(...)` the new feature into `result`." % (last_vol, vol))
                     text += "\n" + note; warns += 1
+                if res.ok and vol is not None and vol != last_vol:
+                    last_change = step
                 run["repeat"] = run["repeat"] + 1 if sig == last_sig else 1
                 run["failing"] = 0 if res.ok else run["failing"] + 1
                 fails_since += 0 if res.ok else 1                 # failures need not be consecutive: errors mixed with successes still mean the model is guessing

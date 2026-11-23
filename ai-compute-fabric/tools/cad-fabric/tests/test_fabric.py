@@ -1293,8 +1293,15 @@ class LongRun(unittest.TestCase):
         r, ev, _ = self.run_agent(cells, max_steps=20); self.assertFalse(any("same error" in x["text"] for k, x in ev if k == "gate"))                          # twice is not yet a loop
 
     def test_budget_follows_the_plan_and_the_limit_is_reported(self):
-        r, _, _ = self.run_agent([[("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(%d, 10, 10)' % (10 + i)})] for i in range(40)])
+        grow = [[("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(%d, 10, 10)' % (10 + i)})] for i in range(40)]
+        old = agent.HARD_STEPS; agent.HARD_STEPS = agent.MAX_STEPS
+        try:
+            r, _, _ = self.run_agent(grow)                                                                                  # hard cap = base budget: the limit is reported
+        finally: agent.HARD_STEPS = old
         self.assertEqual((r["budget"], r["steps"], r["ended_by_limit"], bool(r["stuck"])), (agent.MAX_STEPS, agent.MAX_STEPS, True, False))
+        r, ev, _ = self.run_agent(grow + ["finished"])                                                                      # the part keeps changing: the budget grows by itself
+        self.assertEqual((r["final"], r["steps"], r["ended_by_limit"]), ("finished", 40, False)); self.assertGreater(r["budget"], agent.MAX_STEPS); self.assertTrue(any(k == "extend" for k, _ in ev))
+        self.assertTrue(any(k == "gate" for k, _ in ev) is False)
         spec = V.parse_spec(PLAN); b = CadQueryBackend(timeout=30)
         try:
             r = agent.run(FakeLLM(["ok"]), b, "x", plan_mode="nothink", planner=PLANNER, log=lambda s: None); self.assertEqual(r["budget"], max(agent.MAX_STEPS, 10 + 5 * len(spec["milestones"])))
