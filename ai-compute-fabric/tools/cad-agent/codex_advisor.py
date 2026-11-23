@@ -121,5 +121,8 @@ def _result(r):
 
 
 if __name__ == "__main__":
-    text, err = ask(" ".join(sys.argv[1:]) or "Reply with the single word OK.")
+    q = " ".join(sys.argv[1:]) or "Reply with the single word OK."
+    if q.startswith("@") and os.path.isfile(q[1:]):          # @file: the question is in a file (avoids shell quoting limits over ssh)
+        q = open(q[1:], encoding="utf-8").read()
+    text, err = ask(q)
     print(text if text else "ERROR: " + err)
