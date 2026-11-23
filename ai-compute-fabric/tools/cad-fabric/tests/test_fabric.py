@@ -1203,6 +1203,15 @@ class LongRun(unittest.TestCase):
         self.assertEqual(len(mid), 1); self.assertFalse(r["stuck"])                                                              # never 5 in a row, yet the advisor was asked
         c = [x for k, x in ev if k == "consult" and not x.get("final")]; self.assertEqual(len(c), 1); self.assertIn("failed", c[0]["why"])
 
+    def test_advisor_sees_the_original_request_on_a_follow_up(self):
+        asked = []
+        def adv(prompt): asked.append(prompt); return "VERDICT: OK\nDIAGNOSIS: x", ""
+        bad = lambda i: [("execute_cadquery", {"code": 'result = cq.Workplane("XY").nosuchmethod(%d)' % i})]
+        r, _, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})], "first done"], request="design a quadcopter with four arms")
+        r2, _, _ = self.run_agent([bad(1), bad(2), bad(3), "done"], consult=adv, request="Continue: finish the missing features", history=r["history"], max_steps=10)
+        mid = [p for p in asked if "failed since the last review" in p]
+        self.assertTrue(mid); self.assertIn("quadcopter", mid[0]); self.assertIn("LATEST USER MESSAGE: Continue", mid[0])
+
     def test_advisor_failure_never_breaks_the_run_and_off_means_no_calls(self):
         r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40, consult=lambda p: ("", "exit 1: not logged in"), request="make the box")
         self.assertTrue(r["stuck"]); c = [x for k, x in ev if k == "consult"]; self.assertTrue(c and c[0]["error"] and not c[0]["text"])

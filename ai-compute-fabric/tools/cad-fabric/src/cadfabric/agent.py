@@ -16,7 +16,7 @@ SYSTEM = """You build CAD parts by writing CadQuery (Python) code that runs in a
 Rules:
 - Call `execute_cadquery(code)`. `cq`, `math`, `Workplane`, `Vector` and `Location` are already imported (write `cq.Workplane(...)` or `Workplane(...)`); variables persist between calls. Assign the finished solid to `result`.
 - After every call the harness measures the real part (volume, bounding box, centre of mass, face/edge/vertex counts, validity). Those numbers are facts; never compute a volume by hand, read it from the measurement.
-- Build the part step by step (one feature per call) so a mistake shows up right where it happens. `undo()` removes the last successful call.
+- Build the part step by step (one feature per call) so a mistake shows up right where it happens. The `undo` tool (a separate tool call, never a function inside the code; the same holds for `recall`) removes the last successful call.
 - Conventions: Workplane("XY") sketches in the XY plane and extrudes along +Z; Workplane("XZ") extrudes along -Y; Workplane("YZ") along +X. `.revolve(360, (0,0,0), (0,1,0))` revolves about the workplane's local Y axis.
   `.faces(">Z").workplane()` starts a sketch on the top face; `.hole(d)`, `.cboreHole`, `.shell(-t)` after selecting the face to open; boolean with `.cut(other)`, `.union(other)`.
 - Curved / organic shapes (CadQuery has no loft([wires]) and no Wire.makeSpline; these forms are tested):
@@ -115,6 +115,11 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
            pitfalls=[str(x)[:300] for x in (pj.get("pitfalls") or [])][:6], note=raw_plan[:raw_plan.index(")") + 1] if raw_plan.startswith("(") and ")" in raw_plan else "")
     log("plan (%s): %s" % (plan_mode, "none" if not spec else "%d volume milestones" % len(spec["milestones"])) if plan_mode != "off" else "plan: off")
     msgs = history if follow_up else [{"role": "system", "content": SYSTEM + (lessons or "") + (skill_catalog or "")}]
+    creq = request                                                 # what the advisor is shown: on a follow-up ("continue") the ORIGINAL request, not the generic continue text
+    if follow_up:
+        first = next((m.get("content") for m in msgs if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
+        if first and first != request:
+            creq = first.split("\n\nADVISOR PLAN")[0][:2500] + "\n\nLATEST USER MESSAGE: " + request
     user = request
     if spec:
         user += ("\n\nADVISOR PLAN (advice only; verify each step on the real part). The numbers were computed by the harness from the advisor's formulas. "
@@ -164,13 +169,13 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
                 bad = bad + ["the solid is not valid (self-intersecting or not watertight); rebuild the faulty operation"]
             if bad and gates < GATE_MAX:
                 gates += 1
-                note = "HARNESS FINAL CHECK failed: " + "; ".join(bad) + ". Fix the part (use undo() if needed) or explain with arithmetic why the plan is wrong."
+                note = "HARNESS FINAL CHECK failed: " + "; ".join(bad) + ". Fix the part (call the undo tool if needed) or explain with arithmetic why the plan is wrong."
                 msgs.append({"role": "user", "content": note}); trace.append({"gate": note}); log("  gate: " + note[:160]); ev("gate", text=note[:400])
                 continue
             if not final_reviewed and mf is not None and (consult or consult_mod.possible(cfg or getattr(llm, "cfg", None) or {}, plan_mode)):
                 final_reviewed = True                                                           # independent look before the answer is accepted (once per run)
                 ev("phase", what="consult", mode=plan_mode); t1 = time.time()
-                prompt = consult_mod.digest(request, V.describe(spec) if spec else "", trace, mf.text(), "the model says it is finished; verify the part against every requirement", final=True, earlier=advice)
+                prompt = consult_mod.digest(creq, V.describe(spec) if spec else "", trace, mf.text(), "the model says it is finished; verify the part against every requirement", final=True, earlier=advice)
                 reply, cerr = consult(prompt) if consult else consult_mod.ask(cfg or getattr(llm, "cfg", None) or {}, plan_mode, prompt)
                 reply = (reply or "").strip()[:consult_mod.REPLY_MAX]
                 ok_final = bool(reply) and not cerr and consult_mod.verdict_ok(reply)
@@ -282,7 +287,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
             n_consult += 1; consult_step = nsteps; warns_at_consult = warns; fails_since = 0
             ev("phase", what="consult", mode=plan_mode)
             mm1 = backend.measure()
-            prompt = consult_mod.digest(request, V.describe(spec) if spec else "", trace, mm1.text() if mm1 else "", why, earlier=advice)
+            prompt = consult_mod.digest(creq, V.describe(spec) if spec else "", trace, mm1.text() if mm1 else "", why, earlier=advice)
             t1 = time.time()
             reply, cerr = consult(prompt) if consult else consult_mod.ask(cfg or getattr(llm, "cfg", None) or {}, plan_mode, prompt)
             reply = (reply or "").strip()[:consult_mod.REPLY_MAX]
