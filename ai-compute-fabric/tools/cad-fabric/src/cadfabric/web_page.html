@@ -36,7 +36,7 @@ header .sp{flex:1}.mute{color:var(--mute)}.small{font-size:13px}
 pre{margin:8px 0 0;background:var(--code);border-radius:8px;padding:9px 11px;overflow:auto;font:12.5px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 .pit{background:var(--warn-bg);border:1px solid var(--warn);color:var(--ink);border-radius:8px;padding:8px 12px;margin-top:8px}.pit b{color:var(--warn)}.pit ul{margin:4px 0 0 18px;padding:0}
 .chk{color:var(--warn);font-size:13px;margin-top:6px}
-.chat,.final,.user,.card .body,.chk,.pit,pre,.md,#vcode,.foot{user-select:text;-webkit-user-select:text}summary,summary *{user-select:text}.cp{float:right;margin:-2px 0 0 8px;border:1px solid var(--line);background:var(--panel);color:var(--mute);border-radius:7px;padding:1px 8px;font:12px inherit;cursor:pointer;user-select:none}.cp:hover{color:var(--ink)}.card .cp{margin:4px 4px 0 0}.final{background:transparent;padding:2px 2px 0}.final p{margin:.4em 0}.final ul,.final ol{margin:.3em 0 .3em 20px;padding:0}.final code{background:var(--code);padding:1px 5px;border-radius:5px;font:13px ui-monospace,Consolas,monospace}
+.chat,.final,.user,.card .body,.chk,.pit,pre,.md,#vcode,.foot{user-select:text;-webkit-user-select:text}summary,summary *{user-select:text}.cp{float:right;margin:-2px 0 0 8px;border:1px solid var(--line);background:var(--panel);color:var(--mute);border-radius:7px;padding:1px 8px;font:12px inherit;cursor:pointer;user-select:none}.cp:hover{color:var(--ink)}.card .cp{margin:4px 4px 0 0}.autoc{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--mute);margin-left:8px;cursor:pointer;user-select:none}.final{background:transparent;padding:2px 2px 0}.final p{margin:.4em 0}.final ul,.final ol{margin:.3em 0 .3em 20px;padding:0}.final code{background:var(--code);padding:1px 5px;border-radius:5px;font:13px ui-monospace,Consolas,monospace}
 .foot{color:var(--mute);font-size:12.5px;margin-top:6px}
 .err{color:var(--bad);border:1px solid var(--bad);border-radius:10px;padding:8px 12px}
 .working{color:var(--mute);font-size:14px}.working:after{content:"";display:inline-block;width:1.2em;animation:d 1.2s steps(4) infinite;overflow:hidden;vertical-align:bottom}@keyframes d{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
@@ -116,7 +116,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
    <div class="box">
     <textarea id="text" rows="1" maxlength="8000" placeholder="Mô tả chi tiết cần tạo, hoặc yêu cầu chỉnh sửa chi tiết hiện tại…"></textarea>
     <div class="chipsrow" id="attached" hidden></div>
-    <div class="tools"><button class="btn small" id="attbtn" title="Đính kèm tệp trong thư mục làm việc để Qwen và cố vấn đọc" hidden>📎 Tệp</button><button class="btn small" id="advchip" type="button" title="Cố vấn lập kế hoạch kiểm tra thể tích. Đổi trong Cài đặt.">Cố vấn: …</button><select id="planner" hidden></select><span class="sp"></span>
+    <div class="tools"><button class="btn small" id="attbtn" title="Đính kèm tệp trong thư mục làm việc để Qwen và cố vấn đọc" hidden>📎 Tệp</button><button class="btn small" id="advchip" type="button" title="Cố vấn lập kế hoạch kiểm tra thể tích. Đổi trong Cài đặt.">Cố vấn: …</button><select id="planner" hidden></select><label class="autoc" title="Khi lượt làm việc dừng vì hết bước hoặc bị kẹt, tự gửi 'Tiếp tục' (tối đa 5 lần liên tiếp, bấm Dừng để ngừng)"><input type="checkbox" id="autocont"> Tự động tiếp tục</label><span class="sp"></span>
      <button class="btn primary" id="send">Gửi</button><button class="btn" id="stop" hidden>Dừng</button></div>
    </div>
    <div class="hint" id="hint">Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /stop dừng</div>
@@ -259,7 +259,8 @@ function render(ev){if(ev.kind==="phase"){phase={what:ev.what,step:ev.step,t0:Da
  else if(ev.kind==="gate")put(el("div","chk","⚠ Cổng kiểm cuối chặn: "+ev.text))
  else if(ev.kind==="final"){const f=md(ev.text);f.insertBefore(cpBtn(ev.text),f.firstChild);f.appendChild(el("div","foot",ev.steps+" bước · "+ev.sec+" s"+(ev.warnings?" · "+ev.warnings+" cảnh báo kiểm tra":"")+(ev.gates?" · "+ev.gates+" lần cổng kiểm cuối chặn":"")+(ev.peak_ctx?" · ngữ cảnh tối đa "+ev.peak_ctx+" token":"")));
   if(ev.resume){const adv=(typeof ADVS!=="undefined"?ADVS:[]).filter(a=>a.id!=="nothink"&&a.id!=="think");if(adv.length&&ev.stuck!==false){const row=el("div");row.style.marginTop="8px";row.appendChild(el("small",0,"Qwen đang kẹt. Hỏi cố vấn lập kế hoạch lại rồi vẽ từ đầu: "));for(const a of adv){const q=el("button","btn small",a.label);q.type="button";q.style.marginLeft="6px";q.onclick=()=>{const t=lastAsk;if(t)redo(t,a.id,true)};row.appendChild(q)}f.appendChild(row)}
-  const b=el("button","btn small primary","Tiếp tục");b.type="button";b.style.marginTop="8px";b.onclick=()=>{b.disabled=true;$("text").value="Tiếp tục: hoàn thành các tính năng còn thiếu. Đừng lặp lại cách đã thất bại, thử cách khác.";submit1()};f.appendChild(b)}put(f)}
+  const b=el("button","btn small primary","Tiếp tục");b.type="button";b.style.marginTop="8px";b.onclick=()=>{b.disabled=true;$("text").value=CONT_TEXT;submit1()};f.appendChild(b);
+   if(live){live=false;if($("autocont").checked&&!userStopped&&autoN<5){autoN++;f.appendChild(el("div","foot","Tự động tiếp tục lần "+autoN+"/5…"));setTimeout(()=>{if(!busy&&!userStopped&&$("autocont").checked){b.disabled=true;$("text").value=CONT_TEXT;autoSend=true;submit1()}},1500)}else if($("autocont").checked&&autoN>=5)f.appendChild(el("div","foot","Đã tự động tiếp tục 5 lần; bấm Tiếp tục nếu muốn thêm."))}}put(f)}
  else if(ev.kind==="answer"){const f=md(ev.text);f.insertBefore(cpBtn(ev.text),f.firstChild);f.appendChild(el("div","foot",(ev.who==="advisor"?"trả lời của cố vấn":"trả lời của CadFabric (không qua Qwen)")+" · "+ev.sec+" s"));put(f)}
  else if(ev.kind==="consult"){if(ev.text){const f=md("**Cố vấn xem lại** (lần "+ev.n+", vì: "+ev.why+")\n\n"+ev.text);f.appendChild(el("div","foot","gợi ý của cố vấn, Qwen tự kiểm lại trên chi tiết thật · "+ev.sec+" s"));put(f)}else{put(el("div","chk bad","Hỏi cố vấn không được: "+(ev.error||"không có trả lời")))}}
  else if(ev.kind==="stuck"){put(el("div","chk bad","⏹ Dừng vì kẹt: "+ev.reason+" (sau "+ev.steps+" bước)"))}
@@ -314,7 +315,7 @@ async function poll1(){const mine=since;const {ok,d}=await api("/api/state?since
  d.events.forEach(render);since=d.next;if(d.busy!==busy)setBusy(d.busy);if(!col().children.length||(col().children.length===1&&workEl))hero(true);
  $("hint").textContent=d.follow_up?"Tin nhắn tiếp theo sẽ chỉnh sửa chi tiết này (phần chỉnh sửa không có kế hoạch kiểm tra riêng).":"Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /open mở trong CAD · /stop dừng";
  const key=d.measure?d.measure.volume+"|"+d.measure.faces:null;if(key!==lastVol){lastVol=key;showPart(d.measure)}}
-let lastAsk="";
+let autoSend=false;let lastAsk="",autoN=0,userStopped=false,live=false;const CONT_TEXT="Tiếp tục: hoàn thành các tính năng còn thiếu. Đừng lặp lại cách đã thất bại, thử cách khác.";
 async function redo(text,planner,send){if(busy)return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;hero(true);poll();$("text").value=text;grow();if(planner){$("planner").value=planner;chip()}$("text").focus();if(send)submit()}
 async function newPart(){if(busy)return;if(lastVol&&!confirm("Bắt đầu chi tiết mới? Chi tiết hiện tại sẽ bị xóa khỏi phiên."))return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;hero(true);poll()}
 async function submit(){if(sending)return;sending=true;try{await submit1()}finally{sending=false}}
@@ -326,10 +327,10 @@ async function submit1(){const text=$("text").value.trim();if(!text)return;
  if(busy)return;const planner=$("planner").value;const body={text,planner};if(att.length)body.files=att.slice();if(ups.length)body.uploads=ups.map(u=>({name:u.name,text:u.text}));
  if(ext.includes(planner)){if(!okExt.has(planner)){if(!confirm("Cố vấn '"+planner+"' gửi nội dung yêu cầu ra dịch vụ bên ngoài. Tiếp tục? (chỉ hỏi một lần cho cố vấn này)"))return;okExt.add(planner)}
  if((att.length||ups.length)&&ext.includes(planner)&&!confirm("Nội dung của "+(att.length+ups.length)+" tệp đính kèm ("+att.concat(ups.map(u=>u.name)).join(", ")+") cũng sẽ được gửi cho cố vấn bên ngoài '"+planner+"'. Gửi?"))return;body.confirm_external=true}
- const r=await api("/api/send",body);if(r.ok){$("text").value="";grow();att=[];ups=[];drawAtt()}else put(el("div","err","Không gửi được: "+(r.d.error||r.status)));poll()}
+ const r=await api("/api/send",body);if(r.ok){live=true;userStopped=false;if(!autoSend)autoN=0;autoSend=false;$("text").value="";grow();att=[];ups=[];drawAtt()}else put(el("div","err","Không gửi được: "+(r.d.error||r.status)));poll()}
 function grow(){const t=$("text");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,200)+"px"}
 $("text").oninput=grow;$("text").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing&&!e.repeat){e.preventDefault();submit()}};
-$("send").onclick=submit;$("stop").onclick=()=>api("/api/stop",{});$("newbtn").onclick=newPart;$("partbtn").onclick=()=>$("side").classList.toggle("open");
+$("send").onclick=submit;$("stop").onclick=()=>{userStopped=true;api("/api/stop",{})};try{$("autocont").checked=localStorage.getItem("cf_autocont")==="1"}catch(e){}$("autocont").onchange=()=>{try{localStorage.setItem("cf_autocont",$("autocont").checked?"1":"0")}catch(e){}autoN=0};$("newbtn").onclick=newPart;$("partbtn").onclick=()=>$("side").classList.toggle("open");
 let ADVS=[],DET={},PRESETS={},custom=[],advKeys={},editId=null;
 const slug=t=>t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,24)||"advisor";
 function isPrivate(u){try{const h=new URL(u).hostname;return /^(localhost|::1|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)||h.endsWith(".local")}catch(e){return false}}

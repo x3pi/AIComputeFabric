@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cadfabric"
-version = "0.7.7"
+version = "0.7.8"
 description = "Backend-agnostic CAD agent: a local LLM writes CadQuery, the kernel measures every step, formulas from a planner verify the result"
 readme = "README.md"
 requires-python = ">=3.10"
