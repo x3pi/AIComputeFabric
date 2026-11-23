@@ -20,6 +20,8 @@ ASK = ("A smaller local model is building a CAD part with CadQuery and is in tro
 ASK_FINAL = ("A smaller local model is building a CAD part with CadQuery and says it is DONE. Below are the full request, the plan, ALL its cells with complete code, outputs and errors, and the final measurement.\n"
              "Act as an independent reviewer. Check EVERY requirement of the request against the measurements (sizes, hollow or solid, number and place of holes and cuts, volume). "
              "Compute the volume the part should have from the request yourself and compare it with the measurement.\n"
+             "If the plan lists REQUIRED PARTS, or the request gives no dimensions, first write the checklist of parts a complete answer must have (for a drone: body, arms, motors, propellers, landing gear ...), "
+             "then mark each as present or MISSING using the cells and the measurement (bounding box, volume, face counts). `VERDICT: OK` only if none is missing.\n"
              "Reply in plain text. First line exactly `VERDICT: OK` if every requirement is met, otherwise `VERDICT: PROBLEMS`. "
              "Then `DIAGNOSIS:` (which requirement is not met and the evidence) and `NEXT:` (the concrete fix, the CadQuery calls to use, and the volume expected afterwards).")
 

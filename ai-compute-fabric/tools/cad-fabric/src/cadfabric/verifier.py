@@ -65,7 +65,7 @@ def safe_eval(expr):
 def parse_spec(plan):
     """plan = advisor JSON {"steps":[{"do","volume_after","approx"}], "final_bbox_size":[f,f,f]|null, "pitfalls":[..]}.
     -> {"steps":[{"do","vol","approx","err"}], "milestones":[{"step","vol","approx"}], "bbox":[..]|None, "pitfalls":[..], "errors":[..]}"""
-    spec = {"steps": [], "milestones": [], "bbox": None, "pitfalls": [], "errors": []}
+    spec = {"steps": [], "milestones": [], "bbox": None, "pitfalls": [], "parts": [], "errors": []}
     if not isinstance(plan, dict):
         return spec
     for i, s in enumerate(plan.get("steps") or []):
@@ -93,6 +93,7 @@ def parse_spec(plan):
         except ValueError as e:
             spec["errors"].append("bbox formula rejected (%s)" % e)
     spec["pitfalls"] = [str(x)[:300] for x in (plan.get("pitfalls") or []) if x][:8]
+    spec["parts"] = [str(x)[:200] for x in (plan.get("parts") or []) if x][:24] if isinstance(plan.get("parts"), list) else []
     return spec
 
 
@@ -103,6 +104,8 @@ def describe(spec):
         extra = "   [expected volume after this step: %.1f mm3%s]" % (s["vol"], ", approximate" if s["approx"] else "") if s["vol"] is not None else ""
         lines.append("%d. %s%s" % (i, s["do"], extra))
     out = "Steps:\n" + "\n".join(lines)
+    if spec.get("parts"):
+        out += "\nRequired parts (a COMPLETE answer contains every one; the final review checks them one by one):\n" + "\n".join("- " + p for p in spec["parts"])
     if spec["pitfalls"]:
         out += "\nPitfalls:\n" + "\n".join("- " + p for p in spec["pitfalls"])
     if spec["bbox"]:
@@ -191,7 +194,8 @@ PLAN_PROMPT = (
     "You are planning a CAD job that a smaller model will carry out through the tools listed below. Reply with ONE JSON object and nothing else:\n"
     '{"readings": [{"quote": "exact words from the request", "meaning": "what they are geometrically: overall size, wall thickness, hole diameter, depth, position, ...", "step": 1}], '
     '"steps": [{"do": "short imperative step naming the tool, the axis and the plane", "volume_after": "<formula or null>", "approx": false}], '
-    '"final_bbox_size": ["<formula>", "<formula>", "<formula>"], "pitfalls": ["what commonly goes wrong with this request and how to check it"]}\n'
+    '"final_bbox_size": ["<formula>", "<formula>", "<formula>"], "pitfalls": ["what commonly goes wrong with this request and how to check it"], '
+    '"parts": ["each distinct body or feature a COMPLETE answer must contain, one short phrase each; when the request gives no dimensions or details, list the parts such an object normally has"]}\n'
     "Rules:\n"
     '- First fill "readings": cover EVERY quantity and every action phrase of the request, each pointing to the step that builds it. A number next to a word like wall or thickness is a thickness, never a hole diameter. '
     "Words like hollow out, shell, cavity or open top mean removing the interior: that is its own step with its own volume formula. Never add a step the request does not ask for.\n"

@@ -1221,6 +1221,23 @@ class LongRun(unittest.TestCase):
             self.assertIn(needle, d)
         self.assertEqual(d.count("marker_end_of_code"), 12)                                                         # every cell, not the last four
 
+    def test_replacing_the_part_is_flagged_but_a_real_cut_is_not(self):
+        big = 'result = cq.Workplane("XY").box(40, 40, 40)'
+        replace = 'result = cq.Workplane("XY").box(5, 5, 5).translate((100, 0, 0))'        # old part thrown away, a small new one appears
+        cut = 'result = result.faces(">Z").workplane().hole(10)'                           # a genuine cut: nothing new appears
+        r, ev, _ = self.run_agent([[("execute_cadquery", {"code": big})], [("execute_cadquery", {"code": replace})], "done"], request="x")
+        self.assertTrue(any("REPLACED the part" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool" or m.get("role") == "user"))
+        r2, _, _ = self.run_agent([[("execute_cadquery", {"code": big})], [("execute_cadquery", {"code": cut})], "done"], request="x")
+        self.assertFalse(any("REPLACED the part" in str(m.get("content")) for m in r2["history"]))
+
+    def test_plan_parts_checklist_is_parsed_shown_and_sent_to_the_final_review(self):
+        from cadfabric import verifier as V, consult
+        spec = V.parse_spec({"steps": [{"do": "box", "volume_after": "10*10*10"}], "parts": ["body", "four arms", "propellers"]})
+        self.assertEqual(spec["parts"], ["body", "four arms", "propellers"])
+        txt = V.describe(spec); self.assertIn("Required parts", txt); self.assertIn("four arms", txt)
+        d = consult.digest("make a drone", txt, [], "m", "done", final=True); self.assertIn("checklist of parts", d); self.assertIn("four arms", d)
+        self.assertIn('"parts"', V.PLAN_PROMPT)
+
     def test_advisor_failure_never_breaks_the_run_and_off_means_no_calls(self):
         r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40, consult=lambda p: ("", "exit 1: not logged in"), request="make the box")
         self.assertTrue(r["stuck"]); c = [x for k, x in ev if k == "consult"]; self.assertTrue(c and c[0]["error"] and not c[0]["text"])
@@ -1447,6 +1464,8 @@ class ShapeCheck(unittest.TestCase):
             r = ex("cq.Workplane('XY').addPoints(1)"); self.assertIn("API HINT", r["error"]); self.assertIn("pushPoints", r["error"])
             r = ex("cq.Workplane('XY').loft([1], ruled=False)"); self.assertIn("real signature", r["error"])
             r = ex("print(doc(cq.Workplane.loft)); print(len(dir(cq.Wire)))"); self.assertTrue(r["ok"]); self.assertIn("loft(", r["output"])
+            r = ex("print(find_api('vertic'))"); self.assertTrue(r["ok"]); self.assertIn("Shape.Vertices", r["output"])
+            r = ex("cq.Workplane('XY').box(1,1,1).val().Vertexes()"); self.assertIn("Signatures:", r["error"]); self.assertIn("Vertices()", r["error"])
             self.assertFalse(ex("x = cq.Wire.__dict__")["ok"])                      # dunder access stays blocked
         finally:
             pr.kill()

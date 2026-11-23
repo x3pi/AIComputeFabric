@@ -25,7 +25,7 @@ Rules:
   smooth outline extruded: `cq.Workplane("XY").moveTo(0,0).spline([(20,10),(40,0),(20,-10)], includeCurrent=True).close().extrude(5)`;
   tube along a curve: `path = cq.Workplane("XZ").spline([(0,0),(20,30),(50,40)]); cq.Workplane("XY").circle(3).sweep(path)`; round edges: `.edges("|Z").fillet(r)`; combine pieces with `.union(...)`.
 - To drill through a curved wall, cut a cylinder placed where you want the hole and measure: do not assume the removed volume is a straight cylinder.
-- Do not guess CadQuery names or arguments. `doc(cq.Wire)` lists the public names of a class, `doc(cq.Workplane.loft)` shows a signature and its help, `dir(obj)` lists names. An error that says "API HINT" names the real alternatives: use them.
+- Do not guess CadQuery names or arguments. `find_api("vertic")` searches every CadQuery class for a name and prints the signatures, `doc(cq.Wire)` lists the public names of a class, `doc(cq.Workplane.loft)` shows a signature and its help, `dir(obj)` lists names. An error that says "API HINT" names the real alternatives: use them.
 - If the request has no dimensions (for example "a modern drone"), choose sensible ones yourself, say which, and build a simple version first; do not stop because numbers are missing.
 - If a call returns an error or a HARNESS CHECK line, find the cause before continuing; do not repeat the same code with small changes.
 - Notes marked "HARNESS CHECK" come from the program, not from you. If you are certain a planned number is wrong, say so with the arithmetic instead of bending the part to it.
@@ -207,6 +207,10 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
                         text += "\n" + obs[1]; warns += obs[0] == "warn"
                 led.add_cell(args.get("code", ""), res.ok, res.error, res.output.strip(), res.measure.volume if res.measure else None, res.measure.text() if res.measure else "")
                 sig = ledger_mod.code_sig(args.get("code", "")); vol = round(res.measure.volume, 6) if (res.ok and res.measure) else None
+                if res.ok and vol is not None and last_vol and vol < 0.5 * last_vol and isinstance(res.delta, dict) and (res.delta.get("added") or {}).get("volume", 0) > 0 and (res.delta.get("removed") or {}).get("volume", 0) > 0.5 * last_vol:
+                    note = ("HARNESS CHECK: the volume fell from %.1f to %.1f mm3 and a new body appeared where most of the old part was removed. This cell REPLACED the part instead of adding to it "
+                            "(assigning `result` to a new object throws the old one away). If that was not the intention, call the undo tool and `.union(...)` the new feature into `result`." % (last_vol, vol))
+                    text += "\n" + note; warns += 1
                 run["repeat"] = run["repeat"] + 1 if sig == last_sig else 1
                 run["failing"] = 0 if res.ok else run["failing"] + 1
                 fails_since += 0 if res.ok else 1                 # failures need not be consecutive: errors mixed with successes still mean the model is guessing

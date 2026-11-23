@@ -54,6 +54,28 @@ def doc(obj=None):
     return (getattr(obj, "__name__", "?") + sig + "\n" + "\n".join((inspect.getdoc(obj) or "").splitlines()[:12]))[:1500]
 
 
+_CLASSES = ("Workplane", "Sketch", "Assembly", "Shape", "Edge", "Wire", "Face", "Shell", "Solid", "Compound", "Vector", "Location", "Plane")
+
+
+def _sig(f):
+    try:
+        return str(inspect.signature(f))
+    except (TypeError, ValueError):
+        return "(...)"
+
+
+def find_api(word, limit=30):
+    """Search every public CadQuery class for a name containing the word: find_api("vertic") -> lines like Shape.Vertices(self) -> ... Use it instead of guessing a name."""
+    key = str(word).lower()
+    out = []
+    for cn in _CLASSES:
+        c = getattr(cq, cn, None)
+        for n in (_public(c) if c is not None else []):
+            if key in n.lower():
+                out.append("%s.%s%s" % (cn, n, _sig(getattr(c, n, None)) if callable(getattr(c, n, None)) else ""))
+    return "\n".join(out[:limit]) or "(nothing named like '%s'; try a shorter word)" % word
+
+
 def _resolve(dotted):
     o = cq
     for part in dotted.split("."):
@@ -80,7 +102,7 @@ def api_hint(e):
                     other += ["%s.%s" % (cn, n) for n in dict.fromkeys(difflib.get_close_matches(e.name, pn, n=2, cutoff=0.6) + [n for n in pn if len(n) >= 6 and (n.lower() in key or key in n.lower())])][:3]
             if other:
                 pick += ["(on other classes) " + ", ".join(other[:6])]
-            return "\nAPI HINT: %s has no '%s'. %s" % (getattr(e.obj, "__name__", type(e.obj).__name__), e.name, ("Closest real names: " + ", ".join(pick) + ". ") if pick else "") + "All public names: doc(%s)" % (getattr(e.obj, "__name__", "obj"))
+            return "\nAPI HINT: %s has no '%s'. %s" % (getattr(e.obj, "__name__", type(e.obj).__name__), e.name, ("Closest real names: " + ", ".join(pick) + ". ") if pick else "") + ("Signatures: " + "; ".join("%s%s" % (n, _sig(getattr(e.obj, n))) for n in pick[:3] if not n.startswith("(") and callable(getattr(e.obj, n, None))) + ". " if any(not n.startswith("(") and callable(getattr(e.obj, n, None)) for n in pick[:3]) else "") + "Search all classes: find_api('word'); all names: doc(%s)" % (getattr(e.obj, "__name__", "obj"))
         if isinstance(e, TypeError):
             m = re.match(r"^([A-Za-z_][\w.]*)\(\)", str(e))
             f = _resolve(m.group(1)) if m else None
@@ -118,7 +140,7 @@ NS = {}
 
 def fresh():
     NS.clear()
-    NS.update({"__builtins__": dict(SAFE), "cq": cq, "doc": doc, "math": math, "Workplane": cq.Workplane, "Vector": cq.Vector, "Location": cq.Location})
+    NS.update({"__builtins__": dict(SAFE), "cq": cq, "doc": doc, "find_api": find_api, "math": math, "Workplane": cq.Workplane, "Vector": cq.Vector, "Location": cq.Location})
     return {"part": None}
 
 
@@ -142,7 +164,7 @@ def pick_part(before):
     """The part after a cell: `result` if the cell assigned it, else the last new/rebound Workplane or Shape."""
     cand = None
     for k, v in NS.items():
-        if k in ("cq", "doc", "math", "__builtins__", "Workplane", "Vector", "Location"):
+        if k in ("cq", "doc", "find_api", "math", "__builtins__", "Workplane", "Vector", "Location"):
             continue
         if isinstance(v, (cq.Workplane, cq.Shape, cq.Assembly)) and as_shape(v) is not None and before.get(k) is not id(v):
             cand = v
