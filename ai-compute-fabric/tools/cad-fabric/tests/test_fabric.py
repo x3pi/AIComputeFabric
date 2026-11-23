@@ -112,7 +112,7 @@ class Agent(unittest.TestCase):
         self.assertTrue(any("FINAL CHECK" in s for s in llm.seen))
 
     def test_gate_is_bounded(self):
-        r, _ = self.run_script([[("execute_cadquery", {"code": CYL})], "x"] * 6)
+        r, _ = self.run_script(sum([[[("execute_cadquery", {"code": CYL + "\n# take %d" % i})], "x"] for i in range(6)], []))      # distinct code each time: identical code would be skipped by the duplicate rule
         self.assertEqual(r["gates"], agent.GATE_MAX); self.assertEqual(r["final"], "x")
 
     def test_plan_off_means_no_checks(self):
@@ -1237,6 +1237,39 @@ class LongRun(unittest.TestCase):
         txt = V.describe(spec); self.assertIn("Required parts", txt); self.assertIn("four arms", txt)
         d = consult.digest("make a drone", txt, [], "m", "done", final=True); self.assertIn("checklist of parts", d); self.assertIn("four arms", d)
         self.assertIn('"parts"', V.PLAN_PROMPT)
+
+    def test_third_identical_cell_is_skipped_not_run(self):
+        same = [("execute_cadquery", {"code": self.BOX})]
+        r, ev, _ = self.run_agent([same, same, same, same, "done"], max_steps=10)
+        cells = [x for k, x in ev if k == "cell"]
+        self.assertEqual([c["ok"] for c in cells][:4], [True, True, False, False]); self.assertIn("SKIPPED", cells[2]["error"])        # ran twice, then refused
+
+    def test_done_right_after_a_failed_cell_is_not_accepted_once(self):
+        bad = [("execute_cadquery", {"code": 'result = cq.Workplane("XY").nosuchmethod(1)'})]
+        good = [("execute_cadquery", {"code": self.BOX})]
+        r, ev, _ = self.run_agent([good, bad, "I am done", good2 := [("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(11, 10, 10)'})], "really done"], max_steps=10)
+        self.assertEqual(r["final"], "really done"); self.assertTrue(any(k == "gate" and "last cell FAILED" in x["text"] for k, x in ev))
+
+    def test_plateau_asks_the_advisor_for_a_verdict_instead_of_just_giving_up(self):
+        calls = []
+        def adv(prompt): calls.append(prompt); return "VERDICT: OK\nDIAGNOSIS: all requirements met.", ""
+        probe = lambda i: [("execute_cadquery", {"code": 'x = %d\nprint(result.val().Volume())' % i})]
+        r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]] + [probe(i) for i in range(12)], consult=adv, request="make the box", max_steps=30)
+        self.assertTrue(r["final"].startswith("(advisor review: complete)")); self.assertFalse(r["stuck"])
+        self.assertTrue(any("did not change" in p for p in calls))
+
+    def test_connectivity_report_names_the_floating_part(self):
+        import subprocess, sys, json as _j
+        w = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "cadfabric", "worker.py")
+        pr = subprocess.Popen([sys.executable, w], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        try:
+            def ex(c):
+                pr.stdin.write(_j.dumps({"op": "exec", "code": c}) + "\n"); pr.stdin.flush(); return _j.loads(pr.stdout.readline())
+            r = ex("result = cq.Workplane('XY').box(10,10,10).add(cq.Workplane('XY').box(10,10,10).translate((10,0,0))).add(cq.Workplane('XY').box(4,4,4).translate((0,0,20)))")
+            self.assertEqual(r["measure"]["solids"], 3); self.assertIn("FLOATING", r["measure"]["links"]); self.assertIn("13.00 mm", r["measure"]["links"])
+            r = ex("result = cq.Workplane('XY').box(10,10,10).union(cq.Workplane('XY').box(10,10,10).translate((10,0,0)))"); self.assertEqual(r["measure"]["links"], "")
+        finally:
+            pr.kill()
 
     def test_advisor_failure_never_breaks_the_run_and_off_means_no_calls(self):
         r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40, consult=lambda p: ("", "exit 1: not logged in"), request="make the box")

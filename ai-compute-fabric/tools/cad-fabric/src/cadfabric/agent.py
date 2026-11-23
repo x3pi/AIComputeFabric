@@ -4,11 +4,13 @@ import json, os, re, time
 from . import verifier as V
 from . import planners, workspace as ws_mod
 from . import ledger as ledger_mod, consult as consult_mod
+from .backend import ExecResult
 
 MAX_STEPS = int(os.environ.get("CADFABRIC_MAX_STEPS", "14"))
 GATE_MAX = 2
 HARD_STEPS = int(os.environ.get("CADFABRIC_HARD_STEPS", "200"))   # the budget grows by EXTEND_BY while the part keeps changing, up to this
 EXTEND_BY = 10
+DUP_WINDOW, DUP_LIMIT = 20, 2                                  # identical code seen twice in the last 20 steps is not run a third time
 NUDGE = {"repeat": 3, "same_volume": 5, "failing": 5}          # consecutive cells before the model is told it is stuck
 STOP = {"repeat": 6, "same_volume": 9, "failing": 10}          # and before the run is ended as stuck
 STUCK_TEXT = {"repeat": "you ran the same code %d times in a row", "same_volume": "the part did not change for %d cells in a row", "failing": "%d cells in a row failed"}
@@ -27,6 +29,8 @@ Rules:
   tube along a curve: `path = cq.Workplane("XZ").spline([(0,0),(20,30),(50,40)]); cq.Workplane("XY").circle(3).sweep(path)`; round edges: `.edges("|Z").fillet(r)`; combine pieces with `.union(...)`.
 - To drill through a curved wall, cut a cylinder placed where you want the hole and measure: do not assume the removed volume is a straight cylinder.
 - Do not guess CadQuery names or arguments. `find_api("vertic")` searches every CadQuery class for a name and prints the signatures, `doc(cq.Wire)` lists the public names of a class, `doc(cq.Workplane.loft)` shows a signature and its help, `dir(obj)` lists names. An error that says "API HINT" names the real alternatives: use them.
+- When the result has several solids the measurement ends with `connectivity:`. Separate parts are fine when the design is an assembly, but a `FLOATING` group means a part touches nothing (for example a propeller hovering above its motor): join it with a shaft or move it until it touches, unless the request wants a gap.
+- Say you are done only after a successful call whose measurement you have read; a reply right after a failed call is refused.
 - If the request has no dimensions (for example "a modern drone"), choose sensible ones yourself, say which, and build a simple version first; do not stop because numbers are missing.
 - If a call returns an error or a HARNESS CHECK line, find the cause before continuing; do not repeat the same code with small changes.
 - Notes marked "HARNESS CHECK" come from the program, not from you. If you are certain a planned number is wrong, say so with the arithmetic instead of bending the part to it.
@@ -139,7 +143,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
     else:
         budget = min(HARD_STEPS, max(MAX_STEPS, 10 + 5 * (len(spec["milestones"]) if spec else 0)))
     run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); n_consult = 0; fails_since = 0; advice = []; final_reviewed = False; consult_step = -99; warns_at_consult = 0; ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
-    step = -1; last_change = 0
+    step = -1; last_change = 0; recent = []; plateau_done = False
     while step + 1 < budget:
         step += 1
         if step >= budget - 2 and step - last_change <= 4 and budget < HARD_STEPS and not max_steps:
@@ -173,6 +177,9 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
             mf = backend.measure()
             if mf is not None and mf.valid is False:                                            # a broken solid is never a finished part, whatever else the checks say
                 bad = bad + ["the solid is not valid (self-intersecting or not watertight); rebuild the faulty operation"]
+            last_cell = next((t for t in reversed(trace) if t.get("tool") == "execute_cadquery"), None)
+            if last_cell is not None and not last_cell.get("ok") and trace and trace[-1].get("tool") == "execute_cadquery":
+                bad = bad + ["your last cell FAILED, so the part you measured is from an earlier step: fix or undo that cell and look at a fresh measurement before you say you are done"]
             if bad and gates < GATE_MAX:
                 gates += 1
                 note = "HARNESS FINAL CHECK failed: " + "; ".join(bad) + ". Fix the part (call the undo tool if needed) or explain with arithmetic why the plan is wrong."
@@ -200,7 +207,13 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
             name = c["function"]["name"]
             if name == "execute_cadquery":
                 ev("phase", what="cad")
-                res = backend.execute(str(args.get("code", "")))
+                code_now = str(args.get("code", "")); sig_now = ledger_mod.code_sig(code_now)
+                if recent.count(sig_now) >= DUP_LIMIT:                  # the same code a third time inside the window: do not run it, say so (terminal-agent doom-loop rule)
+                    res = ExecResult(ok=False, error="SKIPPED: this exact code already ran %d times in the last %d steps and did not give a new result. Change the approach (a different CadQuery call, other numbers, or a smaller step); "
+                                     "use find_api('word') or doc(...) to look up names instead of guessing." % (DUP_LIMIT, DUP_WINDOW), measure=backend.measure())
+                else:
+                    res = backend.execute(code_now)
+                recent.append(sig_now); del recent[:-DUP_WINDOW]
                 text = ("OK" if res.ok else "ERROR: " + res.error) + ("\nprinted: " + res.output.strip() if res.output.strip() else "")
                 if res.measure:
                     text += "\nMEASURE: " + res.measure.text()
@@ -281,6 +294,20 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
             msgs.append({"role": "user", "content": err_note}); trace.append({"gate": err_note}); ev("gate", text=err_note[:400]); err_note = ""
         why = ""
         for kind in ("repeat", "same_volume", "failing"):                       # progress guard: tell the model once, then end the run instead of burning steps
+            if run[kind] >= STOP[kind] and kind == "same_volume" and not final_reviewed and (consult or consult_mod.possible(cfg or getattr(llm, "cfg", None) or {}, plan_mode)) and backend.measure() is not None:
+                final_reviewed = True                  # the part stopped changing: it is probably finished or the model is only probing. Ask the advisor for a verdict instead of just giving up.
+                mf2 = backend.measure(); ev("phase", what="consult", mode=plan_mode); t1 = time.time()
+                prompt = consult_mod.digest(creq, V.describe(spec) if spec else "", trace, mf2.text(), "the part did not change for %d cells; decide whether it is finished" % run[kind], final=True, earlier=advice)
+                reply, cerr = consult(prompt) if consult else consult_mod.ask(cfg or getattr(llm, "cfg", None) or {}, plan_mode, prompt)
+                reply = (reply or "").strip()[:consult_mod.REPLY_MAX]; ok2 = bool(reply) and not cerr and consult_mod.verdict_ok(reply)
+                ev("consult", text=reply, error=str(cerr)[:200] if cerr or not reply else "", sec=round(time.time() - t1, 1), why="chi tiết không đổi nhiều bước: nhờ cố vấn kết luận", n=n_consult + 1, final=True, verdict="ok" if ok2 else ("problems" if reply and not cerr else "none"))
+                if ok2:
+                    final = "(advisor review: complete)\n" + reply; plateau_done = True; break
+                if reply and not cerr:
+                    advice.append(reply); n_consult += 1; run["same_volume"] = 0
+                    msgs.append({"role": "user", "content": "ADVISOR REVIEW (the part had stopped changing and an independent advisor checked it against the request; it is advice, verify it on the real part and follow the request, not the review):\n" + reply})
+                    trace.append({"gate": "advisor review at plateau"})
+                    continue
             if run[kind] >= STOP[kind]:
                 stuck = (STUCK_TEXT[kind] % run[kind]) + "; the run was ended"
                 ev("stuck", reason=stuck, guard=kind, steps=len(trace)); log("  stuck: " + stuck)
@@ -309,7 +336,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
                 trace.append({"gate": "advisor review"}); ev("consult", text=reply, sec=round(time.time() - t1, 1), why=why, n=n_consult)
             else:
                 ev("consult", text="", error=str(cerr or "empty reply")[:200], sec=round(time.time() - t1, 1), why=why, n=n_consult)
-        if stuck:
+        if stuck or plateau_done:
             break
     mm = backend.measure()
     return {"final": final, "measure": mm.as_dict() if mm else None, "steps": len([t for t in trace if t.get("tool")]), "warnings": warns, "gates": gates,

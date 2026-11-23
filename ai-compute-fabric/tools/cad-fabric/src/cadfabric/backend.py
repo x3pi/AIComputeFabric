@@ -16,6 +16,7 @@ class Measure:
     vertices: int
     solids: int
     valid: bool
+    links: str = ""               # how the solids connect: "" for one solid, else groups and FLOATING parts with their gap in mm
 
     def as_dict(self):
         return asdict(self)
@@ -23,7 +24,7 @@ class Measure:
     def text(self):
         r = lambda v: [round(x, 3) for x in v]
         return ("volume=%.4f mm3 | bbox size=%s min=%s max=%s | centre of mass=%s | solids=%d faces=%d edges=%d vertices=%d | valid=%s"
-                % (self.volume, r(self.bbox_size), r(self.bbox_min), r(self.bbox_max), r(self.com), self.solids, self.faces, self.edges, self.vertices, self.valid))
+                % (self.volume, r(self.bbox_size), r(self.bbox_min), r(self.bbox_max), r(self.com), self.solids, self.faces, self.edges, self.vertices, self.valid)) + ((" | connectivity: " + self.links) if self.links else "")
 
 
 @dataclass

@@ -173,12 +173,61 @@ def pick_part(before):
     return cand
 
 
+def connectivity(solids, tol=0.05, budget_s=4.0):
+    """Which solids touch or overlap (distance <= tol) and which hang in the air. Pairs are pre-filtered by bounding box (OCCT distance is slow); union-find makes the groups.
+    Informational only: several separate solids are fine, but a part that touches nothing is usually a mistake. -> text, or '' for a single solid / when it cannot be computed."""
+    import time as _t
+    n = len(solids)
+    if n < 2 or n > 60:
+        return ""
+    t0 = _t.perf_counter()
+    try:
+        bbs = [s.BoundingBox() for s in solids]
+        par = list(range(n))
+
+        def find(i):
+            while par[i] != i:
+                par[i] = par[par[i]]; i = par[i]
+            return i
+        for i in range(n):
+            for j in range(i + 1, n):
+                a, b = bbs[i], bbs[j]
+                if a.xmax + tol < b.xmin or b.xmax + tol < a.xmin or a.ymax + tol < b.ymin or b.ymax + tol < a.ymin or a.zmax + tol < b.zmin or b.zmax + tol < a.zmin:
+                    continue
+                if _t.perf_counter() - t0 > budget_s:
+                    return ""
+                if solids[i].distance(solids[j]) <= tol:
+                    par[find(i)] = find(j)
+        groups = {}
+        for i in range(n):
+            groups.setdefault(find(i), []).append(i)
+        if len(groups) == 1:
+            return "all %d solids touch or overlap (1 connected group)" % n
+        main = max(groups.values(), key=lambda g: sum(solids[k].Volume() for k in g))
+        out = []
+        for g in sorted(groups.values(), key=lambda g: -sum(solids[k].Volume() for k in g)):
+            if g is main:
+                continue
+            best = None
+            for i in g:
+                for j in main:
+                    if _t.perf_counter() - t0 > budget_s:
+                        return "%d solids in %d groups (gap measurement timed out)" % (n, len(groups))
+                    d = solids[i].distance(solids[j])
+                    best = d if best is None else min(best, d)
+            c = cq.Compound.makeCompound([solids[k] for k in g]).Center()
+            out.append("FLOATING group of %d solid(s) near (%.0f, %.0f, %.0f), volume %.0f, %.2f mm from the main body" % (len(g), c.x, c.y, c.z, sum(solids[k].Volume() for k in g), best))
+        return "%d solids in %d groups; main group has %d solid(s). %s" % (n, len(groups), len(main), "; ".join(out[:6]))
+    except BaseException:                                # noqa: BLE001 - a measurement helper must never break a cell
+        return ""
+
+
 def measure(shape):
     bb = shape.BoundingBox()
     c = shape.Center()
     return {"volume": float(shape.Volume()), "bbox_size": [bb.xlen, bb.ylen, bb.zlen], "bbox_min": [bb.xmin, bb.ymin, bb.zmin], "bbox_max": [bb.xmax, bb.ymax, bb.zmax],
             "com": [c.x, c.y, c.z], "faces": len(shape.Faces()), "edges": len(shape.Edges()), "vertices": len(shape.Vertices()),
-            "solids": len(shape.Solids()), "valid": bool(shape.isValid())}
+            "solids": len(shape.Solids()), "valid": bool(shape.isValid()), "links": connectivity(shape.Solids())}
 
 
 def _region(sh):
