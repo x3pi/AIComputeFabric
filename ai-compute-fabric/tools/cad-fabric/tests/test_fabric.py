@@ -1409,5 +1409,19 @@ class ShapeCheck(unittest.TestCase):
         self.assertTrue(w.endswith("cadfabric.ico") and os.path.isfile(w)); self.assertTrue(l.endswith("cadfabric.png") and os.path.isfile(l))
         self.assertEqual(open(w, "rb").read(4), b"\x00\x00\x01\x00"); self.assertEqual(open(l, "rb").read(4), b"\x89PNG")       # WinForms crashed on a PNG here (real run on Windows)
 
+    def test_worker_names_the_real_api_when_the_model_guesses_wrong(self):
+        import subprocess, sys, json as _j
+        w = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "cadfabric", "worker.py")
+        pr = subprocess.Popen([sys.executable, w], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        try:
+            def ex(c):
+                pr.stdin.write(_j.dumps({"op": "exec", "code": c}) + "\n"); pr.stdin.flush(); return _j.loads(pr.stdout.readline())
+            r = ex("cq.Workplane('XY').addPoints(1)"); self.assertIn("API HINT", r["error"]); self.assertIn("pushPoints", r["error"])
+            r = ex("cq.Workplane('XY').loft([1], ruled=False)"); self.assertIn("real signature", r["error"])
+            r = ex("print(doc(cq.Workplane.loft)); print(len(dir(cq.Wire)))"); self.assertTrue(r["ok"]); self.assertIn("loft(", r["output"])
+            self.assertFalse(ex("x = cq.Wire.__dict__")["ok"])                      # dunder access stays blocked
+        finally:
+            pr.kill()
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

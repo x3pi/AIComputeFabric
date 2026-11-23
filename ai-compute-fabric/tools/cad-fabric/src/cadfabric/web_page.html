@@ -36,7 +36,7 @@ header .sp{flex:1}.mute{color:var(--mute)}.small{font-size:13px}
 pre{margin:8px 0 0;background:var(--code);border-radius:8px;padding:9px 11px;overflow:auto;font:12.5px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 .pit{background:var(--warn-bg);border:1px solid var(--warn);color:var(--ink);border-radius:8px;padding:8px 12px;margin-top:8px}.pit b{color:var(--warn)}.pit ul{margin:4px 0 0 18px;padding:0}
 .chk{color:var(--warn);font-size:13px;margin-top:6px}
-.final{background:transparent;padding:2px 2px 0}.final p{margin:.4em 0}.final ul,.final ol{margin:.3em 0 .3em 20px;padding:0}.final code{background:var(--code);padding:1px 5px;border-radius:5px;font:13px ui-monospace,Consolas,monospace}
+.chat,.final,.user,.card .body,.chk,.pit,pre,.md,#vcode,.foot{user-select:text;-webkit-user-select:text}summary,summary *{user-select:text}.cp{float:right;margin:-2px 0 0 8px;border:1px solid var(--line);background:var(--panel);color:var(--mute);border-radius:7px;padding:1px 8px;font:12px inherit;cursor:pointer;user-select:none}.cp:hover{color:var(--ink)}.card .cp{margin:4px 4px 0 0}.final{background:transparent;padding:2px 2px 0}.final p{margin:.4em 0}.final ul,.final ol{margin:.3em 0 .3em 20px;padding:0}.final code{background:var(--code);padding:1px 5px;border-radius:5px;font:13px ui-monospace,Consolas,monospace}
 .foot{color:var(--mute);font-size:12.5px;margin-top:6px}
 .err{color:var(--bad);border:1px solid var(--bad);border-radius:10px;padding:8px 12px}
 .working{color:var(--mute);font-size:14px}.working:after{content:"";display:inline-block;width:1.2em;animation:d 1.2s steps(4) infinite;overflow:hidden;vertical-align:bottom}@keyframes d{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
@@ -247,19 +247,20 @@ function tick(){if(!workEl)return;if(!phase){workEl.textContent="Đang làm";ret
  let t=PH[phase.what]+(phase.what==="llm"&&phase.step>1?" (bước "+phase.step+")":"")+" · "+s+" s";if(phase.what!=="cad"&&s>30)t+=" — máy chủ có thể đang bận, yêu cầu đang xếp hàng";workEl.textContent=t}
 setInterval(tick,1000);
 function render(ev){if(ev.kind==="phase"){phase={what:ev.what,step:ev.step,t0:Date.now()};tick();return}hero(false);
- if(ev.kind==="user"){const b=el("div","user",ev.text);if(ev.files&&ev.files.length)b.appendChild(el("small",0,"tệp: "+ev.files.join(", ")));if(ev.planner)b.appendChild(el("small",0,"cố vấn: "+ev.planner));put(b)}
+ if(ev.kind==="user"){lastAsk=ev.text;const b=el("div","user",ev.text);{const r=el("button","cp","↺ Vẽ lại từ đầu");r.type="button";r.title="Xóa cuộc trò chuyện và chi tiết này, đưa câu này vào ô nhập để gửi lại";r.onclick=()=>{if(confirm("Xóa cuộc trò chuyện và chi tiết hiện tại để vẽ lại từ đầu?"))redo(ev.text)};b.appendChild(r)}if(ev.files&&ev.files.length)b.appendChild(el("small",0,"tệp: "+ev.files.join(", ")));if(ev.planner)b.appendChild(el("small",0,"cố vấn: "+ev.planner));put(b)}
  else if(ev.kind==="plan"){const d=el("details","card");const s=el("summary");s.appendChild(el("span","ic "+(ev.ok?"ok":"warnc"),ev.ok?"◆":"!"));
   s.appendChild(el("span",0,ev.ok?"Kế hoạch kiểm tra ("+ev.mode+") — "+ev.milestones+" mốc thể tích":"Không lập được kế hoạch ("+ev.mode+")"));d.appendChild(s);
-  const b=el("div","body");if(ev.note)b.appendChild(el("div","chk",ev.note));if(ev.describe)b.appendChild(el("pre",0,ev.describe));d.appendChild(b);put(d);
+  const b=el("div","body");if(ev.note)b.appendChild(el("div","chk",ev.note));if(ev.describe){b.appendChild(cpBtn(ev.describe));b.appendChild(el("pre",0,ev.describe))}d.appendChild(b);put(d);
   if(ev.pitfalls&&ev.pitfalls.length){const p=el("div","pit");p.appendChild(el("b",0,"Cố vấn lưu ý — kiểm tra đề bài trước khi tin kết quả"));const u=el("ul");ev.pitfalls.forEach(x=>u.appendChild(el("li",0,x)));p.appendChild(u);put(p)}}
  else if(ev.kind==="cell"){const d=el("details","card");const s=el("summary");s.appendChild(el("span","ic "+(ev.ok?"ok":"bad"),ev.ok?"✓":"✗"));s.appendChild(el("span",0,"Bước "+ev.n+(ev.ok?"":" — lỗi")));
-  if(ev.volume!=null)s.appendChild(el("span","vol","V = "+fmt(ev.volume)+" mm³"));d.appendChild(s);const b=el("div","body");b.appendChild(el("pre",0,ev.code));
+  if(ev.volume!=null)s.appendChild(el("span","vol","V = "+fmt(ev.volume)+" mm³"));d.appendChild(s);const b=el("div","body");b.appendChild(cpBtn(()=>ev.code+(ev.error?"\n\n# LỖI: "+ev.error:"")+(ev.output?"\n\n# KẾT QUẢ IN:\n"+ev.output:""),"Sao chép bước"));b.appendChild(el("pre",0,ev.code));
   if(ev.error)b.appendChild(el("div","chk bad",ev.error));if(ev.output)b.appendChild(el("pre",0,ev.output));d.appendChild(b);put(d);
   if(ev.check)put(el("div","chk","⚠ "+ev.check))}
  else if(ev.kind==="gate")put(el("div","chk","⚠ Cổng kiểm cuối chặn: "+ev.text))
- else if(ev.kind==="final"){const f=md(ev.text);f.appendChild(el("div","foot",ev.steps+" bước · "+ev.sec+" s"+(ev.warnings?" · "+ev.warnings+" cảnh báo kiểm tra":"")+(ev.gates?" · "+ev.gates+" lần cổng kiểm cuối chặn":"")+(ev.peak_ctx?" · ngữ cảnh tối đa "+ev.peak_ctx+" token":"")));
-  if(ev.resume){const b=el("button","btn small primary","Tiếp tục");b.type="button";b.style.marginTop="8px";b.onclick=()=>{b.disabled=true;$("text").value="Tiếp tục: hoàn thành các tính năng còn thiếu. Đừng lặp lại cách đã thất bại, thử cách khác.";submit1()};f.appendChild(b)}put(f)}
- else if(ev.kind==="answer"){const f=md(ev.text);f.appendChild(el("div","foot",(ev.who==="advisor"?"trả lời của cố vấn":"trả lời của CadFabric (không qua Qwen)")+" · "+ev.sec+" s"));put(f)}
+ else if(ev.kind==="final"){const f=md(ev.text);f.insertBefore(cpBtn(ev.text),f.firstChild);f.appendChild(el("div","foot",ev.steps+" bước · "+ev.sec+" s"+(ev.warnings?" · "+ev.warnings+" cảnh báo kiểm tra":"")+(ev.gates?" · "+ev.gates+" lần cổng kiểm cuối chặn":"")+(ev.peak_ctx?" · ngữ cảnh tối đa "+ev.peak_ctx+" token":"")));
+  if(ev.resume){const adv=(typeof ADVS!=="undefined"?ADVS:[]).filter(a=>a.id!=="nothink"&&a.id!=="think");if(adv.length&&ev.stuck!==false){const row=el("div");row.style.marginTop="8px";row.appendChild(el("small",0,"Qwen đang kẹt. Hỏi cố vấn lập kế hoạch lại rồi vẽ từ đầu: "));for(const a of adv){const q=el("button","btn small",a.label);q.type="button";q.style.marginLeft="6px";q.onclick=()=>{const t=lastAsk;if(t)redo(t,a.id,true)};row.appendChild(q)}f.appendChild(row)}
+  const b=el("button","btn small primary","Tiếp tục");b.type="button";b.style.marginTop="8px";b.onclick=()=>{b.disabled=true;$("text").value="Tiếp tục: hoàn thành các tính năng còn thiếu. Đừng lặp lại cách đã thất bại, thử cách khác.";submit1()};f.appendChild(b)}put(f)}
+ else if(ev.kind==="answer"){const f=md(ev.text);f.insertBefore(cpBtn(ev.text),f.firstChild);f.appendChild(el("div","foot",(ev.who==="advisor"?"trả lời của cố vấn":"trả lời của CadFabric (không qua Qwen)")+" · "+ev.sec+" s"));put(f)}
  else if(ev.kind==="consult"){if(ev.text){const f=md("**Cố vấn xem lại** (lần "+ev.n+", vì: "+ev.why+")\n\n"+ev.text);f.appendChild(el("div","foot","gợi ý của cố vấn, Qwen tự kiểm lại trên chi tiết thật · "+ev.sec+" s"));put(f)}else{put(el("div","chk bad","Hỏi cố vấn không được: "+(ev.error||"không có trả lời")))}}
  else if(ev.kind==="stuck"){put(el("div","chk bad","⏹ Dừng vì kẹt: "+ev.reason+" (sau "+ev.steps+" bước)"))}
  else if(ev.kind==="compact"){const c=el("div","chk ok","🗜 Nén ngữ cảnh: "+Math.round(ev.chars_before/1000)+"k → "+Math.round(ev.chars_after/1000)+"k ký tự, "+ev.steps_dropped+" lượt cũ chuyển vào sổ làm việc");c.style.opacity=".7";put(c)}
@@ -313,6 +314,8 @@ async function poll1(){const mine=since;const {ok,d}=await api("/api/state?since
  d.events.forEach(render);since=d.next;if(d.busy!==busy)setBusy(d.busy);if(!col().children.length||(col().children.length===1&&workEl))hero(true);
  $("hint").textContent=d.follow_up?"Tin nhắn tiếp theo sẽ chỉnh sửa chi tiết này (phần chỉnh sửa không có kế hoạch kiểm tra riêng).":"Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /open mở trong CAD · /stop dừng";
  const key=d.measure?d.measure.volume+"|"+d.measure.faces:null;if(key!==lastVol){lastVol=key;showPart(d.measure)}}
+let lastAsk="";
+async function redo(text,planner,send){if(busy)return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;hero(true);poll();$("text").value=text;grow();if(planner){$("planner").value=planner;chip()}$("text").focus();if(send)submit()}
 async function newPart(){if(busy)return;if(lastVol&&!confirm("Bắt đầu chi tiết mới? Chi tiết hiện tại sẽ bị xóa khỏi phiên."))return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;hero(true);poll()}
 async function submit(){if(sending)return;sending=true;try{await submit1()}finally{sending=false}}
 async function submit1(){const text=$("text").value.trim();if(!text)return;
@@ -529,6 +532,7 @@ function showCtx(e,items){e.preventDefault();const c=$("ctx");c.replaceChildren(
 addEventListener("click",hideCtx);addEventListener("blur",hideCtx);addEventListener("keydown",e=>{if(e.key==="Escape")hideCtx()});addEventListener("scroll",hideCtx,true);
 const fullPath=rel=>{const sep=WS.includes("\\")?"\\":"/";return rel?WS.replace(/[\\\/]$/,"")+sep+rel.split("/").join(sep):WS};
 async function post(path,rel,okMsg){const r=await api(path,{path:rel});toast(r.ok?(okMsg||r.d.detail||"Đã thực hiện"):(r.d.error||r.d.detail||"Không thực hiện được"))}
+function cpBtn(getText,label){const b=el("button","cp",label||"Sao chép");b.type="button";b.title="Sao chép vào clipboard";b.onclick=e=>{e.preventDefault();e.stopPropagation();copyText(typeof getText==="function"?getText():getText)};return b}
 const copyText=async t=>{try{await navigator.clipboard.writeText(t);toast("Đã sao chép")}catch(e){const a=document.createElement("textarea");a.value=t;document.body.appendChild(a);a.select();try{document.execCommand("copy");toast("Đã sao chép")}catch(x){toast("Không sao chép được")}a.remove()}};
 function fileMenu(e,rel,kind,isDir){const items=[];
  if(isDir){items.push({label:"Mở thư mục",fn:()=>{showTab("files");sfOpen(rel)}})}

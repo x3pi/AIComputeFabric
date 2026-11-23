@@ -5,7 +5,7 @@ Runs in its own process so a crash, a hang or a memory blow-up kills only this w
 Not a security boundary against a determined attacker: it blocks the obvious ways out (imports other than cadquery/math, file/process builtins,
 dunder access) and limits memory; run the whole worker in a container when the model is not trusted."""
 import re
-import ast, builtins, contextlib, io, json, math, os, sys, traceback
+import ast, builtins, contextlib, difflib, inspect, io, json, math, os, sys, traceback
 
 _proto = os.fdopen(os.dup(1), "w", buffering=1, encoding="utf-8")
 os.dup2(2, 1)                                  # OCC and stray prints go to stderr, never into the protocol stream
@@ -37,6 +37,63 @@ def _import(name, globals=None, locals=None, fromlist=(), level=0):
     return builtins.__import__(name, globals, locals, fromlist, level)
 
 
+def _public(o):
+    return [n for n in builtins.dir(o) if not n.startswith("_")]
+
+
+def doc(obj=None):
+    """Look an API up instead of guessing it: doc(cq.Wire) lists its public names, doc(cq.Workplane.loft) gives the signature and the first lines of its help."""
+    if obj is None:
+        obj = cq
+    if inspect.isclass(obj) or inspect.ismodule(obj) or not callable(obj):
+        return ", ".join(_public(obj))[:1500]
+    try:
+        sig = str(inspect.signature(obj))
+    except (TypeError, ValueError):
+        sig = "(...)"
+    return (getattr(obj, "__name__", "?") + sig + "\n" + "\n".join((inspect.getdoc(obj) or "").splitlines()[:12]))[:1500]
+
+
+def _resolve(dotted):
+    o = cq
+    for part in dotted.split("."):
+        if part.startswith("_") or not hasattr(o, part):
+            return None
+        o = getattr(o, part)
+    return o
+
+
+def api_hint(e):
+    """What the real API offers, for the two mistakes a model makes most: a name that does not exist and a wrong call signature."""
+    try:
+        if isinstance(e, AttributeError) and getattr(e, "obj", None) is not None and getattr(e, "name", None):
+            names = _public(e.obj)
+            key = e.name.lower()
+            subs = [n for n in names if len(key) >= 4 and (key[-5:] in n.lower() or n.lower() in key)]
+            near = difflib.get_close_matches(e.name, names, n=6, cutoff=0.5)
+            pick = list(dict.fromkeys(near + subs))[:8]
+            other = []                                   # the same idea often lives on another class (Edge.makeSpline, not Wire.makeSpline)
+            for cn in ("Workplane", "Sketch", "Edge", "Wire", "Face", "Shell", "Solid", "Compound", "Vector", "Location", "Plane"):
+                c = getattr(cq, cn, None)
+                if c is not None and c is not e.obj:
+                    pn = _public(c)
+                    other += ["%s.%s" % (cn, n) for n in dict.fromkeys(difflib.get_close_matches(e.name, pn, n=2, cutoff=0.6) + [n for n in pn if len(n) >= 6 and (n.lower() in key or key in n.lower())])][:3]
+            if other:
+                pick += ["(on other classes) " + ", ".join(other[:6])]
+            return "\nAPI HINT: %s has no '%s'. %s" % (getattr(e.obj, "__name__", type(e.obj).__name__), e.name, ("Closest real names: " + ", ".join(pick) + ". ") if pick else "") + "All public names: doc(%s)" % (getattr(e.obj, "__name__", "obj"))
+        if isinstance(e, TypeError):
+            m = re.match(r"^([A-Za-z_][\w.]*)\(\)", str(e))
+            f = _resolve(m.group(1)) if m else None
+            if f is None and m and "." in m.group(1):
+                f = _resolve(m.group(1).split(".", 1)[-1])
+            if callable(f):
+                return "\nAPI HINT: real signature: %s%s" % (m.group(1), inspect.signature(f))
+    except BaseException:                                # noqa: BLE001 - a hint must never hide the real error
+        pass
+    return ""
+
+
+SAFE["dir"] = lambda o=None: _public(o if o is not None else cq)             # names only; dunder names stay hidden
 SAFE["__import__"] = _import
 SAFE["__build_class__"] = builtins.__build_class__
 SAFE["__name__"] = "cell"
@@ -61,7 +118,7 @@ NS = {}
 
 def fresh():
     NS.clear()
-    NS.update({"__builtins__": dict(SAFE), "cq": cq, "math": math, "Workplane": cq.Workplane, "Vector": cq.Vector, "Location": cq.Location})
+    NS.update({"__builtins__": dict(SAFE), "cq": cq, "doc": doc, "math": math, "Workplane": cq.Workplane, "Vector": cq.Vector, "Location": cq.Location})
     return {"part": None}
 
 
@@ -85,7 +142,7 @@ def pick_part(before):
     """The part after a cell: `result` if the cell assigned it, else the last new/rebound Workplane or Shape."""
     cand = None
     for k, v in NS.items():
-        if k in ("cq", "math", "__builtins__", "Workplane", "Vector", "Location"):
+        if k in ("cq", "doc", "math", "__builtins__", "Workplane", "Vector", "Location"):
             continue
         if isinstance(v, (cq.Workplane, cq.Shape, cq.Assembly)) and as_shape(v) is not None and before.get(k) is not id(v):
             cand = v
@@ -132,7 +189,7 @@ def run(code):
         tb = traceback.extract_tb(e.__traceback__)
         line = next((f for f in reversed(tb) if f.filename == "<cell>"), None)
         where = " (line %d: %s)" % (line.lineno, (line.line or code.splitlines()[line.lineno - 1] if line and line.lineno <= len(code.splitlines()) else "").strip()[:160]) if line else ""
-        return {"ok": False, "error": "%s: %s%s" % (type(e).__name__, str(e)[:400], where), "output": out.getvalue()[-2000:]}
+        return {"ok": False, "error": "%s: %s%s%s" % (type(e).__name__, str(e)[:400], where, api_hint(e)), "output": out.getvalue()[-2000:]}
     prev = as_shape(STATE["part"]) if STATE["part"] is not None else None
     part = pick_part(before)
     if part is not None:
