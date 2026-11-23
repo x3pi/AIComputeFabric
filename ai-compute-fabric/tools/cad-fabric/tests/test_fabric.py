@@ -1403,5 +1403,11 @@ class ShapeCheck(unittest.TestCase):
         self.assertIn('class="mk"', page); self.assertIn('rel="icon"', page); self.assertIn("var(--m1)", page)
         st = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "cadfabric", "static"); self.assertTrue(os.path.isfile(os.path.join(st, "cadfabric.png")))
 
+    def test_window_icon_is_an_ico_on_windows_and_a_png_elsewhere(self):
+        from cadfabric import cli
+        w, l = cli.window_icon("nt"), cli.window_icon("posix")
+        self.assertTrue(w.endswith("cadfabric.ico") and os.path.isfile(w)); self.assertTrue(l.endswith("cadfabric.png") and os.path.isfile(l))
+        self.assertEqual(open(w, "rb").read(4), b"\x00\x00\x01\x00"); self.assertEqual(open(l, "rb").read(4), b"\x89PNG")       # WinForms crashed on a PNG here (real run on Windows)
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

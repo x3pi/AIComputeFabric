@@ -161,10 +161,10 @@ def _desktop_window(url, srv, title="CadFabric"):
         if srv is not None:                                 # srv None = only show a window for an app that is already running
             threading.Thread(target=srv.serve_forever, daemon=True).start()
             threading.Thread(target=lambda: _watch_quit(srv, win), daemon=True).start()
-        ico = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "cadfabric.png")
+        ico = window_icon()
         try:
-            webview.start(icon=ico) if os.path.isfile(ico) else webview.start()          # window icon (GTK/Qt); Windows takes the icon from the shortcut
-        except TypeError:
+            webview.start(icon=ico) if ico else webview.start()
+        except Exception:                                   # noqa: BLE001 - a bad icon must never keep the window from opening
             webview.start()
     except Exception as e:                                 # noqa: BLE001
         print("desktop window failed (%s: %s); using the browser" % (type(e).__name__, str(e)[:120]), flush=True)
@@ -275,6 +275,13 @@ def cmd_bench(a):
     bench.run_bench(LLM(cfg), a.modes.split(","), a.reps, ids, out, cfg=cfg)
     print("results: " + out)
     return 0
+
+
+def window_icon(osname=None):
+    """Path of the window icon for this platform: WinForms needs a real .ico, GTK/Qt take a PNG. '' when the file is missing."""
+    name = "cadfabric.ico" if (osname or os.name) == "nt" else "cadfabric.png"
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", name)
+    return p if os.path.isfile(p) else ""
 
 
 def main(argv=None):
