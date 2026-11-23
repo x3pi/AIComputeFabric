@@ -44,6 +44,10 @@ Tab **Tệp** ở panel phải liệt kê thư mục dự án; bấm một tệp
 - **Chống kẹt**: cùng một đoạn mã 3 lần liền, thể tích không đổi 5 cell liền, 5 cell lỗi liền, hoặc cùng một lỗi 3 lần (dù mã khác) thì Qwen được nhắc một lần; tới 6, 9 hoặc 10 thì lượt chạy kết thúc với lý do rõ ràng và nút **Tiếp tục** thay vì đốt hết số bước.
 - **Số bước linh hoạt**: ít nhất 14 bước, cộng 5 bước cho mỗi mốc trong kế hoạch của cố vấn (tối đa 120, `CADFABRIC_HARD_STEPS`); tin nhắn sửa tiếp có ít nhất 20 bước. Hết số bước thì bấm **Tiếp tục** để chạy thêm từ đúng chỗ đang dở.
 
+### Khi nào lượt vẽ dừng
+
+Một lượt dừng khi: (1) Qwen trả lời xong và qua các lớp kiểm tra (mốc kế hoạch, khối hợp lệ, không phải ngay sau một bước lỗi, duyệt cuối của cố vấn tối đa 2 lần; nếu lần 2 vẫn có vấn đề thì câu trả lời được giữ kèm danh sách vấn đề còn mở); (2) bị kẹt (cùng code 6 lần, thể tích không đổi 9 bước, 10 bước lỗi liên tiếp; khi thể tích không đổi, cố vấn được nhờ kết luận trước khi dừng); (3) bạn bấm Dừng; (4) hết ngân sách bước, vốn tự tăng thêm 10 bước mỗi lần khi chi tiết còn thay đổi, tối đa 200. Cùng một đoạn code xuất hiện 2 lần trong 20 bước gần nhất thì lần thứ 3 không được chạy. Phép đo có dòng `connectivity:` khi có nhiều khối, nêu khối nào lơ lửng.
+
 ### Logo và icon
 
 Bộ logo và icon vector nằm trong `assets/`: biểu tượng là một khối lập phương đẳng cự có lỗ khoan trên mặt trên (một thao tác CAD), màu cam đất cùng tông với giao diện. Có `cadfabric-icon.svg` (ô vuông bo góc), `cadfabric-icon-small.svg` (bản đơn giản cho 16 đến 32 px), `cadfabric-mark.svg` (chỉ khối), `cadfabric-logo.svg` và `cadfabric-logo-dark.svg` (ngang, chữ đã chuyển thành đường nét nên không cần cài phông), cùng `png/` và `cadfabric.ico` (7 kích thước). Tất cả sinh từ một hình học bằng `python assets/build_assets.py` (cần fonttools, cairosvg, Pillow, phông Inter theo giấy phép OFL). Giao diện dùng khối này làm favicon và logo tiêu đề (đổi màu theo chế độ sáng và tối); trình cài Windows gán `cadfabric.ico` cho shortcut, trình cài Linux dùng bản SVG cho launcher.

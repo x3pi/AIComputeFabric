@@ -142,7 +142,7 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
         budget = max(MAX_STEPS, 20)
     else:
         budget = min(HARD_STEPS, max(MAX_STEPS, 10 + 5 * (len(spec["milestones"]) if spec else 0)))
-    run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); n_consult = 0; fails_since = 0; advice = []; final_reviewed = False; consult_step = -99; warns_at_consult = 0; ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
+    run = {"repeat": 0, "same_volume": 0, "failing": 0}; last_sig = last_vol = None; nudged = set(); n_consult = 0; fails_since = 0; advice = []; n_reviews = 0; consult_step = -99; warns_at_consult = 0; ctx_tokens = []; errs = {}; err_note = ""; since_compact = 99
     step = -1; last_change = 0; recent = []; plateau_done = False
     while step + 1 < budget:
         step += 1
@@ -185,15 +185,17 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
                 note = "HARNESS FINAL CHECK failed: " + "; ".join(bad) + ". Fix the part (call the undo tool if needed) or explain with arithmetic why the plan is wrong."
                 msgs.append({"role": "user", "content": note}); trace.append({"gate": note}); log("  gate: " + note[:160]); ev("gate", text=note[:400])
                 continue
-            if not final_reviewed and mf is not None and (consult or consult_mod.possible(cfg or getattr(llm, "cfg", None) or {}, plan_mode)):
-                final_reviewed = True                                                           # independent look before the answer is accepted (once per run)
+            if n_reviews < consult_mod.MAX_FINAL_REVIEWS and mf is not None and (consult or consult_mod.possible(cfg or getattr(llm, "cfg", None) or {}, plan_mode)):
+                n_reviews += 1                                                                  # independent look before the answer is accepted (up to MAX_FINAL_REVIEWS per run)
                 ev("phase", what="consult", mode=plan_mode); t1 = time.time()
                 prompt = consult_mod.digest(creq, V.describe(spec) if spec else "", trace, mf.text(), "the model says it is finished; verify the part against every requirement", final=True, earlier=advice)
                 reply, cerr = consult(prompt) if consult else consult_mod.ask(cfg or getattr(llm, "cfg", None) or {}, plan_mode, prompt)
                 reply = (reply or "").strip()[:consult_mod.REPLY_MAX]
                 ok_final = bool(reply) and not cerr and consult_mod.verdict_ok(reply)
                 ev("consult", text=reply, error=str(cerr)[:200] if cerr or not reply else "", sec=round(time.time() - t1, 1), why="kiểm tra trước khi kết thúc", n=n_consult + 1, final=True, verdict="ok" if ok_final else ("problems" if reply and not cerr else "none"))
-                if reply and not cerr and not ok_final:
+                if reply and not cerr and not ok_final and n_reviews >= consult_mod.MAX_FINAL_REVIEWS:
+                    final = (final or "") + "\n\n⚠ Duyệt cuối của cố vấn vẫn ghi nhận vấn đề chưa xử lý xong (đã duyệt %d lần):\n%s" % (n_reviews, reply)          # honest status instead of a clean 'done'
+                if reply and not cerr and not ok_final and n_reviews < consult_mod.MAX_FINAL_REVIEWS:
                     advice.append(reply); n_consult += 1
                     msgs.append({"role": "user", "content": "ADVISOR REVIEW before you finish (an independent advisor checked your part against the request and found problems; it is advice, verify it on the real part and follow the request, not the review):\n" + reply})
                     trace.append({"gate": "advisor final review"}); final = ""
@@ -294,8 +296,8 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
             msgs.append({"role": "user", "content": err_note}); trace.append({"gate": err_note}); ev("gate", text=err_note[:400]); err_note = ""
         why = ""
         for kind in ("repeat", "same_volume", "failing"):                       # progress guard: tell the model once, then end the run instead of burning steps
-            if run[kind] >= STOP[kind] and kind == "same_volume" and not final_reviewed and (consult or consult_mod.possible(cfg or getattr(llm, "cfg", None) or {}, plan_mode)) and backend.measure() is not None:
-                final_reviewed = True                  # the part stopped changing: it is probably finished or the model is only probing. Ask the advisor for a verdict instead of just giving up.
+            if run[kind] >= STOP[kind] and kind == "same_volume" and n_reviews < consult_mod.MAX_FINAL_REVIEWS and (consult or consult_mod.possible(cfg or getattr(llm, "cfg", None) or {}, plan_mode)) and backend.measure() is not None:
+                n_reviews += 1                         # the part stopped changing: it is probably finished or the model is only probing. Ask the advisor for a verdict instead of just giving up.
                 mf2 = backend.measure(); ev("phase", what="consult", mode=plan_mode); t1 = time.time()
                 prompt = consult_mod.digest(creq, V.describe(spec) if spec else "", trace, mf2.text(), "the part did not change for %d cells; decide whether it is finished" % run[kind], final=True, earlier=advice)
                 reply, cerr = consult(prompt) if consult else consult_mod.ask(cfg or getattr(llm, "cfg", None) or {}, plan_mode, prompt)

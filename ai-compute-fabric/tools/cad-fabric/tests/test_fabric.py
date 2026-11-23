@@ -1287,9 +1287,11 @@ class LongRun(unittest.TestCase):
         def prob(p): bad.append(p); return "VERDICT: PROBLEMS\nDIAGNOSIS: the box is not hollow.\nNEXT: shell it.", ""
         script = [[("execute_cadquery", {"code": self.BOX})], "done", [("execute_cadquery", {"code": "result = result.faces('>Z').shell(-1)"})], "really done"]
         r, ev, llm = self.run_agent(script, consult=prob, request="make a hollow box")
-        self.assertEqual((r["final"], len(bad), r["consults"]), ("really done", 1, 1))                                            # reviewed once, then the answer is accepted
+        self.assertEqual((len(bad), r["consults"]), (2, 1)); self.assertTrue(r["final"].startswith("really done")); self.assertIn("⚠", r["final"]); self.assertIn("not hollow", r["final"])      # reviewed twice, still problems: accepted WITH the open issues attached
+        seq = iter(["VERDICT: PROBLEMS\nDIAGNOSIS: not hollow.\nNEXT: shell it.", "VERDICT: OK\nfixed"])
+        r, ev, llm = self.run_agent(script, consult=lambda p: (next(seq), ""), request="make a hollow box")
+        self.assertEqual(r["final"], "really done"); self.assertEqual([x["verdict"] for k, x in ev if k == "consult"], ["problems", "ok"])           # second review passes: clean answer
         self.assertTrue(any("ADVISOR REVIEW before you finish" in str(m.get("content")) and "not hollow" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
-        self.assertEqual([x["verdict"] for k, x in ev if k == "consult"], ["problems"])
 
     def test_earlier_advice_is_given_back_to_the_advisor_and_a_broken_solid_is_not_final(self):
         seen = []
