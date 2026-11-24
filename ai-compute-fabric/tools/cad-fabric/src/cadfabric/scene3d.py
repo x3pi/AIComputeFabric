@@ -51,7 +51,7 @@ COLOR_RULE = """Give EVERY part a "color" and a "finish": choose ONE coherent, a
 SYSTEM = """You direct a 3D build in Blender. You do not write geometry unless told; a worker model writes one part at a time and fixes its own errors.
 You are called only to plan, to resolve what the worker could not, and for one final review against the TASK text.
 Reply with ONE JSON object, no prose. Actions:
- {"action":"plan","parts":[{"id":"p1","spec":"what it is, size mm, where (world mm, Z up)","center_mm":[x,y,z],"size_mm":[dx,dy,dz],"ops":[recipe ops, optional but preferred for simple shapes],"color":"#RRGGBB","finish":"matte|gloss|metal|rubber|emissive","group":"optional batching hint only"}],
+ {"action":"plan","parts":[{"id":"p1","spec":"what it is, size mm, where (world mm, Z up)","center_mm":[x,y,z],"size_mm":[dx,dy,dz],"ops":[recipe ops, optional but preferred for simple shapes],"free":true (only for a part that is meant to hang free),"mirror_of":"id" (+"plane":"y","offset_mm":0: reflected copy of another part's ops, so state a symmetric pair ONCE),"array":{"count":n,"step":[dx,dy,dz]} (n copies p_1..p_n, for rows of bolts, keys, fins),"color":"#RRGGBB","finish":"matte|gloss|metal|rubber|emissive","group":"optional batching hint only"}],
   "joints":[{"name":"j1","parent":"p1"|null,"children":["p2"],"origin_mm":[x,y,z],"axis":[x,y,z],"coaxial":["p2"],"span_rad":6.283}],
   "allowed_contacts":[["p1","p2"]]}
  {"action":"write_part","id":"p1","note":"guidance for the worker"}   (worker retries with your note)
@@ -113,6 +113,93 @@ def part_code(txt, pid):
                 return "# RECIPE ERROR: " + "; ".join(probs[:4]) + "\n"
             return RECIPE_TEMPLATE % (pid, rec)
     return code_of(txt)
+
+
+# ---------------------------------------------------------------- plan expansion: symmetry and arrays (deterministic, so the director states each shape once)
+_AX = {"x": 0, "y": 1, "z": 2}
+
+
+def _map_op(op, pt, dr, rot_flip):
+    """Copy of a recipe op with every position passed through pt() and every direction through dr(); a reflection also flips the sense of a rotation."""
+    o = json.loads(json.dumps(op))
+    for k in ("center", "a", "b"):
+        if isinstance(o.get(k), list):
+            o[k] = pt(o[k])
+    if isinstance(o.get("points"), list):
+        o["points"] = [pt(q) for q in o["points"]]
+    if isinstance(o.get("sections"), list):
+        out = []
+        for sec in o["sections"]:
+            q = pt([sec["x"], sec["y"], sec["z"]]); out.append(dict(sec, x=q[0], y=q[1], z=q[2]))
+        o["sections"] = out
+    for k in ("axis", "up"):
+        if isinstance(o.get(k), list):
+            o[k] = dr(o[k])
+    if isinstance(o.get("rot"), dict) and isinstance(o["rot"].get("axis"), list):
+        o["rot"] = dict(o["rot"], axis=dr(o["rot"]["axis"]), deg=(-o["rot"]["deg"] if rot_flip else o["rot"]["deg"]))
+    return o
+
+
+def plan_view(plan):
+    """The plan as the director sees it after the first call: the recipe of every part is replaced by a one-line marker. The geometry is already built and the bounding boxes
+    in the review show where it is; resending every recipe on every call was most of the input tokens. A part is changed by sending its `ops` again; a part sent with the
+    marker (or without ops) keeps its current geometry."""
+    out = []
+    for q in plan.get("parts", []):
+        q = dict(q)
+        if isinstance(q.get("ops"), list):
+            q["ops"] = "<%d recipe ops, built; send ops only to change this part>" % len(q["ops"])
+        out.append(q)
+    return dict(plan, parts=out)
+
+
+def expand_plan(plan):
+    """Expand `array` and `mirror_of` parts into ordinary parts. -> (plan, errors).
+    {"id":"p","ops":[..],"array":{"count":n,"step":[dx,dy,dz]}}   becomes p_1 .. p_n, each moved by k*step
+    {"id":"q","mirror_of":"p","plane":"y","offset_mm":0}           becomes a copy of p reflected in the plane (default y=0); spec, colour, finish and group are inherited"""
+    errs, parts = [], []
+    for p in plan.get("parts", []):
+        if isinstance(p.get("ops"), str):                      # the marker of plan_view echoed back: keep the geometry that is already built
+            p = {k: v for k, v in p.items() if k != "ops"}
+        a = p.get("array")
+        if a is None:
+            parts.append(p); continue
+        n, st = (a or {}).get("count"), (a or {}).get("step")
+        if not (isinstance(n, int) and 2 <= n <= 64 and isinstance(st, list) and len(st) == 3 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in st)) or not p.get("ops"):
+            errs.append("part %s: array needs ops, count 2..64 and step [dx,dy,dz]" % p.get("id")); parts.append(p); continue
+        for k in range(n):
+            mv = lambda q, k=k: [q[i] + st[i] * k for i in range(3)]
+            c = {x: y for x, y in p.items() if x not in ("array", "id", "ops", "center_mm")}
+            c["id"] = "%s_%d" % (p["id"], k + 1); c["ops"] = [_map_op(o, mv, lambda d: d, False) for o in p["ops"]]
+            if isinstance(p.get("center_mm"), list):
+                c["center_mm"] = mv(p["center_mm"])
+            parts.append(c)
+    byid = {p.get("id"): p for p in parts}
+    out = []
+    for p in parts:
+        src = p.get("mirror_of")
+        if src is None:
+            out.append(p); continue
+        base = byid.get(src); pl = str(p.get("plane", "y")); off = p.get("offset_mm", 0)
+        if base is None or not base.get("ops") or base.get("mirror_of"):
+            errs.append("part %s: mirror_of %r must name another part that has ops" % (p.get("id"), src)); out.append(p); continue
+        if pl not in _AX or not isinstance(off, (int, float)) or isinstance(off, bool):
+            errs.append("part %s: plane must be x, y or z and offset_mm a number" % p.get("id")); out.append(p); continue
+        if pl != "y" and any(o.get("op") in ("loft", "panel") for o in base["ops"]):
+            errs.append("part %s: loft and panel can only be mirrored in plane y" % p.get("id")); out.append(p); continue
+        i = _AX[pl]
+        def pt(q, i=i, off=off):
+            q = list(q); q[i] = 2 * off - q[i]; return q
+        def dr(d, i=i):
+            d = list(d); d[i] = -d[i]; return d
+        c = {x: y for x, y in base.items() if x not in ("id", "ops", "center_mm", "size_mm", "mirror_of")}
+        c.update({x: y for x, y in p.items() if x not in ("mirror_of", "plane", "offset_mm")})
+        c["spec"] = p.get("spec") or "mirror of %s in plane %s" % (src, pl); c["ops"] = [_map_op(o, pt, dr, True) for o in base["ops"]]
+        for k in ("center_mm", "size_mm"):
+            if isinstance(base.get(k), list) and k not in p:
+                c[k] = pt(base[k]) if k == "center_mm" else base[k]
+        out.append(c)
+    return dict(plan, parts=out), errs
 
 
 def validate_plan(plan):
@@ -546,7 +633,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 rep0 = json.load(f)
         except (OSError, ValueError):
             pass
-        msg = ("CURRENT SCENE (already built)\nPLAN: " + json.dumps(plan) + "\n" + sc.review_text(rep0) +
+        msg = ("CURRENT SCENE (already built)\nPLAN: " + json.dumps(plan_view(plan)) + "\n" + sc.review_text(rep0) +
                "\nThe user now asks: " + request + "\nReply with the action(s) needed (plan to change the structure, write_part/patch_part to change a part), or done if nothing changes.")
     else:
         ev("phase", what="plan", mode="director")
@@ -580,7 +667,8 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 continue
             a = act.get("action")
             if a == "plan":
-                errs = validate_plan(act)
+                act, xerrs = expand_plan(act)
+                errs = xerrs or validate_plan(act)
                 if errs:
                     msg = "TASK: " + task + "\nPLAN REJECTED by static checks:\n- " + "\n- ".join(errs) + "\nSend a corrected plan."
                     continue
@@ -628,11 +716,11 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 continue
             rep, others = sc.work()
             if sc.stuck or others:
-                msg = "TASK: " + task + "\nPLAN: " + json.dumps(plan) + "\nWORKER REPORT (the worker could not resolve these)\n" + sc.worker_report(others)
+                msg = "TASK: " + task + "\nPLAN: " + json.dumps(plan_view(plan)) + "\nWORKER REPORT (the worker could not resolve these)\n" + sc.worker_report(others)
             elif reviewed < 2:
                 reviewed += 1
                 ev("phase", what="review")
-                msg = "TASK: " + task + "\nPLAN: " + json.dumps(plan) + "\n" + sc.review_text(rep)
+                msg = "TASK: " + task + "\nPLAN: " + json.dumps(plan_view(plan)) + "\n" + sc.review_text(rep)
                 views = sc.render_views() if review_images else []
                 if views:                                         # one look at the result: iso, side, top at rest, and iso at the end of the motion
                     sc.images = views

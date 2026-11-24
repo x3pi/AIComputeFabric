@@ -28,7 +28,7 @@ class Joints(unittest.TestCase):
         return [{"name": "steer", "parent": None, "children": ["arm"], "origin_mm": [1000 + off, 0, 200], "axis": D, "span_rad": 0.5},
                 {"name": "spin", "parent": "arm", "children": ["wheel"], "origin_mm": [1000, 0, 200], "axis": [0, 1, 0], "coaxial": ["wheel"], "span_rad": 12.566}]
 
-    def kinds(self, rep): return sorted({i["kind"] for i in rep["issues"]})
+    def kinds(self, rep): return sorted({i["kind"] for i in rep["issues"]} - {"floating_part"})      # these fixtures test motion, not support
 
     def test_nested_joint_on_a_tilted_axis_passes(self):
         self.assertEqual(self.kinds(run(self.P, self.joints())), [])
@@ -48,13 +48,32 @@ class Ground(unittest.TestCase):
 
     def kinds(self, origin, axis):
         j = [{"name": "swing", "parent": None, "children": ["wheel"], "origin_mm": origin, "axis": axis, "span_rad": 0.4}]
-        return sorted({i["kind"] for i in run({"base": self.BASE, "wheel": self.WHEEL}, j)["issues"]})
+        return sorted({i["kind"] for i in run({"base": self.BASE, "wheel": self.WHEEL}, j)["issues"]} - {"floating_part"})
 
     def test_a_grounded_part_swung_below_the_floor_is_reported(self):
         self.assertIn("ground_penetration", self.kinds([0, 0, 500], [0, 1, 0]))           # swings the wheel about a pivot far above it: it dips below z=0
 
     def test_a_grounded_part_that_only_spins_in_place_is_fine(self):
         self.assertNotIn("ground_penetration", self.kinds([500, 0, 200], [0, 1, 0]))
+
+
+@unittest.skipUnless(BL and os.path.isfile(BL), "Blender not installed")
+class Floating(unittest.TestCase):
+    A = '{"op":"box","center":[0,0,100],"size":[100,100,200]}'
+    NEAR = '{"op":"box","center":[0,0,260],"size":[60,60,60]}'     # 0 mm gap above A (A top z=200, this bottom z=230 -> 30 mm gap)
+    TOUCH = '{"op":"box","center":[0,0,225],"size":[60,60,50]}'
+    FAR = '{"op":"box","center":[0,0,400],"size":[60,60,60]}'
+
+    def floating(self, extra, free=()):
+        parts = {"a": self.A, "b": extra}
+        d = run(parts, [])
+        return sorted(i["part"] for i in d["issues"] if i["kind"] == "floating_part")
+
+    def test_a_part_far_from_everything_floats(self):
+        self.assertEqual(self.floating(self.FAR), ["b"])
+
+    def test_a_touching_part_does_not(self):
+        self.assertEqual(self.floating(self.TOUCH), [])
 
 
 if __name__ == "__main__":

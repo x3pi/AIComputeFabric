@@ -5,7 +5,7 @@ import sys, os, json, math, traceback
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bpy, bmesh, mathutils
 import verify_motion as vm
-import bxguard
+import bxguard, connectivity
 
 args = sys.argv[sys.argv.index("--") + 1:]; proj = args[0]; smoke_part = args[1] if len(args) > 1 else None
 if smoke_part:                                    # fast single-part smoke build (run while the worker keeps writing other parts)
@@ -210,6 +210,10 @@ if True:                                           # always save the scene (a pa
     if not report["missing"] and not report["part_errors"]:
         r = vm.verify(list(range(1, last + 1)), extra_allowed=[tuple(x) for x in plan.get("allowed_contacts", [])])
         report["issues"] += r["issues"]
+        try:                                                # every part must be supported (floor or another part); parts with "free": true are exempt
+            report["issues"] += connectivity.floating([p["id"] for p in plan["parts"] if p.get("free")])
+        except Exception:                                   # a failing check never fails the build
+            pass
     report["partial"] = bool(report["missing"] or report["part_errors"])
     report["parts_built"] = sorted(o.name for o in bpy.data.objects if o.type == "MESH")
     bpy.context.scene.frame_set(1); bb = {}

@@ -459,6 +459,29 @@ class WebSession(unittest.TestCase):
         self.assertIn("Blender", str(c.exception))
 
 
+class Expand(unittest.TestCase):
+    LEG = {"id": "leg_L", "spec": "leg", "color": "#112233", "finish": "metal", "center_mm": [100, 80, 50], "ops": [{"op": "cylinder", "a": [100, 80, 0], "b": [100, 80, 100], "r": 10}]}
+
+    def test_mirror_reflects_positions_and_inherits_look(self):
+        p, e = S.expand_plan({"parts": [self.LEG, {"id": "leg_R", "mirror_of": "leg_L"}]})
+        self.assertEqual(e, []); r = p["parts"][1]
+        self.assertEqual((r["ops"][0]["a"], r["center_mm"], r["color"], r["finish"]), ([100, -80, 0], [100, -80, 50], "#112233", "metal"))
+        self.assertEqual(S.validate_plan(p), [])
+
+    def test_mirror_in_another_plane_with_offset_and_array(self):
+        p, e = S.expand_plan({"parts": [self.LEG, {"id": "m", "mirror_of": "leg_L", "plane": "x", "offset_mm": 10},
+                                         {"id": "k", "spec": "k", "ops": [{"op": "box", "center": [0, 0, 5], "size": [10, 10, 4]}], "array": {"count": 3, "step": [15, 0, 0]}}]})
+        self.assertEqual(e, [])
+        ids = [q["id"] for q in p["parts"]]; self.assertEqual(ids, ["leg_L", "m", "k_1", "k_2", "k_3"])
+        self.assertEqual(p["parts"][1]["ops"][0]["a"], [-80, 80, 0]); self.assertEqual(p["parts"][4]["ops"][0]["center"], [30, 0, 5])
+
+    def test_bad_mirror_and_array_are_rejected_with_reasons(self):
+        _, e = S.expand_plan({"parts": [{"id": "a", "spec": "x"}, {"id": "b", "mirror_of": "a"}, {"id": "c", "spec": "x", "array": {"count": 1, "step": [1, 0, 0]}}]})
+        self.assertEqual(len(e), 2)
+        loft = {"id": "l", "spec": "x", "ops": [{"op": "loft", "sections": [{"x": 0, "y": 0, "z": 0, "w": 1, "h": 1}, {"x": 1, "y": 0, "z": 0, "w": 1, "h": 1}]}]}
+        _, e = S.expand_plan({"parts": [loft, {"id": "m", "mirror_of": "l", "plane": "x"}]}); self.assertIn("plane y", e[0])
+
+
 class RootCause(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp(prefix="scene3d-"); self._run = S.subprocess.run; self.bl = FakeBlender()
