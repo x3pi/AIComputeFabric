@@ -80,7 +80,49 @@ def cmd_doctor(a):
     return 0 if ok else 1
 
 
+def cmd_run_scene(a):
+    """Headless scene build: `cadfabric run "<request>" [--planner claude]`. Writes <data dir>/scenes/<id>/ (scene.blend, plan.json, parts/) and prints the result."""
+    from .llm import LLM
+    from . import scene3d, viewers
+    cfg = config.load()
+    mode = a.planner or cfg["planner"]
+    if mode not in advisors.names(cfg) and mode not in ("codex",):
+        print("unknown planner %r; choose one of: %s" % (mode, ", ".join(advisors.names(cfg)))); return 2
+    blender = (cfg.get("blender") if os.path.isfile(str(cfg.get("blender") or "")) else None) or viewers.blender_path()
+    if not blender:
+        print("Blender not found: install Blender 4.x or set the BLENDER environment variable (or \"blender\" in the config file)"); return 2
+    adv = advisors.find(cfg, mode) if mode not in ("off", "nothink", "think") else None
+    if mode == "codex":
+        adv = {"id": "codex", "type": "cli", "preset": "codex", "external": True}
+    llm = LLM(cfg)
+    wd = os.path.join(config.data_dir(cfg), "scenes", time.strftime("%Y%m%d-%H%M%S"))
+    os.makedirs(wd, exist_ok=True)
+
+    def use(m):
+        u = m.get("_usage") or {}
+        return {"input": u.get("prompt_tokens", 0), "output": u.get("completion_tokens", 0), "usd": 0, "estimated": False}
+
+    def director(prompt, system):
+        if adv:
+            t, err, u = advisors.ask_metered(adv, prompt, cfg, 900, system)
+            if err:
+                raise RuntimeError("advisor: " + err)
+            return t, u
+        m = llm.chat([{"role": "system", "content": system}, {"role": "user", "content": prompt}], think=(mode == "think"), max_tokens=4000)
+        return m.get("content") or "", use(m)
+
+    def worker(system, user):
+        m = llm.chat([{"role": "system", "content": system}, {"role": "user", "content": user}], think=False, max_tokens=3000)
+        return m.get("content") or "", use(m)
+
+    r = scene3d.run(" ".join(a.request), wd, blender, director, worker, log=print, on_event=lambda k, **kw: print("[%s] %s" % (k, kw.get("what") or kw.get("describe", "")[:80] or kw.get("n", ""))))
+    print("\n" + r["final"]); print("\nSCENE: %s" % (r["scene"] or "(none)"))
+    return 0 if r["ok"] else 2
+
+
 def cmd_run(a):
+    if not os.environ.get("CADFABRIC_LEGACY_AGENT"):
+        return cmd_run_scene(a)
     from .cq_backend import CadQueryBackend
     from .llm import LLM
     from . import agent

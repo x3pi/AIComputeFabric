@@ -200,6 +200,35 @@ def uploads(items):
     return "\n\n".join(out), names, ""
 
 
+IMG_MAGIC = {"image/png": b"\x89PNG", "image/jpeg": b"\xff\xd8\xff", "image/gif": b"GIF8", "image/webp": b"RIFF"}
+MAX_SEND_IMAGES, MAX_SEND_IMAGE_BYTES = 3, 1_500_000
+
+
+def images(items):
+    """Pictures sent with a message ({name, mime, data=base64}). Checked by size, type and magic bytes. -> (list of {name, mime, data}, error)."""
+    import base64, binascii
+    if not isinstance(items, list) or len(items) > MAX_SEND_IMAGES:
+        return [], "at most %d pictures" % MAX_SEND_IMAGES
+    out = []
+    for it in items:
+        if not isinstance(it, dict):
+            return [], "bad picture"
+        name = os.path.basename(str(it.get("name", "")).replace("\\", "/"))[:120]
+        mime, data = it.get("mime"), it.get("data")
+        if mime not in IMG_MAGIC or not isinstance(data, str) or not name or re.search(r"[\x00\r\n]", name):
+            return [], "%s: only png, jpg, gif or webp pictures" % (name or "?")
+        try:
+            raw = base64.b64decode(data, validate=True)
+        except (binascii.Error, ValueError):
+            return [], "%s: not a valid picture" % name
+        if len(raw) > MAX_SEND_IMAGE_BYTES:
+            return [], "%s: larger than %d KB" % (name, MAX_SEND_IMAGE_BYTES // 1000)
+        if not raw.startswith(IMG_MAGIC[mime]):
+            return [], "%s: the file is not really %s" % (name, mime)
+        out.append({"name": name, "mime": mime, "data": data})
+    return out, ""
+
+
 def new_step_path(root, name):
     """A fresh path for a STEP export inside the folder (never an existing file). -> (path, error)."""
     n = str(name or "part").strip()

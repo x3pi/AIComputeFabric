@@ -173,6 +173,9 @@ def pick_part(before):
     return cand
 
 
+INTERFERENCE_BUDGET_S = 8.0
+
+
 def connectivity(solids, tol=0.05, budget_s=4.0):
     """Which solids touch or overlap (distance <= tol) and which hang in the air. Pairs are pre-filtered by bounding box (OCCT distance is slow); union-find makes the groups.
     Informational only: several separate solids are fine, but a part that touches nothing is usually a mistake. -> text, or '' for a single solid / when it cannot be computed."""
@@ -189,6 +192,17 @@ def connectivity(solids, tol=0.05, budget_s=4.0):
             while par[i] != i:
                 par[i] = par[par[i]]; i = par[i]
             return i
+        inter = []                                           # (i, j, overlap volume): solids that share volume, not just touch
+        skipped = 0
+
+        def overlap_note():
+            big = [(i, j, v) for i, j, v in inter if v > 0.01 * min(solids[i].Volume(), solids[j].Volume())]
+            note = " (overlap check skipped for %d touching pair(s): too slow)" % skipped if skipped else ""
+            if not big:
+                return note
+            big.sort(key=lambda t: -t[2] / max(min(solids[t[0]].Volume(), solids[t[1]].Volume()), 1e-9))
+            return " INTERFERENCE (parts share volume; separate parts should only touch): " + "; ".join(
+                "solids #%d and #%d overlap %.0f mm3 = %.0f%% of the smaller one" % (i, j, v, 100 * v / min(solids[i].Volume(), solids[j].Volume())) for i, j, v in big[:6]) + note
         for i in range(n):
             for j in range(i + 1, n):
                 a, b = bbs[i], bbs[j]
@@ -198,11 +212,24 @@ def connectivity(solids, tol=0.05, budget_s=4.0):
                     return ""
                 if solids[i].distance(solids[j]) <= tol:
                     par[find(i)] = find(j)
+                    if _t.perf_counter() - t0 > INTERFERENCE_BUDGET_S:      # a boolean on curved solids can take minutes: skip the rest, never stall the cell
+                        skipped += 1
+                        continue
+                    try:
+                        bi, bj = bbs[i], bbs[j]
+                        sh = max(0.0, min(bi.xmax, bj.xmax) - max(bi.xmin, bj.xmin)) * max(0.0, min(bi.ymax, bj.ymax) - max(bi.ymin, bj.ymin)) * max(0.0, min(bi.zmax, bj.zmax) - max(bi.zmin, bj.zmin))
+                        if sh <= 0:                                          # boxes only touch: the solids cannot share volume
+                            continue
+                        v = solids[i].intersect(solids[j]).Volume()
+                        if v > 1e-6:
+                            inter.append((i, j, float(v)))
+                    except BaseException:                    # noqa: BLE001 - a failed boolean just means "unknown"
+                        pass
         groups = {}
         for i in range(n):
             groups.setdefault(find(i), []).append(i)
         if len(groups) == 1:
-            return "all %d solids touch or overlap (1 connected group)" % n
+            return "all %d solids touch or overlap (1 connected group)." % n + overlap_note()
         main = max(groups.values(), key=lambda g: sum(solids[k].Volume() for k in g))
         out = []
         for g in sorted(groups.values(), key=lambda g: -sum(solids[k].Volume() for k in g)):
@@ -217,7 +244,7 @@ def connectivity(solids, tol=0.05, budget_s=4.0):
                     best = d if best is None else min(best, d)
             c = cq.Compound.makeCompound([solids[k] for k in g]).Center()
             out.append("FLOATING group of %d solid(s) near (%.0f, %.0f, %.0f), volume %.0f, %.2f mm from the main body" % (len(g), c.x, c.y, c.z, sum(solids[k].Volume() for k in g), best))
-        return "%d solids in %d groups; main group has %d solid(s). %s" % (n, len(groups), len(main), "; ".join(out[:6]))
+        return "%d solids in %d groups; main group has %d solid(s). %s" % (n, len(groups), len(main), "; ".join(out[:6])) + overlap_note()
     except BaseException:                                # noqa: BLE001 - a measurement helper must never break a cell
         return ""
 
@@ -245,7 +272,7 @@ def delta(before, after):
         return None
 
 
-def run(code):
+def run(code, quiet=False):
     bad = check(code)
     if bad:
         return {"ok": False, "error": bad, "output": ""}
@@ -266,7 +293,7 @@ def run(code):
     if part is not None:
         STATE["part"] = part
     r = {"ok": True, "output": out.getvalue()[-2000:], "changed": part is not None}
-    if part is not None and prev is not None and as_shape(part) is not None and os.environ.get("CADFABRIC_NO_DELTA") != "1":
+    if part is not None and prev is not None and as_shape(part) is not None and os.environ.get("CADFABRIC_NO_DELTA") != "1" and not quiet:   # quiet = a replay of saved cells: only the state matters
         r["delta"] = delta(prev, as_shape(part))
     return r
 
@@ -274,7 +301,7 @@ def run(code):
 def handle(req):
     op = req.get("op")
     if op == "exec":
-        r = run(req["code"])
+        r = run(req["code"], bool(req.get("quiet")))
     elif op == "reset":
         STATE.update(fresh()); r = {"ok": True}
     elif op == "export":
@@ -304,7 +331,7 @@ def handle(req):
     else:
         return {"ok": False, "error": "unknown op"}
     sh = as_shape(STATE["part"]) if STATE["part"] is not None else None
-    r["measure"] = measure(sh) if sh is not None else None
+    r["measure"] = measure(sh) if (sh is not None and not req.get("quiet")) else None
     return r
 
 

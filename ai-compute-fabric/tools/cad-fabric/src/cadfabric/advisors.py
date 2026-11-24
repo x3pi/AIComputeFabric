@@ -3,7 +3,7 @@
   cli  a command line program on THIS machine. Presets: Codex CLI, Claude Code CLI (flags checked against the real CLIs), or a custom command.
        Run without a shell, in an EMPTY temporary directory, prompt on stdin (or in a {prompt} argument), with a timeout.
 An advisor flagged `external` sends the request text to a third party, so the UI asks for confirmation before every use."""
-import json, os, re, shlex, shutil, subprocess, tempfile, time, urllib.error, urllib.parse, urllib.request
+import base64, json, os, re, shlex, shutil, subprocess, tempfile, time, urllib.error, urllib.parse, urllib.request
 from .cq_backend import NOWIN
 
 BUILTIN = ("off", "nothink", "think", "codex", "codex-relay")
@@ -177,6 +177,70 @@ def ask(a, prompt, cfg=None, timeout=300, key=None, raw=False, skills=False):
         return _ask_cli(a, prompt, cfg, timeout, raw, skills)
     except Exception as e:                                                   # noqa: BLE001 - an advisor must never crash the agent
         return "", "%s: %s" % (type(e).__name__, str(e)[:160])
+
+
+def can_see_images(a):
+    """Only the Claude Code CLI advisor takes images here (stream-json input)."""
+    return bool(a) and a.get("type") == "cli" and a.get("preset") == "claude"
+
+
+def ask_metered(a, prompt, cfg=None, timeout=600, system=None, images=None):
+    """Like ask(raw=True) but also returns token usage. -> (text, error, usage). The Claude Code CLI reports real usage and cost
+    (--output-format json, and --system-prompt replaces its large default prompt); any other advisor gets an ESTIMATE (characters / 4, estimated=True)."""
+    if a.get("type") == "cli" and a.get("preset") == "claude":
+        try:
+            with tempfile.TemporaryDirectory(prefix="cadfabric-adv-") as wd:
+                argv, _ = cli_argv(a, cfg, wd)
+                if "--output-format" in argv:
+                    argv[argv.index("--output-format") + 1] = "json"
+                else:
+                    argv += ["--output-format", "json"]
+                if system:
+                    argv += ["--system-prompt", system]
+                stdin = prompt[:60000]
+                if images and (os.name == "nt" or os.environ.get("CADFABRIC_IMAGES_AS_FILES")):
+                    # the CLI exits silently on Windows when given base64 image blocks: save them in the throw-away folder and let the model read them with the Read tool only
+                    paths = []
+                    for i, im in enumerate(images):
+                        pth = os.path.join(wd, "picture-%d.%s" % (i + 1, {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}[im["mime"]]))
+                        with open(pth, "wb") as f:
+                            f.write(base64.b64decode(im["data"]))
+                        paths.append(pth)
+                    i = argv.index("--tools"); argv[i:i + 2] = ["--tools", "Read", "--allowedTools", "Read"]
+                    argv += ["--add-dir", wd]
+                    stdin = "Look at these picture files with the Read tool first: " + ", ".join(paths) + "\n\n" + prompt[:60000]
+                    images = None
+                if images:                                                       # images go in as base64 content blocks over stream-json
+                    argv[argv.index("--output-format") + 1] = "stream-json"
+                    argv += ["--input-format", "stream-json", "--verbose"]
+                    blocks = [{"type": "image", "source": {"type": "base64", "media_type": im["mime"], "data": im["data"]}} for im in images]
+                    stdin = json.dumps({"type": "user", "message": {"role": "user", "content": blocks + [{"type": "text", "text": prompt[:60000]}]}}) + "\n"
+                try:
+                    r = subprocess.run(argv, input=stdin, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=wd, **NOWIN)
+                except subprocess.TimeoutExpired:
+                    return "", "timed out after %ds" % timeout, {}
+            if images:
+                d = {}
+                for ln in (r.stdout or "").splitlines():
+                    try:
+                        x = json.loads(ln)
+                    except ValueError:
+                        continue
+                    if isinstance(x, dict) and x.get("type") == "result":
+                        d = x
+            else:
+                d = json.loads(r.stdout or "{}")
+            u = d.get("usage") or {}
+            text = (d.get("result") or "").strip()
+            if r.returncode != 0 or d.get("is_error") or not text:
+                return "", "exit %d: %s" % (r.returncode, (text or (r.stderr or "").strip().splitlines()[-1:] or ["no output"])[0] if isinstance(text, str) else "no output")[:200], {}
+            return text, "", {"input": u.get("input_tokens", 0), "cache_read": u.get("cache_read_input_tokens", 0), "cache_write": u.get("cache_creation_input_tokens", 0),
+                              "output": u.get("output_tokens", 0), "usd": d.get("total_cost_usd", 0) or 0, "estimated": False}
+        except Exception as e:                                                   # noqa: BLE001 - an advisor must never crash the agent
+            return "", "%s: %s" % (type(e).__name__, str(e)[:160]), {}
+    text, err = ask(a, ((system + "\n\n") if system else "") + prompt, cfg, timeout, raw=True)
+    est = {"input": (len(prompt) + len(system or "")) // 4, "output": len(text) // 4, "cache_read": 0, "cache_write": 0, "usd": 0, "estimated": True}
+    return text, err, est
 
 
 def _ask_api(a, prompt, timeout, key):

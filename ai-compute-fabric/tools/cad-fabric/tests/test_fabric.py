@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline tests (no gateway). Run: python -m unittest discover -s tests"""
 import json, math, os, sys, time, unittest
+os.environ["CADFABRIC_LEGACY_AGENT"] = "1"        # these tests drive the web plumbing through the old CadQuery loop with a fake model; the scene agent is covered by test_scene3d.py
 from cadfabric.cq_backend import CadQueryBackend
 from cadfabric import agent, tasks, planners, config
 from cadfabric import verifier as V
@@ -46,6 +47,30 @@ class Backend(unittest.TestCase):
             self.assertFalse(r.ok); self.assertIn("timed out", r.error)
             self.assertAlmostEqual(b.measure().volume, math.pi * 400 * 50, places=3)
         finally: b.close()
+
+    def test_replay_that_cannot_finish_drops_the_bad_cells_and_says_so(self):
+        b = CadQueryBackend(timeout=3)
+        try:
+            b.execute(CYL)
+            b.history.append("while True:\n    pass")                      # a saved cell that can no longer be replayed in time
+            b.history.append("result = result.faces('>Z').workplane().hole(10)")
+            r = b.execute("result = result.faces('>Z').workplane().hole(10)")   # fine, then force a restart:
+            b.proc.kill(); b.proc.wait()
+            r = b.execute("x = 1")
+            self.assertFalse(r.ok); self.assertIn("could be restored in time", r.error); self.assertEqual(len(b.history), 1)
+            self.assertAlmostEqual(b.measure().volume, math.pi * 400 * 50, places=3)       # consistent state: only the first good cell is left
+        finally: b.close()
+
+    def test_replay_is_quiet_and_worker_skips_measure_for_it(self):
+        import subprocess, sys, json as _j
+        w = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "cadfabric", "worker.py")
+        pr = subprocess.Popen([sys.executable, w], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        try:
+            def ex(req):
+                pr.stdin.write(_j.dumps(req) + "\n"); pr.stdin.flush(); return _j.loads(pr.stdout.readline())
+            r = ex({"op": "exec", "code": CYL, "quiet": True}); self.assertTrue(r["ok"]); self.assertIsNone(r["measure"]); self.assertNotIn("delta", r)
+            r = ex({"op": "exec", "code": "pass"}); self.assertIsNotNone(r["measure"])
+        finally: pr.kill()
 
     def test_crash_restores_session(self):
         b = CadQueryBackend(timeout=20)
@@ -1178,6 +1203,14 @@ class LongRun(unittest.TestCase):
             return r, ev, llm
         finally: b.close()
 
+    def test_slow_step_is_flagged_to_the_model_and_the_page(self):
+        old = agent.SLOW_CELL_S; agent.SLOW_CELL_S = 0.0
+        try:
+            r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=2)
+        finally: agent.SLOW_CELL_S = old
+        self.assertTrue(any(k == "slow" for k, _ in ev))
+        self.assertTrue(any("SLOW STEP" in str(m.get("content")) for m in r["history"]))      # in the tool result the model reads next
+
     def test_same_code_repeated_is_nudged_then_stopped(self):
         r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40)
         self.assertEqual((bool(r["stuck"]), r["steps"], r["ended_by_limit"]), (True, 6, False)); self.assertIn("same code", r["stuck"])
@@ -1257,6 +1290,23 @@ class LongRun(unittest.TestCase):
         r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]] + [probe(i) for i in range(12)], consult=adv, request="make the box", max_steps=30)
         self.assertTrue(r["final"].startswith("(advisor review: complete)")); self.assertFalse(r["stuck"])
         self.assertTrue(any("did not change" in p for p in calls))
+
+    def test_connectivity_report_flags_interference_between_parts(self):
+        import subprocess, sys, json as _j
+        w = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "cadfabric", "worker.py")
+        pr = subprocess.Popen([sys.executable, w], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        try:
+            def ex(c):
+                pr.stdin.write(_j.dumps({"op": "exec", "code": c}) + "\n"); pr.stdin.flush(); return _j.loads(pr.stdout.readline())
+            box = "cq.Workplane('XY').box(10,10,10)"
+            r = ex("result = %s.add(%s.translate((5,0,0)))" % (box, box))              # half of each box is shared
+            self.assertEqual(r["measure"]["solids"], 2); self.assertIn("INTERFERENCE", r["measure"]["links"]); self.assertIn("50%", r["measure"]["links"])
+            r = ex("result = %s.add(%s.translate((10,0,0)))" % (box, box))             # faces touch only: fine
+            self.assertNotIn("INTERFERENCE", r["measure"]["links"])
+            r = ex("result = %s.add(%s.translate((9.95,0,0)))" % (box, box))           # 0.5% sliver: below the 1% threshold
+            self.assertNotIn("INTERFERENCE", r["measure"]["links"])
+        finally:
+            pr.kill()
 
     def test_connectivity_report_names_the_floating_part(self):
         import subprocess, sys, json as _j

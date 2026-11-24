@@ -4,6 +4,26 @@ Tác tử CAD không phụ thuộc phần mềm CAD cụ thể: một mô hình 
 
 Chạy headless trên Linux, Windows, macOS. Không cần SolidWorks, không cần GPU ở máy chạy CAD.
 
+## Chiến thuật dựng cảnh 3D (0.8.x, thay vòng lặp CadQuery cũ)
+
+Từ 0.8.0 mặc định cadfabric dựng **cảnh nhiều chi tiết, có chuyển động, trong Blender** (cần Blender 4.x; tìm theo biến `BLENDER`, khoá `"blender"` trong cấu hình, `PATH` rồi các chỗ cài thông dụng). Vòng lặp CadQuery từng bước cũ **không còn là đường chạy mặc định**; bật lại bằng `CADFABRIC_LEGACY_AGENT=1` (mã cũ vẫn nằm trong `agent.py`, chưa xoá). Đầu ra là `<tên>.blend` và thư mục `<tên>.scene/` (`plan.json`, `parts/*.py`) trong thư mục dự án; xuất STEP chính xác chưa có trong chiến thuật này.
+
+Phân vai (mục tiêu: dùng model mạnh ít nhất có thể mà không giảm chất lượng):
+
+| Vai | Ai | Làm gì |
+|---|---|---|
+| Cố vấn (director) | cố vấn chọn trên giao diện (Claude, Codex, hoặc Qwen) | lập kế hoạch **một lần** (chi tiết, khớp, vùng tiếp xúc cho phép), chỉ được gọi lại khi worker bế tắc, và duyệt **một lần** cuối đối chiếu với lời người dùng. Không thấy mã hay ảnh trong đường thường |
+| Worker | Qwen cục bộ | viết từng chi tiết bằng `bpy/bmesh`, tự sửa lỗi; chi tiết cùng loại có thể viết chung một yêu cầu (`group`) |
+| Cổng kiểm | mã, không dùng model | schema kế hoạch; `ast`/regex kiểm mã worker; dựng trong Blender; bộ kiểm độc lập (chuyển động cứng quanh trục đã khai, chi tiết quay đồng trục, va chạm giữa chi tiết không kề nhau, tỉ lệ đối tượng, chi tiết sai đơn vị) |
+
+**Kỹ năng (skill)**: kỹ năng đã cài **và được bạn duyệt** đều dùng được ở chế độ này. Cố vấn thấy danh mục (tên + mô tả) và có thể chọn tối đa 3 kỹ năng đưa cho Qwen (`"skills"` trong kế hoạch, nội dung giới hạn 14000 ký tự để không tràn ngữ cảnh); gõ `$tên-kỹ-năng` để ép dùng cho cả cố vấn lẫn Qwen. Có sẵn kỹ năng mẫu `bpy-bmesh-recipes` (vành/lốp, bo cạnh, vỏ loft, nan hoa, nghiêng; đã chạy thử trong Blender 4.2): nhập từ thư mục `skills` rồi duyệt.
+
+**Ảnh**: kéo thả tối đa 3 ảnh (png/jpg/gif/webp, mỗi ảnh dưới 1,4 MB) vào chat để cố vấn nhìn (chỉ cố vấn **Claude Code**; Qwen không nhận ảnh nên cố vấn phải ghi điều nhìn thấy vào mô tả từng chi tiết). Ở lượt duyệt cuối, cố vấn Claude còn nhận 3–4 ảnh dựng thử (iso, ngang, trên, và iso ở cuối chuyển động; mỗi chi tiết một màu) để bắt lỗi chi tiết thiếu/lơ lửng/sai tỉ lệ. Trên Windows, ảnh được lưu ra thư mục tạm cho cố vấn đọc bằng công cụ Read vì CLI báo lỗi với ảnh base64.
+
+Cùng một lỗi hai lần liên tiếp hoặc 4 lần thử thì chi tiết đó **kẹt** và được báo lên cố vấn (sửa bằng ghi chú cho worker, hoặc tự viết mã chi tiết). Lỗi của cặp chi tiết (va chạm) hay của khớp không bao giờ đưa cho worker. Nhắn tiếp ("làm bánh to hơn") sẽ nạp lại kế hoạch đã lưu và chỉ viết lại chi tiết bị đổi. Mỗi lượt báo chi phí thật: Claude CLI trả token và USD; cố vấn khác chỉ ước lượng.
+
+Đã đo (2 đề do chính chúng tôi viết: 12 chi tiết/2 khớp, 15 chi tiết/1 khớp; mỗi đề 2 lần, chấm bằng `oracle_check.py` theo chữ của đề): tỷ lệ đạt và chi phí xem `docs/PLAN-assembly-spec-hybrid-animation.md` (mục 1k) trong repo `poly-agent`. Chưa đo trên bộ đề đa miền, và chưa so với lối CadQuery cũ ở đề đơn chi tiết (lối cũ đã đo 68% trên Holdout đơn chi tiết). Nếu bạn chủ yếu cần một chi tiết CAD chính xác xuất STEP, hãy dùng `CADFABRIC_LEGACY_AGENT=1`.
+
 ## Ứng dụng chat (khuyên dùng)
 
 `cadfabric app` mở một ứng dụng chat trong trình duyệt (giao diện kiểu trợ lý lập trình): gõ mô tả bằng tiếng Việt, xem kế hoạch kiểm tra, từng bước code CadQuery (bấm để mở), thể tích đo thật sau mỗi bước, bản xem trước 3D, bảng số đo và nút tải STEP. Tin nhắn tiếp theo chỉnh sửa chính chi tiết đó; `/new` bắt đầu chi tiết mới, `/stop` dừng.
@@ -199,3 +219,23 @@ Mỗi cuộc trò chuyện tự lưu vào `<data dir>/history/<id>.json` (0600, 
 - Đính kèm tệp (`files` trong `/api/send`, nút 📎): nội dung vào cả lời nhắc của Qwen và của cố vấn. Đo thật (đề: đĩa Ø60 dày 8, lỗ Ø12, đọc từ tệp): planner `off` đúng 1/3 lần, `nothink` 3/3, Claude (haiku) 3/3, thể tích đúng 21714,69 mm³.
 - Cố vấn Claude/Codex có tuỳ chọn `web` (Claude: `--tools WebSearch,WebFetch`; Codex: `--search`). Đã đo Claude CLI tra được M8 theo bảng Optimas trong 18,6 s. Codex `--search` chưa chạy thử đến cùng (Codex trên máy Linux này báo model mặc định không hỗ trợ).
 - `cadfabric app` mở cửa sổ riêng bằng pywebview (WebView2 trên Windows); `--browser` để dùng trình duyệt. Đã xem tận mắt cửa sổ trên Windows 10 (.33) và nút Thoát đóng sạch tiến trình. Linux/macOS: cần cài thêm `pip install cadfabric[desktop]` và GTK/Qt; chưa thử.
+
+## 0.9: Blender nhiều chi tiết, skill theo chuẩn mở, số liệu đo
+
+**Chiến lược (0.8–0.9).** Cố vấn mạnh lập kế hoạch một lần và duyệt một lần; Qwen viết từng chi tiết; các cổng cứng kiểm tra (ast, dựng Blender, bộ kiểm tra cảnh, cổng hình học tâm/kích thước, bộ kiểm tra chuyển động). Qwen có thể xuất công thức JSON (thư viện `bxlib`: box, cylinder, ring, disc, beam, sphere, loft, spokes) để chương trình dựng tất định. Sửa lỗi có cổng hồi quy (điểm tăng thì hoàn tác). Cảnh dở dang vẫn được lưu. Mỗi chi tiết có `color` (#RRGGBB) và `finish` (matte, gloss, metal, rubber, emissive). Công tắc: `BX_RECIPES`, `BX_GUARD`, `BX_COLORS`, `BX_PLANCACHE` (0 để tắt).
+
+**Skill theo chuẩn Agent Skills** (agentskills.io; cùng định dạng với Claude Code và OpenAI Codex): thư mục `SKILL.md` có frontmatter `name`, `description` (tối đa 1024 ký tự) và tùy chọn `license`, `compatibility`, `metadata`, `disable-model-invocation`; `scripts/` không bao giờ được chạy; phải duyệt trước khi dùng.
+- Một kho dùng chung. Phân vai bằng `metadata: {audience: director|worker|both}` trong frontmatter (mặc định `both`); đổi nhanh trong tab Skill ("Dành cho").
+- Cố vấn thấy danh mục (tên và mô tả) của skill dành cho cố vấn và có thể chọn tối đa 3 skill cho Qwen. `$tên` gọi thẳng cho vai trò được phép. Qwen chỉ nhận skill dành cho Qwen; nếu dài hơn 14000 ký tự thì giữ các đoạn liên quan nhất tới chi tiết đang làm, theo thứ tự gốc, và nêu tiêu đề các đoạn bỏ.
+- Tự tìm trong `.agents/skills`, `.codex/skills`, `.claude/skills` (dự án và thư mục home); luôn vào ở trạng thái chờ duyệt. Xuất skill đã duyệt sang `~/.agents/skills` hoặc `~/.claude/skills` bằng nút "Xuất sang Claude/Codex".
+- Cảnh báo khi lệch chuẩn (tên khác thư mục, mô tả quá dài, SKILL.md quá 500 dòng).
+
+**Đo A/B** (cùng máy, Qwen cục bộ, cố vấn Claude; N=2–3 mỗi ô, chỉ mang tính chỉ báo): bài xe moto 42 chi tiết có màu, bản 0.9 so với 0.8.1: oracle 2/2 cả hai; coverage 1.0 so với 0.965; chi phí cố vấn 0.145 so với 0.466 USD; thời gian 183 so với 1100 giây; điểm giám khảo ảnh (mô hình, nhiễu) 4.0 so với 3.8 trên 10, tức độ đẹp chưa khác biệt rõ.
+
+**0.9.3 - chống lỗi hình học từ gốc, không mã hóa cứng theo từng lỗi.** (1) Cố vấn đưa hình học dạng công thức (`ops`, cùng định dạng `bxlib`) ngay trong kế hoạch cho chi tiết đơn giản: chương trình dựng tất định, không qua Qwen. (2) Mã của Qwen chạy qua lớp bảo vệ chung `bxguard`: sau MỌI lệnh `bmesh.ops` kiểm tra kích thước lưới (ngân sách `BX_PART_VERTS`, mặc định 150000, và hệ số tăng `BX_GROWTH`, mặc định 8), nên thao tác nào nổ ở vòng lặp nào cũng bị dừng đúng chỗ, không cần danh sách lệnh bị cấm; lỗi sai tham số được kèm chữ ký thật của lệnh lấy từ Blender. (3) Mỗi chi tiết mã thô được dựng thử riêng trong tiến trình Blender có giới hạn bộ nhớ (`BX_PART_GB`, mặc định 3; `BX_PROBE=0` để tắt) nên lỗi được gán đúng chi tiết; cả cảnh dựng với `BX_MEM_GB` (mặc định 10; chỉ Linux/macOS). Báo cáo cũ không còn bị nhầm là mới khi Blender sập.
+
+**0.9.5 - ít đỉnh mà vẫn đẹp.** Một cơ chế chung cho mọi chi tiết, ai viết cũng vậy: (1) chia đoạn thích ứng trong `bxlib` theo sai số dây cung (`BX_TESS_MM`, mặc định 0,4 mm): chốt nhỏ 16 đoạn, lốp lớn khoảng 56; bo cạnh chỉ ở cạnh thật sự gấp khúc, không bo các đường nối của mặt cong; (2) tối ưu không mất hình: gộp đỉnh trùng, hòa tan đỉnh nằm trên mặt phẳng; (3) giảm đỉnh có chặn sai số: giảm tới mức bề mặt còn trong `BX_LOD_MM` (mặc định 0,5 mm) so với bản gốc theo cả hai chiều, chỉ với lưới trên `BX_LOD_MIN_VERTS` (300) đỉnh; (4) tô bóng mịn có giữ cạnh sắc ở góc lớn hơn `BX_SHARP_DEG` (35 độ) nên ít đỉnh vẫn ra bề mặt sạch. `BX_OPTIMIZE=0` để tắt. Đo trên bài H1 vàng: 3788 xuống 2748 đỉnh (-27%) và oracle vẫn đạt; một lốp mã thô 1920 xuống 161 đỉnh (-92%).
+
+**0.9.6 - cổng không xuyên sàn.** Bộ kiểm tra chuyển động báo `ground_penetration` khi một chi tiết đang chạm sàn lúc nghỉ (z=0) bị chuyển động đẩy xuống dưới sàn hơn `BX_GROUND_TOL_MM` (mặc định 5 mm); lỗi này đi tới cố vấn để sửa khớp. Công tắc `BX_DIRECTOR_OPS=0` cho Qwen viết công thức thay vì cố vấn (cố vấn rẻ hơn, kém ổn định hơn). Đo hồi quy 0.9.5 (N=2 mỗi bài): H1 và M1 đều đạt oracle, độ phủ 0,95–1,0; chi phí cố vấn H1 0,31 USD (bản cũ 0,47), M1 0,24 USD (bản cũ 0,12), thời gian 125–155 giây.
+
+**0.9.7.** Hai op công thức mới: `tube` (ống tròn gấp khúc, mối nối mượt) và `panel` (tấm vỏ cong mỏng có độ dày, thay cho khối loft đặc). Bước tối ưu phẳng nay cũng chỉ được chấp nhận khi bề mặt còn trong `BX_LOD_MM` theo cả hai chiều (trước đó nó làm hỏng tấm mỏng).

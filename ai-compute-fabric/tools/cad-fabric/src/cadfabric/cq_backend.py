@@ -1,5 +1,5 @@
 """CadQuery backend: code-as-action in a persistent worker process, measured after every cell, undo by replaying the history."""
-import json, os, subprocess, sys, tempfile, threading
+import json, os, subprocess, sys, tempfile, threading, time
 from .backend import Backend, ExecResult, Measure
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -54,13 +54,40 @@ class CadQueryBackend(Backend):
         if line:
             return json.loads(line)
         why = "timed out after %d s" % self.timeout if t.is_alive() else "crashed or ran out of memory"
-        self._restart_with_history()
-        return {"ok": False, "error": "the CAD worker %s; the session was restored to the last good state" % why}
+        lost = self._restart_with_history()
+        tail = ("the session was restored to the last good state" if not lost else
+                "only the first %d successful step(s) could be restored in time, the last %d were dropped: re-run what is missing, and keep each step's boolean operations small and few" % (len(self.history), lost))
+        return {"ok": False, "error": "the CAD worker %s; %s" % (why, tail)}
+
+    def _replay_one(self, code, limit):
+        """Run one saved cell again, quietly (no measurement, no delta: only the state matters) and with a time limit. -> True when it finished."""
+        box = {}
+
+        def go():
+            self.proc.stdin.write(json.dumps({"op": "exec", "code": code, "quiet": True}) + "\n"); self.proc.stdin.flush()
+            return self.proc.stdout.readline()
+        t = threading.Thread(target=lambda: box.setdefault("line", _safe(go)), daemon=True)
+        t.start(); t.join(limit)
+        line = box.get("line")
+        return bool(line) and bool(json.loads(line).get("ok"))
 
     def _restart_with_history(self):
-        self._start()
-        for code in self.history:
-            self._rpc_plain({"op": "exec", "code": code})
+        """Start a fresh worker and replay the saved cells within a total time limit (3 x the cell limit, at least 300 s). A cell that cannot be replayed in time is
+        dropped together with everything after it: the state stays consistent and the caller is told how many cells were lost. -> number of cells lost."""
+        total, lost = max(3 * self.timeout, 300), 0
+        for _ in range(3):
+            self._start()
+            t0, done = time.monotonic(), 0
+            for code in self.history:
+                left = total - (time.monotonic() - t0)
+                if left <= 0 or not self._replay_one(code, min(left, self.timeout)):
+                    break
+                done += 1
+            else:
+                return lost
+            lost += len(self.history) - done
+            self.history = self.history[:done]
+        return lost
 
     def _rpc_plain(self, req):
         self.proc.stdin.write(json.dumps(req) + "\n"); self.proc.stdin.flush()

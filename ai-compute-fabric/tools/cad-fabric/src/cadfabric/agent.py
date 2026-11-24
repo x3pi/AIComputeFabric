@@ -7,6 +7,7 @@ from . import ledger as ledger_mod, consult as consult_mod
 from .backend import ExecResult
 
 MAX_STEPS = int(os.environ.get("CADFABRIC_MAX_STEPS", "14"))
+SLOW_CELL_S = float(os.environ.get("CADFABRIC_SLOW_CELL_S", "60"))   # a step slower than this is flagged to the model and to the page
 GATE_MAX = 2
 HARD_STEPS = int(os.environ.get("CADFABRIC_HARD_STEPS", "200"))   # the budget grows by EXTEND_BY while the part keeps changing, up to this
 EXTEND_BY = 10
@@ -210,13 +211,20 @@ def run(llm, backend, request, plan_mode="nothink", planner=None, consult=None, 
             if name == "execute_cadquery":
                 ev("phase", what="cad")
                 code_now = str(args.get("code", "")); sig_now = ledger_mod.code_sig(code_now)
+                cell_s = 0.0
                 if recent.count(sig_now) >= DUP_LIMIT:                  # the same code a third time inside the window: do not run it, say so (terminal-agent doom-loop rule)
                     res = ExecResult(ok=False, error="SKIPPED: this exact code already ran %d times in the last %d steps and did not give a new result. Change the approach (a different CadQuery call, other numbers, or a smaller step); "
                                      "use find_api('word') or doc(...) to look up names instead of guessing." % (DUP_LIMIT, DUP_WINDOW), measure=backend.measure())
                 else:
+                    t_cell = time.monotonic()
                     res = backend.execute(code_now)
+                    cell_s = time.monotonic() - t_cell
                 recent.append(sig_now); del recent[:-DUP_WINDOW]
                 text = ("OK" if res.ok else "ERROR: " + res.error) + ("\nprinted: " + res.output.strip() if res.output.strip() else "")
+                if cell_s >= SLOW_CELL_S:                                       # tell the model AND the user: a slow step usually means heavy booleans on curved solids
+                    text += ("\nSLOW STEP: this cell took %.0f s. Every later step replays or re-measures it, so keep the geometry cheap: fewer boolean union/cut/intersect operations, "
+                             "simple solids (extrude, revolve, box, cylinder) instead of sweeps and fillets on curved bodies, and keep parts as separate solids instead of fusing them." % cell_s)
+                    ev("slow", seconds=round(cell_s))
                 if res.measure:
                     text += "\nMEASURE: " + res.measure.text()
                     dt = "" if os.environ.get("CADFABRIC_NO_DELTA") == "1" else V.delta_text(res.delta)
