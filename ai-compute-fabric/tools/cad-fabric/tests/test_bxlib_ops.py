@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Real-Blender tests of the tube and panel recipe ops (skipped without Blender)."""
-import os, unittest
+import json, math, os, unittest
 from cadfabric import viewers
 from cadfabric import scene3d as S
 from cadfabric.blender import bxlib
@@ -31,6 +31,39 @@ class Build(unittest.TestCase):
         self.assertEqual(p["part_errors"], {})
         b = p["parts_bbox_mm"]["p"]; self.assertAlmostEqual(b[0][1], -120, delta=1); self.assertAlmostEqual(b[1][2], 930, delta=4)     # spans the sections
         self.assertEqual(p["totals"]["vertices"], 52)                                                                        # 26 surface vertices, doubled by the thickness
+
+
+class Shape(unittest.TestCase):
+    SEC = [{"x": 0, "y": 0, "z": 0, "w": 100, "h": 40}, {"x": 100, "y": 0, "z": 10, "w": 200, "h": 80, "round_top": 6, "round_bottom": 2}, {"x": 200, "y": 0, "z": 0, "w": 100, "h": 40}]
+
+    def test_smooth_passes_through_the_given_sections_and_adds_the_rest(self):
+        out = bxlib._smooth_sections(self.SEC, 3)
+        self.assertEqual(len(out), (len(self.SEC) - 1) * 4 + 1)
+        for k, s in enumerate(self.SEC):
+            self.assertAlmostEqual(out[k * 4]["x"], s["x"], places=6); self.assertAlmostEqual(out[k * 4]["w"], s["w"], places=6)
+        self.assertEqual(bxlib._smooth_sections(self.SEC, 0), self.SEC)
+
+    def test_top_and_bottom_halves_can_differ(self):
+        s = self.SEC[1]
+        yt, zt = bxlib._ring_pt(s, math.pi / 4, 2.5); yb, zb = bxlib._ring_pt(s, -math.pi / 4, 2.5)
+        self.assertGreater(abs(yt), abs(yb))                                                       # flatter top reaches further out at 45 degrees
+        self.assertAlmostEqual(bxlib._ring_pt(self.SEC[0], math.pi / 4, 2.5)[0], bxlib._ring_pt(self.SEC[0], -math.pi / 4, 2.5)[0])      # no per-half value: symmetric as before
+
+    def test_validation_of_the_new_keys(self):
+        ok = {"ops": [{"op": "loft", "sections": self.SEC, "smooth": 2}]}
+        self.assertEqual(bxlib.validate(ok), [])
+        self.assertIn("smooth", " ".join(bxlib.validate({"ops": [{"op": "loft", "sections": self.SEC, "smooth": 20}]})))
+        bad = [dict(x) for x in self.SEC]; bad[1]["round_top"] = 0.2
+        self.assertIn("round_top", " ".join(bxlib.validate({"ops": [{"op": "loft", "sections": bad}]})))
+        self.assertIn("round_top", " ".join(bxlib.validate({"ops": [{"op": "panel", "sections": bad}]})))
+
+
+@unittest.skipUnless(BL and os.path.isfile(BL), "Blender not installed")
+class ShapeBuild(unittest.TestCase):
+    def test_smooth_loft_builds_and_keeps_its_extent(self):
+        r = json.dumps({"op": "loft", "sections": Shape.SEC, "smooth": 3, "n": 20})
+        t = run({"b": r}, []); self.assertEqual(t["part_errors"], {})
+        b = t["parts_bbox_mm"]["b"]; self.assertAlmostEqual(b[0][0], 0, delta=1); self.assertAlmostEqual(b[1][0], 200, delta=1)
 
 
 if __name__ == "__main__":

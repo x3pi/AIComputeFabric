@@ -8,7 +8,10 @@ recipe = {"ops": [ {"op": "box", "center": [x,y,z], "size": [dx,dy,dz], "rot": {
  ring     center, axis ("x"|"y"|"z" or a vector), r_out, r_in, width, seg, bevel
  beam     points (polyline, >=2), w, h (rectangular section), optional up (default [0,0,1]), bevel
  sphere   center, r (or radii [rx,ry,rz]), seg
- loft     sections [{"x": station along X, "y": centre y, "z": centre z, "w": width (Y), "h": height (Z)}, ...] (>=2), optional round (2=ellipse, 4=squarish), n
+ loft     sections [{"x": station along X, "y": centre y, "z": centre z, "w": width (Y), "h": height (Z)}, ...] (>=2), optional round (2=ellipse, 4=squarish), n.
+          Shape controls: a section may carry its own round / round_top / round_bottom (exponent of the upper / lower half: big = flat and boxy, 2 = round, 1 = pointed),
+          so one body can be flat on top and round underneath; smooth: k (0-8) inserts k interpolated sections between each pair (Catmull-Rom), so a few sections give a
+          continuous curved body instead of straight facets
  spokes   center, axis, n, r_in, r_out, w (tangential width), t (thickness along the axis)
  disc     like cylinder but given as center, axis, r, thickness
  tube     points (polyline, >=2), r: a bent ROUND tube (fork leg, handlebar, exhaust, frame spar, brake line) with smooth joints
@@ -59,6 +62,19 @@ def _axis(a):
     return tuple(a) if _vec(a) and any(a) else None
 
 
+def _bad_sections(o, w):
+    """extra checks for loft / panel sections: optional round values and smooth"""
+    e = []
+    for x in o.get("sections") or []:
+        if isinstance(x, dict):
+            for q in ("round", "round_top", "round_bottom"):
+                if q in x and not (_num(x[q]) and 1 <= x[q] <= 12): e.append(w + "section %s must be a number from 1 to 12" % q); break
+    if "smooth" in o and not (isinstance(o["smooth"], int) and not isinstance(o["smooth"], bool) and 0 <= o["smooth"] <= 8):
+        e.append(w + "smooth must be an integer 0-8")
+    return e
+
+
+
 def validate(recipe):
     """-> list of readable problems (empty = fine)."""
     e = []
@@ -100,6 +116,7 @@ def validate(recipe):
                 e.append(w + "sections need 2 or more of {x,y,z,w>0,h>0}")
             elif [x["x"] for x in s] != sorted(x["x"] for x in s) or len({x["x"] for x in s}) != len(s):
                 e.append(w + "section x values must be strictly increasing")
+            e += _bad_sections(o, w)
         elif t == "tube":
             pts = o.get("points")
             if not (isinstance(pts, list) and len(pts) >= 2 and all(_vec(p) for p in pts)) or not _num(o.get("r"), 0):
@@ -116,6 +133,7 @@ def validate(recipe):
                 e.append(w + "arc must be [deg0, deg1] with 0 < deg1-deg0 <= 360")
             if "thick" in o and not _num(o["thick"], 0):
                 e.append(w + "thick must be a number > 0")
+            e += _bad_sections(o, w)
         elif t == "spokes":
             if not _vec(o.get("center")) or not _axis(o.get("axis")) or not isinstance(o.get("n"), int) or not 1 <= o["n"] <= 48 or not all(_num(o.get(k), 0) for k in ("r_in", "r_out", "w", "t")):
                 e.append(w + "needs center, axis, n (1..48), r_in, r_out, w, t > 0")
@@ -266,15 +284,44 @@ def _sphere(bm, bmesh, o):
     bmesh.ops.translate(bm, vec=[c * M for c in o["center"]], verts=bm.verts)
 
 
+SECTION_KEYS = ("x", "y", "z", "w", "h", "round", "round_top", "round_bottom")
+
+
+def _smooth_sections(secs, k):
+    """k extra sections between every pair, Catmull-Rom through the given ones (end points repeated), every numeric key interpolated."""
+    k = int(k)
+    if k <= 0 or len(secs) < 2:
+        return secs
+    keys = [q for q in SECTION_KEYS if any(q in x for x in secs)]
+    full = [{q: x.get(q, x.get("round", 2.5) if q.startswith("round") else x[q]) for q in keys} for x in secs]
+    out = []
+    for i in range(len(full) - 1):
+        p0, p1, p2, p3 = full[max(i - 1, 0)], full[i], full[i + 1], full[min(i + 2, len(full) - 1)]
+        for j in range(k + 1):
+            t = j / (k + 1); t2, t3 = t * t, t * t * t
+            out.append({q: 0.5 * ((2 * p1[q]) + (-p0[q] + p2[q]) * t + (2 * p0[q] - 5 * p1[q] + 4 * p2[q] - p3[q]) * t2 + (-p0[q] + 3 * p1[q] - 3 * p2[q] + p3[q]) * t3) for q in keys})
+    out.append(dict(full[-1]))
+    for x in out:
+        x["w"] = max(x["w"], 1e-3); x["h"] = max(x["h"], 1e-3)
+        for q in ("round", "round_top", "round_bottom"):
+            if q in x: x[q] = max(x[q], 1.0)
+    return out
+
+
+def _ring_pt(s, a, p0):
+    """offset (y, z) in mm of the section outline at angle a; the upper and lower halves may have their own exponent"""
+    c, sn = math.cos(a), math.sin(a)
+    p = float(s.get("round_top" if sn >= 0 else "round_bottom", s.get("round", p0)))
+    return (s["w"] / 2) * math.copysign(abs(c) ** (2 / p), c), (s["h"] / 2) * math.copysign(abs(sn) ** (2 / p), sn)
+
+
 def _loft(bm, bmesh, o):
     n, p = int(o.get("n", 16)), float(o.get("round", 2.5))
     rings = []
-    for s in o["sections"]:
+    for s in _smooth_sections(o["sections"], o.get("smooth", 0)):
         ring = []
         for k in range(n):
-            a = 2 * math.pi * k / n; c, sn = math.cos(a), math.sin(a)
-            y = (s["w"] / 2) * math.copysign(abs(c) ** (2 / p), c)             # superellipse: p=2 ellipse, larger = squarer
-            z = (s["h"] / 2) * math.copysign(abs(sn) ** (2 / p), sn)
+            y, z = _ring_pt(s, 2 * math.pi * k / n, p)
             ring.append(bm.verts.new(((s["x"]) * M, (s["y"] + y) * M, (s["z"] + z) * M)))
         rings.append(ring)
     for a, b in zip(rings, rings[1:]):
@@ -310,11 +357,10 @@ def _panel(bm, bmesh, o):
     p = float(o.get("round", 2.5)); n = max(6, int(o.get("n", 12)))
     cols = n if full else n + 1
     rows = []
-    for s in o["sections"]:
+    for s in _smooth_sections(o["sections"], o.get("smooth", 0)):
         row = []
         for k in range(cols):
-            a = a0 + (a1 - a0) * k / n; c, sn = math.cos(a), math.sin(a)
-            y = (s["w"] / 2) * math.copysign(abs(c) ** (2 / p), c); z = (s["h"] / 2) * math.copysign(abs(sn) ** (2 / p), sn)
+            y, z = _ring_pt(s, a0 + (a1 - a0) * k / n, p)
             row.append(bm.verts.new((s["x"] * M, (s["y"] + y) * M, (s["z"] + z) * M)))
         rows.append(row)
     for ra, rb in zip(rows, rows[1:]):

@@ -38,7 +38,7 @@ RECIPE_OPS = """{"ops":[ {"op":"box","center":[x,y,z],"size":[dx,dy,dz],"rot":{"
          {"op":"disc","center":[x,y,z],"axis":"x","r":40,"thickness":10},
          {"op":"beam","points":[[x,y,z],[x,y,z],[x,y,z]],"w":50,"h":40,"bevel":3},        (bent bar / spar)
          {"op":"sphere","center":[x,y,z],"r":14},   {"op":"sphere","center":[x,y,z],"radii":[30,20,10]},
-         {"op":"loft","sections":[{"x":0,"y":0,"z":800,"w":100,"h":60},{"x":300,"y":0,"z":860,"w":240,"h":140}],"round":3},   (streamlined shell along X)
+         {"op":"loft","sections":[{"x":0,"y":0,"z":800,"w":100,"h":60},{"x":300,"y":0,"z":860,"w":240,"h":140}],"round":3},   (streamlined shell along X; a section may add "round_top"/"round_bottom" (2 round, 6 flat and boxy) so a seat is flat on top and curved below; "smooth":3 adds interpolated sections so a few stations give a continuous curved body)
          {"op":"spokes","center":[x,y,z],"axis":"y","n":5,"r_in":45,"r_out":214,"w":24,"t":14},
          {"op":"tube","points":[[x,y,z],[x,y,z],[x,y,z]],"r":12},                           (bent ROUND tube with smooth joints: fork leg, handlebar, exhaust, spar)
          {"op":"panel","sections":[{"x":0,"y":0,"z":800,"w":100,"h":60},{"x":300,"y":0,"z":860,"w":240,"h":140}],"arc":[0,180],"thick":3} ]}   (thin curved SHEET: fairing, fender, side panel; arc [0,180] = upper half, [180,360] = lower half)"""
