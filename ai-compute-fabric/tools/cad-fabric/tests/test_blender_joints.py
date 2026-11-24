@@ -75,6 +75,13 @@ class Floating(unittest.TestCase):
     def test_a_touching_part_does_not(self):
         self.assertEqual(self.floating(self.TOUCH), [])
 
+    def test_a_wide_flat_part_close_under_a_narrow_one_is_supported(self):
+        """a 300x120 box whose top face lies 5 mm below a 60 mm wide bar: its corners are 30 mm from the bar, but the surfaces are only 5 mm apart"""
+        parts = {"post": '{"op":"box","center":[190,0,155],"size":[20,20,310]}', "bar": '{"op":"box","center":[470,0,330],"size":[560,60,50]}',
+                 "pack": '{"op":"box","center":[480,0,250],"size":[300,120,100]}'}
+        d = run(parts, [])
+        self.assertEqual([i["part"] for i in d["issues"] if i["kind"] == "floating_part"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

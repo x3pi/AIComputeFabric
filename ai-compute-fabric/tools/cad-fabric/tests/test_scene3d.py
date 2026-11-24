@@ -84,6 +84,21 @@ class Loop(unittest.TestCase):
         self.assertIn("plan", events); self.assertTrue(r["scene"].endswith("scene.blend")); self.assertIn("đạt", r["final"])
         self.assertIn("FINAL REVIEW", self.dprompts[1])                                    # the director saw one review before finishing
 
+    def test_patch_plan_changes_one_part_without_resending_the_plan(self):
+        patch = json.dumps({"action": "patch_plan", "parts": [{"id": "wheel", "spec": "disc r=45 at z=40"}], "notes": {"base": "keep it flat"}})
+        dr, wk = self.models([json.dumps(PLAN), patch, '{"action":"done"}', '{"action":"done"}'], lambda u: good("base" if "Part id: base" in u else "wheel"))
+        r = self.go(dr, wk)
+        self.assertTrue(r["ok"]); self.assertEqual(r["usage"]["director"]["calls"], 2)                  # plan, then the patch answers the one review and the green gates end the run
+        with open(self.d + "/plan.json") as f: saved = json.load(f)
+        self.assertEqual(next(p for p in saved["parts"] if p["id"] == "wheel")["spec"], "disc r=45 at z=40")
+        self.assertEqual(len(saved["parts"]), len(PLAN["parts"]))
+
+    def test_a_rejected_patch_changes_nothing(self):
+        dr, wk = self.models([json.dumps(PLAN), json.dumps({"action": "patch_plan", "parts": [{"id": "nope"}]}), '{"action":"done"}', '{"action":"done"}'],
+                             lambda u: good("base" if "Part id: base" in u else "wheel"))
+        self.go(dr, wk)
+        self.assertTrue(any("PATCH REJECTED" in p for p in self.dprompts))
+
     def test_bad_plan_is_rejected_without_building(self):
         dr, wk = self.models(['{"action":"plan","parts":[]}', json.dumps(PLAN), '{"action":"done"}', '{"action":"done"}'], lambda u: good("base" if "Part id: base" in u else "wheel"))
         r = self.go(dr, wk)
@@ -513,6 +528,28 @@ class RootCause(unittest.TestCase):
             self.assertIsNone(sc.probe("a"))                  # recipes are safe by construction and are not probed
         finally:
             os.environ["BX_PROBE"] = "0"
+
+
+class PatchPlan(unittest.TestCase):
+    PLAN = {"parts": [{"id": "a", "spec": "s", "center_mm": [0, 0, 0], "size_mm": [1, 1, 1]}, {"id": "b", "spec": "s", "center_mm": [5, 0, 0], "size_mm": [1, 1, 1]}],
+            "joints": [{"name": "j1", "parent": "a", "children": ["b"], "origin_mm": [0, 0, 0], "axis": [0, 0, 1]}], "allowed_contacts": [["a", "b"]]}
+
+    def test_only_what_is_named_changes(self):
+        new, errs = S.apply_patch(self.PLAN, {"parts": [{"id": "b", "center_mm": [9, 0, 0]}], "allowed_contacts_add": [["b", "c"]], "add_parts": [{"id": "c", "spec": "s"}]})
+        self.assertEqual(errs, [])
+        self.assertEqual({p["id"]: p["center_mm"] for p in new["parts"] if "center_mm" in p}, {"a": [0, 0, 0], "b": [9, 0, 0]})
+        self.assertEqual(new["allowed_contacts"], [["a", "b"], ["b", "c"]])
+        self.assertEqual(self.PLAN["parts"][1]["center_mm"], [5, 0, 0], "the original plan must not be modified")
+
+    def test_removing_a_part_drops_its_contacts_and_unknown_ids_are_errors(self):
+        new, errs = S.apply_patch(self.PLAN, {"remove_parts": ["b"], "remove_joints": ["j1"]})
+        self.assertEqual((errs, [p["id"] for p in new["parts"]], new["allowed_contacts"], new["joints"]), ([], ["a"], [], []))
+        _, errs = S.apply_patch(self.PLAN, {"parts": [{"id": "zz"}], "add_parts": [{"id": "a"}]})
+        self.assertEqual(len(errs), 2)
+
+    def test_one_review_by_default(self):
+        self.assertEqual(S.MAX_REVIEWS, 1)
+        self.assertIn("patch_plan", S.SYSTEM)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,28 @@ SAMPLES = 300
 
 
 def _tree(o):
-    me = o.data; bm = bmesh.new(); bm.from_mesh(me); bm.transform(o.matrix_world); t = BVHTree.FromBMesh(bm); pts = [v.co.copy() for v in bm.verts]; bm.free(); return t, pts
+    """BVH of the world-space surface plus surface sample points (vertices, edge midpoints, face centres) and the axis-aligned box. A box has only 8 corner vertices, so
+    vertices alone miss the case of a big flat face lying 5 mm above a thin part."""
+    me = o.data; bm = bmesh.new(); bm.from_mesh(me); bm.transform(o.matrix_world); t = BVHTree.FromBMesh(bm)
+    pts = [v.co.copy() for v in bm.verts] + [(e.verts[0].co + e.verts[1].co) / 2 for e in bm.edges] + [f.calc_center_median() for f in bm.faces]
+    lo = [min(p[i] for p in pts) for i in range(3)]; hi = [max(p[i] for p in pts) for i in range(3)]
+    bm.free(); return t, pts, (lo, hi)
+
+
+def _box_gap(a, b):
+    """distance between two axis-aligned boxes (0 when they overlap): a lower bound of the surface distance, used to skip parts that are far apart"""
+    d2 = 0.0
+    for i in range(3):
+        g = max(a[0][i] - b[1][i], b[0][i] - a[1][i], 0.0); d2 += g * g
+    return d2 ** 0.5
+
+
+def _near(pts, tree, best):
+    for p in pts:
+        loc = tree.find_nearest(p)
+        if loc and loc[3] is not None and loc[3] < best:
+            best = loc[3]
+    return best
 
 
 def floating(free=()):
@@ -19,17 +40,18 @@ def floating(free=()):
     trees = {o.name: _tree(o) for o in allm}
     tol = GAP_MM * 0.001; out = []
     for o in objs:
-        t, pts = trees[o.name]
+        t, pts, box = trees[o.name]
         if min(p.z for p in pts) <= tol:                       # stands on the floor
             continue
         step = max(1, len(pts) // SAMPLES); best = 1e9
         for other in allm:
-            if other.name == o.name: continue
-            tt, tp = trees[other.name]
-            for p in pts[::step]:
-                loc = tt.find_nearest(p)
-                if loc and loc[3] is not None and loc[3] < best:
-                    best = loc[3]
+            if other.name == o.name:
+                continue
+            tt, tp, tbox = trees[other.name]
+            if _box_gap(box, tbox) >= best:
+                continue
+            best = _near(pts[::step], tt, best)                                    # this part's surface to the other part
+            best = _near(tp[::max(1, len(tp) // SAMPLES)], t, best)                # and the other part's surface to this one
             if best <= tol:
                 break
         if best > tol:

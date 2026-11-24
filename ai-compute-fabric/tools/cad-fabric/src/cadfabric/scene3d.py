@@ -43,7 +43,10 @@ RECIPE_OPS = """{"ops":[ {"op":"box","center":[x,y,z],"size":[dx,dy,dz],"rot":{"
          {"op":"tube","points":[[x,y,z],[x,y,z],[x,y,z]],"r":12},                           (bent ROUND tube with smooth joints: fork leg, handlebar, exhaust, spar)
          {"op":"panel","sections":[{"x":0,"y":0,"z":800,"w":100,"h":60},{"x":300,"y":0,"z":860,"w":240,"h":140}],"arc":[0,180],"thick":3} ]}   (thin curved SHEET: fairing, fender, side panel; arc [0,180] = upper half, [180,360] = lower half)"""
 
-DIRECTOR_OPS = """GEOMETRY BY RECIPE (preferred, deterministic, no worker needed): for every part made of simple shapes - wheels, tires, rims, spokes, hubs, discs, axles, tubes, beams, brackets, boxes, lamps, lofted body shells - put the geometry yourself in the plan as "ops":[...] on that part (mm, WORLD coordinates, same format as below; the part's center_mm/size_mm then follow from it). The runner builds it exactly, with nothing to get wrong in code. Omit "ops" only for genuinely free-form shapes; the worker then writes code for them.
+DIRECTOR_OPS = """GEOMETRY BY RECIPE, in tiers (every token you write costs; a local worker is free):
+ - Plain parts (wheels, discs, rings, axles, tubes, beams, brackets, bolts, simple boxes, lamps): give a precise spec (shape, axis direction, hollow or solid, dimensions) plus center_mm and size_mm, and LEAVE OUT "ops". The worker builds them from the tested recipes below and the runner checks the bounding box.
+ - Parts whose look depends on your design judgement (lofted or panelled body shells, seats, tanks, tails, fairings, fenders, bent tube runs): write the "ops":[...] yourself in the plan (mm, WORLD coordinates, same format as below). The runner builds it exactly.
+ - Only a shape neither tier can express is left for free code.
 Recipe format:
 """ + RECIPE_OPS + "\n"
 
@@ -54,6 +57,8 @@ Reply with ONE JSON object, no prose. Actions:
  {"action":"plan","parts":[{"id":"p1","spec":"what it is, size mm, where (world mm, Z up)","center_mm":[x,y,z],"size_mm":[dx,dy,dz],"ops":[recipe ops, optional but preferred for simple shapes],"free":true (only for a part that is meant to hang free),"mirror_of":"id" (+"plane":"y","offset_mm":0: reflected copy of another part's ops, so state a symmetric pair ONCE),"array":{"count":n,"step":[dx,dy,dz]} (n copies p_1..p_n, for rows of bolts, keys, fins),"color":"#RRGGBB","finish":"matte|gloss|metal|rubber|emissive","group":"optional batching hint only"}],
   "joints":[{"name":"j1","parent":"p1"|null,"children":["p2"],"origin_mm":[x,y,z],"axis":[x,y,z],"coaxial":["p2"],"span_rad":6.283}],
   "allowed_contacts":[["p1","p2"]]}
+ {"action":"patch_plan","parts":[{"id":"p1","center_mm":[x,y,z],"ops":[...]}],"add_parts":[full part],"remove_parts":["p9"],"joints":[full joint, replaces the one with that name],"remove_joints":["j2"],"allowed_contacts_add":[["p1","p2"]],"allowed_contacts_remove":[["p3","p4"]],"notes":{"p5":"guidance for the worker"}}
+   (a CHANGE to the plan: send only what changes, never the whole plan again; every key is optional; "parts" entries carry only the fields to change; "notes" makes the worker rewrite those parts)
  {"action":"write_part","id":"p1","note":"guidance for the worker"}   (worker retries with your note)
  {"action":"patch_part","id":"p1","code":"<python defining build(bpy, bmesh)>"}   (you write it yourself; use when the worker is stuck)
  {"action":"done"}
@@ -151,6 +156,43 @@ def plan_view(plan):
             q["ops"] = "<%d recipe ops, built; send ops only to change this part>" % len(q["ops"])
         out.append(q)
     return dict(plan, parts=out)
+
+
+def apply_patch(plan, act):
+    """Apply a `patch_plan` action to the current (already expanded) plan. -> (new plan, errors). Only what is named changes; nothing else is resent or rebuilt."""
+    import copy
+    errs, new = [], copy.deepcopy(plan)
+    parts = {p["id"]: p for p in new["parts"]}
+    for q in act.get("parts") or []:
+        if not isinstance(q, dict) or q.get("id") not in parts:
+            errs.append("patch_plan: unknown part %r (use add_parts for a new one)" % (q.get("id") if isinstance(q, dict) else q)); continue
+        for k, v in q.items():
+            if k != "id":
+                parts[q["id"]][k] = v
+    for pid in act.get("remove_parts") or []:
+        if pid not in parts:
+            errs.append("patch_plan: cannot remove unknown part %r" % pid)
+        parts.pop(pid, None)
+    for q in act.get("add_parts") or []:
+        if not isinstance(q, dict) or not q.get("id") or q["id"] in parts:
+            errs.append("patch_plan: add_parts needs a new unique id (got %r)" % (q.get("id") if isinstance(q, dict) else q)); continue
+        parts[q["id"]] = q
+    new["parts"] = list(parts.values())
+    gone = set(act.get("remove_parts") or [])
+    joints = {j.get("name"): j for j in new.get("joints") or []}
+    for j in act.get("joints") or []:
+        if not isinstance(j, dict) or not j.get("name"):
+            errs.append("patch_plan: a joint needs a name"); continue
+        joints[j["name"]] = j
+    for n in act.get("remove_joints") or []:
+        joints.pop(n, None)
+    new["joints"] = list(joints.values())
+    pair = lambda x: tuple(sorted(x)) if isinstance(x, (list, tuple)) and len(x) == 2 else None
+    contacts = {pair(c) for c in new.get("allowed_contacts") or [] if pair(c) and not (set(c) & gone)}
+    contacts |= {pair(c) for c in act.get("allowed_contacts_add") or [] if pair(c)}
+    contacts -= {pair(c) for c in act.get("allowed_contacts_remove") or []}
+    new["allowed_contacts"] = sorted(list(c) for c in contacts)
+    return new, errs
 
 
 def expand_plan(plan):
@@ -282,6 +324,9 @@ def sig(err):
 # ---------------------------------------------------------------- the run
 class Stopped(Exception):
     pass
+
+
+MAX_REVIEWS = int(os.environ.get("BX_REVIEWS", "1"))        # final looks at the result; each costs a director call with pictures. One: the gates judge the rest
 
 
 class Scene:
@@ -634,7 +679,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
         except (OSError, ValueError):
             pass
         msg = ("CURRENT SCENE (already built)\nPLAN: " + json.dumps(plan_view(plan)) + "\n" + sc.review_text(rep0) +
-               "\nThe user now asks: " + request + "\nReply with the action(s) needed (plan to change the structure, write_part/patch_part to change a part), or done if nothing changes.")
+               "\nThe user now asks: " + request + "\nReply with the action(s) needed (plan for a new structure, patch_plan to change several things at once, write_part/patch_part for one part), or done if nothing changes.")
     else:
         ev("phase", what="plan", mode="director")
         msg = "TASK: " + request + ("\n%d picture(s) are attached: study them and write what you see (shapes, proportions, style) into the part specs, because the worker cannot see them." % len(sc.images) if sc.images else "") + "\nStart with the plan action."
@@ -685,6 +730,20 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                         pass
                 ev("plan", mode="Blender", ok=True, describe=sc.describe(), milestones=len(plan["parts"]), pitfalls=[], note="")
                 ev("phase", what="parts")
+            elif a == "patch_plan" and plan:
+                newp, perrs = apply_patch(plan, act)
+                newp, xerrs = expand_plan(newp)
+                errs = perrs + xerrs + validate_plan(newp)
+                if errs:
+                    msg = "TASK: " + task + "\nPATCH REJECTED by static checks (nothing was changed):\n- " + "\n- ".join(errs) + "\nSend a corrected patch_plan."
+                    continue
+                sc.set_plan(newp)
+                plan = newp
+                for pid, note in (act.get("notes") or {}).items():
+                    if pid in {p["id"] for p in plan["parts"]}:
+                        sc.notes[pid] = str(note); sc.stuck.pop(pid, None); sc.sigs[pid] = []; sc.tries[pid] = 0; sc.err[pid] = "the director asked for a rewrite"
+                ev("plan", mode="Blender", ok=True, describe=sc.describe(), milestones=len(plan["parts"]), pitfalls=[], note="patch")
+                ev("phase", what="parts")
             elif a == "write_part" and plan and act.get("id") in {p["id"] for p in plan["parts"]}:
                 pid = act["id"]
                 sc.notes[pid] = act.get("note", "")
@@ -717,7 +776,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
             rep, others = sc.work()
             if sc.stuck or others:
                 msg = "TASK: " + task + "\nPLAN: " + json.dumps(plan_view(plan)) + "\nWORKER REPORT (the worker could not resolve these)\n" + sc.worker_report(others)
-            elif reviewed < 2:
+            elif reviewed < MAX_REVIEWS:
                 reviewed += 1
                 ev("phase", what="review")
                 msg = "TASK: " + task + "\nPLAN: " + json.dumps(plan_view(plan)) + "\n" + sc.review_text(rep)
@@ -725,7 +784,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 if views:                                         # one look at the result: iso, side, top at rest, and iso at the end of the motion
                     sc.images = views
                     msg += ("\nPICTURES attached (Workbench renders, each part in its own colour): iso, side, top at rest, and iso at the end of the motion. Besides the numbers, judge the look: "
-                            "missing or floating parts, wrong proportions, parts in the wrong place, motion that looks wrong. Fix real defects with write_part or patch_part; do not ask for cosmetic changes.")
+                            "missing or floating parts, wrong proportions, parts in the wrong place, motion that looks wrong. Fix real defects with patch_plan (several at once), write_part or patch_part; do not ask for cosmetic changes.")
             else:
                 ok = bool(rep.get("ok"))
                 break
