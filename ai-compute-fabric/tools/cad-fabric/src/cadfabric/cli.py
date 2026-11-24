@@ -2,11 +2,9 @@
   cadfabric init            write a starter config (never writes a key)
   cadfabric configure       set url/model/planner (and --key-stdin to store a key) without opening the UI; used by the installers
   cadfabric doctor          check CadQuery, the worker, the gateway and the chosen planner
-  cadfabric run "request"   build a part from a request; --step out.step exports it; --planner overrides the config
+  cadfabric run "request"   build a multi-part Blender scene from a request (director + local worker); --planner overrides the config
   cadfabric app             the desktop app: starts the web chat on a free local port and opens your browser (reuses a running one)
-  cadfabric serve           web chat on http://127.0.0.1:8765 (prints a one-time access URL); --open also opens the browser
-  cadfabric bench           run the benchmark tasks (--modes off,codex --reps 3 --tasks a,b --out file.jsonl)
-  cadfabric tasks           list the benchmark tasks and their kernel-computed answers"""
+  cadfabric serve           web chat on http://127.0.0.1:8765 (prints a one-time access URL); --open also opens the browser"""
 import sys, argparse, json, os, time
 from . import __version__, advisors, config
 
@@ -121,31 +119,7 @@ def cmd_run_scene(a):
 
 
 def cmd_run(a):
-    if not os.environ.get("CADFABRIC_LEGACY_AGENT"):
-        return cmd_run_scene(a)
-    from .cq_backend import CadQueryBackend
-    from .llm import LLM
-    from . import agent
-    cfg = config.load()
-    mode = a.planner or cfg["planner"]
-    if mode not in advisors.names(cfg):
-        print("unknown planner %r; choose one of: %s" % (mode, ", ".join(advisors.names(cfg)))); return 2
-    be, llm = CadQueryBackend(), LLM(cfg)
-    try:
-        r = agent.run(llm, be, " ".join(a.request), plan_mode=mode, log=print, cfg=cfg)
-        print("\n" + (r["final"] or "(no final answer: step limit reached)"))
-        m = r["measure"]
-        if m:
-            print("\nMEASURED: volume %.4f mm3, bbox %s, solids %d, faces %d, valid %s" % (m["volume"], [round(x, 3) for x in m["bbox_size"]], m["solids"], m["faces"], m["valid"]))
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        out = a.step or (os.path.join(config.data_dir(cfg), "part-%s.step" % stamp) if m else None)
-        if out and m:
-            be.export_step(out); print("STEP: %s" % out)
-        with open(os.path.join(config.data_dir(cfg), "run-%s.json" % stamp), "w", encoding="utf-8") as f:
-            json.dump({k: v for k, v in r.items() if k != "trace"} | {"trace": r["trace"], "planner": mode}, f, ensure_ascii=False, indent=1)
-        return 0 if m and not r["ended_by_limit"] else 2
-    finally:
-        be.close()
+    return cmd_run_scene(a)
 
 
 def cmd_serve(a):
@@ -296,29 +270,6 @@ def cmd_app(a):
     return 0
 
 
-def cmd_tasks(a):
-    from . import tasks
-    from .cq_backend import CadQueryBackend
-    be = CadQueryBackend()
-    try:
-        for t in tasks.TASKS:
-            print("%-18s %12.4f mm3  tol %.2g%%  %s" % (t, tasks.exact(be, t), 100 * tasks.TASKS[t]["tol"], tasks.TASKS[t]["text"][:70]))
-    finally:
-        be.close()
-    return 0
-
-
-def cmd_bench(a):
-    from .llm import LLM
-    from . import bench, tasks
-    cfg = config.load()
-    ids = a.tasks.split(",") if a.tasks else list(tasks.TASKS)
-    out = a.out or os.path.join(config.data_dir(cfg), "bench-%s.jsonl" % time.strftime("%Y%m%d-%H%M%S"))
-    bench.run_bench(LLM(cfg), a.modes.split(","), a.reps, ids, out, cfg=cfg)
-    print("results: " + out)
-    return 0
-
-
 def window_icon(osname=None):
     """Path of the window icon for this platform: WinForms needs a real .ico, GTK/Qt take a PNG. '' when the file is missing."""
     name = "cadfabric.ico" if (osname or os.name) == "nt" else "cadfabric.png"
@@ -342,10 +293,8 @@ def main(argv=None):
     p.add_argument("--relay-host"); p.add_argument("--relay-workdir"); p.add_argument("--relay-codex"); p.add_argument("--key-stdin", action="store_true"); p.set_defaults(fn=cmd_configure)
     sub.add_parser("doctor").set_defaults(fn=cmd_doctor)
     p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner"); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
-    sub.add_parser("tasks").set_defaults(fn=cmd_tasks)
     p = sub.add_parser("serve"); p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8765); p.add_argument("--allow-remote", action="store_true"); p.add_argument("--open", action="store_true"); p.set_defaults(fn=cmd_serve)
     p = sub.add_parser("app"); p.add_argument("--port", type=int, default=8765); p.add_argument("--project", help="folder of the project this window is for (a different project = a different window)"); p.add_argument("--session", help="open this saved conversation");  p.add_argument("--no-browser", action="store_true"); p.add_argument("--browser", action="store_true", help="use the web browser instead of the app window"); p.set_defaults(fn=cmd_app)
-    p = sub.add_parser("bench"); p.add_argument("--modes", default="off,nothink"); p.add_argument("--reps", type=int, default=3); p.add_argument("--tasks"); p.add_argument("--out"); p.set_defaults(fn=cmd_bench)
     a = ap.parse_args(argv)
     return a.fn(a)
 

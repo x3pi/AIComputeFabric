@@ -6,14 +6,11 @@
   codex-relay  the Codex CLI on another machine over ssh (config relay.host / relay.codex); credentials only from the ssh agent/keys or $SSHPASS.
 A planner failure never loses the plan: it falls back to `nothink` and says so in the raw text."""
 import json, os, re, shutil, subprocess, tempfile
-from . import advisors, verifier as V
+from . import advisors
 from .cq_backend import NOWIN
 
 PREFIX = ("You are an advisor for a CAD automation agent. Answer ONLY from the text below, in plain text, concisely. "
           "Do not run any command, do not read or write any file, do not browse.\n\n")
-ENV_NOTE = ("TOOLS: execute_cadquery(code) runs CadQuery code and returns the measured volume, bounding box, centre of mass and topology counts; undo(). "
-            "There are no named CAD operations; every step is a short piece of CadQuery code (extrude, revolve, cut, hole, shell, fillet, ...).")
-
 
 def extract_json(text):
     m = re.search(r"\{.*\}", text or "", re.S)
@@ -23,10 +20,6 @@ def extract_json(text):
         return json.loads(m.group(0))
     except ValueError:
         return None
-
-
-def plan_prompt(request):
-    return "%s\n\n%s\n\nUSER REQUEST:\n%s" % (V.PLAN_PROMPT, ENV_NOTE, request)
 
 
 def find_codex(cfg):
@@ -79,20 +72,3 @@ def _result(r):
     if r.returncode != 0 or not out:
         return "", "codex failed (exit %d: %s)" % (r.returncode, ((r.stderr or "").strip().splitlines() or [""])[-1][:120])
     return out, ""
-
-
-def make_plan(llm, request, mode, cfg=None):
-    """-> (spec or None, raw text)."""
-    cfg = cfg or llm.cfg
-    note = ""
-    adv = advisors.find(cfg, mode)
-    if adv or mode in ("codex", "codex-relay"):
-        text, err = advisors.ask(adv, plan_prompt(request), cfg) if adv else (ask_codex if mode == "codex" else ask_relay)(plan_prompt(request), cfg)
-        plan = extract_json(text) if text else None
-        if plan:
-            return V.parse_spec(plan), text
-        note = "(%s failed: %s; used nothink) " % (mode, err or "no JSON in the reply")
-        mode = "nothink"
-    msg = llm.chat([{"role": "user", "content": plan_prompt(request)}], think=(mode == "think"), max_tokens=6000 if mode == "think" else 3000, temperature=0.2)
-    plan = extract_json(msg["content"])
-    return (V.parse_spec(plan) if plan else None), note + msg["content"]

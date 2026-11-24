@@ -3,7 +3,7 @@ Security: binds 127.0.0.1 unless told otherwise; every request needs the access 
 the Host header must be one we serve (blocks DNS rebinding); Origin, when present, must match; request bodies are capped."""
 import hmac, http.server, json, os, re, secrets, socketserver, subprocess, sys, threading, time, urllib.parse
 from http import cookies
-from . import advisors, agent, config, history as history_mod, llm as llm_mod, viewers, workspace as ws_mod
+from . import advisors, config, history as history_mod, llm as llm_mod, viewers, workspace as ws_mod
 from . import cq_backend, lessons as lessons_mod, skills as skills_mod, ledger as ledger_mod, skillq, scene3d
 from .cq_backend import CadQueryBackend
 
@@ -98,34 +98,7 @@ class Session:
                 if names:
                     self.emit("skill", name=", ".join(names), ok=True, explicit=True)
                     block = "\n\n".join(x for x in (block, skills_mod.explicit_block(dd0, root, names)) if x)
-            if not os.environ.get("CADFABRIC_LEGACY_AGENT"):                         # the scene agent (Blender, director + Qwen worker) is the strategy; the old CadQuery loop is opt-in
-                return self._scene_turn(text, planner, block, images=list(images))
-            dd0 = config.data_dir(self.cfg)
-            fids, fblocked = lessons_mod.mentions(dd0, root, text) if self.local else ([], [])          # #name: the user names a lesson
-            for n in fblocked:
-                self.emit("lesson_blocked", name=n)
-            follow = self.history is not None
-            ltext, lused, lcat = lessons_mod.approved_block(dd0, root, text, exclude=self.lessons_given, force=fids, follow_up=follow) if self.local else ("", [], False)
-            lblock = "" if follow else ltext
-            if follow and ltext:                                                      # follow-up: the system prompt is fixed, so this turn's lessons travel with the request
-                block = "\n\n".join(x for x in (block, ltext.strip().replace("LESSONS LEARNED", "LESSONS LEARNED (relevant to this request)", 1)) if x)
-            if lused:
-                self.lessons_given.update(lused)
-                self.emit("lessons_used", n=len(lused), names=[x["title"][:50] for x in lessons_mod.list_for(dd0, root) if x["id"] in lused][:5], explicit=len(fids))
-                lessons_mod.mark_used(dd0, lused)
-            dd = config.data_dir(self.cfg)
-            sblock = "" if self.history is not None or not self.local else skills_mod.catalog(dd, root)
-            r = agent.run(self.llm, self.backend, text, plan_mode=planner, log=lambda s: None, cfg=self.cfg, workspace=root or None, attachments=block, lessons=lblock,
-                          skill_catalog=sblock, skill_reader=(lambda n, f: skills_mod.use(dd, root, n, f)) if sblock else None,
-                          lesson_reader=(lambda n: lessons_mod.read_one(dd, root, n)) if lcat else None,
-                          history=self.history, ledger=self.ledger, should_stop=lambda: self.stop, on_event=lambda kind, **kw: self.emit(kind, **kw),
-                          opener=(lambda: self.open_in_viewer()[1]) if self.local else None)
-            self.history = r["history"]
-            m = self.backend.measure()
-            with self.lock:
-                self.measure = m.as_dict() if m else None
-            self.emit("final", text=r["final"] or ("(stopped)" if r.get("stopped") else ("(ended: %s)" % r["stuck"]) if r.get("stuck") else "(step limit reached without a final answer)"), warnings=r["warnings"], gates=r["gates"],
-                      steps=r["steps"], sec=r["sec"], resume=bool(r.get("stuck") or r.get("ended_by_limit")), budget=r.get("budget"), peak_ctx=max(r.get("ctx_tokens") or [0]))
+            return self._scene_turn(text, planner, block, images=list(images))
         except Exception as e:                                                   # noqa: BLE001 - show the failure in the chat
             self.emit("error", text="%s: %s" % (type(e).__name__, str(e)[:300]))
         finally:

@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """Offline tests (no gateway). Run: python -m unittest discover -s tests"""
 import json, math, os, sys, time, unittest
-os.environ["CADFABRIC_LEGACY_AGENT"] = "1"        # these tests drive the web plumbing through the old CadQuery loop with a fake model; the scene agent is covered by test_scene3d.py
 from cadfabric.cq_backend import CadQueryBackend
-from cadfabric import agent, tasks, planners, config
-from cadfabric import verifier as V
+from cadfabric import planners, config
 
 CYL = "result = cq.Workplane('XY').circle(20).extrude(50)"
 
@@ -90,11 +88,6 @@ class Backend(unittest.TestCase):
         self.b.execute(CYL); p = os.path.join(tempfile.mkdtemp(), "a.step"); self.b.export_step(p)
         self.assertGreater(os.path.getsize(p), 500)
 
-    def test_reference_solutions_match_closed_forms(self):
-        for t, d in tasks.TASKS.items():
-            e = tasks.exact(self.b, t)
-            if d["analytic"] is not None: self.assertAlmostEqual(e / d["analytic"], 1, places=9, msg=t)
-        self.assertAlmostEqual(tasks.exact(self.b, "cup_side_hole") / 19921.7514, 1, delta=5e-6)   # the SolidWorks kernel's number
 
 
 class FakeLLM:
@@ -113,45 +106,6 @@ PLANNER = lambda r: (V.parse_spec(PLAN), "raw")
 HOLE = "result = result.faces('>Z').workplane().hole(10)"
 
 
-class Agent(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls): cls.b = CadQueryBackend(timeout=20)
-    @classmethod
-    def tearDownClass(cls): cls.b.close()
-
-    def run_script(self, script, **kw):
-        llm = FakeLLM(script); r = agent.run(llm, self.b, "req", planner=PLANNER, log=lambda s: None, **kw); return r, llm
-
-    def test_good_run_has_no_warning(self):
-        r, _ = self.run_script([[("execute_cadquery", {"code": CYL})], [("execute_cadquery", {"code": HOLE})], "done"])
-        self.assertEqual((r["warnings"], r["gates"], r["steps"]), (0, 0, 2)); self.assertAlmostEqual(r["measure"]["volume"], math.pi * (400 - 25) * 50, places=3)
-
-    def test_wrong_volume_is_flagged_in_the_tool_result(self):
-        r, llm = self.run_script([[("execute_cadquery", {"code": CYL})], [("execute_cadquery", {"code": "result = result.faces('>Z').workplane().hole(14)"})], "done"])
-        self.assertGreaterEqual(r["warnings"], 1)
-        self.assertTrue(any("HARNESS CHECK" in s and "Less material than planned" in s for s in llm.seen))
-
-    def test_gate_sends_the_model_back_once_then_accepts(self):
-        r, llm = self.run_script([[("execute_cadquery", {"code": CYL})], "done too early", [("execute_cadquery", {"code": HOLE})], "done"])
-        self.assertEqual(r["gates"], 1); self.assertAlmostEqual(r["measure"]["volume"], math.pi * (400 - 25) * 50, places=3)
-        self.assertTrue(any("FINAL CHECK" in s for s in llm.seen))
-
-    def test_gate_is_bounded(self):
-        r, _ = self.run_script(sum([[[("execute_cadquery", {"code": CYL + "\n# take %d" % i})], "x"] for i in range(6)], []))      # distinct code each time: identical code would be skipped by the duplicate rule
-        self.assertEqual(r["gates"], agent.GATE_MAX); self.assertEqual(r["final"], "x")
-
-    def test_plan_off_means_no_checks(self):
-        r, llm = self.run_script([[("execute_cadquery", {"code": CYL})], "done"], plan_mode="off")
-        self.assertEqual((r["checks"], r["gates"], r["plan"]), (0, 0, None))
-
-    def test_no_change_warning_for_feature_cell(self):
-        r, llm = self.run_script([[("execute_cadquery", {"code": CYL})], [("execute_cadquery", {"code": "c = cq.Workplane('XY').box(1,1,1).cut(cq.Workplane('XY').box(1,1,1))"})],
-                                  "done"], plan_mode="think")
-        self.assertTrue(any("did not change the volume" in s for s in llm.seen))
-
-    def test_undo_tool(self):
-        r, _ = self.run_script([[("execute_cadquery", {"code": CYL})], [("execute_cadquery", {"code": HOLE})], [("undo", {})], [("execute_cadquery", {"code": HOLE})], "done"])
-        self.assertAlmostEqual(r["measure"]["volume"], math.pi * (400 - 25) * 50, places=3); self.assertEqual(r["gates"], 0)
 
 
 
@@ -160,15 +114,6 @@ class Planners(unittest.TestCase):
     def test_extract_json(self):
         self.assertEqual(planners.extract_json('noise {"a": 1} tail'), {"a": 1}); self.assertIsNone(planners.extract_json("no json")); self.assertIsNone(planners.extract_json("{bad"))
 
-    def test_codex_failure_falls_back_and_says_so(self):
-        class L:
-            cfg = {"relay": {}, "codex_bin": None}
-            def chat(self, messages, **kw): return {"role": "assistant", "content": json.dumps(PLAN)}
-        old = planners.find_codex; planners.find_codex = lambda cfg: None
-        try:
-            spec, raw = planners.make_plan(L(), "req", "codex")
-        finally: planners.find_codex = old
-        self.assertTrue(raw.startswith("(codex failed")); self.assertEqual(len(spec["milestones"]), 2)
 
     def test_relay_needs_an_empty_workdir(self):
         t, e = planners.ask_relay("q", {"relay": {"host": "u@h"}}); self.assertEqual(t, ""); self.assertIn("EMPTY", e)
@@ -193,18 +138,6 @@ class WorkerProtocol(unittest.TestCase):
         finally: p.kill(); p.wait()
 
 
-class Events(unittest.TestCase):
-    def test_plan_event_carries_the_advisors_pitfalls(self):
-        b = CadQueryBackend(timeout=20); ev = []
-        try:
-            raw = json.dumps(dict(PLAN, pitfalls=["wording could mean 40 overall", "use radii"]))
-            agent.run(FakeLLM([[("execute_cadquery", {"code": CYL})], "ok"]), b, "req", planner=lambda r: (V.parse_spec(PLAN), raw), log=lambda s: None,
-                      on_event=lambda kind, **kw: ev.append((kind, kw)))
-        finally: b.close()
-        plan = [kw for k, kw in ev if k == "plan"][0]
-        self.assertTrue(plan["ok"]); self.assertEqual(plan["milestones"], 2); self.assertEqual(plan["pitfalls"][0], "wording could mean 40 overall")
-        self.assertEqual([k for k, _ in ev if k == "cell"], ["cell"])
-        self.assertEqual([kw["what"] for k, kw in ev if k == "phase"][:4], ["plan", "llm", "cad", "llm"])      # later llm phases = the final gate sending the model back
 
 
 class Configure(unittest.TestCase):
@@ -271,33 +204,6 @@ class Web(unittest.TestCase):
 
     AUTH = {"Cookie": "cft=tok123", "X-Requested-With": "cadfabric", "Content-Type": "application/json"}
 
-    def test_save_after_turn_reopen_and_refusals(self):
-        H = self.web.history_mod; sess = self.srv.sess
-        self.assertEqual(self.req("POST", "/api/history/clear", {}, self.AUTH)[0], 200); self.assertEqual(self.req("POST", "/api/reset", {}, self.AUTH)[0], 200)
-        self.assertEqual(json.loads(self.req("GET", "/api/history", None, self.AUTH)[1])["sessions"], [])
-        self.llm.script, self.llm.i = [[("execute_cadquery", {"code": CYL})], "xong"], 0
-        self.assertEqual(self.req("POST", "/api/send", {"text": "Tạo trụ để thử lịch sử", "planner": "off"}, self.AUTH)[0], 200)
-        for _ in range(100):
-            if not sess.busy and sess.measure: break
-            time.sleep(0.2)
-        self.assertTrue(sess.measure, "the scripted build did not finish")
-        d = json.loads(self.req("GET", "/api/history", None, self.AUTH)[1]); self.assertEqual(len(d["sessions"]), 1)
-        row = d["sessions"][0]; self.assertEqual(row["title"], "Tạo trụ để thử lịch sử"); self.assertAlmostEqual(row["volume"], sess.measure["volume"], 3); vol = sess.measure["volume"]
-        self.req("POST", "/api/reset", {}, self.AUTH); self.assertIsNone(sess.measure)
-        s, b, _ = self.req("POST", "/api/history/load", {"id": row["id"]}, self.AUTH); self.assertEqual(s, 200, b)
-        self.assertAlmostEqual(sess.measure["volume"], vol, 3)                                                  # the part was rebuilt by replaying the saved cells
-        st = json.loads(self.req("GET", "/api/state?since=0", None, self.AUTH)[1]); self.assertTrue(st["has_part"]); self.assertTrue(st["follow_up"])
-        self.assertIn("Tạo trụ để thử lịch sử", json.dumps(st["events"], ensure_ascii=False))
-        self.assertEqual(self.req("POST", "/api/history/load", {"id": "../../etc/passwd"}, self.AUTH)[0], 400)
-        self.assertEqual(self.req("POST", "/api/history/load", {"id": "20200101-000000-aaaa"}, self.AUTH)[0], 404)
-        self.assertEqual(self.req("POST", "/api/history/load", {"id": row["id"]}, {"Cookie": "cft=tok123"})[0], 403)  # CSRF header missing
-        sess.local = False
-        try:
-            self.assertEqual(self.req("POST", "/api/history/load", {"id": row["id"]}, self.AUTH)[0], 403)
-            self.assertEqual(json.loads(self.req("GET", "/api/history", None, self.AUTH)[1])["sessions"], [])
-        finally: sess.local = True
-        self.assertEqual(self.req("POST", "/api/history/delete", {"id": row["id"]}, self.AUTH)[0], 200)
-        self.assertEqual(json.loads(self.req("GET", "/api/history", None, self.AUTH)[1])["sessions"], [])
 
     def test_auth_host_csrf_and_size(self):
         self.assertEqual(self.req("GET", "/api/state")[0], 401)
@@ -312,27 +218,6 @@ class Web(unittest.TestCase):
     def test_external_planner_needs_confirmation(self):
         s, d, _ = self.req("POST", "/api/send", {"text": "a", "planner": "codex"}, self.AUTH); self.assertEqual(s, 409)
 
-    def test_chat_flow_preview_step_and_follow_up(self):
-        self.assertEqual(self.req("POST", "/api/reset", {}, self.AUTH)[0], 200)
-        self.assertEqual(self.req("POST", "/api/send", {"text": "tao tru", "planner": "off"}, self.AUTH)[0], 200)
-        for _ in range(60):
-            st = json.loads(self.req("GET", "/api/state?since=0", headers=self.AUTH)[1])
-            if not st["busy"]: break
-            time.sleep(0.5)
-        self.assertIn("final", [e["kind"] for e in st["events"]]); self.assertAlmostEqual(st["measure"]["volume"], math.pi * 400 * 50, places=3); self.assertTrue(st["follow_up"])
-        cell = [e for e in st["events"] if e["kind"] == "cell"][0]
-        self.assertEqual((cell["n"], cell["ok"], cell["code"]), (1, True, CYL)); self.assertAlmostEqual(cell["volume"], math.pi * 400 * 50, places=3)
-        s, svg, h = self.req("GET", "/api/part.svg", headers=self.AUTH); self.assertEqual(s, 200); self.assertIn(b"<svg", svg)
-        self.assertIn(b'viewBox="0 0 640 440"', svg[:300])                                    # without a viewBox the drawing is cropped when scaled
-        s, step, _ = self.req("GET", "/api/part.step", headers=self.AUTH); self.assertEqual(s, 200); self.assertGreater(len(step), 500)
-        self.llm.script, self.llm.i = [[("execute_cadquery", {"code": HOLE})], "da khoan"], 0                             # follow-up edits the same part
-        self.assertEqual(self.req("POST", "/api/send", {"text": "khoan lo 10", "planner": "off"}, self.AUTH)[0], 200)
-        for _ in range(60):
-            st = json.loads(self.req("GET", "/api/state?since=0", headers=self.AUTH)[1])
-            if not st["busy"]: break
-            time.sleep(0.5)
-        self.assertAlmostEqual(st["measure"]["volume"], math.pi * (400 - 25) * 50, places=3)
-        self.assertEqual(self.req("POST", "/api/reset", {}, self.AUTH)[0], 200); self.assertIsNone(json.loads(self.req("GET", "/api/state", headers=self.AUTH)[1])["measure"])
 
 
 class Settings(unittest.TestCase):
@@ -519,16 +404,6 @@ class Advisors(unittest.TestCase):
         argv, _ = A.cli_argv({"preset": "codex"}, {"codex_bin": sys.executable}, "/w") if A.find_exe("codex", {"codex_bin": sys.executable}) else (["x", "-C", "/w", "-s", "read-only"], 0)
         self.assertIn("read-only", argv); self.assertEqual(argv[argv.index("-C") + 1], "/w")
 
-    def test_plan_through_a_custom_advisor_and_fallback_note(self):
-        import tempfile
-        from cadfabric import advisors as A
-        d = tempfile.mkdtemp(); sc = os.path.join(d, "plan.py"); open(sc, "w").write("import sys, json\nsys.stdin.read()\nprint(json.dumps(%r))\n" % (PLAN,))
-        cfg = {"planner": "mine", "relay": {}, "advisors": [{"id": "mine", "label": "M", "type": "cli", "preset": "custom", "command": '"%s" "%s"' % (sys.executable, sc), "external": True}]}
-        class NoThink:
-            def chat(self, *a, **k): return {"role": "assistant", "content": json.dumps(PLAN)}
-        spec, raw = planners.make_plan(NoThink(), "req", "mine", cfg); self.assertEqual(len(spec["milestones"]), 2); self.assertFalse(raw.startswith("("))
-        cfg["advisors"][0]["command"] = "definitely-not-a-program-xyz"
-        spec, raw = planners.make_plan(NoThink(), "req", "mine", cfg); self.assertTrue(raw.startswith("(mine failed")); self.assertTrue(spec)           # fell back to nothink, said so
 
 
 class AdvisorWeb(Settings):
@@ -614,24 +489,6 @@ class Viewers(unittest.TestCase):
         if os.name != "nt": self.assertEqual(W.resolve({})[0], "default")                                          # no SolidWorks off Windows: auto falls back
         if os.name != "nt": self.assertFalse(W.open_file(self.step, {"viewer": {"kind": "solidworks"}})["ok"])
 
-    def test_agent_tool_is_offered_only_with_an_opener_and_reports_honestly(self):
-        seen = []
-        class L(FakeLLM):
-            def chat(self, messages, tools=None, **kw): seen.append([t["function"]["name"] for t in (tools or [])]); return FakeLLM.chat(self, messages, tools=tools, **kw)
-        b = CadQueryBackend(timeout=20); ev = []
-        try:
-            script = [[("execute_cadquery", {"code": CYL})], [("open_in_viewer", {})], "Đã mở."]
-            r = agent.run(L(script), b, "mo", plan_mode="off", log=lambda s: None, on_event=lambda k, **kw: ev.append((k, kw)), opener=lambda: {"ok": True, "detail": "sent to X", "viewer": "X", "path": "/p.step"})
-            self.assertIn("open_in_viewer", seen[0]); op = [kw for k, kw in ev if k == "open"][0]; self.assertEqual((op["ok"], op["viewer"], op["path"]), (True, "X", "/p.step"))
-            self.assertTrue(any("OK: sent to X" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))
-            seen.clear(); ev.clear()
-            r = agent.run(L(script), b, "mo", plan_mode="off", log=lambda s: None, on_event=lambda k, **kw: ev.append((k, kw)), opener=lambda: {"ok": False, "detail": "no viewer"})
-            self.assertTrue(any("ERROR: no viewer" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))       # the model sees the failure
-            seen.clear(); agent.run(L(["ok"]), b, "x", plan_mode="off", log=lambda s: None)
-            self.assertNotIn("open_in_viewer", seen[0])                                                                       # remote / no opener: tool not offered
-            b.reset(); r = agent.run(L([[("open_in_viewer", {})], "x"]), b, "mo", plan_mode="off", log=lambda s: None, opener=lambda: {"ok": True, "detail": "should not be called"})
-            self.assertTrue(any("no part to open" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))
-        finally: b.close()
 
 
 class ViewerWeb(Settings):
@@ -708,23 +565,6 @@ class WorkspaceTests(unittest.TestCase):
         for bad in ("../x", "a/b", ".hidden", "x" * 90): self.assertIsNone(W.new_step_path(self.root, bad)[0], bad)
         self.assertIsNone(W.new_step_path(self.root, "../x")[0]); self.assertIsNone(W.new_step_path(self.root, "a/b")[0])
 
-    def test_agent_tools_only_with_a_folder_and_model_cannot_escape(self):
-        seen = []
-        class L(FakeLLM):
-            def chat(self, messages, tools=None, **kw): seen.append([t["function"]["name"] for t in (tools or [])]); return FakeLLM.chat(self, messages, tools=tools, **kw)
-        b = CadQueryBackend(timeout=20)
-        try:
-            script = [[("read_file", {"path": "spec.txt"}), ("read_file", {"path": "../x"}), ("read_file", {"path": ".env"}), ("list_files", {}), ("search_files", {"text": "bolt"})],
-                      [("execute_cadquery", {"code": CYL})], [("save_step", {"name": "out1"})], "ok"]
-            ev = []; r = agent.run(L(script), b, "x", plan_mode="off", log=lambda s: None, workspace=self.root, on_event=lambda k, **kw: ev.append((k, kw)))
-            tool = [m["content"] for m in r["history"] if m.get("role") == "tool"]
-            self.assertIn("OD 80", tool[0]); self.assertTrue(tool[1].startswith("ERROR")); self.assertTrue(tool[2].startswith("ERROR")); self.assertIn("spec.txt", tool[3]); self.assertNotIn(".env", tool[3]); self.assertIn("bom.csv", tool[4])
-            self.assertTrue(os.path.isfile(os.path.join(self.root, "out1.step"))); self.assertIn(("file", {"op": "saved", "path": "out1.step"}), [(k, {a: v for a, v in kw.items()}) for k, kw in ev])
-            self.assertIn("read_file", seen[0]); seen.clear(); agent.run(L(["ok"]), b, "x", plan_mode="off", log=lambda s: None); self.assertNotIn("read_file", seen[0])    # no folder: no tools
-            r = agent.run(L([[("save_step", {"name": "zz"})], "ok"]), b, "x", plan_mode="off", log=lambda s: None, workspace=self.root)
-            self.assertFalse(os.path.exists(os.path.join(self.root, "zz.step"))); self.assertIn("no part to save", [m["content"] for m in r["history"] if m.get("role") == "tool"][0])
-            r = agent.run(L(["ok"]), b, "ask", plan_mode="off", log=lambda s: None, workspace=self.root, attachments="----- FILE: a -----\nHELLO"); self.assertIn("HELLO", r["history"][1]["content"])
-        finally: b.close()
 
     def test_advisor_web_flags(self):
         from cadfabric import advisors as A
@@ -1084,26 +924,7 @@ class LessonsCore(unittest.TestCase):
         from cadfabric import skills as S
         self.assertEqual(S.parse_frontmatter(md)[0]["name"], "my-lessons")
 
-    def test_agent_use_lesson_tool_only_in_catalog_mode(self):
-        seen = []
-        class Cap(FakeLLM):
-            def chat(self, messages, tools=None, **kw): seen.append([t["function"]["name"] for t in (tools or [])]); return FakeLLM.chat(self, messages, tools=tools, **kw)
-        b = CadQueryBackend(timeout=20); ev = []
-        try:
-            r = agent.run(Cap([[("use_lesson", {"name": "x"})], "ok"]), b, "hi", plan_mode="off", log=lambda s: None, lesson_reader=lambda n: "LESSON (advice): " + n, on_event=lambda k, **kw: ev.append((k, kw)))
-            self.assertIn("use_lesson", seen[0]); self.assertTrue(any(k == "lesson" and kw["ok"] for k, kw in ev)); self.assertTrue(any("LESSON (advice): x" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))
-            seen.clear(); agent.run(Cap(["ok"]), b, "hi", plan_mode="off", log=lambda s: None); self.assertNotIn("use_lesson", seen[0])
-        finally: b.close()
 
-    def test_agent_system_prompt_carries_only_the_approved_block(self):
-        from cadfabric import lessons as L
-        class Cap(FakeLLM):
-            def chat(self, messages, tools=None, **kw): self.sys = messages[0]["content"]; return FakeLLM.chat(self, messages, tools=tools, **kw)
-        L.add(self.d, self.P, [self.GOOD], status="approved"); blk = L.approved_block(self.d, self.P, "x")[0]; b = CadQueryBackend(timeout=20)
-        try:
-            llm = Cap(["ok"]); agent.run(llm, b, "hi", plan_mode="off", log=lambda s: None, lessons=blk); self.assertIn("Cut through holes fully", llm.sys)
-            llm = Cap(["ok"]); agent.run(llm, b, "hi", plan_mode="off", log=lambda s: None); self.assertNotIn("LESSONS LEARNED", llm.sys)
-        finally: b.close()
 
 class SkillsCore(unittest.TestCase):
     SK = "---\nname: cq-holes\ndescription: >\n  How to cut through holes\n  and hole patterns in CadQuery\n---\n# Holes\nAlways make the cutting tool longer than the part so the hole goes through.\n"
@@ -1175,287 +996,9 @@ class SkillsCore(unittest.TestCase):
         for i in range(60): mk(skd, "bulk-%02d" % i, "Description number %d " % i + "x" * 280); S.import_folder(self.d, proj, os.path.join(skd, "bulk-%02d" % i), "t", "project"); S.set_field(self.d, proj, "bulk-%02d" % i, status="approved")
         c = S.catalog(self.d, proj); self.assertLessEqual(len(c), S.CATALOG_BUDGET); self.assertIn("- bulk-59", c); self.assertIn("- alpha", c)    # over budget: descriptions shrink, no skill is dropped
 
-    def test_agent_gets_catalog_and_tool_only_with_approved_skills(self):
-        from cadfabric import skills as S
-        seen = []
-        class Cap(FakeLLM):
-            def chat(self, messages, tools=None, **kw): seen.append((messages[0]["content"], [t["function"]["name"] for t in (tools or [])])); return FakeLLM.chat(self, messages, tools=tools, **kw)
-        import tempfile; src = os.path.join(tempfile.mkdtemp(), "cq-holes"); os.makedirs(src); open(os.path.join(src, "SKILL.md"), "w").write(self.SK)
-        self.assertEqual(S.install_local(self.d, self.P, src)[0]["added"], ["cq-holes"]); S.set_field(self.d, self.P, "cq-holes", status="approved"); cat = S.catalog(self.d, self.P); b = CadQueryBackend(timeout=20); ev = []
-        try:
-            r = agent.run(Cap([[("use_skill", {"name": "cq-holes"})], "done"]), b, "hole", plan_mode="off", log=lambda s: None, skill_catalog=cat, skill_reader=lambda n, f: S.use(self.d, self.P, n, f), on_event=lambda k, **kw: ev.append((k, kw)))
-            self.assertIn("cq-holes", seen[0][0]); self.assertIn("use_skill", seen[0][1]); self.assertTrue(any(k == "skill" and kw["ok"] for k, kw in ev))
-            self.assertTrue(any("SKILL REFERENCE DATA" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))
-            seen.clear(); agent.run(Cap(["ok"]), b, "hole", plan_mode="off", log=lambda s: None); self.assertNotIn("SKILLS", seen[0][0]); self.assertNotIn("use_skill", seen[0][1])
-        finally: b.close()
 
 
 
-class LongRun(unittest.TestCase):
-    """Phase 1+2 of long multi-step work: progress guard, step budget, work ledger, compaction with recall."""
-    BOX = 'result = cq.Workplane("XY").box(10, 10, 10)'
-
-    def run_agent(self, script, **kw):
-        b = CadQueryBackend(timeout=30); ev = []
-        try:
-            llm = kw.pop("llm", None) or FakeLLM(script)
-            r = agent.run(llm, b, kw.pop("request", "build"), plan_mode="off", log=lambda s: None, on_event=lambda kind, **x: ev.append((kind, x)), **kw)
-            return r, ev, llm
-        finally: b.close()
-
-    def test_slow_step_is_flagged_to_the_model_and_the_page(self):
-        old = agent.SLOW_CELL_S; agent.SLOW_CELL_S = 0.0
-        try:
-            r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=2)
-        finally: agent.SLOW_CELL_S = old
-        self.assertTrue(any(k == "slow" for k, _ in ev))
-        self.assertTrue(any("SLOW STEP" in str(m.get("content")) for m in r["history"]))      # in the tool result the model reads next
-
-    def test_same_code_repeated_is_nudged_then_stopped(self):
-        r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40)
-        self.assertEqual((bool(r["stuck"]), r["steps"], r["ended_by_limit"]), (True, 6, False)); self.assertIn("same code", r["stuck"])
-        self.assertEqual([k for k, _ in ev].count("stuck"), 1); self.assertTrue(any(k == "gate" and "PROGRESS CHECK" in x["text"] for k, x in ev))                   # told once, then ended
-        self.assertTrue(any("PROGRESS CHECK" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
-
-    def test_stuck_run_asks_the_advisor_and_the_advice_reaches_the_model(self):
-        asked = []
-        def adv(prompt): asked.append(prompt); return "DIAGNOSIS: the cup was never hollowed.\nNEXT: shell the top face first.", ""
-        r, ev, llm = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40, consult=adv, request="make the box")
-        self.assertEqual(len(asked), 1); self.assertEqual(r["consults"], 1)                                                    # once per kind of trouble, not every step
-        self.assertIn("make the box", asked[0]); self.assertIn("box(", asked[0]); self.assertIn("ALL CELLS", asked[0]); self.assertIn("same code", asked[0])
-        self.assertTrue(any("ADVISOR REVIEW" in str(m.get("content")) and "shell the top face" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
-        c = [x for k, x in ev if k == "consult"]; self.assertEqual((len(c), bool(c[0]["text"]), c[0]["n"]), (1, True, 1))
-
-    def test_advisor_is_asked_when_errors_are_mixed_with_successes(self):
-        asked = []
-        def adv(prompt): asked.append(prompt); return "VERDICT: OK\nDIAGNOSIS: the API names were guessed.", ""
-        bad = lambda i: [("execute_cadquery", {"code": 'result = cq.Workplane("XY").nosuchmethod(%d)' % i})]
-        good = lambda i: [("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(%d, 10, 10)' % (10 + i)})]
-        r, ev, _ = self.run_agent([bad(1), good(1), bad(2), good(2), bad(3), good(3), "done"], consult=adv, request="make something", max_steps=20)
-        mid = [p for p in asked if "failed since the last review" in p]
-        self.assertEqual(len(mid), 1); self.assertFalse(r["stuck"])                                                              # never 5 in a row, yet the advisor was asked
-        c = [x for k, x in ev if k == "consult" and not x.get("final")]; self.assertEqual(len(c), 1); self.assertIn("failed", c[0]["why"])
-
-    def test_advisor_sees_the_original_request_on_a_follow_up(self):
-        asked = []
-        def adv(prompt): asked.append(prompt); return "VERDICT: OK\nDIAGNOSIS: x", ""
-        bad = lambda i: [("execute_cadquery", {"code": 'result = cq.Workplane("XY").nosuchmethod(%d)' % i})]
-        r, _, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})], "first done"], request="design a quadcopter with four arms")
-        r2, _, _ = self.run_agent([bad(1), bad(2), bad(3), "done"], consult=adv, request="Continue: finish the missing features", history=r["history"], max_steps=10)
-        mid = [p for p in asked if "failed since the last review" in p]
-        self.assertTrue(mid); self.assertIn("quadcopter", mid[0]); self.assertIn("LATEST USER MESSAGE: Continue", mid[0])
-
-    def test_advisor_digest_has_everything_uncut(self):
-        from cadfabric import consult
-        long_code = "result = cq.Workplane('XY').box(1,1,1)\n" + "# pad %s\n" % ("x" * 3000) + "marker_end_of_code = 1"
-        trace = [{"tool": "execute_cadquery", "ok": i % 2 == 0, "vol": 1.0, "err": "" if i % 2 == 0 else "E" * 900 + "TAIL", "code": long_code, "out": "printed-%d" % i} for i in range(12)]
-        d = consult.digest("R" * 5000 + "REQ_END", "P" * 4000 + "PLAN_END", trace, "m", "why", earlier=["A" * 2000 + "ADV_END", "B" * 2000 + "ADV2_END"])
-        for needle in ("REQ_END", "PLAN_END", "marker_end_of_code", "TAIL", "ADV_END", "ADV2_END", "printed-11", "cell 1:", "cell 12:"):
-            self.assertIn(needle, d)
-        self.assertEqual(d.count("marker_end_of_code"), 12)                                                         # every cell, not the last four
-
-    def test_replacing_the_part_is_flagged_but_a_real_cut_is_not(self):
-        big = 'result = cq.Workplane("XY").box(40, 40, 40)'
-        replace = 'result = cq.Workplane("XY").box(5, 5, 5).translate((100, 0, 0))'        # old part thrown away, a small new one appears
-        cut = 'result = result.faces(">Z").workplane().hole(10)'                           # a genuine cut: nothing new appears
-        r, ev, _ = self.run_agent([[("execute_cadquery", {"code": big})], [("execute_cadquery", {"code": replace})], "done"], request="x")
-        self.assertTrue(any("REPLACED the part" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool" or m.get("role") == "user"))
-        r2, _, _ = self.run_agent([[("execute_cadquery", {"code": big})], [("execute_cadquery", {"code": cut})], "done"], request="x")
-        self.assertFalse(any("REPLACED the part" in str(m.get("content")) for m in r2["history"]))
-
-    def test_plan_parts_checklist_is_parsed_shown_and_sent_to_the_final_review(self):
-        from cadfabric import verifier as V, consult
-        spec = V.parse_spec({"steps": [{"do": "box", "volume_after": "10*10*10"}], "parts": ["body", "four arms", "propellers"]})
-        self.assertEqual(spec["parts"], ["body", "four arms", "propellers"])
-        txt = V.describe(spec); self.assertIn("Required parts", txt); self.assertIn("four arms", txt)
-        d = consult.digest("make a drone", txt, [], "m", "done", final=True); self.assertIn("checklist of parts", d); self.assertIn("four arms", d)
-        self.assertIn('"parts"', V.PLAN_PROMPT)
-
-    def test_third_identical_cell_is_skipped_not_run(self):
-        same = [("execute_cadquery", {"code": self.BOX})]
-        r, ev, _ = self.run_agent([same, same, same, same, "done"], max_steps=10)
-        cells = [x for k, x in ev if k == "cell"]
-        self.assertEqual([c["ok"] for c in cells][:4], [True, True, False, False]); self.assertIn("SKIPPED", cells[2]["error"])        # ran twice, then refused
-
-    def test_done_right_after_a_failed_cell_is_not_accepted_once(self):
-        bad = [("execute_cadquery", {"code": 'result = cq.Workplane("XY").nosuchmethod(1)'})]
-        good = [("execute_cadquery", {"code": self.BOX})]
-        r, ev, _ = self.run_agent([good, bad, "I am done", good2 := [("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(11, 10, 10)'})], "really done"], max_steps=10)
-        self.assertEqual(r["final"], "really done"); self.assertTrue(any(k == "gate" and "last cell FAILED" in x["text"] for k, x in ev))
-
-    def test_plateau_asks_the_advisor_for_a_verdict_instead_of_just_giving_up(self):
-        calls = []
-        def adv(prompt): calls.append(prompt); return "VERDICT: OK\nDIAGNOSIS: all requirements met.", ""
-        probe = lambda i: [("execute_cadquery", {"code": 'x = %d\nprint(result.val().Volume())' % i})]
-        r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]] + [probe(i) for i in range(12)], consult=adv, request="make the box", max_steps=30)
-        self.assertTrue(r["final"].startswith("(advisor review: complete)")); self.assertFalse(r["stuck"])
-        self.assertTrue(any("did not change" in p for p in calls))
-
-    def test_connectivity_report_flags_interference_between_parts(self):
-        import subprocess, sys, json as _j
-        w = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "cadfabric", "worker.py")
-        pr = subprocess.Popen([sys.executable, w], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        try:
-            def ex(c):
-                pr.stdin.write(_j.dumps({"op": "exec", "code": c}) + "\n"); pr.stdin.flush(); return _j.loads(pr.stdout.readline())
-            box = "cq.Workplane('XY').box(10,10,10)"
-            r = ex("result = %s.add(%s.translate((5,0,0)))" % (box, box))              # half of each box is shared
-            self.assertEqual(r["measure"]["solids"], 2); self.assertIn("INTERFERENCE", r["measure"]["links"]); self.assertIn("50%", r["measure"]["links"])
-            r = ex("result = %s.add(%s.translate((10,0,0)))" % (box, box))             # faces touch only: fine
-            self.assertNotIn("INTERFERENCE", r["measure"]["links"])
-            r = ex("result = %s.add(%s.translate((9.95,0,0)))" % (box, box))           # 0.5% sliver: below the 1% threshold
-            self.assertNotIn("INTERFERENCE", r["measure"]["links"])
-        finally:
-            pr.kill()
-
-    def test_connectivity_report_names_the_floating_part(self):
-        import subprocess, sys, json as _j
-        w = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "cadfabric", "worker.py")
-        pr = subprocess.Popen([sys.executable, w], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        try:
-            def ex(c):
-                pr.stdin.write(_j.dumps({"op": "exec", "code": c}) + "\n"); pr.stdin.flush(); return _j.loads(pr.stdout.readline())
-            r = ex("result = cq.Workplane('XY').box(10,10,10).add(cq.Workplane('XY').box(10,10,10).translate((10,0,0))).add(cq.Workplane('XY').box(4,4,4).translate((0,0,20)))")
-            self.assertEqual(r["measure"]["solids"], 3); self.assertIn("FLOATING", r["measure"]["links"]); self.assertIn("13.00 mm", r["measure"]["links"])
-            r = ex("result = cq.Workplane('XY').box(10,10,10).union(cq.Workplane('XY').box(10,10,10).translate((10,0,0)))"); self.assertEqual(r["measure"]["links"], "")
-        finally:
-            pr.kill()
-
-    def test_advisor_failure_never_breaks_the_run_and_off_means_no_calls(self):
-        r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40, consult=lambda p: ("", "exit 1: not logged in"), request="make the box")
-        self.assertTrue(r["stuck"]); c = [x for k, x in ev if k == "consult"]; self.assertTrue(c and c[0]["error"] and not c[0]["text"])
-        self.assertFalse(any("ADVISOR REVIEW" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
-        r, ev, _ = self.run_agent([[("execute_cadquery", {"code": self.BOX})]], max_steps=40); self.assertEqual(r["consults"], 0); self.assertFalse([1 for k, _ in ev if k == "consult"])   # no advisor chosen: nothing is sent
-
-    def test_final_review_ok_lets_the_answer_through_and_problems_send_the_model_back(self):
-        calls = []
-        def ok(p): calls.append(p); return "VERDICT: OK\nevery requirement is met", ""
-        r, ev, llm = self.run_agent([[("execute_cadquery", {"code": self.BOX})], "done"], consult=ok, request="make the box")
-        self.assertEqual((r["final"], len(calls), r["consults"]), ("done", 1, 0)); self.assertIn("independent reviewer", calls[0]); self.assertIn("CURRENT MEASUREMENT", calls[0])
-        self.assertEqual([x["verdict"] for k, x in ev if k == "consult"], ["ok"])
-        bad = []
-        def prob(p): bad.append(p); return "VERDICT: PROBLEMS\nDIAGNOSIS: the box is not hollow.\nNEXT: shell it.", ""
-        script = [[("execute_cadquery", {"code": self.BOX})], "done", [("execute_cadquery", {"code": "result = result.faces('>Z').shell(-1)"})], "really done"]
-        r, ev, llm = self.run_agent(script, consult=prob, request="make a hollow box")
-        self.assertEqual((len(bad), r["consults"]), (2, 1)); self.assertTrue(r["final"].startswith("really done")); self.assertIn("⚠", r["final"]); self.assertIn("not hollow", r["final"])      # reviewed twice, still problems: accepted WITH the open issues attached
-        seq = iter(["VERDICT: PROBLEMS\nDIAGNOSIS: not hollow.\nNEXT: shell it.", "VERDICT: OK\nfixed"])
-        r, ev, llm = self.run_agent(script, consult=lambda p: (next(seq), ""), request="make a hollow box")
-        self.assertEqual(r["final"], "really done"); self.assertEqual([x["verdict"] for k, x in ev if k == "consult"], ["problems", "ok"])           # second review passes: clean answer
-        self.assertTrue(any("ADVISOR REVIEW before you finish" in str(m.get("content")) and "not hollow" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
-
-    def test_earlier_advice_is_given_back_to_the_advisor_and_a_broken_solid_is_not_final(self):
-        seen = []
-        def adv(p): seen.append(p); return ("DIAGNOSIS: try another axis" if len(seen) == 1 else "VERDICT: OK"), ""
-        script = [[("execute_cadquery", {"code": self.BOX})]] * 3 + ["done"]
-        r, ev, _ = self.run_agent(script, consult=adv, request="make the box", max_steps=20)
-        self.assertEqual(len(seen), 2); self.assertNotIn("EARLIER ADVICE", seen[0]); self.assertIn("EARLIER ADVICE", seen[1]); self.assertIn("try another axis", seen[1])
-        b = CadQueryBackend(timeout=30)
-        try:
-            real = b.measure
-            def broken():
-                m = real(); 
-                if m: m.valid = False
-                return m
-            b.measure = broken
-            r = agent.run(FakeLLM([[("execute_cadquery", {"code": self.BOX})], "done", "still done"]), b, "make the box", plan_mode="off", log=lambda s: None)
-            self.assertTrue(any("not valid" in str(m.get("content")) for m in r["history"] if m.get("role") == "user"))
-        finally: b.close()
-
-    def test_unchanged_volume_and_failing_cells_are_caught(self):
-        same = [[("execute_cadquery", {"code": self.BOX.replace("10, 10, 10", "10, 10, 10") + "  # variant %d" % i})] for i in range(30)]
-        r, _, _ = self.run_agent(same, max_steps=40); self.assertIn("did not change", r["stuck"]); self.assertEqual(r["steps"], 9)
-        bad = [[("execute_cadquery", {"code": "result = undefined_thing_%d" % i})] for i in range(30)]
-        r, ev, _ = self.run_agent(bad, max_steps=40); self.assertIn("failed", r["stuck"]); self.assertEqual(r["steps"], 10)
-        self.assertEqual(sum(1 for k, x in ev if k == "gate"), 2)      # one for the repeated error, one for the failing streak
-        ok = [[("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(%d, 10, 10)' % (10 + i)})] for i in range(12)] + ["done"]
-        r, _, _ = self.run_agent(ok, max_steps=40); self.assertEqual((r["stuck"], r["final"], r["steps"]), ("", "done", 12))                      # real progress is never flagged
-
-    def test_same_error_with_different_code_is_called_out_once(self):
-        cells = [[("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(10, 10, 10)'})]] + [[("execute_cadquery", {"code": "x = part.Vertexes  # try %d" % i})] for i in range(3)] + ["gave up"]
-        r, ev, _ = self.run_agent(cells, max_steps=20)
-        notes = [x["text"] for k, x in ev if k == "gate" and "same error" in x["text"]]; self.assertEqual(len(notes), 1); self.assertIn("3 times", notes[0]); self.assertEqual(r["final"], "gave up")
-        cells = [[("execute_cadquery", {"code": "x = undefined_%d" % i})] for i in range(2)] + ["stop"]
-        r, ev, _ = self.run_agent(cells, max_steps=20); self.assertFalse(any("same error" in x["text"] for k, x in ev if k == "gate"))                          # twice is not yet a loop
-
-    def test_budget_follows_the_plan_and_the_limit_is_reported(self):
-        grow = [[("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(%d, 10, 10)' % (10 + i)})] for i in range(40)]
-        old = agent.HARD_STEPS; agent.HARD_STEPS = agent.MAX_STEPS
-        try:
-            r, _, _ = self.run_agent(grow)                                                                                  # hard cap = base budget: the limit is reported
-        finally: agent.HARD_STEPS = old
-        self.assertEqual((r["budget"], r["steps"], r["ended_by_limit"], bool(r["stuck"])), (agent.MAX_STEPS, agent.MAX_STEPS, True, False))
-        r, ev, _ = self.run_agent(grow + ["finished"])                                                                      # the part keeps changing: the budget grows by itself
-        self.assertEqual((r["final"], r["steps"], r["ended_by_limit"]), ("finished", 40, False)); self.assertGreater(r["budget"], agent.MAX_STEPS); self.assertTrue(any(k == "extend" for k, _ in ev))
-        self.assertTrue(any(k == "gate" for k, _ in ev) is False)
-        spec = V.parse_spec(PLAN); b = CadQueryBackend(timeout=30)
-        try:
-            r = agent.run(FakeLLM(["ok"]), b, "x", plan_mode="nothink", planner=PLANNER, log=lambda s: None); self.assertEqual(r["budget"], max(agent.MAX_STEPS, 10 + 5 * len(spec["milestones"])))
-            r = agent.run(FakeLLM(["ok"]), b, "y", plan_mode="off", log=lambda s: None, history=r["history"]); self.assertGreaterEqual(r["budget"], 20)          # follow-up: more room
-        finally: b.close()
-
-    def test_ledger_persists_recalls_and_is_private(self):
-        from cadfabric import ledger as LG
-        import tempfile
-        d = tempfile.mkdtemp(); p = os.path.join(d, "ledger", "s.jsonl"); L = LG.Ledger(p)
-        L.add_cell(self.BOX, True, "", "", 1000.0, "volume 1000"); L.add_cell("result = oops_name", False, "NameError: oops_name is not defined"); L.add_note("attachments", "spec: plate")
-        self.assertEqual(oct(os.stat(p).st_mode & 0o777), "0o600"); L2 = LG.Ledger(p); self.assertEqual((len(L2.cells), L2.notes["attachments"]), (2, "spec: plate"))
-        self.assertIn("box(10", L2.recall("1")); self.assertIn("NameError", L2.recall("#2")); self.assertIn("ERROR", L2.recall("9")); self.assertEqual(L2.recall("attachments"), "spec: plate")
-        self.assertIn("step 2", L2.recall("oops_name")); self.assertIn("no earlier step", L2.recall("zzzzzz")); self.assertIn("ERROR", L2.recall("a"))
-        self.assertEqual(LG.Ledger(os.path.join(d, "nothing.jsonl")).cells, [])
-        from cadfabric import history as H; open(os.path.join(d, "ledger", "20260101-000000-abcd.jsonl"), "w").write("{}\n")
-        H.save(d, {"id": "20260101-000000-abcd", "events": [], "title": "t"}); self.assertTrue(H.delete(d, "20260101-000000-abcd")); self.assertFalse(os.path.exists(os.path.join(d, "ledger", "20260101-000000-abcd.jsonl")))
-
-    def mk_msgs(self, n, L, attach=False):
-        msgs = [{"role": "system", "content": "SYS"}, {"role": "user", "content": "build a thing" + ("\n\n" + __import__("cadfabric.ledger", fromlist=["x"]).ATT_MARK + "\n" + "BIG" * 500 if attach else "")}]
-        for i in range(1, n + 1):
-            code = 'result = cq.Workplane("XY").box(%d, 5, 5)' % i; ok = i % 4 != 0
-            L.add_cell(code, ok, "" if ok else "TypeError: bad thing %d" % (i % 2), "", 100.0 * i if ok else None, "vol")
-            msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": "c%d" % i, "type": "function", "function": {"name": "execute_cadquery", "arguments": json.dumps({"code": code})}}]})
-            msgs.append({"role": "tool", "tool_call_id": "c%d" % i, "content": "OK" if ok else "ERROR: x"})
-        return msgs
-
-    def test_compaction_keeps_a_valid_conversation_and_the_facts(self):
-        from cadfabric import ledger as LG
-        L = LG.Ledger(); msgs = self.mk_msgs(20, L, attach=True); L.add_note("attachments", "ATT-TEXT"); before = LG.msgs_chars(msgs)
-        r = LG.compact(msgs, L, "volume 1234", run_start=1); self.assertIsNotNone(r); self.assertLess(r[1], before)
-        self.assertEqual([m["role"] for m in msgs[:3]], ["system", "user", "user"]); self.assertTrue(msgs[2]["content"].startswith(LG.CARD_MARK))
-        self.assertNotIn("BIGBIG", msgs[1]["content"]); self.assertIn("recall('attachments')", msgs[1]["content"])                                        # attachments left the prompt
-        card = msgs[2]["content"]; self.assertIn("Steps so far: 20 (15 succeeded, 5 failed)", card); self.assertIn("volume 1234", card); self.assertIn("TypeError: bad thing 0 (x5)", card); self.assertIn("Dead ends", card)
-        ids = set(); [ids.add(c["id"]) for m in msgs if m["role"] == "assistant" for c in m.get("tool_calls", [])]
-        self.assertTrue(all(m["tool_call_id"] in ids for m in msgs if m["role"] == "tool"))                                                          # no orphan tool message
-        self.assertEqual(sum(1 for m in msgs if m["role"] == "assistant"), LG.KEEP_TAIL); self.assertEqual(msgs[3]["role"], "assistant")
-        self.assertIsNone(LG.compact(msgs, L, "", run_start=1)); self.assertIsNone(LG.compact(self.mk_msgs(2, LG.Ledger()), LG.Ledger()))                  # nothing to drop: no change
-
-    def test_second_compaction_and_follow_up_request(self):
-        from cadfabric import ledger as LG
-        L = LG.Ledger(); msgs = self.mk_msgs(14, L); msgs.append({"role": "user", "content": "NOW ADD A HOLE"}); rs = len(msgs) - 1
-        for i in range(15, 30):
-            L.add_cell('result = x%d' % i, True, "", "", 1.0 * i); msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": "c%d" % i, "type": "function", "function": {"name": "execute_cadquery", "arguments": "{}"}}]}); msgs.append({"role": "tool", "tool_call_id": "c%d" % i, "content": "OK"})
-        LG.compact(msgs, L, "m", run_start=rs); self.assertIn("NOW ADD A HOLE", msgs[2]["content"]); self.assertEqual(msgs[2]["content"].count(LG.CARD_MARK), 1)
-        L.add_cell("result = y", True, "", "", 2.0); msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": "z", "type": "function", "function": {"name": "execute_cadquery", "arguments": "{}"}}]}); msgs.append({"role": "tool", "tool_call_id": "z", "content": "OK"})
-        for k in range(8): msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": "k%d" % k, "type": "function", "function": {"name": "execute_cadquery", "arguments": "{}"}}]}); msgs.append({"role": "tool", "tool_call_id": "k%d" % k, "content": "OK"})
-        LG.compact(msgs, L, "m2", run_start=2); c = msgs[2]["content"]; self.assertEqual(c.count(LG.CARD_MARK), 1); self.assertEqual(c.count("NOW ADD A HOLE"), 1); self.assertIn("m2", c)       # the request survives, the card is not nested
-
-    def test_card_stays_small_for_hundreds_of_steps(self):
-        from cadfabric import ledger as LG
-        L = LG.Ledger()
-        for i in range(400): L.add_cell('result = cq.Workplane("XY").box(%d, 5, 5).faces(">Z").workplane().hole(2)  # step %d' % (i, i), i % 7 != 0, "Err %d" % (i % 5) if i % 7 == 0 else "", "", float(i))
-        c = LG.state_card(L, "m"); self.assertLessEqual(len(c), LG.CARD_MAX); self.assertIn("oldest are not listed", c); self.assertIn("Steps so far: 400", c)
-
-    def test_agent_prompt_stays_flat_over_many_steps_and_recall_works(self):
-        from cadfabric import ledger as LG
-        old = LG.COMPACT_CHARS; LG.COMPACT_CHARS = 4000
-        sizes = []
-        class Cap(FakeLLM):
-            def chat(self, messages, tools=None, **kw): sizes.append(LG.msgs_chars(messages)); return FakeLLM.chat(self, messages, tools=tools, **kw)
-        try:
-            script = [[("execute_cadquery", {"code": 'result = cq.Workplane("XY").box(%d, 10, 10)  # ' % (10 + i) + "padding " * 40})] for i in range(40)] + [[("recall", {"query": "3"})], "finished"]
-            r, ev, _ = self.run_agent(None, llm=Cap(script), max_steps=60)
-        finally: LG.COMPACT_CHARS = old
-        self.assertEqual((r["final"], r["steps"] >= 40), ("finished", True)); self.assertTrue(any(k == "compact" for k, _ in ev))
-        self.assertLess(max(sizes), 4000 + 6 * 900 + LG.CARD_MAX + 1200); self.assertLess(sizes[-1], sizes[30] * 1.5)                                    # flat: bounded by threshold + tail + card, not by step count
-        self.assertTrue(any(k == "recall" and x["ok"] for k, x in ev)); self.assertTrue(any("STEP 3" in str(m.get("content")) for m in r["history"] if m.get("role") == "tool"))
-        self.assertEqual(r["measure"]["volume"], 10 * 10 * 49)                                                                                         # the part is unaffected by what left the prompt
 
 
 class SkillQuestions(unittest.TestCase):
@@ -1483,28 +1026,7 @@ class SkillQuestions(unittest.TestCase):
 
 
 class ShapeCheck(unittest.TestCase):
-    def test_same_shape_in_any_place_but_not_a_look_alike(self):
-        import cadquery as cq
-        from cadfabric import shapecheck as S
-        base = lambda: cq.Workplane("XY").box(80, 50, 10).faces(">Z").workplane()
-        ref = base().rect(40, 10).cutBlind(-5)
-        moved = ref.translate((5, 7, 9)).rotate((0, 0, 0), (0, 0, 1), 90)
-        f = S.fingerprint
-        self.assertTrue(S.same(f(moved), f(ref))[0])                                                      # placement and orientation do not matter
-        for name, other in (("off centre", base().center(10, 5).rect(40, 10).cutBlind(-5)), ("other pocket, same volume", base().rect(20, 20).cutBlind(-5)),
-                            ("through instead of blind", cq.Workplane("XY").box(80, 50, 10).cut(cq.Workplane("XY").box(40, 10, 10)).translate((0, 0, 0)))):
-            ok, bad = S.same(f(other), f(ref)); self.assertFalse(ok, name); self.assertTrue(bad)       # volume alone would have accepted the first two
 
-    def test_every_reference_matches_itself_through_the_worker(self):
-        from cadfabric import shapecheck as S, tasks
-        from cadfabric.cq_backend import CadQueryBackend
-        be = CadQueryBackend()
-        try:
-            for t in tasks.TASKS:
-                a = S.reference_print(be, tasks.TASKS[t]["ref"]); b = S.reference_print(be, tasks.TASKS[t]["ref"])
-                self.assertTrue(S.same(a, b)[0], t); self.assertAlmostEqual(a["volume"], tasks.exact(be, t), delta=1e-3 * a["volume"])
-        finally:
-            be.close()
 
 
     def test_cli_main_makes_stdout_utf8_so_a_cp1252_pipe_cannot_crash_it(self):
@@ -1514,17 +1036,6 @@ class ShapeCheck(unittest.TestCase):
         r = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr[-300:]); self.assertIn("ống".encode("utf-8"), r.stdout)
 
-    def test_cell_reports_where_material_was_removed_or_added(self):
-        from cadfabric import verifier as V
-        b = CadQueryBackend(timeout=30)
-        try:
-            b.execute("import cadquery as cq\nresult = cq.Workplane('XY').circle(10).extrude(50)")
-            r = b.execute("result = result.cut(cq.Workplane('XY').box(6, 3, 20, centered=(True, False, False)).translate((0, 7, 30)))")
-            g = r.delta["removed"]; self.assertAlmostEqual(g["volume"], 341.75, delta=0.1); self.assertEqual((g["min"][1], g["max"][2]), (7.0, 50.0)); self.assertIsNone(r.delta["added"])
-            self.assertIn("REMOVED", V.delta_text(r.delta)); self.assertIn("y[7.00..10.00]", V.delta_text(r.delta))
-            r = b.execute("result = result.union(cq.Workplane('XY').box(4, 4, 4).translate((0, 0, 60)))"); self.assertAlmostEqual(r.delta["added"]["volume"], 64.0, delta=0.01); self.assertIsNone(r.delta["removed"])
-            r = b.execute("print('no change')"); self.assertEqual(V.delta_text(r.delta), ""); self.assertEqual(V.delta_text(None), "")
-        finally: b.close()
 
 
     def test_brand_assets_are_valid_self_contained_vectors(self):

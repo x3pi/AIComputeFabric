@@ -6,7 +6,7 @@ Chạy headless trên Linux, Windows, macOS. Không cần SolidWorks, không c�
 
 ## Chiến thuật dựng cảnh 3D (0.8.x, thay vòng lặp CadQuery cũ)
 
-Từ 0.8.0 mặc định cadfabric dựng **cảnh nhiều chi tiết, có chuyển động, trong Blender** (cần Blender 4.x; tìm theo biến `BLENDER`, khoá `"blender"` trong cấu hình, `PATH` rồi các chỗ cài thông dụng). Vòng lặp CadQuery từng bước cũ **không còn là đường chạy mặc định**; bật lại bằng `CADFABRIC_LEGACY_AGENT=1` (mã cũ vẫn nằm trong `agent.py`, chưa xoá). Đầu ra là `<tên>.blend` và thư mục `<tên>.scene/` (`plan.json`, `parts/*.py`) trong thư mục dự án; xuất STEP chính xác chưa có trong chiến thuật này.
+Từ 0.8.0 mặc định cadfabric dựng **cảnh nhiều chi tiết, có chuyển động, trong Blender** (cần Blender 4.x; tìm theo biến `BLENDER`, khoá `"blender"` trong cấu hình, `PATH` rồi các chỗ cài thông dụng). Vòng lặp CadQuery từng bước cũ **không còn là đường chạy mặc định**; mã vòng lặp cũ đã được xoá khỏi 0.9.9 (chỉ còn phần xem/xuất STEP dùng CadQuery). Đầu ra là `<tên>.blend` và thư mục `<tên>.scene/` (`plan.json`, `parts/*.py`) trong thư mục dự án; xuất STEP chính xác chưa có trong chiến thuật này.
 
 Phân vai (mục tiêu: dùng model mạnh ít nhất có thể mà không giảm chất lượng):
 
@@ -138,9 +138,7 @@ venv/bin/cadfabric app
 
 ```bash
 cadfabric run "Tao khoi 40 x 30 x 20 mm, khoan lo duong kinh 6 mm xuyen theo chieu dai 40 mm"
-cadfabric run --planner codex --step part.step "..."   # xuất STEP
-cadfabric tasks                                        # 10 bài kiểm thử, đáp án do kernel tính
-cadfabric bench --modes off,codex --reps 3 --tasks cup_side_hole,flange_tube
+cadfabric run --planner codex "..."   # cố vấn Codex thay cho Claude
 ```
 
 Kết quả `run` gồm: câu trả lời, số đo thật của kernel (thể tích, bbox, tâm khối lượng, số mặt/cạnh/đỉnh, hợp lệ), file STEP và nhật ký `run-*.json` trong thư mục dữ liệu.
