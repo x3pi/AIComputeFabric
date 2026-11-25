@@ -693,7 +693,7 @@ class WorkspaceWeb(Settings):
         self.assertEqual((r.status, r.getheader("Content-Type")), (200, "video/mp4")); r.read()
         sess = self.srv.sess; sess.history = {"scene3d": True, "workdir": root}; sess.last_usage = {"director": {"calls": 1, "usd": 0.01}, "savings": {"saved_tok_pct": 80.0, "offload_calls_pct": 75.0}}
         st = self.req("GET", "/api/state?since=0")[1]; self.assertTrue(st["is_scene"]); self.assertEqual(st["usage"]["savings"]["saved_tok_pct"], 80.0)
-        for path, ctype in (("/api/scene_view?view=iso", "image/png"), ("/api/scene_view?view=iso_end_of_motion", "image/png"), ("/api/part.blend", "application/octet-stream"), ("/api/scene_video", "video/mp4")):
+        for path, ctype in (("/api/scene_view?view=iso&_=123", "image/png"), ("/api/scene_view?view=iso_end_of_motion", "image/png"), ("/api/part.blend", "application/octet-stream"), ("/api/scene_video?_=123", "video/mp4")):
             conn = self.http.HTTPConnection("127.0.0.1", self.port); conn.request("GET", path, headers={"Cookie": "cft=tok"}); r = conn.getresponse(); body = r.read()
             self.assertEqual((r.status, r.getheader("Content-Type")), (200, ctype), path); self.assertTrue(body)
         self.assertEqual(self.req("GET", "/api/scene_view?view=bad")[0], 400)

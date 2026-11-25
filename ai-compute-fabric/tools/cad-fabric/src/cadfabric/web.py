@@ -474,7 +474,7 @@ class Session:
                 os.replace(proj_mp4 + ".tmp", proj_mp4)
                 saved = os.path.basename(proj_mp4)
                 self.emit("file", op="saved", path=saved)
-            return 200, {"ok": True, "url": "/api/scene_video?t=%d" % int(os.path.getmtime(mp4)), "saved": saved}
+            return 200, {"ok": True, "url": "/api/scene_video?_=%d" % int(os.path.getmtime(mp4)), "saved": saved}
         except (OSError, subprocess.TimeoutExpired) as e:
             return 500, {"error": "xuất video MP4 không thành công: %s" % str(e)[:180]}
 

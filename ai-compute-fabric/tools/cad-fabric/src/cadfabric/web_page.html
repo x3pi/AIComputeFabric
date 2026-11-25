@@ -278,9 +278,9 @@ function md(text){const box=el("div","final");let list=null,para=null;
 function col(){return $("col")}
 function put(e){const log=$("log"),near=log.scrollHeight-log.scrollTop-log.clientHeight<140;if(workEl&&workEl.parentNode)col().insertBefore(e,workEl);else col().appendChild(e);if(near)log.scrollTop=1e9}
 let phase=null;
-const PH={plan:"Cố vấn đang lập kế hoạch kiểm tra",llm:"Qwen đang suy nghĩ",cad:"Đang dựng bằng CadQuery"};
+const PH={plan:"Cố vấn đang lập kế hoạch",parts:"Qwen đang dựng chi tiết",build:"Blender đang dựng và kiểm tra cảnh",review:"Cố vấn đang duyệt kết quả",undo:"Hoàn tác chỉnh sửa chưa đạt","advisor-skills":"Đang hỏi kỹ năng cố vấn",llm:"Qwen đang suy nghĩ",cad:"Đang dựng bằng CadQuery"};
 function tick(){if(!workEl)return;if(!phase){workEl.textContent="Đang làm";return}const s=Math.round((Date.now()-phase.t0)/1000);
- let t=PH[phase.what]+(phase.what==="llm"&&phase.step>1?" (bước "+phase.step+")":"")+" · "+s+" s";if(phase.what!=="cad"&&s>30)t+=" — máy chủ có thể đang bận, yêu cầu đang xếp hàng";workEl.textContent=t}
+ let t=(PH[phase.what]||"Đang xử lý")+(phase.what==="llm"&&phase.step>1?" (bước "+phase.step+")":"")+" · "+s+" s";if(phase.what!=="cad"&&phase.what!=="build"&&s>30)t+=" — đang chờ phản hồi";workEl.textContent=t}
 setInterval(tick,1000);
 function render(ev){if(ev.kind==="phase"){phase={what:ev.what,step:ev.step,t0:Date.now()};tick();return}hero(false);
  if(ev.kind==="user"){lastAsk=ev.text;const b=el("div","user",ev.text);if(ev.files&&ev.files.length)b.appendChild(el("small",0,"tệp: "+ev.files.join(", ")));if(ev.planner||ev.worker)b.appendChild(el("small",0,(ev.planner?"cố vấn: "+ev.planner:"")+(ev.planner&&ev.worker?" · ":"")+(ev.worker?"thực thi: "+ev.worker:"")));put(b)}
@@ -320,7 +320,7 @@ let curView="iso",lastScene=false,lastUsageKey="";
 function showSceneView(view){curView=view||"iso";const pv=$("pviews");if(pv)[...pv.children].forEach(b=>b.classList.toggle("on",b.dataset.view===curView));
  const im=document.createElement("img");im.alt="Bản xem trước cảnh 3D";im.width=640;im.height=480;
  im.onerror=()=>{$("preview").textContent="không tải được ảnh xem trước"};
- im.src="/api/scene_view?view="+encodeURIComponent(curView)+"&t="+Date.now();
+ im.src="/api/scene_view?view="+encodeURIComponent(curView)+"&_="+Date.now();
  $("preview").replaceChildren(im)}
 async function exportSceneVideo(){const vb=$("vidbtn");if(vb){vb.disabled=true;vb.textContent="Đang xuất MP4…"}
  const r=await api("/api/scene_video",{});if(vb){vb.disabled=false;vb.textContent="🎬 Xuất MP4"}
