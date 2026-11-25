@@ -1500,7 +1500,7 @@ class AdaptiveScaling(Loop):
                 c.request("GET", "/static/viewer3d.js", headers={"Cookie": "cft=t17"})
                 rv = c.getresponse(); bv = rv.read().decode("utf-8")
                 self.assertEqual((rv.status, rv.getheader("Cache-Control")), (200, "no-cache"))
-                for tok in ("THREE.DoubleSide", "playing = hasAnimation && !!opts.autoplay", "PMREMGenerator", "Math.min(rawMetal, 0.58)", "selEdgeColor", "getCameraState", "setCameraState"):
+                for tok in ("THREE.DoubleSide", "playing = hasAnimation && !!opts.autoplay", "PMREMGenerator", "Math.min(rawMetal, 0.58)", "selEdgeColor", "getCameraState", "setCameraState", "Box3Helper", "v3-sel", "partColors", "catch (_e) {"):
                     self.assertIn(tok, bv)
 
                 c.request("GET", "/static/vendor/three.module.js", headers={"Cookie": "cft=t17"})
@@ -1510,7 +1510,7 @@ class AdaptiveScaling(Loop):
                 c.request("GET", "/", headers={"Cookie": "cft=t17"})
                 rh = c.getresponse(); bh = rh.read().decode("utf-8")
                 self.assertEqual(rh.status, 200)
-                for tok in ('id="vsplit"', 'id="hsplit"', 'id="pmax"', 'aria-pressed="false"', 'id="psel_col"', 'psel-swatch', 'forced-color-adjust:none', 'd.scene_mtime'):
+                for tok in ('id="vsplit"', 'id="hsplit"', 'id="pmax"', 'aria-pressed="false"', 'id="psel_col"', 'psel-swatch', 'forced-color-adjust:none', 'd.scene_mtime', 'id="pplay_top"', 'id="pback3d"', 'calc(100dvh - 300px)', 'overscroll-behavior:contain'):
                     self.assertIn(tok, bh)
 
                 st0 = srv.sess.state(0)

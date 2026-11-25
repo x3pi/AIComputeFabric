@@ -78,7 +78,7 @@ textarea{border:0;outline:0;background:transparent;resize:none;width:100%;max-he
 .mpop-ft .mft-l{font-size:11px;color:var(--mute);flex:none}.meffs{display:flex;gap:4px;flex-wrap:wrap}
 .meff{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 8px;font-size:11.5px;cursor:pointer}.meff:hover{border-color:var(--mute)}.meff.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
 .hint{max-width:780px;margin:5px auto 0;color:var(--mute);font-size:12.5px;text-align:center}
-aside{inline-size:var(--side-w,360px);min-inline-size:280px;max-inline-size:78%;flex:none;background:var(--panel);overflow:auto;display:flex;flex-direction:column}
+aside{inline-size:var(--side-w,360px);min-inline-size:280px;max-inline-size:78%;flex:none;background:var(--panel);overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column}
 aside h3{margin:0;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);border-bottom:1px solid var(--line)}
 #vsplit{inline-size:6px;flex:none;cursor:col-resize;touch-action:none;user-select:none;-webkit-user-select:none;background:transparent;border-inline-start:1px solid var(--line);display:flex;align-items:center;justify-content:center;padding:0;transition:background .15s}
 #vsplit::after{content:"";inline-size:3px;block-size:32px;border-radius:999px;background:var(--line);transition:background .15s}
@@ -86,9 +86,9 @@ aside h3{margin:0;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-tra
 #hsplit{block-size:9px;flex:none;cursor:row-resize;touch-action:none;user-select:none;-webkit-user-select:none;background:transparent;display:flex;align-items:center;justify-content:center;margin:0 12px 4px;padding:0}
 #hsplit::after{content:"";inline-size:40px;block-size:3px;border-radius:999px;background:var(--line);transition:background .15s}
 #hsplit:hover::after,#hsplit.drag::after,#hsplit:focus-visible::after{background:var(--accent)}
-.pbar{display:flex;align-items:center;gap:6px;padding:8px 14px 0}.pbar .sp{flex:1}.pbar .btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
-.layout.wide aside{inline-size:max(var(--side-w,360px),min(660px,56%))}.layout.wide #preview.is3d{block-size:max(var(--prev-h,260px),440px);min-block-size:440px}
-#preview{margin:8px 12px 2px;border-radius:10px;min-block-size:180px;background:#fff;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:14px;overflow:hidden;position:relative}#preview.is3d{block-size:var(--prev-h,260px);min-block-size:180px;content-visibility:auto;contain-intrinsic-size:auto none auto 260px}#preview svg{width:100%;height:auto}#preview img,#preview video{width:100%;height:auto;display:block;border-radius:8px}
+.pbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 14px 0}.pbar .sp{flex:1}.pbar .btn{min-block-size:24px;min-inline-size:24px;padding:3px 8px;font-size:12px}.pbar .btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.layout.wide aside{inline-size:max(var(--side-w,360px),min(640px,54%))}.layout.wide #preview.is3d{block-size:min(400px,max(200px,calc(100dvh - 300px)));min-block-size:200px}
+#preview{margin:8px 12px 2px;border-radius:10px;min-block-size:180px;background:#fff;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:14px;overflow:clip;position:relative}#preview.is3d{block-size:var(--prev-h,260px);min-block-size:180px;max-block-size:max(190px,calc(100dvh - 300px));content-visibility:auto;contain-intrinsic-size:auto none auto 260px}#preview svg{width:100%;height:auto}#preview img,#preview video{width:100%;height:auto;display:block;border-radius:8px}
 .panim{display:flex;align-items:center;gap:6px;padding:0 14px 8px}.panim[hidden]{display:none}.panim-p{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
 .cfrange{--slider-track-size:.38rem;--slider-thumb-size:.95rem;--slider-track-radius:999px;--slider-thumb-radius:50%;--slider-track-color:var(--line);--slider-fill-color:var(--accent);--slider-thumb-color:var(--accent);--slider-direction:to right;--attr-min:attr(min type(<number>),0);--attr-max:attr(max type(<number>),1000);--control-value:attr(value type(<number>),0);--slider-progress:calc(progress(var(--control-value),var(--attr-min),var(--attr-max)) * 100%);appearance:none;flex:1;min-width:0;block-size:1.75rem;margin:0;padding:0;border:0;background:transparent;cursor:pointer}
 @supports not (opacity:progress(1,0,100)){.cfrange{--slider-progress:calc((var(--control-value) - var(--attr-min)) / max(1,(var(--attr-max) - var(--attr-min))) * 100%)}}
@@ -176,7 +176,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
   <div id="tabbar" hidden></div>
   <div id="log"><div class="col" id="col"></div></div>
   <div id="viewer"><div class="sfhead"><b id="vname"></b><span id="vmodes"></span><span class="sp"></span><span class="mute small" id="vinfo"></span><button type="button" class="btn small" id="vatt">Đính kèm vào chat</button></div>
-   <div id="vbody"><img id="vimg" hidden alt=""><video id="vvid" controls width="960" height="720" hidden></video><div id="v3d" hidden></div><div id="v3ctrl" class="panim v3ctrl" hidden><button type="button" class="btn small" id="vplay" title="Phát / Tạm dừng chuyển động">⏸</button><label for="vrange" class="vh">Tiến độ chuyển động</label><input type="range" id="vrange" class="cfrange" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="vpct">0%</span><button type="button" class="btn small" id="vrst" title="Đặt lại góc nhìn 3D">⟲</button><span id="vexpw" style="display:inline-flex;align-items:center;gap:5px;margin-left:6px"><label for="vexp" class="small mute">💥 Tách lớp</label><input type="range" id="vexp" class="cfrange" style="width:92px" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="vexpp">0%</span></span></div><div id="vmd" class="md" hidden></div><div id="vcode" hidden></div><pre id="vtext"></pre></div></div>
+   <div id="vbody"><img id="vimg" hidden alt=""><video id="vvid" controls width="960" height="720" hidden></video><div id="v3d" hidden></div><div id="v3ctrl" class="panim v3ctrl" hidden><button type="button" class="btn small" id="vplay" aria-label="Phát hoặc tạm dừng chuyển động" title="Phát / Tạm dừng chuyển động">⏸</button><label for="vrange" class="vh">Tiến độ chuyển động</label><input type="range" id="vrange" class="cfrange" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="vpct">0%</span><button type="button" class="btn small" id="vrst" aria-label="Đặt lại góc nhìn 3D" title="Đặt lại góc nhìn 3D">⟲</button><span id="vexpw" style="display:inline-flex;align-items:center;gap:5px;margin-left:6px"><label for="vexp" class="small mute">💥 Tách lớp</label><input type="range" id="vexp" class="cfrange" style="width:92px" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="vexpp">0%</span></span></div><div id="vmd" class="md" hidden></div><div id="vcode" hidden></div><pre id="vtext"></pre></div></div>
   <div class="composer">
    <div class="box">
     <textarea id="text" rows="1" maxlength="8000" placeholder="Mô tả chi tiết cần tạo, hoặc yêu cầu chỉnh sửa chi tiết hiện tại…"></textarea>
@@ -189,7 +189,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  </div>
  <div id="vsplit" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Điều chỉnh độ rộng khung chi tiết 3D" aria-valuemin="280" aria-valuemax="920" aria-valuenow="360" title="Kéo hoặc nhấn mũi tên trái/phải để chỉnh độ rộng (đúp chuột để đặt lại)"></div>
  <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button><button type="button" id="tablessons">Bài học</button><button type="button" id="tabskills">Skill</button></div>
- <div id="pane_part"><div class="pbar"><span class="mute small" id="phint">Kéo xoay · Bấm chọn chi tiết</span><span class="sp"></span><button type="button" class="btn small" id="pmax" aria-pressed="false" title="Mở rộng / thu gọn khung xem 3D">⤢ Mở rộng</button></div><div id="preview">chưa có chi tiết</div><div id="hsplit" role="separator" tabindex="0" aria-orientation="horizontal" aria-label="Điều chỉnh chiều cao khung xem 3D" aria-valuemin="180" aria-valuemax="720" aria-valuenow="260" title="Kéo hoặc nhấn mũi tên lên/xuống để chỉnh chiều cao (đúp chuột để đặt lại)"></div><div id="panim" class="panim" hidden><button type="button" class="btn small" id="pplay" title="Phát / Tạm dừng chuyển động">⏸</button><label for="prange" class="vh">Tiến độ chuyển động</label><input type="range" id="prange" class="cfrange" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="ppct">0%</span><button type="button" class="btn small" id="prst" title="Đặt lại góc nhìn 3D">⟲</button></div>
+ <div id="pane_part"><div class="pbar"><span class="mute small" id="phint">Kéo xoay · Bấm chọn chi tiết</span><span class="sp"></span><button type="button" class="btn small" id="pplay_top" aria-pressed="false" title="Phát hoặc tạm dừng chuyển động khớp" hidden>▶ Chuyển động</button><button type="button" class="btn small primary" id="pback3d" title="Chuyển về khung 3D tương tác" hidden>🧊 Bật 3D</button><button type="button" class="btn small" id="pmax" aria-pressed="false" title="Mở rộng hoặc thu gọn khung xem 3D">⤢ Mở rộng</button></div><div id="preview">chưa có chi tiết</div><div id="hsplit" role="separator" tabindex="0" aria-orientation="horizontal" aria-label="Điều chỉnh chiều cao khung xem 3D" aria-valuemin="180" aria-valuemax="460" aria-valuenow="260" title="Kéo hoặc nhấn mũi tên lên/xuống để chỉnh chiều cao (đúp chuột để đặt lại)"></div><div id="panim" class="panim" hidden><button type="button" class="btn small" id="pplay" aria-label="Phát hoặc tạm dừng chuyển động" title="Phát / Tạm dừng chuyển động">⏸</button><label for="prange" class="vh">Tiến độ chuyển động</label><input type="range" id="prange" class="cfrange" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="ppct">0%</span><button type="button" class="btn small" id="prst" aria-label="Đặt lại góc nhìn 3D" title="Đặt lại góc nhìn 3D">⟲</button></div>
   <div id="pexpw" class="panim" hidden><label for="pexp" class="small mute">💥 Tách lớp</label><input type="range" id="pexp" class="cfrange" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="pexpp">0%</span></div>
   <div id="psel" class="psel" hidden>
    <div class="psel-row"><label for="ppick" class="small mute">Chi tiết:</label><select id="ppick" class="psel-s"><option value="">— Bấm trên 3D để chọn —</option></select><button type="button" class="btn small" id="pshowall" hidden title="Hiện lại toàn bộ chi tiết">Hiện tất cả</button></div>
@@ -368,13 +368,14 @@ const loadViewer3d=()=>import("/static/viewer3d.js"+(APP_VER?"?v="+encodeURIComp
 function syncSlider(inp,pctEl,v){if(!inp)return;const val=Math.max(0,Math.min(1000,Math.round(v)));inp.value=String(val);
  inp.style.setProperty("--attr-min",inp.min||0);inp.style.setProperty("--attr-max",inp.max||1000);inp.style.setProperty("--control-value",val);
  const pct=Math.round(val/10)+"%";inp.setAttribute("aria-valuetext",pct);if(pctEl)pctEl.textContent=pct}
-function bind3dControls(h,bar,playBtn,rangeInp,pctEl,rstBtn){
- if(!h){if(bar)bar.hidden=true;return}
+function bind3dControls(h,bar,playBtn,rangeInp,pctEl,rstBtn,topPlayBtn){
+ if(!h){if(bar)bar.hidden=true;if(topPlayBtn)topPlayBtn.hidden=true;return}
  bar.hidden=false;const anim=!!h.hasAnimation;
  playBtn.hidden=!anim;rangeInp.hidden=!anim;pctEl.hidden=!anim;rstBtn.hidden=false;
- const updBtn=()=>{playBtn.textContent=h.playing?"⏸":"▶";playBtn.title=h.playing?"Tạm dừng":"Phát chuyển động"};
+ const updBtn=()=>{playBtn.textContent=h.playing?"⏸":"▶";playBtn.title=h.playing?"Tạm dừng":"Phát chuyển động";if(topPlayBtn)topPlayBtn.setAttribute("aria-pressed",h.playing?"true":"false")};
  syncSlider(rangeInp,pctEl,0);updBtn();
  playBtn.onclick=()=>{h.setPlaying(!h.playing);updBtn()};
+ if(topPlayBtn){topPlayBtn.hidden=!anim;topPlayBtn.onclick=()=>{h.setPlaying(!h.playing);updBtn()}}
  rstBtn.onclick=()=>h.resetView();
  rangeInp.oninput=()=>{h.setPlaying(false);updBtn();const v=Number(rangeInp.value)||0;syncSlider(rangeInp,pctEl,v);h.seek(v/1000)};
 }
@@ -408,15 +409,18 @@ if($("pshowall"))$("pshowall").onclick=()=>{if(preview3d){preview3d.showAllParts
 if($("pfoc"))$("pfoc").onclick=()=>{if(preview3d&&preview3d.selected)preview3d.focusPart(preview3d.selected)};
 if($("phide"))$("phide").onclick=()=>{const h=preview3d;if(!h||!h.selected)return;h.setPartHidden(h.selected,!h.isPartHidden(h.selected));renderSelectedPart(h.selected)};
 if($("piso"))$("piso").onclick=()=>{const h=preview3d;if(!h||!h.selected)return;h.setIsolated(h.isolated===h.selected?null:h.selected);renderSelectedPart(h.selected)};
-if($("pedit"))$("pedit").onclick=()=>{const id=preview3d&&preview3d.selected;if(!id)return;if(curTab!=="chat")activate("chat");
+function editPartInChat(id){if(!id)return;if(curTab!=="chat")activate("chat");
  const tx=$("text"),tag="@"+id;if(!new RegExp("(?:^|\\s)@"+id+"\\b").test(tx.value)){tx.value=tx.value.trim()?tag+" "+tx.value.trim():tag+" ";grow()}
- tx.focus();toast("Đã chọn "+tag+" — gõ yêu cầu sửa rồi bấm Gửi")};
-function disposePreview3d(){if(preview3d){try{preview3d.dispose()}catch(e){}preview3d=null}if($("preview"))$("preview").classList.remove("is3d");if($("phint"))$("phint").textContent="Kéo xoay · Bấm chọn chi tiết";if($("panim"))$("panim").hidden=true;if($("pexpw"))$("pexpw").hidden=true;if($("psel"))$("psel").hidden=true;if($("psel_card"))$("psel_card").hidden=true}
+ tx.focus();toast("Đã chọn "+tag+" — gõ yêu cầu sửa rồi bấm Gửi")}
+if($("pedit"))$("pedit").onclick=()=>{const id=preview3d&&preview3d.selected;editPartInChat(id)};
+function disposePreview3d(){if(preview3d){try{preview3d.dispose()}catch(e){}preview3d=null}if($("preview"))$("preview").classList.remove("is3d");if($("phint"))$("phint").textContent="Kéo xoay · Bấm chọn chi tiết";if($("pplay_top")){$("pplay_top").hidden=true;$("pplay_top").setAttribute("aria-pressed","false")}if($("pback3d"))$("pback3d").hidden=true;if($("panim"))$("panim").hidden=true;if($("pexpw"))$("pexpw").hidden=true;if($("psel"))$("psel").hidden=true;if($("psel_card"))$("psel_card").hidden=true}
 function showSceneView(view){disposePreview3d();curView=view||"iso";const pv=$("pviews");if(pv)[...pv.children].forEach(b=>b.classList.toggle("on",b.dataset.view===curView));
- const im=document.createElement("img");im.alt="Bản xem trước cảnh 3D";im.width=640;im.height=480;
+ if($("pback3d"))$("pback3d").hidden=false;
+ const im=document.createElement("img");im.alt="Bản xem trước cảnh 3D (bấm để mở 3D tương tác)";im.width=640;im.height=480;im.style.cursor="pointer";im.title="Bấm để mở khung 3D tương tác";im.onclick=()=>showScene3D();
  im.onerror=()=>{$("preview").textContent="không tải được ảnh xem trước"};
  im.src="/api/scene_view?view="+encodeURIComponent(curView)+"&_="+Date.now();
  $("preview").replaceChildren(im)}
+if($("pback3d"))$("pback3d").onclick=()=>showScene3D();
 async function showScene3D(){curView="3d";const pv=$("pviews");if(pv)[...pv.children].forEach(b=>b.classList.toggle("on",b.dataset.view==="3d"));
  const prevCam=preview3d&&preview3d.getCameraState?preview3d.getCameraState():null;
  const focusTarget=lastTargetPart;
@@ -427,21 +431,21 @@ async function showScene3D(){curView="3d";const pv=$("pviews");if(pv)[...pv.chil
   const m=await loadViewer3d();if(curView!=="3d")return;
   sceneMeta={parts:(rm.ok&&rm.d.parts)||[],map:{},joints:(rm.ok&&rm.d.joints)||[]};
   for(const p of sceneMeta.parts)sceneMeta.map[p.id]=p;
-  const labels={};for(const p of sceneMeta.parts){const dm=p.size_mm;labels[p.id]=p.id+(dm&&dm.length===3?" ("+dm.map(x=>Math.round(x)).join("×")+" mm)":"")+(p.color?" "+p.color.toUpperCase():"")}
+  const labels={},colors={};for(const p of sceneMeta.parts){const dm=p.size_mm;labels[p.id]=p.id+(dm&&dm.length===3?" ("+dm.map(x=>Math.round(x)).join("×")+" mm)":"")+(p.color?" "+p.color.toUpperCase():"");if(p.color)colors[p.id]=p.color}
   box.classList.add("is3d");
-  const h=await m.showGlb(box,buf,{onTick:p=>{if(!preview3d||!preview3d.playing)return;syncSlider($("prange"),$("ppct"),p*1000)},onSelect:id=>renderSelectedPart(id),onHover:id=>{const ph=$("phint");if(ph)ph.textContent=id?"Trỏ: "+id+" — bấm chọn":(preview3d&&preview3d.selected?"Đang chọn: "+preview3d.selected+" · Bấm lại nếu bị che":"Kéo xoay · Bấm chọn chi tiết")},partLabels:labels});
+  const h=await m.showGlb(box,buf,{onTick:p=>{if(!preview3d||!preview3d.playing)return;syncSlider($("prange"),$("ppct"),p*1000)},onSelect:id=>renderSelectedPart(id),onEdit:id=>editPartInChat(id),onHover:id=>{const ph=$("phint");if(ph)ph.textContent=id?"Trỏ: "+id+" — bấm chọn":(preview3d&&preview3d.selected?"Đang chọn: "+preview3d.selected+" · Bấm lại nếu bị che":"Kéo xoay · Bấm chọn chi tiết")},partLabels:labels,partColors:colors});
   if(curView!=="3d"){h.dispose();return}
   preview3d=h;
   const pk=$("ppick");if(pk){pk.replaceChildren(el("option","","— Bấm trên 3D để chọn ("+(h.partIds||[]).length+") —"));pk.firstChild.value="";
    const ordered=[...sceneMeta.parts.map(p=>p.id).filter(id=>(h.partIds||[]).includes(id)),...(h.partIds||[]).filter(id=>!sceneMeta.map[id])];
    for(const pid of ordered){const o=document.createElement("option");o.value=pid;const dm=sceneMeta.map[pid]&&sceneMeta.map[pid].size_mm;o.textContent=pid+(dm&&dm.length===3?" ("+dm.map(x=>Math.round(x)).join("×")+")":"");pk.appendChild(o)}}
-  bind3dControls(h,$("panim"),$("pplay"),$("prange"),$("ppct"),$("prst"));
+  bind3dControls(h,$("panim"),$("pplay"),$("prange"),$("ppct"),$("prst"),$("pplay_top"));
   bindExplodeControl(h,$("pexpw"),$("pexp"),$("pexpp"));
   if(prevCam)h.setCameraState(prevCam);
   if(prevSel&&(h.partIds||[]).includes(prevSel)){h.selectPart(prevSel)}else{renderSelectedPart(null)}
   if(focusTarget&&(h.partIds||[]).includes(focusTarget)){h.focusPart(focusTarget);lastTargetPart=null}
  }
- catch(e){disposePreview3d();showSceneView("iso")}}
+ catch(e){console.warn("3D viewer fallback:",e);toast("Không mở được khung 3D: "+(e&&e.message?e.message:e));disposePreview3d();showSceneView("iso")}}
 async function exportSceneVideo(){disposePreview3d();const vb=$("vidbtn");if(vb){vb.disabled=true;vb.textContent="Đang xuất MP4…"}
  const r=await api("/api/scene_video",{});if(vb){vb.disabled=false;vb.textContent="🎬 Xuất MP4"}
  if(!r.ok){toast(r.d.error||"Không xuất được video");return}
@@ -892,7 +896,7 @@ async function renderTab(t){const id=t.rel,live=()=>curTab===id&&t.mode!==undefi
  if(t.kind==="glb"||t.kind==="blend"){msg(t.kind==="blend"?"Đang chuyển .blend sang 3D…":"Đang tải mô hình 3D…");
   try{if(!t.glb){const r=await fetch("/api/blendglb?path="+encodeURIComponent(t.rel)+"&_="+Date.now());if(!r.ok)throw new Error("không chuyển được sang 3D");t.glb=await r.arrayBuffer()}
    if(!live())return;d3.hidden=false;const m=await loadViewer3d();if(!live()){d3.hidden=true;return}
-   const h=await m.showGlb(d3,t.glb,{onTick:p=>{if(!t.h3d||!t.h3d.playing)return;syncSlider($("vrange"),$("vpct"),p*1000)}});
+   const h=await m.showGlb(d3,t.glb,{onTick:p=>{if(!t.h3d||!t.h3d.playing)return;syncSlider($("vrange"),$("vpct"),p*1000)},onEdit:id=>editPartInChat(id)});
    if(!live()){h.dispose();return}t.h3d=h;tx.hidden=true;bind3dControls(h,v3c,$("vplay"),$("vrange"),$("vpct"),$("vrst"));bindExplodeControl(h,$("vexpw"),$("vexp"),$("vexpp"));
    const z=h.size.map(v=>Math.round(v));$("vinfo").textContent=z.join(" × ")+" mm ("+h.parts+" chi tiết) · kéo để xoay, cuộn để phóng"}
   catch(e){d3.hidden=true;if(v3c)v3c.hidden=true;msg("Không mở được xem trước 3D ("+(e.message||e)+"). Dùng chuột phải → Mở bằng Blender.")}
@@ -986,11 +990,13 @@ $("quitbtn").onclick=async()=>{if(confirm("Tắt ứng dụng CadFabric?")){awai
  DET=d.cli_detected||{};PRESETS=d.cli_presets||{};AVAIL=d.availability||{};loadSettings(d.settings);if($("planner").querySelector('option[value="'+d.default+'"]'))$("planner").value=d.default;if($("worker").querySelector('option[value="'+(d.default_worker||"qwen")+'"]'))$("worker").value=d.default_worker||"qwen";ensureWorkingRoles(true);chip();if(local){discoverForId("qwen",false);if(d.default&&d.default!=="qwen")discoverForId(d.default,false);discoverForId("agy",false)}
  if(!local){$("localnote").textContent="Đang truy cập từ xa: không sửa được cài đặt (chỉ sửa được trên máy chạy ứng dụng).";document.querySelectorAll("#dlg input,#dlg select,#tbtn,#sbtn").forEach(x=>x.disabled=true)}
  hero(true);poll();setInterval(poll,800);if(!d.settings.configured&&local)setTimeout(openSettings,300)})();
-if($("pmax"))$("pmax").onclick=()=>{const lay=document.querySelector(".layout");if(!lay)return;const wide=lay.classList.toggle("wide");$("pmax").setAttribute("aria-pressed",wide?"true":"false");$("pmax").textContent=wide?"⤡ Thu gọn":"⤢ Mở rộng";const sr=$("sr_live");if(sr)sr.textContent=wide?"Đã mở rộng khung xem 3D":"Đã thu gọn khung xem 3D"};
-function bindSplitter(el,axis,cssVar,lsKey,defVal,minV,maxFn){
+if($("pmax"))$("pmax").onclick=()=>{const lay=document.querySelector(".layout");if(!lay)return;const wide=lay.classList.toggle("wide");$("pmax").setAttribute("aria-pressed",wide?"true":"false");const sr=$("sr_live");if(sr)sr.textContent=wide?"Đã mở rộng khung xem 3D":"Đã thu gọn khung xem 3D"};
+function bindSplitter(el,axis,cssVar,lsKey,defVal,minV,maxFn,initMaxFn){
  if(!el)return;
- const apply=(val,save=true)=>{const mx=Math.max(minV,maxFn());const v=Math.round(Math.max(minV,Math.min(mx,val)));document.documentElement.style.setProperty(cssVar,v+"px");el.setAttribute("aria-valuemax",String(Math.round(mx)));el.setAttribute("aria-valuenow",String(v));if(save)try{localStorage.setItem(lsKey,String(v))}catch(e){}return v};
- try{const sv=Number(localStorage.getItem(lsKey));if(Number.isFinite(sv)&&sv>=minV)apply(sv,false)}catch(e){}
+ const clampMax=initMaxFn||maxFn;
+ const apply=(val,save=true,limFn=maxFn)=>{const mx=Math.max(minV,limFn());const v=Math.round(Math.max(minV,Math.min(mx,val)));document.documentElement.style.setProperty(cssVar,v+"px");el.setAttribute("aria-valuemax",String(Math.round(Math.max(minV,maxFn()))));el.setAttribute("aria-valuenow",String(v));if(save)try{localStorage.setItem(lsKey,String(v))}catch(e){}return v};
+ try{const sv=Number(localStorage.getItem(lsKey));if(Number.isFinite(sv)&&sv>=minV){const clamped=apply(sv,false,clampMax);if(clamped!==sv)localStorage.setItem(lsKey,String(clamped))}}catch(e){}
+ addEventListener("resize",()=>{const cur=Number(el.getAttribute("aria-valuenow"));if(cur)apply(cur,false)});
  let startP=0,startV=0,pid=-1;
  el.addEventListener("pointerdown",e=>{if(e.button!==0)return;pid=e.pointerId;el.setPointerCapture(pid);el.classList.add("drag");startP=axis==="x"?e.clientX:e.clientY;const side=$("side"),pv=$("preview");startV=axis==="x"?(side?side.getBoundingClientRect().width:defVal):(pv?pv.getBoundingClientRect().height:defVal);e.preventDefault()});
  el.addEventListener("pointermove",e=>{if(pid!==e.pointerId)return;const d=(axis==="x"?startP-e.clientX:e.clientY-startP);apply(startV+d,false)});
@@ -1002,8 +1008,8 @@ function bindSplitter(el,axis,cssVar,lsKey,defVal,minV,maxFn){
   else{if(e.key==="ArrowDown")nx=cur+step;else if(e.key==="ArrowUp")nx=cur-step}
   if(nx!==null){e.preventDefault();const v=apply(nx,true);const sr=$("sr_live");if(sr)sr.textContent=v+" px"}});
 }
-bindSplitter($("vsplit"),"x","--side-w","cf_side_w",360,280,()=>Math.min(920,Math.floor(innerWidth*0.76)));
-bindSplitter($("hsplit"),"y","--prev-h","cf_prev_h",260,180,()=>Math.min(720,Math.floor(innerHeight*0.72)));
+bindSplitter($("vsplit"),"x","--side-w","cf_side_w",360,280,()=>Math.min(860,Math.floor(innerWidth*0.72)),()=>Math.min(580,Math.floor(innerWidth*0.52)));
+bindSplitter($("hsplit"),"y","--prev-h","cf_prev_h",260,180,()=>Math.max(190,Math.min(460,innerHeight-300)));
 </script>
 <div id="sr_live" class="vh" aria-live="polite" aria-atomic="true"></div>
 <div id="dropov" hidden>Thả tệp vào đây (văn bản: txt, md, csv, json, dxf, step, py… hoặc ảnh png/jpg/webp tối đa 3 ảnh, gửi được cho cố vấn Claude hoặc Antigravity)</div>

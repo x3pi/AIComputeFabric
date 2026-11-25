@@ -387,32 +387,36 @@ export async function showStep(host, mesh) {
 }
 
 function _createStudioEnv(renderer) {
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const envScene = new THREE.Scene();
-  envScene.background = new THREE.Color(0xdbe2ec);
-  const specs = [
-    [[3, 4, 3], [5, 5], 0xffffff],
-    [[-3, 3, -2], [5, 5], 0xeaf2ff],
-    [[0, 5, -3], [6, 6], 0xfff5e8],
-    [[0, -3, 2], [6, 6], 0xd8e0ea],
-  ];
-  const meshes = [];
-  for (const [pos, sz, hex] of specs) {
-    const geom = new THREE.PlaneGeometry(sz[0], sz[1]);
-    const mat = new THREE.MeshBasicMaterial({ color: hex, side: THREE.DoubleSide });
-    const plane = new THREE.Mesh(geom, mat);
-    plane.position.set(pos[0], pos[1], pos[2]);
-    plane.lookAt(0, 0, 0);
-    envScene.add(plane);
-    meshes.push([geom, mat]);
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envScene = new THREE.Scene();
+    envScene.background = new THREE.Color(0xdbe2ec);
+    const specs = [
+      [[3, 4, 3], [5, 5], 0xffffff],
+      [[-3, 3, -2], [5, 5], 0xeaf2ff],
+      [[0, 5, -3], [6, 6], 0xfff5e8],
+      [[0, -3, 2], [6, 6], 0xd8e0ea],
+    ];
+    const meshes = [];
+    for (const [pos, sz, hex] of specs) {
+      const geom = new THREE.PlaneGeometry(sz[0], sz[1]);
+      const mat = new THREE.MeshBasicMaterial({ color: hex, side: THREE.DoubleSide });
+      const plane = new THREE.Mesh(geom, mat);
+      plane.position.set(pos[0], pos[1], pos[2]);
+      plane.lookAt(0, 0, 0);
+      envScene.add(plane);
+      meshes.push([geom, mat]);
+    }
+    const envRT = pmrem.fromScene(envScene, 0.04);
+    for (const [geom, mat] of meshes) {
+      geom.dispose();
+      mat.dispose();
+    }
+    pmrem.dispose();
+    return envRT;
+  } catch (_e) {
+    return null;
   }
-  const envRT = pmrem.fromScene(envScene, 0.04);
-  for (const [geom, mat] of meshes) {
-    geom.dispose();
-    mat.dispose();
-  }
-  pmrem.dispose();
-  return envRT;
 }
 
 export async function showGlb(host, buffer, opts = {}) {
@@ -429,8 +433,10 @@ export async function showGlb(host, buffer, opts = {}) {
 
   const scene = new THREE.Scene();
   const envRT = _createStudioEnv(renderer);
-  scene.environment = envRT.texture;
-  if ("environmentIntensity" in scene) scene.environmentIntensity = 0.9;
+  if (envRT) {
+    scene.environment = envRT.texture;
+    if ("environmentIntensity" in scene) scene.environmentIntensity = 0.9;
+  }
   scene.add(new THREE.HemisphereLight(0xffffff, 0x6f7580, 1.35));
   const key = new THREE.DirectionalLight(0xffffff, 1.85); key.position.set(2.5, 4.0, 3.0); scene.add(key);
   const fill = new THREE.DirectionalLight(0xffffff, 0.95); fill.position.set(-3.0, 2.0, -2.0); scene.add(fill);
@@ -488,6 +494,43 @@ export async function showGlb(host, buffer, opts = {}) {
   let selectedId = null, hoveredId = null, isolatedId = null, explodeAmt = 0;
   const selEdgeColor = new THREE.Color(0xff9f1c);
   const hovEdgeColor = new THREE.Color(0x38bdf8);
+  const selBox = new THREE.Box3();
+  const selHelper = new THREE.Box3Helper(selBox, 0xff9f1c);
+  selHelper.visible = false;
+  selHelper.renderOrder = 2;
+  selHelper.material.depthTest = false;
+  selHelper.material.transparent = true;
+  selHelper.material.opacity = 0.92;
+  scene.add(selHelper);
+  const hovBox = new THREE.Box3();
+  const hovHelper = new THREE.Box3Helper(hovBox, 0x38bdf8);
+  hovHelper.visible = false;
+  hovHelper.renderOrder = 1;
+  hovHelper.material.depthTest = false;
+  hovHelper.material.transparent = true;
+  hovHelper.material.opacity = 0.65;
+  scene.add(hovHelper);
+  const syncHelperBoxes = () => {
+    const selEntry = selectedId ? parsed.partsMap.get(selectedId) : null;
+    const hovEntry = (hoveredId && hoveredId !== selectedId) ? parsed.partsMap.get(hoveredId) : null;
+    if ((selEntry && selEntry.wrap.visible) || (hovEntry && hovEntry.wrap.visible)) {
+      parsed.root.updateMatrixWorld(true);
+    }
+    if (selEntry && selEntry.wrap.visible) {
+      selBox.setFromObject(selEntry.wrap);
+      if (!selBox.isEmpty()) { selBox.expandByScalar(radius * 0.003); selHelper.visible = true; }
+      else selHelper.visible = false;
+    } else {
+      selHelper.visible = false;
+    }
+    if (hovEntry && hovEntry.wrap.visible) {
+      hovBox.setFromObject(hovEntry.wrap);
+      if (!hovBox.isEmpty()) { hovBox.expandByScalar(radius * 0.002); hovHelper.visible = true; }
+      else hovHelper.visible = false;
+    } else {
+      hovHelper.visible = false;
+    }
+  };
   const applyVisibilityAndHighlight = () => {
     for (const entry of parsed.partsMap.values()) {
       entry.wrap.visible = isolatedId ? (entry.id === isolatedId) : !entry.hidden;
@@ -495,8 +538,19 @@ export async function showGlb(host, buffer, opts = {}) {
       const isHov = !isSel && entry.id === hoveredId;
       for (const m of entry.meshes) {
         if (isSel || isHov) {
-          m.material.emissive.copy(m.userData.origEmI > 0 ? m.userData.origEm : m.material.color);
-          m.material.emissiveIntensity = m.userData.origEmI > 0 ? m.userData.origEmI : (isSel ? 0.12 : 0.06);
+          if (m.userData.origEmI > 0) {
+            m.material.emissive.copy(m.userData.origEm);
+            m.material.emissiveIntensity = m.userData.origEmI;
+          } else {
+            const lum = 0.2126 * m.material.color.r + 0.7152 * m.material.color.g + 0.0722 * m.material.color.b;
+            if (lum < 0.06) {
+              m.material.emissive.setHex(0x60a5fa);
+              m.material.emissiveIntensity = isSel ? 0.20 : 0.09;
+            } else {
+              m.material.emissive.copy(m.material.color);
+              m.material.emissiveIntensity = isSel ? 0.22 : 0.09;
+            }
+          }
         } else {
           m.material.emissive.copy(m.userData.origEm);
           m.material.emissiveIntensity = m.userData.origEmI;
@@ -525,7 +579,7 @@ export async function showGlb(host, buffer, opts = {}) {
       opts.onTick((action.time % duration) / duration);
     }
   };
-  const renderNow = () => { controls.update(); renderer.render(scene, camera); };
+  const renderNow = () => { controls.update(); syncHelperBoxes(); renderer.render(scene, camera); };
   const loop = (now) => {
     raf = 0;
     if (!alive || visPaused) return;
@@ -543,21 +597,95 @@ export async function showGlb(host, buffer, opts = {}) {
     if (!p && alive && !raf) { lastT = performance.now(); loop(lastT); }
   });
 
-  const selectPart = (id, silent = false) => {
-    selectedId = (id && parsed.partsMap.has(id)) ? id : null;
-    applyVisibilityAndHighlight();
-    renderNow();
-    if (!silent && typeof opts.onSelect === "function") opts.onSelect(selectedId);
-    return selectedId;
-  };
-
   if (getComputedStyle(host).position === "static") host.style.position = "relative";
   const tip = document.createElement("div");
   tip.className = "v3-tip";
   tip.hidden = true;
   tip.style.cssText = "position:absolute;pointer-events:none;z-index:5;padding:3px 8px;border-radius:6px;background:rgba(24,25,28,.88);color:#fff;font:12px/1.35 ui-monospace,Consolas,monospace;white-space:nowrap;box-shadow:0 3px 10px #0004;transform:translate(10px,-115%)";
   host.appendChild(tip);
+
+  const selHud = document.createElement("div");
+  selHud.className = "v3-sel";
+  selHud.hidden = true;
+  selHud.style.cssText = "position:absolute;inset-block-start:8px;inset-inline-start:8px;z-index:5;display:none;align-items:center;gap:6px;flex-wrap:wrap;padding:4px 8px;border-radius:8px;background:rgba(24,25,28,.86);color:#fff;font:12px/1.35 system-ui,sans-serif;max-inline-size:calc(100% - 16px);box-shadow:0 3px 10px #0004";
+  for (const evName of ["pointerdown", "pointerup", "click", "dblclick"]) {
+    selHud.addEventListener(evName, (ev) => ev.stopPropagation());
+  }
+  host.appendChild(selHud);
   renderer.domElement.style.cursor = "grab";
+
+  const focusPart = (id) => {
+    const entry = parsed.partsMap.get(id);
+    if (!entry) return;
+    parsed.root.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(entry.wrap);
+    if (b.isEmpty()) return;
+    const partCenter = b.getCenter(new THREE.Vector3());
+    const partSize = b.getSize(new THREE.Vector3());
+    const partRad = Math.max(partSize.x, partSize.y, partSize.z, 0.02) * 0.5;
+    const dir = camera.position.clone().sub(controls.target);
+    if (dir.lengthSq() < 1e-8) dir.copy(homeDir);
+    else dir.normalize();
+    const dist = Math.max(partRad * 4.2, radius * 0.18);
+    controls.target.copy(partCenter);
+    camera.position.copy(partCenter).addScaledVector(dir, dist);
+    controls.update();
+    renderNow();
+  };
+
+  let selectPart;
+  const _mkHudBtn = (label, ariaLabel, onClick) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.setAttribute("aria-label", ariaLabel);
+    b.title = ariaLabel;
+    b.style.cssText = "border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.12);color:#fff;border-radius:5px;min-inline-size:24px;min-block-size:24px;padding:1px 6px;font:12px inherit;cursor:pointer";
+    b.onclick = onClick;
+    return b;
+  };
+  const updateSelHud = () => {
+    if (!selectedId) {
+      selHud.hidden = true;
+      selHud.style.display = "none";
+      return;
+    }
+    const entry = parsed.partsMap.get(selectedId);
+    selHud.replaceChildren();
+    const colHex = opts.partColors?.[selectedId];
+    if (colHex && /^#[0-9a-fA-F]{6}$/.test(colHex)) {
+      const sw = document.createElement("span");
+      sw.style.cssText = "display:inline-block;inline-size:10px;block-size:10px;border-radius:2px;border:1px solid rgba(255,255,255,.45);forced-color-adjust:none";
+      sw.style.backgroundColor = colHex;
+      selHud.appendChild(sw);
+    }
+    const bId = document.createElement("b");
+    bId.style.cssText = "font-family:ui-monospace,Consolas,monospace;color:#7dd3fc";
+    bId.textContent = selectedId;
+    selHud.appendChild(bId);
+    if (entry && Array.isArray(entry.restSizeMm)) {
+      const dm = document.createElement("span");
+      dm.style.cssText = "opacity:.82;font-variant-numeric:tabular-nums";
+      dm.textContent = entry.restSizeMm.map((v) => Math.round(v * 10) / 10).join("×") + " mm";
+      selHud.appendChild(dm);
+    }
+    selHud.appendChild(_mkHudBtn("🎯", "Phóng tới chi tiết", () => focusPart(selectedId)));
+    if (typeof opts.onEdit === "function") {
+      selHud.appendChild(_mkHudBtn("✏ Sửa", "Sửa chi tiết này", () => opts.onEdit(selectedId)));
+    }
+    selHud.appendChild(_mkHudBtn("✕", "Bỏ chọn chi tiết", () => selectPart(null)));
+    selHud.hidden = false;
+    selHud.style.display = "flex";
+  };
+
+  selectPart = (id, silent = false) => {
+    selectedId = (id && parsed.partsMap.has(id)) ? id : null;
+    applyVisibilityAndHighlight();
+    updateSelHud();
+    renderNow();
+    if (!silent && typeof opts.onSelect === "function") opts.onSelect(selectedId);
+    return selectedId;
+  };
 
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -595,15 +723,39 @@ export async function showGlb(host, buffer, opts = {}) {
     tip.style.top = `${y}px`;
   };
 
-  let downX = 0, downY = 0, downBtn = -1, dragging = false;
+  let downX = 0, downY = 0, downBtn = -1, dragging = false, lastUpAt = 0;
   let lastClickX = 0, lastClickY = 0;
+  const moveTol = (ev) => (ev && ev.pointerType === "touch" ? 14 : 9);
+  const pickAt = (clientX, clientY) => {
+    const { hits, rect } = raycastParts(clientX, clientY);
+    const ids = uniqueHitIds(hits);
+    if (!ids.length) {
+      selectPart(null);
+      tip.hidden = true;
+      return;
+    }
+    // Same-spot repeat clicks cycle cleanly through occluded parts behind the front mesh.
+    const sameSpot = Math.hypot(clientX - lastClickX, clientY - lastClickY) < 10;
+    let pid = ids[0];
+    if (sameSpot && selectedId && ids.includes(selectedId) && ids.length > 1) {
+      pid = ids[(ids.indexOf(selectedId) + 1) % ids.length];
+    }
+    lastClickX = clientX;
+    lastClickY = clientY;
+    hoveredId = pid;
+    selectPart(pid);
+    renderer.domElement.style.cursor = "pointer";
+    const idx = ids.indexOf(pid);
+    const depthInfo = ids.length > 1 ? `[${idx + 1}/${ids.length}]` : "";
+    showTip(pid, clientX, clientY, rect, depthInfo);
+  };
   const onDown = (ev) => {
     downX = ev.clientX; downY = ev.clientY; downBtn = ev.button;
     dragging = ev.button === 0 || ev.button === 2;
   };
   const onMove = (ev) => {
     if (dragging) {
-      if (Math.hypot(ev.clientX - downX, ev.clientY - downY) >= 5) {
+      if (Math.hypot(ev.clientX - downX, ev.clientY - downY) >= moveTol(ev)) {
         renderer.domElement.style.cursor = "grabbing";
         tip.hidden = true;
       }
@@ -637,49 +789,16 @@ export async function showGlb(host, buffer, opts = {}) {
     const wasBtn = downBtn;
     dragging = false;
     downBtn = -1;
-    if (wasBtn !== 0 || Math.hypot(ev.clientX - downX, ev.clientY - downY) >= 5) {
+    if (wasBtn !== 0 || Math.hypot(ev.clientX - downX, ev.clientY - downY) >= moveTol(ev)) {
       renderer.domElement.style.cursor = hoveredId ? "pointer" : "grab";
       return;
     }
-    const { hits, rect } = raycastParts(ev.clientX, ev.clientY);
-    const ids = uniqueHitIds(hits);
-    if (!ids.length) {
-      selectPart(null);
-      tip.hidden = true;
-      return;
-    }
-    // Same-spot repeat clicks cycle cleanly through occluded parts behind the front mesh.
-    const sameSpot = Math.hypot(ev.clientX - lastClickX, ev.clientY - lastClickY) < 5;
-    let pid = ids[0];
-    if (sameSpot && selectedId && ids.includes(selectedId) && ids.length > 1) {
-      pid = ids[(ids.indexOf(selectedId) + 1) % ids.length];
-    }
-    lastClickX = ev.clientX;
-    lastClickY = ev.clientY;
-    hoveredId = pid;
-    selectPart(pid);
-    renderer.domElement.style.cursor = "pointer";
-    const idx = ids.indexOf(pid);
-    const depthInfo = ids.length > 1 ? `[${idx + 1}/${ids.length}]` : "";
-    showTip(pid, ev.clientX, ev.clientY, rect, depthInfo);
+    lastUpAt = performance.now();
+    pickAt(ev.clientX, ev.clientY);
   };
-  const focusPart = (id) => {
-    const entry = parsed.partsMap.get(id);
-    if (!entry) return;
-    parsed.root.updateMatrixWorld(true);
-    const b = new THREE.Box3().setFromObject(entry.wrap);
-    if (b.isEmpty()) return;
-    const partCenter = b.getCenter(new THREE.Vector3());
-    const partSize = b.getSize(new THREE.Vector3());
-    const partRad = Math.max(partSize.x, partSize.y, partSize.z, 0.02) * 0.5;
-    const dir = camera.position.clone().sub(controls.target);
-    if (dir.lengthSq() < 1e-8) dir.copy(homeDir);
-    else dir.normalize();
-    const dist = Math.max(partRad * 4.2, radius * 0.18);
-    controls.target.copy(partCenter);
-    camera.position.copy(partCenter).addScaledVector(dir, dist);
-    controls.update();
-    renderNow();
+  const onClick = (ev) => {
+    if (performance.now() - lastUpAt <= 120) return;
+    pickAt(ev.clientX, ev.clientY);
   };
   const onWinUp = () => { dragging = false; downBtn = -1; };
   const onDblClick = (ev) => {
@@ -694,6 +813,7 @@ export async function showGlb(host, buffer, opts = {}) {
   renderer.domElement.addEventListener("pointermove", onMove);
   renderer.domElement.addEventListener("pointerleave", onLeave);
   renderer.domElement.addEventListener("pointerup", onUp, { capture: true });
+  renderer.domElement.addEventListener("click", onClick);
   renderer.domElement.addEventListener("dblclick", onDblClick, { capture: true });
   window.addEventListener("pointerup", onWinUp);
   loop(lastT);
@@ -777,11 +897,17 @@ export async function showGlb(host, buffer, opts = {}) {
       renderer.domElement.removeEventListener("pointermove", onMove);
       renderer.domElement.removeEventListener("pointerleave", onLeave);
       renderer.domElement.removeEventListener("pointerup", onUp, { capture: true });
+      renderer.domElement.removeEventListener("click", onClick);
       renderer.domElement.removeEventListener("dblclick", onDblClick, { capture: true });
       window.removeEventListener("pointerup", onWinUp);
       tip.remove();
+      selHud.remove();
       controls.dispose();
-      envRT.dispose();
+      if (envRT) envRT.dispose();
+      selHelper.geometry.dispose();
+      selHelper.material.dispose();
+      hovHelper.geometry.dispose();
+      hovHelper.material.dispose();
       renderer.dispose();
       parsed.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
       grid.geometry.dispose();
