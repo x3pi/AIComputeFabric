@@ -208,6 +208,8 @@ for j in plan.get("joints", []):
     e.rotation_mode = "QUATERNION"
     for i in range(n + 1):
         e.rotation_quaternion = mathutils.Quaternion(ax, span * i / n); e.keyframe_insert("rotation_quaternion", frame=1 + i)
+    e.rotation_quaternion = mathutils.Quaternion()
+    bpy.context.view_layer.update()
     for fc in e.animation_data.action.fcurves:
         for kp in fc.keyframe_points: kp.interpolation = "LINEAR"
 bpy.context.scene.frame_start, bpy.context.scene.frame_end = 1, last
@@ -237,6 +239,11 @@ if True:                                           # always save the scene (a pa
     report["totals"] = dict(volume_mm3=round(vol, 1), faces=fa, edges=ed, vertices=ve)
     report["totals"]["vertices_before_opt"] = sum(a for a, _b in report["opt"].values()) if report["opt"] else ve
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(proj, "scene.blend"))
+    bpy.context.scene.frame_set(1)
+    try:
+        bpy.ops.export_scene.gltf(filepath=os.path.join(proj, "scene.glb"), export_format="GLB", export_animations=True, export_yup=True)
+    except Exception:
+        pass
 report["ok"] = not (report["missing"] or report["part_errors"] or report["issues"])
 json.dump(report, open(os.path.join(proj, "report.json"), "w"), indent=1)
 print("BX_DONE", report["ok"])

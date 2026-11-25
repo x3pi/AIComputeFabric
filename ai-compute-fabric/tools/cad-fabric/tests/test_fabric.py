@@ -94,7 +94,7 @@ class FakeLLM:
     """Scripted executor: each entry is a list of (tool, args) or a final string."""
     def __init__(self, script): self.script, self.i, self.seen = script, 0, []
     def chat(self, messages, tools=None, think=False, **kw):
-        self.seen.append(messages[-1]["content"] if messages else "")
+        self.seen.append("\n".join(str(m.get("content") or "") for m in (messages or [])))
         s = self.script[min(self.i, len(self.script) - 1)]; self.i += 1
         if isinstance(s, str): return {"role": "assistant", "content": s, "_usage": {"completion_tokens": 1}}
         return {"role": "assistant", "content": "", "tool_calls": [{"id": "c%d" % self.i, "type": "function", "function": {"name": n, "arguments": json.dumps(a)}} for n, a in s],

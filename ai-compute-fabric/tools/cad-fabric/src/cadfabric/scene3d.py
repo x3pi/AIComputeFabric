@@ -29,6 +29,8 @@ RECIPES = os.environ.get("BX_RECIPES", "1") != "0"        # parts may be JSON re
 DIRECTOR_OPS_ON = os.environ.get("BX_DIRECTOR_OPS", "1") != "0"   # the director writes the geometry recipes of simple parts into the plan (0: the worker writes them; cheaper for the director, less reliable)
 GUARD = os.environ.get("BX_GUARD", "1") != "0"            # a repair round that makes the scene worse is undone
 BESTOFN = max(1, int(os.environ.get("BX_BESTOFN", "2")))  # adaptive local worker retries/candidates per part (free tokens, gated before Blender)
+AUTOMIRROR = os.environ.get("BX_AUTOMIRROR", "1") != "0"  # auto-deduplicate symmetric L/R worker pairs in Y=0 when director omits mirror_of
+AUTOGROUP = os.environ.get("BX_AUTOGROUP", "1") != "0"    # auto-batch ungrouped plain worker parts sharing a clean family stem
 BLENDER_BUILD = os.path.join(HERE, "blender", "blender_build.py")
 BLENDER_RENDER = os.path.join(HERE, "blender", "blender_render.py")
 MAX_TRIES = 4                  # worker attempts per part (all causes together)
@@ -80,7 +82,7 @@ Reply with ONE JSON object, no prose. Actions:
  {"action":"write_part","id":"p1","note":"guidance for the worker"}   (worker retries with your note)
  {"action":"patch_part","id":"p1","code":"<python defining build(bpy, bmesh)>"}   (you write it yourself; use when the worker is stuck)
  {"action":"done"}
-""" + (DIRECTOR_OPS if RECIPES and DIRECTOR_OPS_ON else "") + """Rules: every physical part in the TASK gets its own id and its own mesh (four posts = four parts); never merge parts. "group" only lets the worker write several separate parts in one request; use the same group name for parts of the same kind. Parts that should touch/overlap by design must be in allowed_contacts; joint children spin about axis through origin_mm (span_rad is SIGNED: sign follows the right-hand rule about axis); list a part in coaxial only if it is a body of revolution centred on the axis. Give EVERY part center_mm and size_mm: the centre and the extents (dx,dy,dz) of its world axis-aligned bounding box at rest, in mm (for a tilted part, the box of the tilted shape); they are measured after the build and the worker is told when its mesh differs, so make them consistent with the spec and with the other parts. Never alter explicit coordinates or dimensions stated in the TASK just to close a support gap: if TASK-given coordinates leave a part >10 mm from neighbours, mark it "free":true; only move parts or add brackets when the layout is your own design. When the TASK states a target part count (e.g. 50-60 parts), stay close to that range rather than multiplying tiny fins/fasteners far beyond it. Keep internal reasoning concise: compute coordinates once from the layout, omit "ops" on plain parts, and use "mirror_of" for every symmetric L/R pair. """ + (COLOR_RULE if COLORS else "") + """In the final review compare the numbers you are shown (bounding boxes, joint spans) with the TASK text, including directions and signs, and fix what differs."""
+""" + (DIRECTOR_OPS if RECIPES and DIRECTOR_OPS_ON else "") + """Rules: every physical part in the TASK gets its own id and its own mesh (four posts = four parts); never merge parts. "group" lets the worker write 4-6 parts of the same family in one request; always assign shared group tags (e.g. "wheel_f", "brakes", "fasteners") on plain parts. Parts that should touch/overlap by design must be in allowed_contacts; joint children spin about axis through origin_mm (span_rad is SIGNED: sign follows the right-hand rule about axis); list a part in coaxial only if it is a body of revolution centred on the axis. Give EVERY part center_mm and size_mm: the centre and the extents (dx,dy,dz) of its world axis-aligned bounding box at rest, in mm (for a tilted part, the box of the tilted shape); they are measured after the build and the worker is told when its mesh differs, so make them consistent with the spec and with the other parts. Never alter explicit coordinates or dimensions stated in the TASK just to close a support gap: if TASK-given coordinates leave a part >10 mm from neighbours, mark it "free":true; only move parts or add brackets when the layout is your own design. When the TASK states a target part count (e.g. 50-60 parts), stay close to that range rather than multiplying tiny fins/fasteners far beyond it. Keep internal reasoning concise: omit "ops" on plain parts, set "group" on plain parts of the same family, and use "mirror_of" for every symmetric L/R pair (including curved spars, swingarms, fairings, forks, and pegs). """ + (COLOR_RULE if COLORS else "") + """In the final review compare the numbers you are shown (bounding boxes, joint spans) with the TASK text, including directions and signs, and fix what differs."""
 
 WORKER_SYS = """You write Blender Python (bpy/bmesh) for ONE part. Output only a python code block defining build(bpy, bmesh).
 Contract: build() creates exactly one MESH object named exactly as the part id (bpy.data.objects.new(id, mesh), do NOT link it; the runner links it).
@@ -331,16 +333,16 @@ def plan_delta_view(plan, rep, stuck, others):
                     focus.add(other)
     if not focus or len(focus) >= len(parts) - 4:
         return pv
-    kept = [q for q in parts if q["id"] in focus]
+    kept = [{k: v for k, v in q.items() if k not in ("color", "finish", "group")} for q in parts if q["id"] in focus]
     locked = [q["id"] for q in parts if q["id"] not in focus]
     return {"parts": kept, "healthy_locked_parts": locked, "joints": pv.get("joints", []), "allowed_contacts": pv.get("allowed_contacts", [])}
 
 
 def review_plan_view(plan):
-    """For large scenes (>55 parts), drop cosmetic fields (color/finish/group) during final review to keep prompt concise."""
+    """For scenes >24 parts, drop cosmetic fields (color/finish/group) during final review to keep prompt concise."""
     pv = plan_view(plan)
     parts = pv.get("parts", [])
-    if len(parts) <= 55:
+    if len(parts) <= 24:
         return pv
     out = [{k: v for k, v in q.items() if k not in ("color", "finish", "group")} for q in parts]
     return dict(pv, parts=out)
@@ -381,6 +383,82 @@ def apply_patch(plan, act):
     contacts -= {pair(c) for c in act.get("allowed_contacts_remove") or []}
     new["allowed_contacts"] = sorted(list(c) for c in contacts)
     return new, errs
+
+
+_LR_MIRROR_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*?)(_?)(fl|fr|rl|rr|l|r)$", re.I)
+_LR_PAIR = {"l": "r", "fl": "fr", "rl": "rr"}
+_AG_STEM_RE = re.compile(r"^([A-Za-z][A-Za-z0-9]*?)(?:_(?:fl|fr|rl|rr|front|rear|left|right|lo|up|f|r|l|u|\d+)|\d+)$", re.I)
+
+
+def auto_group_key(pid):
+    """Extract a clean alphabetical family stem (len >= 3) for batching ungrouped plain parts."""
+    m = _AG_STEM_RE.match(str(pid or ""))
+    if not m:
+        return None
+    stem = m.group(1)
+    if len(stem) < 3 or not stem.isalpha():
+        return None
+    return stem.lower()
+
+
+def _num3(v):
+    return isinstance(v, list) and len(v) == 3 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v)
+
+
+def _shapes_y_mirror(pL, pR):
+    if "shape" not in pL and "shape" not in pR:
+        return True
+    sL, sR = pL.get("shape"), pR.get("shape")
+    if not isinstance(sL, dict) or not isinstance(sR, dict) or sL.get("kind") != sR.get("kind"):
+        return False
+    epL, epR = sL.get("endpoints"), sR.get("endpoints")
+    if epL is None and epR is None:
+        return True
+    if not (isinstance(epL, list) and len(epL) == 2 and isinstance(epR, list) and len(epR) == 2):
+        return False
+    if not all(_num3(q) for q in epL + epR):
+        return False
+    same_pt = lambda a, b: abs(a[0] - b[0]) <= 1.0 and abs(a[1] + b[1]) <= 1.0 and abs(a[2] - b[2]) <= 1.0
+    return (same_pt(epL[0], epR[0]) and same_pt(epL[1], epR[1])) or (same_pt(epL[0], epR[1]) and same_pt(epL[1], epR[0]))
+
+
+def _normalize_nested_joints(joints, pids):
+    """Resolve joint names mistakenly placed inside another joint's `children`/`coaxial`/`parent`."""
+    if not isinstance(joints, list):
+        return joints
+    jout = [dict(j) if isinstance(j, dict) else j for j in joints]
+    jmap = {j["name"]: j for j in jout if isinstance(j, dict) and j.get("name") and j["name"] not in pids}
+    if not jmap:
+        return jout
+    for j in jout:
+        if not isinstance(j, dict):
+            continue
+        p = j.get("parent")
+        if p in jmap:
+            pj = jmap[p]
+            cand = next((c for c in (pj.get("children") or []) if c in pids), None)
+            if cand:
+                j["parent"] = cand
+        orig_kids = j.get("children")
+        if isinstance(orig_kids, list):
+            sub_jnames = [c for c in orig_kids if c in jmap]
+            if sub_jnames:
+                non_j = [c for c in orig_kids if c not in jmap]
+                anchor = next((c for c in non_j if c in pids), None)
+                for jn in sub_jnames:
+                    jb = jmap[jn]
+                    if jb.get("parent") in pids:
+                        continue
+                    if anchor:
+                        jb["parent"] = anchor
+                    else:
+                        for kc in (jb.get("children") or []):
+                            if kc not in jmap and kc not in non_j:
+                                non_j.append(kc)
+                j["children"] = non_j
+        if isinstance(j.get("coaxial"), list):
+            j["coaxial"] = [c for c in j["coaxial"] if c not in jmap]
+    return jout
 
 
 def expand_plan(plan):
@@ -480,6 +558,37 @@ def expand_plan(plan):
                 else:
                     exp_c.append(pr)
             res["allowed_contacts"] = exp_c
+    if AUTOMIRROR:
+        derived_srcs = {p["_mirror_from"]["src"] for p in out if isinstance(p.get("_mirror_from"), dict) and p["_mirror_from"].get("src")}
+        derived_srcs |= {p["_offset_from"]["src"] for p in out if isinstance(p.get("_offset_from"), dict) and p["_offset_from"].get("src")}
+        candidates = {}
+        for idx_p, p in enumerate(out):
+            if p.get("ops") or p.get("_mirror_from") or p.get("_offset_from") or p.get("mirror_of") or p.get("array"):
+                continue
+            if not (_num3(p.get("center_mm")) and _num3(p.get("size_mm"))):
+                continue
+            m = _LR_MIRROR_RE.match(str(p.get("id") or ""))
+            if m and len(m.group(1)) >= 2:
+                stem, sep, side = m.group(1).lower(), m.group(2), m.group(3).lower()
+                candidates.setdefault((stem, sep), {})[side] = (idx_p, p)
+        for (_stem, _sep), sides in candidates.items():
+            for ls, rs in _LR_PAIR.items():
+                if ls in sides and rs in sides:
+                    idxL, pL = sides[ls]
+                    idxR, pR = sides[rs]
+                    if pR.get("id") in derived_srcs:
+                        continue
+                    cL, sL = pL["center_mm"], pL["size_mm"]
+                    cR, sR = pR["center_mm"], pR["size_mm"]
+                    if (abs(cL[0] - cR[0]) <= 0.5 and abs(cL[1] + cR[1]) <= 0.5 and abs(cL[1]) >= 5.0 and abs(cL[2] - cR[2]) <= 0.5
+                            and all(abs(sL[k] - sR[k]) <= 0.5 for k in range(3)) and _shapes_y_mirror(pL, pR)):
+                        pR_new = dict(pR)
+                        pR_new["_mirror_from"] = {"src": pL["id"], "plane": "y", "offset_mm": 0}
+                        out[idxR] = pR_new
+                        derived_srcs.add(pL["id"])
+    pids = {p.get("id") for p in out if p.get("id")}
+    if isinstance(res.get("joints"), list):
+        res["joints"] = _normalize_nested_joints(res["joints"], pids)
     return res, errs
 
 
@@ -783,16 +892,18 @@ class Scene:
     def write_group(self, pids):
         p_map = {p["id"]: p for p in self.plan["parts"]} if self.plan else {}
         specs = "\n".join("- %s: %s" % (p, self.spec(p)) for p in pids)
-        txt = self.ask_worker("Write ALL of these parts. For each part output a line `# PART <id>` then one code block (python defining build(bpy, bmesh)" + (", or a json recipe" if RECIPES else "") +
-                              ") for that part (object named exactly the id).\n" + specs)
+        fmt_hint = "one ```json recipe block (preferred for simple shapes) or python defining build(bpy, bmesh)" if RECIPES else "one python code block defining build(bpy, bmesh)"
+        txt = self.ask_worker("Write ALL of these parts. For each part output a line `# PART <id>` then %s for that part (object named exactly the id).\n%s" % (fmt_hint, specs))
         got = set()
-        for m in re.finditer(r"#\s*PART\s+(\S+)\s*\n```(python|json)?\n(.*?)```", txt, re.S):
-            if m.group(1) in pids:
-                with open(self.pf(m.group(1)), "w", encoding="utf-8") as f:
-                    f.write(part_code("```%s\n%s```" % (m.group(2) or "python", m.group(3)), m.group(1), p_map.get(m.group(1))) if m.group(2) == "json" else m.group(3).strip() + "\n")
+        for m in re.finditer(r"(?:#+|\*\*)\s*PART[:\s]+([A-Za-z0-9_]+)[:*\s]*\n+```(python|json)?[ \t]*\n(.*?)```", txt, re.S):
+            pid, lang, body = m.group(1), (m.group(2) or "").lower(), m.group(3)
+            if pid in pids:
+                is_json = (lang == "json") or body.lstrip().startswith("{")
+                with open(self.pf(pid), "w", encoding="utf-8") as f:
+                    f.write(part_code("```json\n%s```" % body, pid, p_map.get(pid)) if is_json else body.strip() + "\n")
                 with self._lock:
-                    self.tries[m.group(1)] = 1
-                got.add(m.group(1))
+                    self.tries[pid] = 1
+                got.add(pid)
         return got
 
     def _sync_mirrors(self, mirrors, offsets=None):
@@ -906,13 +1017,26 @@ class Scene:
         offsets = {p["id"]: p["_offset_from"] for p in self.plan["parts"] if p.get("_offset_from") and not p.get("ops") and not self.notes.get(p["id"])}
         derived = set(mirrors) | set(offsets)
         todo = [p["id"] for p in self.plan["parts"] if p["id"] not in self.stuck and p["id"] not in derived and (not os.path.exists(self.pf(p["id"])) or p["id"] in self.err)]
-        groups, singles = {}, []
+        groups, singles, auto_cands = {}, [], {}
         for p in self.plan["parts"]:
-            if p["id"] in todo and p.get("group"):
-                groups.setdefault(p["group"], []).append(p["id"])
-            elif p["id"] in todo:
-                singles.append([p["id"]])
+            pid = p["id"]
+            if pid not in todo:
+                continue
+            if p.get("group"):
+                groups.setdefault(p["group"], []).append(pid)
+            else:
+                ag = auto_group_key(pid) if AUTOGROUP else None
+                if ag:
+                    auto_cands.setdefault(ag, []).append(pid)
+                else:
+                    singles.append([pid])
+        ag_max = min(gmax, 4)
         batches = singles + [g[k:k + gmax] for g in groups.values() for k in range(0, len(g), gmax)]
+        for g in auto_cands.values():
+            if len(g) >= 2:
+                batches.extend(g[k:k + ag_max] for k in range(0, len(g), ag_max))
+            else:
+                batches.append(g)
 
         def _run_batch(pids):
             got = self.write_group(pids) if len(pids) > 1 else set()

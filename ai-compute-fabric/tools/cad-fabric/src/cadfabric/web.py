@@ -9,6 +9,7 @@ from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
 BLENDER_VIDEO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blender", "blender_video.py")
+BLENDER_GLB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blender", "blender_glb.py")
 MAX_BODY = 40_000
 MAX_BODY_SEND = 7_000_000                      # /api/send may carry up to 3 pictures (base64)
 
@@ -107,10 +108,6 @@ class Session:
                     self.emit("skill_blocked", name=n)
                 if names:
                     self.emit("skill", name=", ".join(names), ok=True, explicit=True)
-                    by_name0 = {m["name"]: m for m in skills_mod.list_for(dd0, root) if m["status"] == "approved"}
-                    dnames0 = [n for n in names if n in by_name0 and skills_mod.for_role(by_name0[n], "director")]
-                    if dnames0:
-                        block = "\n\n".join(x for x in (block, skills_mod.explicit_block(dd0, root, dnames0)) if x)
                 l_force, l_blocked = lessons_mod.mentions(dd0, root, text)
                 for n in l_blocked:
                     self.emit("lesson_blocked", name=n)
@@ -153,9 +150,12 @@ class Session:
             wpick = [m["name"] for m in ap if m.get("implicit", True) and skills_mod.for_role(m, "worker")]
             cat = "\n".join("- %s: %s" % (m["name"], (m.get("description") or "")[:200]) for m in pick)[:6000]
             by_name = {m["name"]: m for m in ap}
+            dnames = [n for n in names if n in by_name and skills_mod.for_role(by_name[n], "director")] if names else []
             wnames = [n for n in names if n in by_name and skills_mod.for_role(by_name[n], "worker")] if names else []
+            sk_exp_d = skills_mod.explicit_block(dd, root, dnames) if dnames else ""
             sk_exp_w = skills_mod.explicit_block(dd, root, wnames) if wnames else ""
-            return {"catalog": cat, "names": [m["name"] for m in pick], "worker_names": wpick, "explicit": ldir,
+            return {"catalog": cat, "names": [m["name"] for m in pick], "worker_names": wpick,
+                    "explicit": "\n\n".join(x for x in (sk_exp_d, ldir) if x),
                     "explicit_worker": "\n\n".join(x for x in (sk_exp_w, lwrk) if x),
                     "read": lambda n: skills_mod.use(dd, root, n), "fit": skills_mod.fit}
         except Exception:                                             # noqa: BLE001 - a broken skill folder must not stop a build
@@ -241,6 +241,8 @@ class Session:
             for f in ("plan.json", "usage.json"):
                 if os.path.isfile(os.path.join(src, f)):
                     shutil.copyfile(os.path.join(src, f), os.path.join(d, f))
+            if os.path.isfile(os.path.join(src, "scene.glb")):
+                shutil.copyfile(os.path.join(src, "scene.glb"), os.path.join(d, "scene.glb"))
             for f in os.listdir(os.path.join(src, "parts")):
                 shutil.copyfile(os.path.join(src, "parts", f), os.path.join(d, "parts", f))
             self.emit("file", op="saved", path=os.path.basename(self.autofile) + " (+ .scene/)")
@@ -442,6 +444,37 @@ class Session:
                 return wd, p
         return wd, ""
 
+    def ensure_scene_glb(self):
+        """Return path to animated GLB for the active scene (converting from scene.blend on demand), or ('', error)."""
+        wd, blend = self.scene_paths()
+        if not blend:
+            return "", "no scene yet"
+        out_dir = wd if (wd and os.path.isdir(wd)) else os.path.dirname(blend)
+        glb = os.path.join(out_dir, "scene.glb")
+        need = (not os.path.isfile(glb)) or os.path.getmtime(glb) < os.path.getmtime(blend)
+        if not need:
+            return glb, ""
+        blender = self.blender_exe()
+        if not blender:
+            return "", "Blender not found"
+        tmp = glb + ".tmp.glb"
+        try:
+            r = subprocess.run([blender, "-b", blend, "--python", BLENDER_GLB, "--", tmp], capture_output=True, text=True, timeout=120, **cq_backend.NOWIN)
+            if r.returncode != 0 or not os.path.isfile(tmp):
+                return "", "GLB export failed: " + (r.stderr or r.stdout or "")[-180:]
+            os.replace(tmp, glb)
+            if self.local and self.autofile and self.autofile.endswith(".blend"):
+                sdir = self.autofile[:-6] + ".scene"
+                if os.path.isdir(sdir):
+                    shutil.copyfile(glb, os.path.join(sdir, "scene.glb"))
+            return glb, ""
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return "", "GLB export failed: %s" % str(e)[:140]
+        finally:
+            if os.path.exists(tmp):
+                try: os.unlink(tmp)
+                except OSError: pass
+
     def render_scene_video(self):
         """Render animated MP4 preview of the active Blender scene using blender_video.py + ffmpeg. -> (status, dict)."""
         wd, blend = self.scene_paths()
@@ -502,7 +535,7 @@ def public_settings(cfg):
     except SystemExit:
         has_key = False
     return {"url": cfg["url"], "model": cfg["model"], "planner": cfg["planner"], "worker": cfg.get("worker") or "qwen",
-            "relay": cfg.get("relay") or {}, "has_key": has_key, "advisors": advisors.meta(cfg), "models": advisors.models_meta(cfg),
+            "relay": cfg.get("relay") or {}, "has_key": has_key, "advisors": advisors.meta(cfg), "models": advisors.models_meta(cfg), "availability": advisors.availability(cfg),
             "viewer": cfg.get("viewer") or {"kind": "auto", "command": ""}, "viewer_label": viewers.resolve(cfg)[1], "viewers_detected": viewers.detected(), "workspace": cfg.get("workspace") or "", "lessons_auto": bool(cfg.get("lessons_auto", True)),
             "configured": bool(cfg.get("_path")), "config_path": cfg.get("_path") or config.user_config_path()}
 
@@ -575,7 +608,7 @@ def make_handler(sess, token, hosts, data_dir):
                 self._send(200, {"planners": advisors.names(sess.cfg), "workers": advisors.worker_names(sess.cfg),
                                  "external": [n for n in advisors.worker_names(sess.cfg) + ["codex-relay"] if advisors.is_external(sess.cfg, n)],
                                  "default": sess.cfg["planner"], "default_worker": sess.cfg.get("worker") or "qwen",
-                                 "advisors": advisors.meta(sess.cfg), "models": advisors.models_meta(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "cli_presets": advisors.presets_info(sess.cfg), "viewer_label": viewers.resolve(sess.cfg)[1], "version": __import__("cadfabric").__version__,
+                                 "advisors": advisors.meta(sess.cfg), "models": advisors.models_meta(sess.cfg), "availability": advisors.availability(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "cli_presets": advisors.presets_info(sess.cfg), "viewer_label": viewers.resolve(sess.cfg)[1], "version": __import__("cadfabric").__version__,
                                  "recent": sess.recent() if sess.local else [], "local": sess.local, "picker": bool(sess.picker and sess.local), "settings": public_settings(sess.cfg)})
             elif u.path == "/api/history":
                 every = (q.get("all") or [""])[0] == "1"
@@ -685,6 +718,50 @@ def make_handler(sess, token, hosts, data_dir):
                 fn = os.path.basename(blend).replace('"', "") or "scene.blend"
                 with open(blend, "rb") as f:
                     self._send(200, f.read(), "application/octet-stream", [("Content-Disposition", 'attachment; filename="%s"' % fn)])
+            elif u.path in ("/api/scene.glb", "/api/part.glb"):
+                glb, err = sess.ensure_scene_glb()
+                if not glb:
+                    return self._send(404, {"error": err or "no scene yet"})
+                hdrs = []
+                if u.path == "/api/part.glb":
+                    _wd, blend = sess.scene_paths()
+                    base_fn = (os.path.splitext(os.path.basename(blend or "scene"))[0] + ".glb").replace('"', "")
+                    hdrs = [("Content-Disposition", 'attachment; filename="%s"' % base_fn)]
+                with open(glb, "rb") as f:
+                    self._send(200, f.read(), "model/gltf-binary", hdrs)
+            elif u.path == "/api/blendglb":
+                if not sess.local:
+                    return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
+                rel_p = (q.get("path") or [""])[0]
+                k = ws_mod.kind_of(rel_p)
+                if k == "glb":
+                    full, mime, err = ws_mod.binary_file(sess.cfg.get("workspace") or "", rel_p, "glb")
+                    if err:
+                        return self._send(400, {"error": err})
+                    with open(full, "rb") as f:
+                        return self._send(200, f.read(), mime)
+                full, _m, err = ws_mod.binary_file(sess.cfg.get("workspace") or "", rel_p, "blend")
+                if err:
+                    return self._send(400, {"error": err})
+                blender = sess.blender_exe()
+                if not blender:
+                    return self._send(500, {"error": "Blender not found"})
+                import hashlib
+                exp_dir = os.path.join(data_dir, "exports")
+                os.makedirs(exp_dir, exist_ok=True)
+                key_h = hashlib.sha256((full + ":" + str(os.path.getmtime(full))).encode()).hexdigest()[:16]
+                out_glb = os.path.join(exp_dir, "blend-%s.glb" % key_h)
+                if not os.path.isfile(out_glb):
+                    tmp_g = out_glb + ".tmp.glb"
+                    try:
+                        r = subprocess.run([blender, "-b", full, "--python", BLENDER_GLB, "--", tmp_g], capture_output=True, text=True, timeout=120, **cq_backend.NOWIN)
+                    except subprocess.TimeoutExpired:
+                        return self._send(504, {"error": "Blender GLB conversion took too long"})
+                    if r.returncode != 0 or not os.path.isfile(tmp_g):
+                        return self._send(422, {"error": "Blender GLB conversion failed"})
+                    os.replace(tmp_g, out_glb)
+                with open(out_glb, "rb") as f:
+                    self._send(200, f.read(), "model/gltf-binary")
             elif u.path == "/api/part.svg":
                 try:
                     self._send(200, sess.backend.preview_svg(), "image/svg+xml")
@@ -734,6 +811,11 @@ def make_handler(sess, token, hosts, data_dir):
                     return self._send(400, {"error": "invalid reasoning effort"})
                 if (advisors.is_external(sess.cfg, planner) or advisors.is_external(sess.cfg, worker)) and not body.get("confirm_external"):
                     return self._send(409, {"error": "selected planner or worker sends your request to an external service; confirm_external is required"})
+                av = advisors.availability(sess.cfg)
+                if av.get(planner) and not av[planner]["ok"]:
+                    return self._send(400, {"error": "Cố vấn '%s' hiện không dùng được: %s" % (planner, av[planner]["reason"])})
+                if av.get(worker) and not av[worker]["ok"]:
+                    return self._send(400, {"error": "Model thực thi '%s' hiện không dùng được: %s" % (worker, av[worker]["reason"])})
                 files = body.get("files") or []
                 if files and (not sess.local or not isinstance(files, list) or len(files) > 8 or not all(isinstance(x, str) and len(x) < 300 for x in files)):
                     return self._send(400, {"error": "attached files are only available locally (at most 8)"})
@@ -760,9 +842,14 @@ def make_handler(sess, token, hosts, data_dir):
                 ok = sess.send(text, planner, files, ups, imgs or None, worker=worker,
                                planner_model=p_model, planner_effort=p_effort, worker_model=w_model, worker_effort=w_effort)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/discover_models", "/api/open", "/api/scene_video", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender", "/api/lessons", "/api/skills"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/discover_models", "/api/probe_model", "/api/open", "/api/scene_video", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender", "/api/lessons", "/api/skills"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
+                if u.path == "/api/probe_model":
+                    mid = str(body.get("id") or "").strip() if isinstance(body, dict) else ""
+                    if not mid or (mid not in advisors.names(sess.cfg) and mid not in advisors.worker_names(sess.cfg)):
+                        return self._send(400, {"error": "unknown model"})
+                    return self._send(200, advisors.probe_id(sess.cfg, sess.llm, mid))
                 if u.path == "/api/scene_video":
                     return self._send(*sess.render_scene_video())
                 if u.path == "/api/quit":
@@ -886,10 +973,12 @@ def make_handler(sess, token, hosts, data_dir):
                     res = None
                     if src == "claude":
                         res = dict(advisors.discover_claude_models(), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        if not advisors.find_exe("claude", cur):
+                            res.update(ok=False, callable=False, badge="chưa cài", reason="Chưa cài lệnh claude trên máy này.")
                     elif src == "codex":
-                        res = dict(advisors.discover_codex_models(cur, probe_rpc=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        res = dict(advisors.discover_codex_models(cur, probe_rpc=True)); res["ok"] = bool(res.get("callable", True)); res["detail"] = res.get("reason") or ("%d model" % len(res["models"]))
                     elif src == "agy":
-                        res = dict(advisors.discover_agy_models(cur, probe_cli=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        res = dict(advisors.discover_agy_models(cur, probe_cli=True)); res["ok"] = bool(res.get("callable", True)); res["detail"] = res.get("reason") or ("%d model" % len(res["models"]))
                     elif src == "gateway" or aid in ("qwen", "nothink", "think"):
                         try:
                             gk = config.read_key(cur)
@@ -897,9 +986,9 @@ def make_handler(sess, token, hosts, data_dir):
                             gk = ""
                         res = advisors.discover_api_models(cur["url"], "openai", gk)
                     elif aid == "codex":
-                        res = dict(advisors.discover_codex_models(cur, probe_rpc=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        res = dict(advisors.discover_codex_models(cur, probe_rpc=True)); res["ok"] = bool(res.get("callable", True)); res["detail"] = res.get("reason") or ("%d model" % len(res["models"]))
                     elif aid == "agy":
-                        res = dict(advisors.discover_agy_models(cur, probe_cli=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        res = dict(advisors.discover_agy_models(cur, probe_cli=True)); res["ok"] = bool(res.get("callable", True)); res["detail"] = res.get("reason") or ("%d model" % len(res["models"]))
                     elif aid:
                         a = saved.get(aid)
                         if not a:
@@ -908,12 +997,15 @@ def make_handler(sess, token, hosts, data_dir):
                             res = advisors.discover_api_models(a["url"], a["kind"], advisors._read_key(a))
                         elif a.get("preset") == "claude":
                             res = dict(advisors.discover_claude_models(), ok=True); res["detail"] = "%d model" % len(res["models"])
+                            if not advisors.find_exe("claude", cur):
+                                res.update(ok=False, callable=False, badge="chưa cài", reason="Chưa cài lệnh claude trên máy này.")
                         elif a.get("preset") == "codex":
-                            res = dict(advisors.discover_codex_models(cur, probe_rpc=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                            res = dict(advisors.discover_codex_models(cur, probe_rpc=True)); res["ok"] = bool(res.get("callable", True)); res["detail"] = res.get("reason") or ("%d model" % len(res["models"]))
                         elif a.get("preset") == "agy":
-                            res = dict(advisors.discover_agy_models(cur, probe_cli=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                            res = dict(advisors.discover_agy_models(cur, probe_cli=True)); res["ok"] = bool(res.get("callable", True)); res["detail"] = res.get("reason") or ("%d model" % len(res["models"]))
                         else:
-                            res = {"ok": True, "models": [], "catalog": [], "detail": "custom CLI"}
+                            exe_ok = advisors.availability(cur).get(aid, {}).get("ok", True)
+                            res = {"ok": exe_ok, "callable": exe_ok, "models": [], "catalog": [], "detail": "custom CLI" if exe_ok else "chưa cài lệnh"}
                     elif isinstance(body, dict) and body.get("advisor"):
                         raw_adv = dict(body.get("advisor") or {}); raw_adv.pop("key_file", None)
                         a, err = advisors.validate(raw_adv)
@@ -925,16 +1017,19 @@ def make_handler(sess, token, hosts, data_dir):
                             res = advisors.discover_api_models(a["url"], a["kind"], k)
                         elif a.get("preset") == "claude":
                             res = dict(advisors.discover_claude_models(), ok=True); res["detail"] = "%d model" % len(res["models"])
+                            if not advisors.find_exe("claude", cur):
+                                res.update(ok=False, callable=False, badge="chưa cài", reason="Chưa cài lệnh claude trên máy này.")
                         elif a.get("preset") == "codex":
-                            res = dict(advisors.discover_codex_models(cur, probe_rpc=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                            res = dict(advisors.discover_codex_models(cur, probe_rpc=True)); res["ok"] = bool(res.get("callable", True)); res["detail"] = res.get("reason") or ("%d model" % len(res["models"]))
                         elif a.get("preset") == "agy":
-                            res = dict(advisors.discover_agy_models(cur, probe_cli=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                            res = dict(advisors.discover_agy_models(cur, probe_cli=True)); res["ok"] = bool(res.get("callable", True)); res["detail"] = res.get("reason") or ("%d model" % len(res["models"]))
                         else:
                             res = {"ok": True, "models": [], "catalog": [], "detail": "custom CLI"}
                     else:
                         res = {"ok": True, "cli_presets": advisors.presets_info(cur)}
                     if src in ("claude", "codex", "agy") or (aid and aid not in ("qwen", "nothink", "think")):
                         res["cli_presets"] = advisors.presets_info(cur)
+                    res["availability"] = advisors.availability(cur)
                     return self._send(200, res)
                 for a in body.get("advisors") or []:
                     if isinstance(a, dict):

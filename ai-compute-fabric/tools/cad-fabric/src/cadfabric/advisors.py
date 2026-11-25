@@ -184,36 +184,54 @@ def discover_codex_models(cfg=None, home=None, probe_rpc=False):
         except OSError:
             pass
 
+    rpc_err = ""
+    rpc_ok = None
     if probe_rpc:
         exe = find_exe("codex", cfg)
-        if exe:
-            try:
-                msgs = [
-                    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"clientInfo": {"name": "cadfabric", "version": "0.9.11"}}},
-                    {"jsonrpc": "2.0", "method": "initialized", "params": {}},
-                    {"jsonrpc": "2.0", "id": 2, "method": "model/list", "params": {}},
-                ]
-                r = subprocess.run([exe, "app-server"], input="\n".join(json.dumps(x) for x in msgs) + "\n",
-                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=4, **NOWIN)
-                for ln in (r.stdout or "").splitlines():
-                    try:
-                        resp = json.loads(ln)
-                    except ValueError:
-                        continue
-                    if isinstance(resp, dict) and resp.get("id") == 2:
-                        for m in ((resp.get("result") or {}).get("data") or []):
-                            if isinstance(m, dict):
-                                add(m.get("id") or m.get("model"), m.get("displayName") or m.get("id") or "", m.get("supportedReasoningEfforts") or [])
-            except (OSError, subprocess.TimeoutExpired, ValueError):
-                pass
-    return {"models": [c["id"] for c in catalog], "efforts": efforts, "catalog": catalog}
+        if not exe:
+            return {"models": [c["id"] for c in catalog], "efforts": efforts, "catalog": catalog,
+                    "callable": False, "badge": "chưa cài", "reason": "Chưa cài lệnh codex trên máy này."}
+        try:
+            msgs = [
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"clientInfo": {"name": "cadfabric", "version": __import__("cadfabric").__version__}}},
+                {"jsonrpc": "2.0", "method": "initialized", "params": {}},
+                {"jsonrpc": "2.0", "id": 2, "method": "model/list", "params": {}},
+            ]
+            r = subprocess.run([exe, "app-server"], input="\n".join(json.dumps(x) for x in msgs) + "\n",
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=4, **NOWIN)
+            rpc_ok = (r.returncode == 0)
+            for ln in (r.stdout or "").splitlines():
+                try:
+                    resp = json.loads(ln)
+                except ValueError:
+                    continue
+                if isinstance(resp, dict) and resp.get("id") == 2:
+                    if resp.get("error"):
+                        rpc_err = str((resp["error"] or {}).get("message") or resp["error"])[:120]
+                        rpc_ok = False
+                    for m in ((resp.get("result") or {}).get("data") or []):
+                        if isinstance(m, dict):
+                            add(m.get("id") or m.get("model"), m.get("displayName") or m.get("id") or "", m.get("supportedReasoningEfforts") or [])
+            if not rpc_ok and not rpc_err:
+                rpc_err = ((r.stderr or "").strip().splitlines() or ["exit %d" % r.returncode])[-1][:120]
+        except (OSError, subprocess.TimeoutExpired, ValueError) as e:
+            rpc_ok = False
+            rpc_err = str(e)[:120]
+    out = {"models": [c["id"] for c in catalog], "efforts": efforts, "catalog": catalog}
+    if probe_rpc:
+        ok_call = bool(catalog) or bool(rpc_ok)
+        out["callable"] = ok_call
+        out["badge"] = "sẵn sàng" if ok_call else "không gọi được"
+        if not ok_call:
+            out["reason"] = "Không gọi được codex app-server (%s)." % (rpc_err or "lỗi không rõ")
+    return out
 
 
 def discover_api_models(url, kind="openai", key="", timeout=15):
     """Query `GET /models` on an OpenAI-compatible or Anthropic Messages API endpoint. Never raises."""
     u = str(url or "").strip()
     if not re.match(r"^https?://[^\s\"'<>]{1,300}$", u):
-        return {"ok": False, "models": [], "catalog": [], "detail": "invalid URL"}
+        return {"ok": False, "models": [], "catalog": [], "detail": "invalid URL", "callable": False, "badge": "chưa cấu hình", "reason": "Chưa cấu hình URL API hợp lệ."}
     hdr = {"User-Agent": "cadfabric"}
     if kind == "anthropic":
         base = re.sub(r"/messages/?$", "", u.rstrip("/"))
@@ -232,9 +250,14 @@ def discover_api_models(url, kind="openai", key="", timeout=15):
         with urllib.request.urlopen(urllib.request.Request(target, headers=hdr), timeout=timeout) as r:
             d = json.loads(r.read())
     except urllib.error.HTTPError as e:
-        return {"ok": False, "models": [], "catalog": [], "detail": "HTTP %d" % e.code}
+        if e.code in (404, 405):
+            return {"ok": False, "models": [], "catalog": [], "detail": "HTTP %d" % e.code, "callable": True, "badge": "sẵn sàng"}
+        if e.code in (401, 403):
+            return {"ok": False, "models": [], "catalog": [], "detail": "HTTP %d" % e.code, "callable": False, "badge": "lỗi khoá API", "reason": "Máy chủ từ chối khoá API (HTTP %d)." % e.code}
+        return {"ok": False, "models": [], "catalog": [], "detail": "HTTP %d" % e.code, "callable": False, "badge": "lỗi HTTP %d" % e.code, "reason": "Máy chủ API trả lỗi HTTP %d." % e.code}
     except Exception as e:                                                   # noqa: BLE001 - discovery must stay safe
-        return {"ok": False, "models": [], "catalog": [], "detail": str(getattr(e, "reason", None) or type(e).__name__)[:120]}
+        det = str(getattr(e, "reason", None) or type(e).__name__)[:120]
+        return {"ok": False, "models": [], "catalog": [], "detail": det, "callable": False, "badge": "mất kết nối", "reason": "Không kết nối được tới máy chủ API (%s)." % det}
     catalog, seen = [], set()
     raw_items = (d.get("data") if isinstance(d, dict) else None) or (d.get("models") if isinstance(d, dict) else None) or []
     for item in raw_items:
@@ -245,7 +268,7 @@ def discover_api_models(url, kind="openai", key="", timeout=15):
             continue
         seen.add(mid)
         catalog.append({"id": mid, "label": str(item.get("display_name") or mid).strip()})
-    return {"ok": True, "models": [c["id"] for c in catalog], "catalog": catalog, "detail": "%d model" % len(catalog)}
+    return {"ok": True, "models": [c["id"] for c in catalog], "catalog": catalog, "detail": "%d model" % len(catalog), "callable": True, "badge": "sẵn sàng"}
 
 
 def _agy_model_effort(model, effort):
@@ -291,36 +314,50 @@ def discover_agy_models(cfg=None, home=None, probe_cli=False):
         if isinstance(c, dict):
             add(c.get("id"), c.get("label") or "", c.get("efforts") or (), sec=c.get("section") or "main")
 
+    agy_err = ""
+    agy_ok = None
     if probe_cli:
         exe = find_exe("agy", cfg)
-        if exe:
-            try:
-                r = subprocess.run([exe, "models"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=12, **NOWIN)
-                clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", r.stdout or "")
-                parsed_full = []
-                for ln in re.split(r"[\r\n]+", clean):
-                    m = re.match(r"^\s*([A-Za-z0-9][A-Za-z0-9._:/@\-]{0,79})(?:\t|\s{2,})(.+?)\s*$", ln)
-                    if not m:
-                        continue
-                    slug, label = m.group(1).strip(), m.group(2).strip()
-                    msuf = _AGY_SUFFIX.match(slug)
-                    if msuf:
-                        base_slug, suf_eff = msuf.group(1), msuf.group(2)
-                        if suf_eff not in efforts:
-                            efforts.append(suf_eff)
-                        add(base_slug, re.sub(r"\s*\([^)]+\)\s*$", "", label), sec="main")
-                        parsed_full.append((slug, label, "variant"))
-                    else:
-                        parsed_full.append((slug, label, "main"))
-                for slug, label, sec in parsed_full:
-                    add(slug, label, sec=sec)
-                if parsed_full:
-                    _AGY_CACHE["models"] = [c["id"] for c in catalog]
-                    _AGY_CACHE["efforts"] = list(efforts)
-                    _AGY_CACHE["catalog"] = list(catalog)
-            except (OSError, subprocess.TimeoutExpired, ValueError):
-                pass
-    return {"models": [c["id"] for c in catalog], "efforts": efforts, "catalog": catalog}
+        if not exe:
+            return {"models": [c["id"] for c in catalog], "efforts": efforts, "catalog": catalog,
+                    "callable": False, "badge": "chưa cài", "reason": "Chưa cài lệnh agy trên máy này."}
+        try:
+            r = subprocess.run([exe, "models"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=12, **NOWIN)
+            agy_ok = (r.returncode == 0)
+            clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", r.stdout or "")
+            parsed_full = []
+            for ln in re.split(r"[\r\n]+", clean):
+                m = re.match(r"^\s*([A-Za-z0-9][A-Za-z0-9._:/@\-]{0,79})(?:\t|\s{2,})(.+?)\s*$", ln)
+                if not m:
+                    continue
+                slug, label = m.group(1).strip(), m.group(2).strip()
+                msuf = _AGY_SUFFIX.match(slug)
+                if msuf:
+                    base_slug, suf_eff = msuf.group(1), msuf.group(2)
+                    if suf_eff not in efforts:
+                        efforts.append(suf_eff)
+                    add(base_slug, re.sub(r"\s*\([^)]+\)\s*$", "", label), sec="main")
+                    parsed_full.append((slug, label, "variant"))
+                else:
+                    parsed_full.append((slug, label, "main"))
+            for slug, label, sec in parsed_full:
+                add(slug, label, sec=sec)
+            if parsed_full:
+                _AGY_CACHE["models"] = [c["id"] for c in catalog]
+                _AGY_CACHE["efforts"] = list(efforts)
+                _AGY_CACHE["catalog"] = list(catalog)
+            if not agy_ok:
+                agy_err = ((r.stderr or "").strip().splitlines() or (r.stdout or "").strip().splitlines() or ["exit %d" % r.returncode])[-1][:140]
+        except (OSError, subprocess.TimeoutExpired, ValueError) as e:
+            agy_ok = False
+            agy_err = str(e)[:140]
+    out = {"models": [c["id"] for c in catalog], "efforts": efforts, "catalog": catalog}
+    if probe_cli:
+        out["callable"] = bool(agy_ok)
+        out["badge"] = "sẵn sàng" if agy_ok else "không gọi được"
+        if not agy_ok:
+            out["reason"] = "Lệnh agy lỗi: %s" % (agy_err or "không trả về danh sách model")
+    return out
 
 
 def presets_info(cfg=None):
@@ -337,6 +374,125 @@ def presets_info(cfg=None):
 
 def detected(cfg=None):
     return {k: find_exe(v["exe"], cfg) for k, v in CLI_PRESETS.items()}
+
+
+def cli_auth_status(preset, home=None):
+    """Best-effort check whether local CLI credentials/session files exist (never reads secret contents)."""
+    h = home or os.path.expanduser("~")
+    if preset == "claude":
+        cdir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(h, ".claude")
+        return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+                    or os.path.isfile(os.path.join(cdir, ".credentials.json"))
+                    or os.path.isfile(os.path.join(h, ".claude.json")))
+    if preset == "codex":
+        cxdir = os.environ.get("CODEX_HOME") or os.path.join(h, ".codex")
+        return bool(os.environ.get("OPENAI_API_KEY") or os.path.isfile(os.path.join(cxdir, "auth.json")))
+    if preset == "agy":
+        adir = os.path.join(h, ".gemini", "antigravity-cli")
+        return bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+                    or os.path.isfile(os.path.join(adir, "antigravity-oauth-token"))
+                    or os.path.isfile(os.path.join(adir, "settings.json")))
+    return True
+
+
+def availability(cfg=None, home=None, scene_mode=True):
+    """Compute per-model availability, installation & auth hints without network I/O. -> {id: {ok, state, badge, reason, warn, exe}}."""
+    cfg = cfg or {}
+    out = {"off": {"ok": True, "state": "ready", "badge": "tắt", "reason": "Tắt bước lập kế hoạch riêng.", "warn": "", "exe": ""}}
+    gw_url = str(cfg.get("url") or "").strip()
+    gw_ok = bool(re.match(r"^https?://[^\s\"'<>]{1,300}$", gw_url))
+    for qid in ("qwen", "nothink", "think"):
+        out[qid] = (
+            {"ok": True, "state": "ready", "badge": "nội bộ", "reason": "Gateway API mặc định (" + gw_url + ")", "warn": "", "exe": ""}
+            if gw_ok else
+            {"ok": False, "state": "unconfigured", "badge": "chưa cấu hình", "reason": "Chưa nhập địa chỉ URL API Qwen trong Cài đặt.", "warn": "", "exe": ""}
+        )
+    relay = cfg.get("relay") or {}
+    if scene_mode:
+        out["codex-relay"] = {"ok": False, "state": "unsupported", "badge": "không hỗ trợ 3D",
+                              "reason": "Codex qua SSH chưa hỗ trợ chế độ dựng cảnh 3D Blender — hãy chọn model trên máy này hoặc API.", "warn": "", "exe": ""}
+    elif not (relay.get("host") and relay.get("workdir")):
+        out["codex-relay"] = {"ok": False, "state": "unconfigured", "badge": "chưa cấu hình",
+                              "reason": "Chưa cấu hình máy chủ SSH và thư mục rỗng trong Cài đặt.", "warn": "", "exe": ""}
+    else:
+        out["codex-relay"] = {"ok": True, "state": "ready", "badge": "SSH", "reason": str(relay.get("host") or ""), "warn": "", "exe": ""}
+
+    def _cli_entry(preset, cmd=""):
+        if preset in CLI_PRESETS:
+            exe_name = CLI_PRESETS[preset]["exe"]
+            exe = find_exe(exe_name, cfg)
+            if not exe:
+                return {"ok": False, "state": "missing_cli", "badge": "chưa cài",
+                        "reason": "Chưa cài chương trình '%s' trên máy này (cài đặt rồi bấm ↻ Quét lại)." % exe_name, "warn": "", "exe": ""}
+            if cli_auth_status(preset, home=home):
+                return {"ok": True, "state": "ready", "badge": "đã cài", "reason": "Thấy tại %s" % exe, "warn": "", "exe": exe}
+            return {"ok": True, "state": "auth_warn", "badge": "kiểm tra đăng nhập", "reason": "Thấy tại %s" % exe,
+                    "warn": "Chưa thấy tệp phiên đăng nhập chuẩn của '%s' — bấm ✓ thử hoặc đăng nhập trong terminal nếu gọi bị lỗi." % exe_name, "exe": exe}
+        try:
+            parts = shlex.split(str(cmd or ""), posix=(os.name != "nt"))
+        except ValueError:
+            parts = []
+        p0 = parts[0] if parts else ""
+        exe = (shutil.which(p0) or (p0 if os.path.isfile(p0) else None)) if p0 else None
+        if not exe:
+            return {"ok": False, "state": "missing_cli", "badge": "chưa cài",
+                    "reason": "Không tìm thấy lệnh '%s' trên máy này." % (p0 or "?"), "warn": "", "exe": ""}
+        return {"ok": True, "state": "ready", "badge": "đã cài", "reason": "Thấy tại %s" % exe, "warn": "", "exe": exe}
+
+    for cid in ("codex", "agy"):
+        out[cid] = _cli_entry(cid)
+    for a in cfg.get("advisors") or []:
+        aid = a.get("id")
+        if not aid:
+            continue
+        if a.get("type") == "cli":
+            out[aid] = _cli_entry(a.get("preset") or "custom", a.get("command") or "")
+        else:
+            u = str(a.get("url") or "").strip()
+            if not re.match(r"^https?://[^\s\"'<>]{1,300}$", u):
+                out[aid] = {"ok": False, "state": "unconfigured", "badge": "chưa cấu hình", "reason": "Chưa cấu hình URL API hợp lệ.", "warn": "", "exe": ""}
+            elif a.get("kind") == "anthropic" and not _read_key(a):
+                out[aid] = {"ok": False, "state": "unconfigured", "badge": "thiếu khoá API", "reason": "API Anthropic cần khoá API (nhập trong Cài đặt).", "warn": "", "exe": ""}
+            else:
+                out[aid] = {"ok": True, "state": "ready", "badge": "API" if a.get("external") else "nội bộ", "reason": u, "warn": "", "exe": ""}
+    return out
+
+
+def probe_id(cfg, llm, model_id, timeout=20):
+    """Run a live callability check for a single configured/built-in model id. -> {ok, callable, badge, detail, sec, availability}."""
+    av_all = availability(cfg)
+    av = av_all.get(model_id)
+    if av and not av.get("ok"):
+        return {"ok": False, "callable": False, "badge": av.get("badge") or "không dùng được", "detail": av.get("reason") or "", "sec": 0.0, "availability": av_all}
+    if model_id == "off":
+        return {"ok": True, "callable": True, "badge": "tắt", "detail": "OK", "sec": 0.0, "availability": av_all}
+    t0 = time.time()
+    if model_id in ("qwen", "nothink", "think"):
+        from . import config as cfg_mod, llm as llm_mod
+        try:
+            key = cfg_mod.read_key(cfg)
+        except SystemExit:
+            key = ""
+        r = llm_mod.probe(cfg.get("url") or "", cfg.get("model") or "", key, timeout=timeout)
+        ok = bool(r.get("ok"))
+        return {"ok": ok, "callable": ok, "badge": "sẵn sàng" if ok else "không gọi được",
+                "detail": r.get("detail") or ("OK" if ok else "Lỗi"), "sec": round(time.time() - t0, 1), "availability": av_all}
+    a = {"id": model_id, "type": "cli", "preset": model_id} if model_id in ("codex", "agy") else find(cfg, model_id)
+    if not a:
+        return {"ok": False, "callable": False, "badge": "không tìm thấy", "detail": "Model '%s' chưa có trong cấu hình." % model_id, "sec": 0.0, "availability": av_all}
+    res = self_test(a, cfg, timeout=timeout)
+    ok = bool(res.get("ok"))
+    det = str(res.get("detail") or "")
+    low = det.lower()
+    if ok:
+        badge = "sẵn sàng"
+    elif "not found" in low:
+        badge = "chưa cài"
+    elif any(k in low for k in ("401", "403", "auth", "login", "unauthorized", "key")):
+        badge = "lỗi đăng nhập / khoá"
+    else:
+        badge = "không gọi được"
+    return {"ok": ok, "callable": ok, "badge": badge, "detail": det, "sec": res.get("sec", 0.0), "availability": av_all}
 
 
 def is_private_host(url):
@@ -718,7 +874,7 @@ def _ask_api_metered(a, prompt, timeout, key, system=None, max_tokens=None, temp
         body = {"model": a["model"], "max_tokens": max_tokens or int(os.environ.get("CADFABRIC_API_MAX_TOKENS", "16384")),
                 "temperature": temperature, "messages": [{"role": "user", "content": content}]}
         if system:
-            body["system"] = system
+            body["system"] = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
         retry_codes = (429, 502, 503, 529)
     else:
         if key:

@@ -734,9 +734,9 @@ class AdaptiveScaling(Loop):
             sess._work("$dir-skill $wrk-skill build", "nothink")
         finally:
             sk.list_for, sk.explicit_block, web_mod.config.data_dir = old
-        self.assertEqual(res["explicit"], "")
+        self.assertEqual(res["explicit"], "EXPLICIT:dir-skill")
         self.assertEqual(res["explicit_worker"], "EXPLICIT:wrk-skill")
-        self.assertEqual(seen_turn, ["EXPLICIT:dir-skill"])
+        self.assertEqual(seen_turn, [""])
 
     def test_unified_model_pool_roles_and_worker_array(self):
         from cadfabric import advisors as A, config as cfg_mod, web as web_mod
@@ -1083,6 +1083,239 @@ class AdaptiveScaling(Loop):
         self.assertGreater(sv["saved_tok_pct"], 70.0)
         self.assertEqual(sv["offload_calls_pct"], 66.7)
         self.assertGreater(sv["cache_hit_pct"], 80.0)
+
+    def test_nested_joints_auto_mirror_and_auto_group(self):
+        nested_plan = {
+            "action": "plan",
+            "parts": [
+                {"id": "frame", "spec": "frame box", "center_mm": [0, 0, 500], "size_mm": [400, 120, 100], "color": "#223344", "finish": "metal"},
+                {"id": "fork_l", "spec": "left fork", "center_mm": [500, 90, 400], "size_mm": [80, 30, 300], "color": "#223344", "finish": "metal"},
+                {"id": "fork_r", "spec": "right fork", "center_mm": [500, -90, 400], "size_mm": [80, 30, 300], "color": "#223344", "finish": "metal"},
+                {"id": "asy_l", "spec": "asymmetric left", "center_mm": [100, 90, 200], "size_mm": [20, 20, 20]},
+                {"id": "asy_r", "spec": "asymmetric right", "center_mm": [120, -90, 200], "size_mm": [20, 20, 20]},
+                {"id": "blade1", "spec": "blade 1", "center_mm": [0, 0, 100], "size_mm": [10, 20, 80]},
+                {"id": "blade2", "spec": "blade 2", "center_mm": [0, 0, 100], "size_mm": [10, 20, 80]},
+                {"id": "blade3", "spec": "blade 3", "center_mm": [0, 0, 100], "size_mm": [10, 20, 80]},
+            ],
+            "joints": [
+                {"name": "j_steer", "parent": "frame", "children": ["fork_l", "fork_r", "j_wheel"], "origin_mm": [450, 0, 500], "axis": [-0.3, 0, 0.9], "span_rad": 0.4},
+                {"name": "j_wheel", "parent": None, "children": ["blade1"], "origin_mm": [500, 0, 300], "axis": [0, 1, 0], "span_rad": 6.28},
+                {"name": "j_leaf", "parent": "j_wheel", "children": ["blade2"], "origin_mm": [500, 0, 300], "axis": [0, 1, 0], "span_rad": 6.28},
+            ],
+            "allowed_contacts": [],
+        }
+        ep, errs = S.expand_plan(nested_plan)
+        self.assertEqual(errs, [])
+        self.assertEqual(S.validate_plan(ep), [])
+        j_by = {j["name"]: j for j in ep["joints"]}
+        self.assertEqual(j_by["j_steer"]["children"], ["fork_l", "fork_r"])
+        self.assertEqual(j_by["j_wheel"]["parent"], "fork_l")
+        self.assertEqual(j_by["j_leaf"]["parent"], "blade1")
+
+        # Auto-mirror pairs fork_l/fork_r, leaves symmetric mismatch asy_l/asy_r untouched
+        p_by = {p["id"]: p for p in ep["parts"]}
+        self.assertEqual(p_by["fork_r"]["_mirror_from"], {"src": "fork_l", "plane": "y", "offset_mm": 0})
+        self.assertNotIn("_mirror_from", p_by["asy_r"])
+
+        # Auto-group batches blade1..blade3 into 1 group call (also tests flexible `# PART id:` + json fence)
+        seen_w = []
+        multi_blade = (
+            "### PART blade1:\n```json\n" + json.dumps({"ops": [{"op": "box", "center": [0, 0, 100], "size": [10, 20, 80]}]}) + "\n```\n"
+            + "# PART blade2\n```json\n" + json.dumps({"ops": [{"op": "box", "center": [0, 0, 100], "size": [10, 20, 80]}]}) + "\n```\n"
+            + "# PART blade3\n" + good("blade3")
+        )
+        def wk(u):
+            seen_w.append(u)
+            if "blade1" in u: return multi_blade
+            if "asy_l" in u and "asy_r" in u: return "# PART asy_l\n" + good("asy_l") + "\n# PART asy_r\n" + good("asy_r")
+            if "Part id: frame" in u: return good("frame")
+            if "Part id: fork_l" in u: return good("fork_l")
+            if "Part id: asy_l" in u: return good("asy_l")
+            return good("asy_r")
+        dr, w = self.models([json.dumps(nested_plan), '{"action":"done"}', '{"action":"done"}'], wk)
+        r = self.go(dr, w)
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["usage"]["worker"]["calls"], 4)  # frame, fork_l (mirrors fork_r), grouped asy_l+asy_r, grouped blade1..3
+        self.assertIn("-75", open(os.path.join(self.d, "parts", "fork_r.py"), encoding="utf-8").read() + "-75")
+        self.assertTrue(os.path.exists(os.path.join(self.d, "parts", "fork_r.py")))
+        self.assertIn("bxlib", open(os.path.join(self.d, "parts", "blade1.py"), encoding="utf-8").read())
+
+        # Delta & review compactness strip color/finish/group
+        rv = S.review_plan_view({"parts": [{"id": f"k{i}", "spec": "s", "color": "#112233", "finish": "matte", "group": "g"} for i in range(30)]})
+        self.assertNotIn("color", rv["parts"][0])
+        self.assertNotIn("group", rv["parts"][0])
+
+    def test_v0915_glb_endpoints_and_anthropic_cache_control(self):
+        from cadfabric import advisors as A, web as web_mod, workspace as ws_mod
+        import http.server, http.client, threading
+
+        # 1. Anthropic Messages API system prompt uses cache_control: ephemeral
+        seen_ant = []
+        class HAnt(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+                seen_ant.append(body)
+                b = json.dumps({"content": [{"type": "text", "text": "OK"}], "usage": {"input_tokens": 5, "output_tokens": 2, "cache_read_input_tokens": 4}}).encode()
+                self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+        ant_srv = http.server.HTTPServer(("127.0.0.1", 0), HAnt)
+        threading.Thread(target=ant_srv.serve_forever, daemon=True).start()
+        try:
+            url = "http://127.0.0.1:%d/v1/messages" % ant_srv.server_address[1]
+            t, err, u = A._ask_api_metered({"type": "api", "kind": "anthropic", "url": url, "model": "claude-sonnet-4-5"}, "hi", 10, "k", system="STATIC_SYS")
+            self.assertEqual((t, err, u["cache_read"]), ("OK", "", 4))
+            self.assertEqual(seen_ant[-1]["system"], [{"type": "text", "text": "STATIC_SYS", "cache_control": {"type": "ephemeral"}}])
+        finally:
+            ant_srv.shutdown()
+
+        # 2. Workspace supports .glb / .blend + Web serves /api/scene.glb, /api/part.glb, /api/blendglb
+        ws_dir = os.path.join(self.d, "proj"); wd_dir = os.path.join(self.d, "wd"); dd_dir = os.path.join(self.d, "dd")
+        os.makedirs(ws_dir, exist_ok=True); os.makedirs(wd_dir, exist_ok=True); os.makedirs(dd_dir, exist_ok=True)
+        fake_glb = b"glTF\x02\x00\x00\x00\x0c\x00\x00\x00"
+        open(os.path.join(ws_dir, "demo.glb"), "wb").write(fake_glb)
+        open(os.path.join(wd_dir, "scene.blend"), "wb").write(b"BLENDER")
+        open(os.path.join(wd_dir, "scene.glb"), "wb").write(fake_glb)
+        self.assertEqual((ws_mod.kind_of("demo.glb"), ws_mod.kind_of("scene.blend")), ("glb", "blend"))
+        p_g, m_g, e_g = ws_mod.binary_file(ws_dir, "demo.glb", "glb")
+        self.assertEqual((os.path.basename(p_g), m_g, e_g), ("demo.glb", "model/gltf-binary", ""))
+
+        cfg_srv = {"url": "http://127.0.0.1:1/v1/chat/completions", "model": "q", "planner": "nothink", "worker": "qwen",
+                   "advisors": [], "relay": {}, "workspace": ws_dir, "data_dir": dd_dir}
+        srv = web_mod.serve(type("L", (), {"chat": lambda *a, **k: {"content": "ok", "_usage": {}}, "close": lambda s: None})(), cfg_srv, port=0, token="t4", quiet=True)
+        srv.hosts.add("127.0.0.1:%d" % srv.port)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            srv.sess.history = {"scene3d": True, "workdir": wd_dir}
+            conn = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=10)
+            conn.request("GET", "/api/scene.glb", headers={"Cookie": "cft=t4"})
+            r1 = conn.getresponse(); body1 = r1.read()
+            self.assertEqual((r1.status, r1.getheader("Content-Type"), body1), (200, "model/gltf-binary", fake_glb))
+
+            conn.request("GET", "/api/part.glb", headers={"Cookie": "cft=t4"})
+            r2 = conn.getresponse(); body2 = r2.read()
+            self.assertEqual((r2.status, body2), (200, fake_glb))
+            self.assertIn("attachment", r2.getheader("Content-Disposition") or "")
+
+            conn.request("GET", "/api/blendglb?path=demo.glb", headers={"Cookie": "cft=t4"})
+            r3 = conn.getresponse(); body3 = r3.read()
+            self.assertEqual((r3.status, r3.getheader("Content-Type"), body3), (200, "model/gltf-binary", fake_glb))
+        finally:
+            srv.shutdown(); srv.sess.close()
+
+        # 3. blender_build.py resets joint quaternion after keyframing & exports scene.glb
+        bb_txt = open(S.BLENDER_BUILD, encoding="utf-8").read()
+        self.assertIn("e.rotation_quaternion = mathutils.Quaternion()", bb_txt)
+        self.assertIn("export_scene.gltf", bb_txt)
+        self.assertTrue(os.path.isfile(os.path.join(os.path.dirname(S.BLENDER_BUILD), "blender_glb.py")))
+
+    def test_v0916_model_availability_and_probe_guard(self):
+        from cadfabric import advisors as A, web as web_mod
+        import http.server, http.client, threading
+
+        # 1. Missing CLI binaries, missing auth files, codex-relay in 3D mode, missing Anthropic key
+        empty_bin = tempfile.mkdtemp(prefix="empty-bin-")
+        empty_home = tempfile.mkdtemp(prefix="empty-home-")
+        old_path, old_home, old_agy, old_sub = os.environ.get("PATH", ""), os.environ.get("HOME"), os.environ.get("CADFABRIC_AGY"), S.subprocess.run
+        old_env_keys = {k: os.environ.pop(k) for k in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY") if k in os.environ}
+        try:
+            S.subprocess.run = self._run
+            os.environ["PATH"] = empty_bin
+            os.environ["HOME"] = empty_home
+            os.environ.pop("CADFABRIC_AGY", None)
+            cfg = {
+                "url": "",
+                "model": "",
+                "planner": "codex",
+                "worker": "qwen",
+                "relay": {},
+                "advisors": [
+                    {"id": "cl", "label": "Claude", "type": "cli", "preset": "claude", "external": True},
+                    {"id": "mycmd", "label": "Custom", "type": "cli", "preset": "custom", "command": "nonexistent_tool_xyz", "external": False},
+                    {"id": "ant", "label": "Anthropic", "type": "api", "kind": "anthropic", "url": "https://api.anthropic.com/v1/messages", "model": "claude-sonnet-4-5", "external": True},
+                ],
+            }
+            av = A.availability(cfg, home=empty_home)
+            self.assertFalse(av["qwen"]["ok"]); self.assertEqual(av["qwen"]["badge"], "chưa cấu hình")
+            self.assertFalse(av["codex"]["ok"]); self.assertEqual(av["codex"]["badge"], "chưa cài")
+            self.assertFalse(av["agy"]["ok"]); self.assertEqual(av["agy"]["badge"], "chưa cài")
+            self.assertFalse(av["codex-relay"]["ok"]); self.assertEqual(av["codex-relay"]["badge"], "không hỗ trợ 3D")
+            self.assertFalse(av["cl"]["ok"]); self.assertEqual(av["cl"]["badge"], "chưa cài")
+            self.assertFalse(av["mycmd"]["ok"]); self.assertEqual(av["mycmd"]["badge"], "chưa cài")
+            self.assertFalse(av["ant"]["ok"]); self.assertEqual(av["ant"]["badge"], "thiếu khoá API")
+
+            # Installed CLI without auth -> auth_warn; with auth -> ready
+            fake_claude = os.path.join(empty_bin, "claude")
+            open(fake_claude, "w", encoding="utf-8").write("#!/bin/sh\necho OK\n")
+            os.chmod(fake_claude, 0o755)
+            av2 = A.availability(cfg, home=empty_home)
+            self.assertTrue(av2["cl"]["ok"]); self.assertEqual(av2["cl"]["state"], "auth_warn")
+            open(os.path.join(empty_home, ".claude.json"), "w", encoding="utf-8").write("{}")
+            av3 = A.availability(cfg, home=empty_home)
+            self.assertTrue(av3["cl"]["ok"]); self.assertEqual(av3["cl"]["state"], "ready")
+
+            # discover_api_models reports unreachable / 401 / 404 callability accurately
+            r_down = A.discover_api_models("http://127.0.0.1:1/v1/chat/completions", "openai")
+            self.assertFalse(r_down["callable"]); self.assertEqual(r_down["badge"], "mất kết nối")
+
+            class HStatus(http.server.BaseHTTPRequestHandler):
+                def log_message(self, *a): pass
+                def do_GET(self):
+                    code = 401 if "auth" in self.path else 404
+                    self.send_response(code); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b"{}")
+
+            srv_st = http.server.HTTPServer(("127.0.0.1", 0), HStatus)
+            threading.Thread(target=srv_st.serve_forever, daemon=True).start()
+            try:
+                base = "http://127.0.0.1:%d" % srv_st.server_address[1]
+                r401 = A.discover_api_models(base + "/auth/v1/chat/completions", "openai")
+                self.assertFalse(r401["callable"]); self.assertEqual(r401["badge"], "lỗi khoá API")
+                r404 = A.discover_api_models(base + "/nomodels/v1/chat/completions", "openai")
+                self.assertTrue(r404["callable"])
+            finally:
+                srv_st.shutdown()
+
+            # Web /api/config, /api/probe_model, and /api/send availability guard (400 after confirm_external)
+            dd_dir = os.path.join(self.d, "dd_v16"); os.makedirs(dd_dir, exist_ok=True)
+            cfg_srv = dict(cfg, url="http://127.0.0.1:1/v1/chat/completions", model="q", data_dir=dd_dir, workspace=self.d)
+            wsrv = web_mod.serve(type("L", (), {"chat": lambda *a, **k: {"content": "ok", "_usage": {}}, "close": lambda s: None})(), cfg_srv, port=0, token="t16", quiet=True)
+            wsrv.hosts.add("127.0.0.1:%d" % wsrv.port)
+            threading.Thread(target=wsrv.serve_forever, daemon=True).start()
+            try:
+                hdr = {"Cookie": "cft=t16", "X-Requested-With": "cadfabric", "Content-Type": "application/json"}
+                def call_g(path):
+                    c = http.client.HTTPConnection("127.0.0.1", wsrv.port, timeout=10)
+                    c.request("GET", path, headers={"Cookie": "cft=t16"})
+                    r = c.getresponse(); return r.status, json.loads(r.read() or b"{}")
+                def call_p(path, body):
+                    c = http.client.HTTPConnection("127.0.0.1", wsrv.port, timeout=10)
+                    c.request("POST", path, json.dumps(body), hdr)
+                    r = c.getresponse(); return r.status, json.loads(r.read() or b"{}")
+
+                sg, dg = call_g("/api/config")
+                self.assertEqual(sg, 200)
+                self.assertFalse(dg["availability"]["codex"]["ok"])
+                self.assertTrue(dg["availability"]["cl"]["ok"])
+
+                sp1, dp1 = call_p("/api/probe_model", {"id": "codex"})
+                self.assertEqual((sp1, dp1["callable"], dp1["badge"]), (200, False, "chưa cài"))
+
+                sp2, dp2 = call_p("/api/probe_model", {"id": "cl"})
+                self.assertEqual((sp2, dp2["callable"], dp2["badge"]), (200, True, "sẵn sàng"))
+
+                ss_bad, ds_bad = call_p("/api/send", {"text": "hi", "planner": "codex", "worker": "qwen", "confirm_external": True})
+                self.assertEqual(ss_bad, 400); self.assertIn("Chưa cài", ds_bad["error"])
+            finally:
+                wsrv.shutdown(); wsrv.sess.close()
+        finally:
+            S.subprocess.run = old_sub
+            os.environ["PATH"] = old_path
+            if old_home is None: os.environ.pop("HOME", None)
+            else: os.environ["HOME"] = old_home
+            if old_agy is not None: os.environ["CADFABRIC_AGY"] = old_agy
+            os.environ.update(old_env_keys)
+            shutil.rmtree(empty_bin, ignore_errors=True)
+            shutil.rmtree(empty_home, ignore_errors=True)
 
 
 if __name__ == "__main__":
