@@ -105,9 +105,10 @@ def discover_claude_models(home=None):
                 if short and _MODEL.match(short) and short not in aliases:
                     aliases.append(short)
                 meffs = _valid_efforts(rt.get("effort_levels") or ((m.get("thinking") or {}).get("effort_options") or []), efforts)
-                item = {"id": mid, "label": str(m.get("name") or mid).strip(), "efforts": meffs or list(efforts), "alias": False}
+                sec = "main" if m.get("section") == "main" else "overflow"
+                item = {"id": mid, "label": str(m.get("name") or mid).strip(), "efforts": meffs or list(efforts), "alias": False, "section": sec}
                 seen.add(mid)
-                (main_items if m.get("section") == "main" else other_items).append(item)
+                (main_items if sec == "main" else other_items).append(item)
             if main_items or other_items:
                 break
         if not (main_items or other_items):
@@ -264,16 +265,16 @@ def discover_agy_models(cfg=None, home=None, probe_cli=False):
             efforts.append(e)
     catalog, seen = [], set()
 
-    def add(mid, label="", meffs=()):
+    def add(mid, label="", meffs=(), sec="main"):
         s = str(mid or "").strip()
         if not s or not _MODEL.match(s) or s in seen:
             return
         seen.add(s)
         clean_e = _valid_efforts(meffs, efforts)
-        catalog.append({"id": s, "label": str(label or s).strip(), "efforts": clean_e or list(efforts), "alias": False})
+        catalog.append({"id": s, "label": str(label or s).strip(), "efforts": clean_e or list(efforts), "alias": False, "section": sec})
 
     for base in CLI_PRESETS["agy"]["models"]:
-        add(base, base + " (base)")
+        add(base, base + " (base)", sec="main")
 
     sdir = os.path.join(home or os.path.expanduser("~"), ".gemini", "antigravity-cli")
     sp = os.path.join(sdir, "settings.json")
@@ -282,13 +283,13 @@ def discover_agy_models(cfg=None, home=None, probe_cli=False):
             with open(sp, encoding="utf-8") as f:
                 sd = json.load(f)
             if isinstance(sd, dict) and sd.get("model"):
-                add(sd["model"], str(sd["model"]) + " (settings.json)")
+                add(sd["model"], str(sd["model"]) + " (settings.json)", sec="main")
         except (OSError, ValueError, TypeError):
             pass
 
     for c in _AGY_CACHE.get("catalog") or ():
         if isinstance(c, dict):
-            add(c.get("id"), c.get("label") or "", c.get("efforts") or ())
+            add(c.get("id"), c.get("label") or "", c.get("efforts") or (), sec=c.get("section") or "main")
 
     if probe_cli:
         exe = find_exe("agy", cfg)
@@ -307,10 +308,12 @@ def discover_agy_models(cfg=None, home=None, probe_cli=False):
                         base_slug, suf_eff = msuf.group(1), msuf.group(2)
                         if suf_eff not in efforts:
                             efforts.append(suf_eff)
-                        add(base_slug, re.sub(r"\s*\([^)]+\)\s*$", "", label) + " (base)")
-                    parsed_full.append((slug, label))
-                for slug, label in parsed_full:
-                    add(slug, label)
+                        add(base_slug, re.sub(r"\s*\([^)]+\)\s*$", "", label), sec="main")
+                        parsed_full.append((slug, label, "variant"))
+                    else:
+                        parsed_full.append((slug, label, "main"))
+                for slug, label, sec in parsed_full:
+                    add(slug, label, sec=sec)
                 if parsed_full:
                     _AGY_CACHE["models"] = [c["id"] for c in catalog]
                     _AGY_CACHE["efforts"] = list(efforts)

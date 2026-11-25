@@ -33,6 +33,7 @@ class Session:
         self.llm, self.cfg, self.local, self.quit = llm, cfg, local, False
         self.pinned = cfg.get("workspace") or ""   # this window's project; a different folder opens another window
         self.reflecting = False
+        self.reflected_upto = 0                 # event index already digested for auto-reflection
         self.ledger = ledger_mod.Ledger()          # this conversation's work ledger (memory only until it has a session id)
         self.lessons_given = set()              # lesson ids already in this conversation's prompt
         self.autofile = None                    # the STEP file this conversation keeps up to date in the project folder
@@ -97,7 +98,8 @@ class Session:
             if uerr:
                 raise ValueError("dropped file: " + uerr)
             block = "\n\n".join(x for x in (block, ublock) if x)
-            if self.local:                                                          # $skill-name: routed by role (director-eligible -> prompt block once; worker-eligible -> _scene_skills.explicit_worker)
+            lblocks = {"director": "", "worker": "", "used": [], "names": []}
+            if self.local:                                                          # $skill-name & #lesson-slug: routed by role
                 dd0 = config.data_dir(self.cfg)
                 names, blocked = skills_mod.mentions(dd0, root, text)
                 for n in blocked:
@@ -108,30 +110,42 @@ class Session:
                     dnames0 = [n for n in names if n in by_name0 and skills_mod.for_role(by_name0[n], "director")]
                     if dnames0:
                         block = "\n\n".join(x for x in (block, skills_mod.explicit_block(dd0, root, dnames0)) if x)
+                l_force, l_blocked = lessons_mod.mentions(dd0, root, text)
+                for n in l_blocked:
+                    self.emit("lesson_blocked", name=n)
+                lblocks = lessons_mod.scene_blocks(dd0, root, request=text, exclude=self.lessons_given, force=l_force, follow_up=(self.history is not None))
+                if lblocks["used"]:
+                    self.lessons_given.update(lblocks["used"])
+                    lessons_mod.mark_used(dd0, lblocks["used"])
+                    self.emit("lessons_used", n=len(lblocks["used"]), names=lblocks["names"][:6])
             extra_kw = {k: v for k, v in (("planner_model", planner_model), ("planner_effort", planner_effort),
                                           ("worker_model", worker_model), ("worker_effort", worker_effort)) if v}
+            self._turn_lessons = lblocks
             return self._scene_turn(text, planner, block, images=list(images), worker=worker, **extra_kw)
         except Exception as e:                                                   # noqa: BLE001 - show the failure in the chat
             self.emit("error", text="%s: %s" % (type(e).__name__, str(e)[:300]))
         finally:
+            self._turn_lessons = None
             self.autosave()
             self.save_history()
             with self.lock:
                 self.busy = False
+                evs = list(self.events)
+                upto = self.reflected_upto
             if self.cfg.get("lessons_auto", True) and self.local:
-                with self.lock:
-                    evs = list(self.events)
-                if lessons_mod.signals(evs):
+                if lessons_mod.auto_signals(evs[upto:]):
                     threading.Thread(target=self.reflect, args=(True,), daemon=True).start()
 
-    def _scene_skills(self, text):
-        """Installed AND approved skills for the scene agent: the director sees the catalog and may pick up to 3 for the worker; $name invokes one for both."""
+    def _scene_skills(self, text, lessons_blocks=None):
+        """Installed AND approved skills + approved role-filtered lessons for the scene agent."""
         if not self.local:
             return None
         dd, root = config.data_dir(self.cfg), self.cfg.get("workspace") or ""
+        ldir = (lessons_blocks or {}).get("director") or ""
+        lwrk = (lessons_blocks or {}).get("worker") or ""
         try:
             ap = [m for m in skills_mod.list_for(dd, root) if m["status"] == "approved"]
-            if not ap:
+            if not ap and not ldir and not lwrk:
                 return None
             names, _blocked = skills_mod.mentions(dd, root, text)
             pick = [m for m in ap if m.get("implicit", True) and skills_mod.for_role(m, "director")]
@@ -139,8 +153,9 @@ class Session:
             cat = "\n".join("- %s: %s" % (m["name"], (m.get("description") or "")[:200]) for m in pick)[:6000]
             by_name = {m["name"]: m for m in ap}
             wnames = [n for n in names if n in by_name and skills_mod.for_role(by_name[n], "worker")] if names else []
-            return {"catalog": cat, "names": [m["name"] for m in pick], "worker_names": wpick, "explicit": "",
-                    "explicit_worker": skills_mod.explicit_block(dd, root, wnames) if wnames else "",
+            sk_exp_w = skills_mod.explicit_block(dd, root, wnames) if wnames else ""
+            return {"catalog": cat, "names": [m["name"] for m in pick], "worker_names": wpick, "explicit": ldir,
+                    "explicit_worker": "\n\n".join(x for x in (sk_exp_w, lwrk) if x),
                     "read": lambda n: skills_mod.use(dd, root, n), "fit": skills_mod.fit}
         except Exception:                                             # noqa: BLE001 - a broken skill folder must not stop a build
             return None
@@ -150,7 +165,7 @@ class Session:
         c = str(self.cfg.get("blender") or "")
         return c if os.path.isfile(c) else viewers.blender_path()
 
-    def _scene_turn(self, text, planner, block, images=(), worker=None, planner_model="", planner_effort="", worker_model="", worker_effort=""):
+    def _scene_turn(self, text, planner, block, images=(), worker=None, planner_model="", planner_effort="", worker_model="", worker_effort="", lessons_blocks=None):
         """One user turn with the scene agent. Both director (`planner`) and worker (`worker`) can be any model in the unified pool."""
         blender = self.blender_exe()
         if not blender:
@@ -182,9 +197,10 @@ class Session:
 
         if images and not advisors.can_see_images(adv):
             raise ValueError("Ảnh chỉ gửi được cho cố vấn Claude hoặc Antigravity CLI (agy). Chọn một trong hai làm cố vấn, hoặc bỏ ảnh đính kèm.")
+        lb = lessons_blocks if lessons_blocks is not None else getattr(self, "_turn_lessons", None)
         resume = isinstance(self.history, dict) and bool(self.history.get("scene3d"))
         r = scene3d.run(request, wd, blender, director, worker_fn, on_event=lambda kind, **kw: self.emit(kind, **kw), should_stop=lambda: self.stop, resume=resume,
-                        skills=self._scene_skills(text), images=list(images), review_images=advisors.can_see_images(adv),
+                        skills=self._scene_skills(text, lb), images=list(images), review_images=advisors.can_see_images(adv),
                         plan_cache=os.path.join(config.data_dir(self.cfg), "plan_cache"))
         self.history = r["history"]
         rep = r.get("report") or {}
@@ -236,9 +252,21 @@ class Session:
                 return 409, {"error": "already reflecting"}
             self.reflecting = True
             evs = list(self.events)
+            start = self.reflected_upto
         try:
-            cands, _raw = lessons_mod.reflect(self.llm, evs)
-            added, skipped = lessons_mod.add(config.data_dir(self.cfg), self.cfg.get("workspace") or "", cands, source=self.sid or "")
+            dd, ws = config.data_dir(self.cfg), self.cfg.get("workspace") or ""
+            target_evs = evs[start:] if start < len(evs) else ([] if auto else evs)
+            if not target_evs:
+                return 200, {"added": 0, "skipped": []}
+            if not any(e.get("kind") == "user" for e in target_evs):
+                last_u = next((e for e in reversed(evs[:start]) if e.get("kind") == "user"), None)
+                if last_u:
+                    target_evs = [last_u] + target_evs
+            existing = lessons_mod.list_for(dd, ws)
+            cands, _raw = lessons_mod.reflect(self.llm, target_evs, existing=existing, max_items=2)
+            with self.lock:
+                self.reflected_upto = len(evs)
+            added, skipped = lessons_mod.add(dd, ws, cands, source=self.sid or "")
             if added or not auto:
                 self.emit("lessons", added=len(added), skipped=[{"title": t, "why": w} for t, w in skipped][:6], auto=auto)
             return 200, {"added": len(added), "skipped": [{"title": t, "why": w} for t, w in skipped]}
@@ -326,6 +354,7 @@ class Session:
                 self.measure = m.as_dict() if m else (rec.get("measure") if isinstance(self.history, dict) else None)
                 self.sid, self.created, self.title = rec["id"], rec.get("created", ""), rec.get("title", ""); self.autofile = None
                 self.lessons_given = set()
+                self.reflected_upto = len(self.events)
                 self.ledger = ledger_mod.Ledger(self._ledger_path(rec["id"]))
                 if not self.ledger.cells:                                            # older record without a ledger file: rebuild it from the saved successful cells
                     for code in rec.get("cells") or []:
@@ -406,6 +435,7 @@ class Session:
                 return False
             self.events, self.history, self.measure = [], None, None
             self.lessons_given = set()
+            self.reflected_upto = 0
             self.ledger = ledger_mod.Ledger()
             self.sid, self.created, self.title = None, "", ""
             self.autofile = None
@@ -709,14 +739,21 @@ def make_handler(sess, token, hosts, data_dir):
                         if sess.busy:
                             return self._send(409, {"error": "busy: wait for the current job"})
                         return self._send(*sess.reflect(False))
+                    if op == "clear_pending":
+                        return self._send(200, {"ok": True, "deleted": lessons_mod.clear_pending(data_dir, ws)})
+                    if op == "dedupe":
+                        return self._send(200, {"ok": True, "removed": lessons_mod.dedupe_store(data_dir, ws)})
                     if op == "delete":
                         return self._send(200 if lessons_mod.delete(data_dir, ws, lid) else 404, {"ok": True})
                     if op == "add":                                                  # the user's own lesson: same generality check, approved at once
-                        added, skipped = lessons_mod.add(data_dir, ws, [{k: body.get(k, "") for k in ("title", "rule", "when")}], source="user", scope=body.get("scope"), status="approved")
+                        added, skipped = lessons_mod.add(data_dir, ws, [{k: body.get(k, "") for k in ("title", "rule", "when", "audience")}], source="user", scope=body.get("scope"), status="approved")
                         return self._send(200 if added else 400, {"ok": bool(added), "error": (skipped[0][1] if skipped else "")})
                     if op == "auto":
                         x, err = lessons_mod.update(data_dir, ws, lid, auto=bool(body.get("value")))
                         return self._send(200 if x else 400, {"ok": bool(x), "error": err})
+                    if op == "audience":
+                        x, err = lessons_mod.update(data_dir, ws, lid, audience=str(body.get("value", "")))
+                        return self._send(200 if x else 400, {"ok": bool(x), "lesson": x, "error": err})
                     if op == "to_skill":                                             # several approved lessons -> one SKILL.md, pending like any skill
                         items = [x for x in lessons_mod.list_for(data_dir, ws) if x["status"] == "approved" and (not body.get("ids") or x["id"] in body["ids"])]
                         sname = str(body.get("name", "")).strip().lower().replace(" ", "-")
@@ -735,7 +772,7 @@ def make_handler(sess, token, hosts, data_dir):
                     elif op == "scope":
                         x, err = lessons_mod.update(data_dir, ws, lid, scope=body.get("scope"))
                     elif op == "edit":
-                        x, err = lessons_mod.update(data_dir, ws, lid, **{k: str(body.get(k, "")) for k in ("title", "rule", "when") if k in body})
+                        x, err = lessons_mod.update(data_dir, ws, lid, **{k: str(body.get(k, "")) for k in ("title", "rule", "when", "audience") if k in body})
                     else:
                         return self._send(400, {"error": "unknown op"})
                     return self._send(200 if x else 400, {"ok": bool(x), "lesson": x, "error": err})

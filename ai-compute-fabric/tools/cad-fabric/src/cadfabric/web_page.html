@@ -43,7 +43,33 @@ pre{margin:8px 0 0;background:var(--code);border-radius:8px;padding:9px 11px;ove
 .composer{padding:6px 16px 14px;position:relative}
 .box{max-width:780px;margin:0 auto;border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:8px 10px 8px 12px;display:flex;flex-direction:column;gap:6px}.box:focus-within{border-color:var(--accent)}
 textarea{border:0;outline:0;background:transparent;resize:none;width:100%;max-height:200px;min-height:26px}
-.tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.tools select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:4px 8px;font-size:13px}.tools .subm{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:4px 7px;font-size:12.5px;width:128px}.tools .sp{flex:1}
+.tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.tools select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:4px 8px;font-size:13px}.tools .sp{flex:1}
+.mpill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:3px 10px;font-size:12.5px;cursor:pointer;max-width:255px;min-width:0}
+.mpill:hover{border-color:var(--mute)}.mpill:has(+ .mpop:is(:popover-open, .\:popover-open)){border-color:var(--accent);background:var(--panel)}
+.mpill .mrole{color:var(--mute);font-size:11.5px;flex:none}.mpill b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mpill .mchev{color:var(--mute);font-size:10.5px;flex:none}
+.mpop{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:12px;box-shadow:0 12px 34px #0004;padding:0;width:min(380px,94vw);max-height:min(460px,78vh);overflow:hidden;z-index:90}
+.mpop:is(:popover-open, .\:popover-open){display:flex;flex-direction:column}
+@supports not selector(:popover-open){.mpop:not(.\:popover-open){display:none}}
+@supports (position-area: block-start) and (anchor-name: --a){#p_trig{anchor-name:--cf-pop-p}#w_trig{anchor-name:--cf-pop-w}#mpop_p{position-anchor:--cf-pop-p}#mpop_w{position-anchor:--cf-pop-w}.mpop{inset:auto;margin:0 0 6px 0;position-area:block-start span-inline-end;position-try-fallbacks:flip-block, flip-inline, flip-block flip-inline}}
+@supports not ((position-area: block-start) and (anchor-name: --a)){.mpop{position:fixed;inset:auto;margin:0}}
+.mpop-hd{display:flex;gap:5px;align-items:center;padding:8px 9px;border-bottom:1px solid var(--line);background:var(--panel);flex:none}
+.mpop-hd .msearch{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:7px;padding:4px 8px;font-size:12.5px;outline:0}.mpop-hd .msearch:focus{border-color:var(--accent)}
+.mpop-hd .mico{border:1px solid var(--line);background:var(--bg);border-radius:7px;padding:3px 7px;font-size:12.5px;cursor:pointer;line-height:1.2}.mpop-hd .mico:hover{border-color:var(--mute)}
+.mpop-tree{flex:1 1 auto;min-height:210px;max-height:min(340px,calc(78vh - 105px));overflow-y:auto;overscroll-behavior:contain;padding:6px;display:block}
+.mgrp{display:block;margin-bottom:2px;border-radius:8px}.mgrp-s{list-style:none;display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:600;user-select:none}.mgrp-s::-webkit-details-marker{display:none}
+.mgrp-s:hover{background:var(--bg)}.mgrp-s .marr{display:inline-block;width:12px;text-align:center;color:var(--mute);transition:transform .12s;font-size:10px}.mgrp[open]>.mgrp-s .marr{transform:rotate(90deg)}
+.mgrp-s .mtag{margin-left:auto;font-size:10.5px;font-weight:400;border:1px solid var(--line);border-radius:99px;padding:0 6px;color:var(--mute)}
+.mgrp-b{display:block;padding:2px 0 4px 12px}
+.mitem{display:flex;align-items:center;gap:6px;width:100%;min-height:30px;margin:1px 0;border:0;background:none;padding:5px 8px;border-radius:7px;font-size:12.5px;text-align:left;cursor:pointer;color:var(--ink)}
+.mitem:hover{background:var(--bg)}.mitem.on{background:color-mix(in srgb,var(--accent) 12%,transparent);font-weight:600}
+.mitem .mchk{width:13px;flex:none;color:var(--accent);font-weight:700}.mitem .mlbl{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mitem .mslug{margin-left:auto;color:var(--mute);font-size:11px;font-family:ui-monospace,Consolas,monospace;flex:0 1 125px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+.msub{margin:2px 0}.msub>summary{list-style:none;cursor:pointer;font-size:11.5px;color:var(--mute);padding:4px 8px;border-radius:6px;display:flex;align-items:center;gap:5px}.msub>summary::-webkit-details-marker{display:none}
+.msub>summary:hover{background:var(--bg);color:var(--ink)}.msub>summary .marr{display:inline-block;width:12px;transition:transform .12s;font-size:10px}.msub[open]>summary .marr{transform:rotate(90deg)}
+.msub-b{display:block;padding-left:10px}
+.mquick{border:1px dashed var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:7px;padding:6px 8px;margin:2px 0 4px;font-size:12px;cursor:pointer;text-align:left;width:100%}.mquick:hover{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.mpop-ft{padding:7px 9px;border-top:1px solid var(--line);background:var(--bg);display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:none}
+.mpop-ft .mft-l{font-size:11px;color:var(--mute);flex:none}.meffs{display:flex;gap:4px;flex-wrap:wrap}
+.meff{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 8px;font-size:11.5px;cursor:pointer}.meff:hover{border-color:var(--mute)}.meff.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
 .hint{max-width:780px;margin:5px auto 0;color:var(--mute);font-size:12.5px;text-align:center}
 aside{width:360px;border-left:1px solid var(--line);background:var(--panel);overflow:auto;display:flex;flex-direction:column}
 aside h3{margin:0;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);border-bottom:1px solid var(--line)}
@@ -91,6 +117,8 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 .les{padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px;display:flex;flex-direction:column;gap:5px}.les b{font-size:13.5px}.les .why{color:var(--mute);font-size:12px}.les .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:3px}
 .les .tag{font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--mute);margin-left:6px}.lh{padding:8px 14px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);background:var(--bg);border-bottom:1px solid var(--line)}
 #tablessons .bd{background:var(--accent);color:#fff;border-radius:9px;padding:0 6px;margin-left:5px;font-size:11px}
+.vh{position:absolute;clip-path:inset(50%);overflow:hidden;width:1px;height:1px;margin:-1px;padding:0;border:0;white-space:nowrap}
+.lsearch{display:block;padding:0 14px 8px}.lsearch input{width:100%;box-sizing:border-box;padding:5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font:inherit;font-size:12.5px}
 .skpick{position:absolute;left:12px;bottom:58px;background:var(--bg2,#fff);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px #0002;display:flex;flex-direction:column;max-width:80%;z-index:5}.skpick button{border:0;background:none;text-align:left;padding:7px 12px;font-size:13px;cursor:pointer}.skpick button:hover{background:var(--line)}
 </style>
 <link rel="stylesheet" href="/static/vendor/hljs-light.css" media="(prefers-color-scheme: light)"><link rel="stylesheet" href="/static/vendor/hljs-dark.css" media="(prefers-color-scheme: dark)">
@@ -116,7 +144,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
    <div class="box">
     <textarea id="text" rows="1" maxlength="8000" placeholder="Mô tả chi tiết cần tạo, hoặc yêu cầu chỉnh sửa chi tiết hiện tại…"></textarea>
     <div class="chipsrow" id="attached" hidden></div>
-    <div class="tools"><button class="btn small" id="attbtn" title="Đính kèm tệp trong thư mục làm việc để Qwen và cố vấn đọc" hidden>📎 Tệp</button><label class="small mute" style="display:inline-flex;align-items:center;gap:4px">Cố vấn <select id="planner" title="Chọn model làm cố vấn (lập kế hoạch & duyệt)"></select><input id="p_model" class="subm" list="p_models" autocomplete="off" placeholder="model mặc định" title="Chọn hoặc gõ tên model con cho Cố vấn (kể cả model mới chưa có trong danh sách)" hidden><datalist id="p_models"></datalist><select id="p_effort" title="Mức suy nghĩ của Cố vấn" hidden></select></label><label class="small mute" style="display:inline-flex;align-items:center;gap:4px">Thực thi <select id="worker" title="Chọn model thực thi (viết từng chi tiết)"></select><input id="w_model" class="subm" list="w_models" autocomplete="off" placeholder="model mặc định" title="Chọn hoặc gõ tên model con cho Thực thi (kể cả model mới)" hidden><datalist id="w_models"></datalist><select id="w_effort" title="Mức suy nghĩ của Thực thi" hidden></select></label><button class="btn small" id="mrefresh" type="button" title="Quét tự động danh sách model mới nhất (Claude, Codex, API)">↻</button><button class="btn small" id="advchip" type="button" title="Cấu hình danh sách model">⚙ Model</button><label class="autoc" title="Khi lượt làm việc dừng vì hết bước hoặc bị kẹt, tự gửi 'Tiếp tục' (tối đa 5 lần liên tiếp, bấm Dừng để ngừng)"><input type="checkbox" id="autocont"> Tự động tiếp tục</label><span class="sp"></span>
+    <div class="tools"><button class="btn small" id="attbtn" title="Đính kèm tệp trong thư mục làm việc để Qwen và cố vấn đọc" hidden>📎 Tệp</button><select id="planner" hidden></select><select id="worker" hidden></select><button type="button" class="mpill" id="p_trig" popovertarget="mpop_p"><span class="mrole">Cố vấn</span><b id="p_lbl">—</b><span class="mchev" aria-hidden="true">▾</span></button><div id="mpop_p" class="mpop" popover="auto"></div><button type="button" class="mpill" id="w_trig" popovertarget="mpop_w"><span class="mrole">Thực thi</span><b id="w_lbl">—</b><span class="mchev" aria-hidden="true">▾</span></button><div id="mpop_w" class="mpop" popover="auto"></div><label class="autoc" title="Khi lượt làm việc dừng vì hết bước hoặc bị kẹt, tự gửi 'Tiếp tục' (tối đa 5 lần liên tiếp, bấm Dừng để ngừng)"><input type="checkbox" id="autocont"> Tự động tiếp tục</label><span class="sp"></span>
      <button class="btn primary" id="send">Gửi</button><button class="btn" id="stop" hidden>Dừng</button></div>
    </div>
    <div class="hint" id="hint">Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /stop dừng</div>
@@ -125,7 +153,8 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button><button type="button" id="tablessons">Bài học</button><button type="button" id="tabskills">Skill</button></div>
  <div id="pane_part"><div id="preview">chưa có chi tiết</div><table id="meas"></table>
   <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
- <div id="pane_lessons" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="lreflect">Rút bài học từ cuộc này</button><button type="button" class="btn small" id="ladd">+ Thêm</button><button type="button" class="btn small" id="lskill" title="Gộp các bài đã duyệt thành một skill (chờ duyệt)">Gộp thành skill</button></div>
+ <div id="pane_lessons" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="lreflect">Rút bài học từ cuộc này</button><button type="button" class="btn small" id="ladd">+ Thêm</button><button type="button" class="btn small" id="ldedupe" title="Xoá các bài học chờ duyệt bị trùng hoặc sai quy tắc">Lọc trùng</button><button type="button" class="btn small" id="lclearp" title="Xoá toàn bộ bài học đang chờ duyệt trong dự án này" hidden>Xoá chờ duyệt</button><button type="button" class="btn small" id="lskill" title="Gộp các bài đã duyệt thành một skill (chờ duyệt)">Gộp thành skill</button></div>
+  <search id="lsearch" class="lsearch" hidden><label for="lfilter" class="vh">Lọc bài học</label><input type="search" id="lfilter" name="lfilter" placeholder="Lọc tiêu đề, quy tắc, #tên…" autocorrect="off" autocapitalize="none" spellcheck="false"></search>
   <div class="mute small" id="lnote" style="padding:0 14px 8px"></div><div id="llist"></div></div>
  <div id="pane_skills" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="skadd">+ Cài từ GitHub</button><button type="button" class="btn small" id="skloc">Từ thư mục máy</button></div>
   <div class="mute small" id="sknote" style="padding:0 14px 8px"></div><div id="sklist"></div></div>
@@ -136,6 +165,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
  <label class="f">Tiêu đề (ngắn)<input id="l_title" maxlength="70"></label>
  <label class="f">Quy tắc chung (không ghi kích thước, tên chi tiết hay số liệu của một bài cụ thể)<textarea id="l_rule" rows="3" maxlength="280"></textarea></label>
  <label class="f">Áp dụng khi nào<input id="l_when" maxlength="140"></label>
+ <label class="f" for="l_aud">Dành cho<select id="l_aud" name="audience"><option value="both">Cả hai (Cố vấn &amp; Thực thi)</option><option value="worker">Thực thi (viết mã / recipe)</option><option value="director">Cố vấn (lập kế hoạch / khớp)</option></select></label>
  <label class="f" id="l_scopew">Phạm vi<select id="l_scope"><option value="project">Chỉ dự án này</option><option value="global">Mọi dự án</option></select></label>
  <div class="small det no" id="l_err"></div>
  <div class="row"><button type="button" class="btn" id="l_cancel">Huỷ</button><button type="button" class="btn primary" id="l_save">Lưu</button></div></div></dialog>
@@ -331,10 +361,9 @@ async function submit1(){const text=$("text").value.trim();if(!text)return;
  if(text.toLowerCase()==="/skills"){$("text").value="";grow();return showTab("skills")}
  if(text.toLowerCase()==="/happy"){$("text").value="";grow();return happy()}
  if(busy)return;const planner=$("planner").value,worker=$("worker").value||"qwen";const body={text,planner,worker};
- if(!$("p_model").hidden&&$("p_model").value.trim())body.planner_model=$("p_model").value.trim();
- if(!$("p_effort").hidden&&$("p_effort").value)body.planner_effort=$("p_effort").value;
- if(!$("w_model").hidden&&$("w_model").value.trim())body.worker_model=$("w_model").value.trim();
- if(!$("w_effort").hidden&&$("w_effort").value)body.worker_effort=$("w_effort").value;
+ const po=roleOver.p[planner]||{},wo=roleOver.w[worker]||{};
+ if(po.model)body.planner_model=po.model;if(po.effort)body.planner_effort=po.effort;
+ if(wo.model)body.worker_model=wo.model;if(wo.effort)body.worker_effort=wo.effort;
  if(att.length)body.files=att.slice();if(ups.length)body.uploads=ups.map(u=>({name:u.name,text:u.text}));if(imgs.length)body.images=imgs.map(u=>({name:u.name,mime:u.mime,data:u.data}));
  const needExt=[planner,worker].filter((v,i,a)=>ext.includes(v)&&a.indexOf(v)===i&&!okExt.has(v));
  if(needExt.length){if(!confirm("Model '"+needExt.join(", ")+"' gửi nội dung yêu cầu ra dịch vụ bên ngoài. Tiếp tục? (chỉ hỏi một lần cho model này)"))return;needExt.forEach(v=>okExt.add(v))}
@@ -344,7 +373,7 @@ async function submit1(){const text=$("text").value.trim();if(!text)return;
 function grow(){const t=$("text");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,200)+"px"}
 $("text").oninput=grow;$("text").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing&&!e.repeat){e.preventDefault();submit()}};
 $("send").onclick=submit;$("stop").onclick=()=>{userStopped=true;api("/api/stop",{})};try{$("autocont").checked=localStorage.getItem("cf_autocont")==="1"}catch(e){}$("autocont").onchange=()=>{try{localStorage.setItem("cf_autocont",$("autocont").checked?"1":"0")}catch(e){}autoN=0};$("newbtn").onclick=newPart;$("partbtn").onclick=()=>$("side").classList.toggle("open");
-let ADVS=[],DET={},PRESETS={},custom=[],advKeys={},editId=null,DISC={},roleOver={p:{},w:{}};
+let ADVS=[],DET={},PRESETS={},custom=[],advKeys={},editId=null,DISC={},roleOver={p:{},w:{}},AGY_PROBED=false;
 const slug=t=>t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/đ/g,"d").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,24)||"advisor";
 function isPrivate(u){try{const h=new URL(u).hostname;return /^(localhost|::1|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)||h.endsWith(".local")}catch(e){return false}}
 function setAdvisors(list){const curP=$("planner").value,curSP=$("s_planner").value,curW=$("worker").value,curSW=$("s_worker").value;ADVS=list;ext=list.filter(a=>a.external).map(a=>a.id);custom=list.filter(a=>!a.builtin).map(a=>Object.assign({},a));
@@ -354,31 +383,110 @@ function setAdvisors(list){const curP=$("planner").value,curSP=$("s_planner").va
  const workers=pool.filter(a=>a.id!=="codex-relay");
  const fill=(sel,items,prev)=>{sel.replaceChildren();for(const a of items){const o=el("option",0,a.label+(a.external?" (ngoài)":""));o.value=a.id;sel.appendChild(o)}if(items.some(a=>a.id===prev))sel.value=prev};
  fill($("planner"),list,curP);fill($("s_planner"),list,curSP||curP);fill($("worker"),workers,curW||"qwen");fill($("s_worker"),workers,curSW||curW||"qwen");
- buildAdv(pool);fillRolePicker("p",false);fillRolePicker("w",false);chip()}
-function roleSpec(id){if(!id||id==="off"||id==="codex-relay")return{showModel:false,showEffort:false,models:[],efforts:[],defModel:"",defEffort:""};
- if(id==="qwen"||id==="nothink"||id==="think")return{showModel:true,showEffort:true,models:DISC.gateway||[],efforts:["nothink","think"],defModel:($("s_model")?$("s_model").value.trim():""),defEffort:id==="think"?"think":""};
- if(id==="codex"||id==="agy"){const pr=PRESETS[id]||{};return{showModel:true,showEffort:true,models:pr.models||[],efforts:pr.efforts||[],defModel:"",defEffort:""}}
- const a=ADVS.find(x=>x.id===id);if(!a)return{showModel:false,showEffort:false,models:[],efforts:[],defModel:"",defEffort:""};
- if(a.type==="cli"){if(a.preset==="custom")return{showModel:false,showEffort:false,models:[],efforts:[],defModel:"",defEffort:""};
-  const pr=PRESETS[a.preset]||{};return{showModel:true,showEffort:true,models:pr.models||[],efforts:pr.efforts||[],defModel:a.model||"",defEffort:a.effort||""}}
- return{showModel:true,showEffort:a.kind==="openai",models:DISC[a.id]||[],efforts:a.kind==="openai"?["nothink","think"]:[],defModel:a.model||"",defEffort:a.think?"think":""}}
-function fillRolePicker(role,autoFetch){const isP=role==="p",sel=$(isP?"planner":"worker"),inp=$(isP?"p_model":"w_model"),dl=$(isP?"p_models":"w_models"),eff=$(isP?"p_effort":"w_effort");
- const id=sel.value,sp=roleSpec(id),ov=roleOver[role][id]||{};inp.hidden=!sp.showModel;eff.hidden=!sp.showEffort;
- if(sp.showModel){inp.placeholder=sp.defModel?("mặc định: "+sp.defModel):"model mặc định (hoặc gõ tên mới)";inp.value=ov.model!==undefined?ov.model:"";
-  dl.replaceChildren();for(const m of sp.models){const o=el("option");o.value=m;dl.appendChild(o)}}else inp.value="";
- if(sp.showEffort){eff.replaceChildren();const o0=el("option",0,sp.defEffort?("Mặc định ("+sp.defEffort+")"):"Effort mặc định");o0.value="";eff.appendChild(o0);
-  for(const e of sp.efforts){const o=el("option",0,e);o.value=e;eff.appendChild(o)}eff.value=(ov.effort&&sp.efforts.includes(ov.effort))?ov.effort:""}}
+ buildAdv(pool);chip()}
+function shortModelName(m){const s=String(m||"").trim();if(!s)return"";
+ const k=s.replace(/^claude-/i,"").replace(/^gemini-/i,"");
+ const c=k.match(/^(opus|sonnet|fable|haiku)-(\d+)-(\d+)(?:-\d+)?$/i);if(c)return c[1][0].toUpperCase()+c[1].slice(1)+" "+c[2]+"."+c[3];
+ const g=k.match(/^(\d+(?:\.\d+)?)-(neon|hydrogen|carbon|argon|flash)(?:-(low|medium|high|xhigh|max))?$/i);
+ if(g)return(g[2][0].toUpperCase()+g[2].slice(1))+" "+g[1]+(g[3]?" ("+g[3]+")":"");
+ return s.length>22?s.slice(0,20)+"…":s}
+function roleSpec(id){if(!id||id==="off"||id==="codex-relay")return{showModel:false,showEffort:false,models:[],catalog:[],efforts:[],defModel:"",defEffort:"",provider:id==="codex-relay"?"Codex SSH":"Tắt"};
+ if(id==="qwen"||id==="nothink"||id==="think")return{showModel:true,showEffort:true,models:DISC.gateway||[],catalog:(DISC.gateway||[]).map(x=>({id:x,label:x,section:"main"})),efforts:["nothink","think"],defModel:($("s_model")?$("s_model").value.trim():""),defEffort:id==="think"?"think":"",provider:id==="think"?"Qwen (think)":id==="nothink"?"Qwen (nhanh)":"Qwen API"};
+ if(id==="codex"||id==="agy"){const pr=PRESETS[id]||{};return{showModel:true,showEffort:true,models:pr.models||[],catalog:pr.catalog||(pr.models||[]).map(x=>({id:x,label:x,section:"main"})),efforts:pr.efforts||[],defModel:"",defEffort:"",provider:id==="agy"?"Antigravity":"Codex"}}
+ const a=ADVS.find(x=>x.id===id);if(!a)return{showModel:false,showEffort:false,models:[],catalog:[],efforts:[],defModel:"",defEffort:"",provider:id};
+ if(a.type==="cli"){if(a.preset==="custom")return{showModel:false,showEffort:false,models:[],catalog:[],efforts:[],defModel:"",defEffort:"",provider:a.label};
+  const pr=PRESETS[a.preset]||{};return{showModel:true,showEffort:true,models:pr.models||[],catalog:pr.catalog||(pr.models||[]).map(x=>({id:x,label:x,section:"main"})),efforts:pr.efforts||[],defModel:a.model||"",defEffort:a.effort||"",provider:a.label}}
+ return{showModel:true,showEffort:a.kind==="openai",models:DISC[a.id]||[],catalog:(DISC[a.id]||[]).map(x=>({id:x,label:x,section:"main"})),efforts:a.kind==="openai"?["nothink","think"]:[],defModel:a.model||"",defEffort:a.think?"think":"",provider:a.label}}
+function rolePopEl(role){return $(role==="p"?"mpop_p":"mpop_w")}
+function closeRolePop(role){const pop=rolePopEl(role);if(!pop)return;try{if(Object.hasOwn(HTMLElement.prototype,"popover")&&pop.matches(":popover-open"))pop.hidePopover()}catch(e){}pop.classList.remove(":popover-open")}
+function positionRolePop(role){const pop=rolePopEl(role),trig=$(role==="p"?"p_trig":"w_trig");if(!pop||!trig)return;
+ const applyFixed=()=>{const r=trig.getBoundingClientRect(),w=Math.max(pop.offsetWidth||0,330),h=Math.max(pop.offsetHeight||0,280);
+  const left=Math.max(8,Math.min(r.left,innerWidth-w-8)),top=r.top>h+16?(r.top-h-6):Math.min(r.bottom+6,innerHeight-h-8);
+  pop.style.position="fixed";pop.style.inset="auto";pop.style.margin="0";pop.style.left=left+"px";pop.style.top=Math.max(8,top)+"px"};
+ const hasAnchor=CSS.supports("(position-area: block-start) and (anchor-name: --a)");
+ if(!hasAnchor){applyFixed();return}
+ pop.style.position="";pop.style.inset="";pop.style.margin="";pop.style.left="";pop.style.top="";
+ requestAnimationFrame(()=>{const isOpen=(pop.matches&&pop.matches(":popover-open"))||pop.classList.contains(":popover-open");
+  if(!isOpen)return;const rp=pop.getBoundingClientRect();
+  if(rp.top<4||rp.bottom>innerHeight-4||rp.left<4||rp.right>innerWidth-4||rp.width<200)applyFixed()})}
+function ensureRolePop(role){const pop=rolePopEl(role);if(!pop||pop._init)return pop;pop._init=true;
+ const hd=el("div","mpop-hd"),sr=el("input","msearch"),rf=el("button","mico","↻"),st=el("button","mico","⚙");
+ sr.placeholder="Tìm hoặc gõ tên model mới…";sr.autocomplete="off";rf.type="button";rf.title="Quét model mới nhất";st.type="button";st.title="Cài đặt model";
+ sr.oninput=()=>renderRoleTree(role);
+ sr.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();const q=sr.value.trim(),cur=$(role==="p"?"planner":"worker").value,sp=roleSpec(cur);
+  if(q&&sp.showModel&&/^[A-Za-z0-9][A-Za-z0-9._:/@\-]{0,79}$/.test(q)){selectRoleChoice(role,cur,q,true)}}};
+ rf.onclick=()=>refreshRoleModels(role);st.onclick=()=>{closeRolePop(role);openSettings()};
+ hd.append(sr,rf,st);const tr=el("div","mpop-tree"),ft=el("div","mpop-ft");pop.append(hd,tr,ft);pop._sr=sr;pop._tr=tr;pop._ft=ft;return pop}
+function selectRoleChoice(role,id,submodel,closeIt){const sel=$(role==="p"?"planner":"worker");sel.value=id;
+ const ov=(roleOver[role][id]=roleOver[role][id]||{});if(submodel!==undefined)ov.model=submodel;
+ chip();if(closeIt)closeRolePop(role);else renderRoleTree(role);
+ if(!DISC[id==="qwen"||id==="nothink"||id==="think"?"gateway":id]&&local)discoverForId(id,false)}
+function selectRoleEffort(role,eff){const id=$(role==="p"?"planner":"worker").value;(roleOver[role][id]=roleOver[role][id]||{}).effort=eff;chip();renderRoleTree(role)}
+function renderRoleTree(role){const pop=ensureRolePop(role);if(!pop)return;const tr=pop._tr,ft=pop._ft,q=(pop._sr.value||"").trim(),ql=q.toLowerCase();
+ const sel=$(role==="p"?"planner":"worker"),curId=sel.value,curOv=roleOver[role][curId]||{},curModel=curOv.model||"",curEff=curOv.effort||"",curSp=roleSpec(curId);
+ tr.replaceChildren();
+ const mkItem=(lbl,slugTxt,on,fn)=>{const b=el("button","mitem"+(on?" on":""));b.type="button";b.appendChild(el("span","mchk",on?"✓":""));
+  b.appendChild(el("span","mlbl",lbl));if(slugTxt)b.appendChild(el("span","mslug",slugTxt));b.onclick=fn;return b};
+ if(q&&curSp.showModel&&/^[A-Za-z0-9][A-Za-z0-9._:/@\-]{0,79}$/.test(q)&&!curSp.models.includes(q)){
+  const qb=el("button","mquick","+ Dùng model \""+q+"\" cho "+curSp.provider);qb.type="button";qb.onclick=()=>selectRoleChoice(role,curId,q,true);tr.appendChild(qb)}
+ if(role==="p"&&(!ql||"không cố vấn off tắt".includes(ql))){
+  tr.appendChild(mkItem("Không cố vấn","off",curId==="off",()=>selectRoleChoice("p","off","",true)))}
+ const qItems=[{id:"qwen",lbl:"Qwen API (mặc định)",sub:""}];if(role==="p")qItems.push({id:"nothink",lbl:"Qwen lập kế hoạch (nhanh)",sub:""});
+ qItems.push({id:"think",lbl:"Qwen suy nghĩ sâu",sub:""});for(const gm of(DISC.gateway||[]))qItems.push({id:"qwen",lbl:shortModelName(gm)||gm,sub:gm});
+ const qMatches=qItems.filter(x=>!ql||(x.lbl+" "+x.sub+" qwen").toLowerCase().includes(ql));
+ if(qMatches.length){const g=el("details","mgrp");if(["qwen","nothink","think"].includes(curId)||ql)g.open=true;
+  const sm=el("summary","mgrp-s");sm.append(el("span","marr","▸"),el("span",0,"Qwen (Gateway mặc định)"),el("span","mtag","nội bộ"));
+  const bd=el("div","mgrp-b");for(const x of qMatches){const on=(curId===x.id&&curModel===x.sub);bd.appendChild(mkItem(x.lbl,x.sub||x.id,on,()=>selectRoleChoice(role,x.id,x.sub,true)))}
+  g.append(sm,bd);tr.appendChild(g)}
+ const baseList=(role==="p"?ADVS:ADVS.filter(a=>a.id!=="codex-relay")).filter(a=>!["off","qwen","nothink","think"].includes(a.id));
+ for(const a of baseList){const sp=roleSpec(a.id),gName=(a.label+" "+a.id).toLowerCase();
+  if(!sp.showModel){if(ql&&!gName.includes(ql))continue;
+   const g=el("details","mgrp");if(curId===a.id||ql)g.open=true;
+   const sm=el("summary","mgrp-s");sm.append(el("span","marr","▸"),el("span",0,a.label),el("span","mtag",a.external?"ngoài":"nội bộ"));
+   const bd=el("div","mgrp-b");bd.appendChild(mkItem(a.label,a.id,curId===a.id,()=>selectRoleChoice(role,a.id,"",true)));
+   g.append(sm,bd);tr.appendChild(g);continue}
+  const cat=sp.catalog.length?sp.catalog:sp.models.map(m=>({id:m,label:m,section:"main"}));
+  const match=c=>!ql||(c.label+" "+c.id+" "+a.label+" "+a.id).toLowerCase().includes(ql);
+  const prim=cat.filter(c=>c.section!=="overflow"&&c.section!=="variant"&&match(c)),sec=cat.filter(c=>(c.section==="overflow"||c.section==="variant")&&match(c));
+  const showDef=!ql||("mặc định "+sp.defModel+" "+a.label).toLowerCase().includes(ql);
+  if(!showDef&&!prim.length&&!sec.length)continue;
+  const g=el("details","mgrp");if(curId===a.id||ql)g.open=true;
+  const sm=el("summary","mgrp-s");sm.append(el("span","marr","▸"),el("span",0,a.label),el("span","mtag",a.external?"ngoài":"nội bộ"));
+  const bd=el("div","mgrp-b");
+  if(showDef)bd.appendChild(mkItem("Mặc định"+(sp.defModel?" ("+shortModelName(sp.defModel)+")":""),sp.defModel||"default",curId===a.id&&!curModel,()=>selectRoleChoice(role,a.id,"",true)));
+  for(const c of prim)bd.appendChild(mkItem(shortModelName(c.id)||c.label,c.id,curId===a.id&&curModel===c.id,()=>selectRoleChoice(role,a.id,c.id,true)));
+  if(sec.length){const sub=el("details","msub");if(ql||(curId===a.id&&sec.some(c=>c.id===curModel)))sub.open=true;
+   const ssm=el("summary");ssm.append(el("span","marr","▸"),el("span",0,(a.preset==="agy"||a.id==="agy"?"Biến thể cố định effort":"Phiên bản khác")+" ("+sec.length+")"));
+   const sbd=el("div","msub-b");for(const c of sec)sbd.appendChild(mkItem(c.label||shortModelName(c.id),c.id,curId===a.id&&curModel===c.id,()=>selectRoleChoice(role,a.id,c.id,true)));
+   sub.append(ssm,sbd);bd.appendChild(sub)}
+  g.append(sm,bd);tr.appendChild(g)}
+ if(!tr.children.length)tr.appendChild(el("div","mute small","Không khớp model nào — nhấn Enter để dùng trực tiếp \""+q+"\"."));
+ ft.replaceChildren();ft.hidden=!curSp.showEffort;
+ if(curSp.showEffort){ft.appendChild(el("span","mft-l","Effort:"));const row=el("div","meffs");
+  const mkE=(lbl,val)=>{const b=el("button","meff"+(curEff===val?" on":""),lbl);b.type="button";b.onclick=()=>selectRoleEffort(role,val);return b};
+  row.appendChild(mkE(curSp.defEffort?"Mặc định ("+curSp.defEffort+")":"Mặc định",""));
+  for(const e of curSp.efforts)row.appendChild(mkE(e,e));ft.appendChild(row)}
+ positionRolePop(role)}
 async function discoverForId(id,noisy){if(!local||!id||id==="off"||id==="codex-relay")return;
  const r=await api("/api/discover_models",{advisor_id:id});if(!r.ok){if(noisy)toast("✗ "+(r.d.error||r.status));return}
  if(r.d.cli_presets)PRESETS=Object.assign(PRESETS,r.d.cli_presets);
+ if(id==="agy"||ADVS.some(a=>a.id===id&&a.preset==="agy"))AGY_PROBED=true;
  const key=(id==="qwen"||id==="nothink"||id==="think")?"gateway":id;if(r.d.models)DISC[key]=r.d.models;
- fillRolePicker("p",false);fillRolePicker("w",false);modelSync();if(noisy)toast((r.d.ok?"✓ ":"✗ ")+(r.d.detail||"Đã cập nhật model"))}
-$("planner").onchange=()=>{fillRolePicker("p",true);chip()};$("worker").onchange=()=>{fillRolePicker("w",true);chip()};
-$("p_model").oninput=()=>{const id=$("planner").value;(roleOver.p[id]=roleOver.p[id]||{}).model=$("p_model").value.trim();chip()};
-$("p_effort").onchange=()=>{const id=$("planner").value;(roleOver.p[id]=roleOver.p[id]||{}).effort=$("p_effort").value;chip()};
-$("w_model").oninput=()=>{const id=$("worker").value;(roleOver.w[id]=roleOver.w[id]||{}).model=$("w_model").value.trim();chip()};
-$("w_effort").onchange=()=>{const id=$("worker").value;(roleOver.w[id]=roleOver.w[id]||{}).effort=$("w_effort").value;chip()};
-$("mrefresh").onclick=async()=>{await discoverForId($("planner").value,true);if($("worker").value!==$("planner").value)await discoverForId($("worker").value,true)};
+ chip();modelSync();["p","w"].forEach(rl=>{const p=rolePopEl(rl);if(p&&p.isConnected&&((p.matches&&p.matches(":popover-open"))||p.classList.contains(":popover-open")))renderRoleTree(rl)});
+ if(noisy)toast((r.d.ok?"✓ ":"✗ ")+(r.d.detail||"Đã cập nhật model"))}
+async function refreshRoleModels(role){const cur=$(role==="p"?"planner":"worker").value;await discoverForId(cur,true);
+ if(!AGY_PROBED&&cur!=="agy")await discoverForId("agy",false)}
+["p","w"].forEach(role=>{const pop=rolePopEl(role),trig=$(role==="p"?"p_trig":"w_trig");
+ if(!pop||!trig)return;
+ pop.addEventListener("toggle",e=>{if(e.newState==="open"){const p=ensureRolePop(role);if(p._sr)p._sr.value="";renderRoleTree(role);
+  if(local&&!AGY_PROBED)discoverForId("agy",false);
+  const cur=$(role==="p"?"planner":"worker").value;if(local&&!DISC[cur==="qwen"||cur==="nothink"||cur==="think"?"gateway":cur])discoverForId(cur,false);
+  setTimeout(()=>p._sr&&p._sr.focus(),20)}});
+ if(!Object.hasOwn(HTMLElement.prototype,"popover")){trig.onclick=ev=>{ev.stopPropagation();const open=!pop.classList.contains(":popover-open");
+  ["p","w"].forEach(closeRolePop);if(open){const p=ensureRolePop(role);if(p._sr)p._sr.value="";renderRoleTree(role);pop.classList.add(":popover-open");positionRolePop(role)}};
+  addEventListener("click",ev=>{if(!pop.contains(ev.target)&&ev.target!==trig)closeRolePop(role)});
+  addEventListener("keydown",ev=>{if(ev.key==="Escape")closeRolePop(role)})}});
+addEventListener("resize",()=>["p","w"].forEach(rl=>{const p=rolePopEl(rl);if(p&&((p.matches&&p.matches(":popover-open"))||p.classList.contains(":popover-open")))positionRolePop(rl)}));
 function advDesc(a){if(a.builtin&&ADV[a.id])return ADV[a.id][1]+(a.url?" · "+a.url:"");if(a.builtin)return a.label;if(a.type==="api")return(a.kind==="anthropic"?"API Anthropic":"API OpenAI-compatible")+" · "+a.url+(a.model?" · "+a.model:"")+(a.think?" · suy nghĩ sâu":"");
  return"CLI trên máy này · "+(a.preset==="custom"?a.command:({claude:"Claude Code",codex:"Codex",agy:"Antigravity CLI"})[a.preset]+(a.model?" · model "+a.model:"")+(a.effort?" · suy nghĩ "+a.effort:"")+(a.fallback_model?" · dự phòng "+a.fallback_model:"")+(a.web?" · tra internet":""))}
 function relist(){const keepP=$("s_planner").value||"nothink",keepW=$("s_worker").value||"qwen";setAdvisors(ADVS.filter(a=>a.builtin).concat(custom));if($("s_planner").querySelector('option[value="'+keepP+'"]'))$("s_planner").value=keepP;pick($("s_planner").value);if($("s_worker").querySelector('option[value="'+keepW+'"]'))$("s_worker").value=keepW}
@@ -429,14 +537,18 @@ function setViewerLabel(l){$("openbtn").textContent="Mở trong "+l}
 async function openViewer(){$("openst").textContent="đang mở…";const r=await api("/api/open",{});$("openst").textContent=r.ok?((r.d.ok?"✓ ":"✗ ")+r.d.detail+(r.d.path?" — "+r.d.path:"")):("✗ "+(r.d.error||r.status))}
 $("openbtn").onclick=openViewer;
 function loadSettings(s){$("s_lauto").checked=s.lessons_auto!==false;$("w_dir").value=s.workspace||"";setWs(s.workspace||"");const vw=s.viewer||{};$("v_kind").value=vw.kind||"auto";$("v_cmd").value=vw.command||"";VW=s.viewers_detected||VW;viewerSync();setViewerLabel(s.viewer_label||"CAD");cfgd=cfgd||{};cfgd.configured=s.configured;$("s_url").value=s.url;$("s_model").value=s.model;$("s_key").value="";$("keystate").textContent=s.has_key?"(đã lưu một khoá)":"(chưa có khoá)";
- const r=s.relay||{};$("r_host").value=r.host||"";$("r_dir").value=r.workdir||"";$("r_codex").value=r.codex||"codex";$("cfgpath").textContent="Lưu tại: "+s.config_path;advKeys={};$("advform").hidden=true;setAdvisors(s.advisors);pick(s.planner);if($("s_worker").querySelector('option[value="'+(s.worker||"qwen")+'"]'))$("s_worker").value=s.worker||"qwen";if($("worker").querySelector('option[value="'+(s.worker||"qwen")+'"]'))$("worker").value=s.worker||"qwen";fillRolePicker("p",false);fillRolePicker("w",false);chip()}
+ const r=s.relay||{};$("r_host").value=r.host||"";$("r_dir").value=r.workdir||"";$("r_codex").value=r.codex||"codex";$("cfgpath").textContent="Lưu tại: "+s.config_path;advKeys={};$("advform").hidden=true;setAdvisors(s.advisors);pick(s.planner);if($("s_worker").querySelector('option[value="'+(s.worker||"qwen")+'"]'))$("s_worker").value=s.worker||"qwen";if($("worker").querySelector('option[value="'+(s.worker||"qwen")+'"]'))$("worker").value=s.worker||"qwen";chip()}
 function form(){const p=$("s_planner").value||"nothink",w=$("s_worker").value||"qwen";
  const strip=a=>{const o={};for(const k of["id","label","type","external","kind","url","model","effort","fallback_model","preset","command","web","think"])if(a[k]!==undefined&&a[k]!=="")o[k]=a[k];return o};
  return{url:$("s_url").value.trim(),model:$("s_model").value.trim(),key:$("s_key").value,planner:p,worker:w,relay:{host:$("r_host").value.trim(),workdir:$("r_dir").value.trim(),codex:$("r_codex").value.trim()||"codex"},lessons_auto:$("s_lauto").checked,advisors:custom.map(strip),advisor_keys:advKeys,viewer:{kind:$("v_kind").value,command:$("v_cmd").value.trim()}}}
-function chip(){const selP=$("planner"),op=selP.options[selP.selectedIndex],selW=$("worker"),ow=selW?selW.options[selW.selectedIndex]:null;
- const pm=$("p_model").hidden?"":$("p_model").value.trim(),pe=$("p_effort").hidden?"":$("p_effort").value,wm=$("w_model").hidden?"":$("w_model").value.trim(),we=$("w_effort").hidden?"":$("w_effort").value;
- const ps=[op?op.textContent:"—",pm,pe].filter(Boolean).join(" / "),ws=[ow?ow.textContent:"—",wm,we].filter(Boolean).join(" / ");
- $("advchip").title="Cố vấn: "+ps+" · Thực thi: "+ws}
+function chip(){const roleText=(role,selId)=>{const id=$(selId).value,sp=roleSpec(id),ov=roleOver[role][id]||{},m=ov.model||sp.defModel,e=ov.effort||sp.defEffort;
+  if(id==="off")return{txt:"Tắt",tip:"Không cố vấn"};
+  let name=sp.provider||id;if(id==="claude"||/^Claude/i.test(name))name="Claude";else if(/^Antigravity/i.test(name))name="Antigravity";else if(/^Codex trên/i.test(name))name="Codex";
+  const parts=[name];if(m)parts.push(shortModelName(m));if(e)parts.push(e);
+  return{txt:parts.join(" · "),tip:[sp.provider,m,e].filter(Boolean).join(" / ")}};
+ const pr=roleText("p","planner"),wr=roleText("w","worker");
+ if($("p_lbl"))$("p_lbl").textContent=pr.txt;if($("p_trig"))$("p_trig").title="Cố vấn: "+pr.tip;
+ if($("w_lbl"))$("w_lbl").textContent=wr.txt;if($("w_trig"))$("w_trig").title="Thực thi: "+wr.tip}
 function openSettings(){$("tst").textContent="";$("dlg").showModal()}
 let hall=false;
 async function openHistory(){const {d}=await api("/api/history"+(hall?"?all=1":""));const L=$("hlist");L.replaceChildren();const ss=d.sessions||[];$("hnone").hidden=ss.length>0;$("hclear").hidden=!ss.length;
@@ -488,25 +600,33 @@ $("skadd").onclick=()=>openSkillForm("url");$("skloc").onclick=()=>openSkillForm
 $("sk_go").onclick=async()=>{const v=$("sk_src").value.trim();if(!v)return;$("sk_go").disabled=true;$("sk_err").textContent="Đang tải…";const r=await api("/api/skills",skMode==="url"?{op:"install",url:v,scope:$("sk_scope").value}:{op:"install_local",path:v,scope:$("sk_scope").value});$("sk_go").disabled=false;
  if(!r.ok){$("sk_err").textContent="Không cài được: "+(r.d.error||r.status);return}$("skdlg").close();toast("Đã cài "+r.d.added.length+" skill, chờ bạn đọc và duyệt"+(r.d.skipped&&r.d.skipped.length?" ("+r.d.skipped.length+" bị bỏ qua)":""));loadSkills()};
 /* ---- lessons: general practices rolled out of finished work, used only after approval ---- */
-let LES=[],lesEdit=null;
-async function loadLessons(){const {ok,d}=await api("/api/lessons");if(!ok)return;LES=d.lessons||[];drawLessons(d)}
+let LES=[],lesEdit=null,lesLastMeta={};
+async function loadLessons(){const {ok,d}=await api("/api/lessons");if(!ok)return;LES=d.lessons||[];lesLastMeta=d;drawLessons(d)}
 function lessonBadge(){const n=LES.filter(x=>x.status==="pending").length;const t=$("tablessons");t.textContent="Bài học";if(n){const b=el("span","bd",String(n));t.appendChild(b)}}
-function drawLessons(d){lessonBadge();const L=$("llist");L.replaceChildren();$("lnote").textContent=(d&&d.reflecting?"Đang rút bài học… ":"")+"Chỉ bài học đã duyệt mới được đưa cho Qwen, và chỉ ở cuộc trò chuyện mới. Bài học là quy tắc chung, không chứa kích thước hay số liệu của một bài cụ thể.";
- const groups=[["pending","Chờ bạn duyệt"],["approved","Đã duyệt (đang dùng)"],["rejected","Đã bỏ"]];
- for(const [st,label] of groups){const xs=LES.filter(x=>x.status===st);if(!xs.length)continue;L.appendChild(el("div","lh",label+" · "+xs.length));
-  for(const x of xs){const c=el("div","les");const h=el("b",0,x.title);h.appendChild(el("span","tag",x.scope==="global"?"mọi dự án":"dự án này"));c.appendChild(h);c.appendChild(el("div",0,x.rule));
+function drawLessons(d){if(d)lesLastMeta=d;else d=lesLastMeta;lessonBadge();const L=$("llist");L.replaceChildren();const pcnt=LES.filter(x=>x.status==="pending").length;$("lsearch").hidden=!LES.length;$("lclearp").hidden=!pcnt;
+ $("lnote").textContent=(d&&d.reflecting?"Đang rút bài học… ":"")+"Chỉ bài học đã duyệt mới được áp dụng (tự động theo vai trò Cố vấn / Thực thi hoặc khi gõ #tên). Bài học là quy tắc chung, không chứa số liệu riêng của một bài.";
+ const q=($("lfilter").value||"").trim().toLowerCase();const match=x=>!q||[x.title,x.rule,x.when,"#"+x.slug].some(s=>String(s||"").toLowerCase().includes(q));
+ const groups=[["pending","Chờ bạn duyệt"],["approved","Đã duyệt (đang dùng)"],["rejected","Đã bỏ"]];let shown=0;
+ for(const [st,label] of groups){const xs=LES.filter(x=>x.status===st&&match(x));if(!xs.length)continue;L.appendChild(el("div","lh",label+" · "+xs.length));
+  for(const x of xs){shown++;const c=el("div","les");const h=el("b",0,x.title);h.appendChild(el("span","tag",x.scope==="global"?"mọi dự án":"dự án này"));c.appendChild(h);c.appendChild(el("div",0,x.rule));
    c.appendChild(el("div","why","Gọi bằng #"+x.slug));if(x.when)c.appendChild(el("div","why","Khi nào: "+x.when));if(x.evidence)c.appendChild(el("div","why","Từ: "+x.evidence));if(x.uses)c.appendChild(el("div","why","Đã dùng "+x.uses+" lần"));
    const a=el("div","acts");const mk=(t,fn,cls)=>{const b=el("button","btn small"+(cls?" "+cls:""),t);b.type="button";b.onclick=fn;a.appendChild(b)};
-   if(st==="approved")mk(x.auto===false?"Tự động: tắt (chỉ khi gõ #"+x.slug+")":"Tự động: bật",()=>lessonOp("auto",x.id,{value:x.auto===false}));if(st!=="approved")mk("Duyệt",()=>lessonOp("approve",x.id),"primary");if(st==="pending")mk("Bỏ",()=>lessonOp("reject",x.id));if(st==="approved")mk("Tạm dừng",()=>lessonOp("pending",x.id));if(st==="rejected")mk("Đưa lại",()=>lessonOp("pending",x.id));
+   if(st==="approved"){mk(x.auto===false?"Tự động: tắt (chỉ khi gõ #"+x.slug+")":"Tự động: bật",()=>lessonOp("auto",x.id,{value:x.auto===false}));
+    mk("Dành cho: "+({director:"cố vấn",worker:"thực thi"}[x.audience]||"cả hai"),()=>lessonOp("audience",x.id,{value:({both:"worker",worker:"director",director:"both"}[x.audience||"both"]||"worker")}));}
+   if(st!=="approved")mk("Duyệt",()=>lessonOp("approve",x.id),"primary");if(st==="pending")mk("Bỏ",()=>lessonOp("reject",x.id));if(st==="approved")mk("Tạm dừng",()=>lessonOp("pending",x.id));if(st==="rejected")mk("Đưa lại",()=>lessonOp("pending",x.id));
    mk("Sửa",()=>openLessonForm(x));mk(x.scope==="global"?"Chỉ dự án này":"Dùng mọi dự án",()=>lessonOp("scope",x.id,{scope:x.scope==="global"?"project":"global"}));mk("Xoá",()=>{if(confirm("Xoá bài học này?"))lessonOp("delete",x.id)});
    c.appendChild(a);L.appendChild(c)}}
- if(!LES.length)L.appendChild(el("div","mute small","Chưa có bài học nào. Sau một cuộc trò chuyện có lỗi hoặc cảnh báo app tự đề xuất; hoặc bấm “Rút bài học từ cuộc này”."));L.lastChild&&0}
+ if(!LES.length)L.appendChild(el("div","mute small","Chưa có bài học nào. Sau một lượt dựng thành công có lỗi đã sửa, app tự đề xuất; hoặc bấm “Rút bài học từ cuộc này”."));
+ else if(!shown)L.appendChild(el("div","mute small","Không có bài học nào khớp từ khoá lọc."))}
 async function lessonOp(op,id,extra){const r=await api("/api/lessons",Object.assign({op,id},extra||{}));if(!r.ok&&r.d.error)toast(r.d.error);loadLessons()}
-function openLessonForm(x){lesEdit=x||null;$("ldt").textContent=x?"Sửa bài học (sửa xong phải duyệt lại)":"Thêm bài học";$("l_title").value=x?x.title:"";$("l_rule").value=x?x.rule:"";$("l_when").value=x?x.when||"":"";$("l_err").textContent="";$("l_scopew").hidden=!!x;$("l_scope").value=WS?"project":"global";$("l_scope").querySelector("option[value=project]").disabled=!WS;$("ldlg").showModal()}
+function openLessonForm(x){lesEdit=x||null;$("ldt").textContent=x?"Sửa bài học (sửa xong phải duyệt lại)":"Thêm bài học";$("l_title").value=x?x.title:"";$("l_rule").value=x?x.rule:"";$("l_when").value=x?x.when||"":"";$("l_aud").value=(x&&x.audience)||"both";$("l_err").textContent="";$("l_scopew").hidden=!!x;$("l_scope").value=WS?"project":"global";$("l_scope").querySelector("option[value=project]").disabled=!WS;$("ldlg").showModal()}
+$("lfilter").oninput=()=>drawLessons();
+$("ldedupe").onclick=async()=>{const r=await api("/api/lessons",{op:"dedupe"});if(!r.ok){toast(r.d.error||"Không lọc được");return}toast(r.d.removed?"Đã dọn "+r.d.removed+" bài học trùng hoặc sai quy tắc":"Không có bài học trùng nào");loadLessons()};
+$("lclearp").onclick=async()=>{const n=LES.filter(x=>x.status==="pending").length;if(!n||!confirm("Xoá toàn bộ "+n+" bài học đang chờ duyệt trong phạm vi hiện tại?"))return;const r=await api("/api/lessons",{op:"clear_pending"});if(!r.ok){toast(r.d.error||"Không xoá được");return}toast("Đã xoá "+(r.d.deleted||0)+" bài học chờ duyệt");loadLessons()};
 $("lskill").onclick=async()=>{const n=LES.filter(x=>x.status==="approved").length;if(!n){toast("Chưa có bài học nào đã duyệt");return}const name=prompt("Tên skill (a-z, 0-9, dấu gạch ngang):","bai-hoc-"+(WS?WS.split(/[\\/]/).pop().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""):"chung"));if(!name)return;const desc=prompt("Mô tả một dòng (khi nào dùng skill này):","Quy tắc chung rút từ các lần dựng chi tiết, dùng khi dựng hoặc sửa chi tiết CadQuery");if(desc===null)return;
  const r=await api("/api/lessons",{op:"to_skill",name,description:desc,scope:WS?"project":"global"});toast(r.ok?"Đã tạo skill "+r.d.name+" từ "+r.d.count+" bài học, chờ bạn duyệt ở tab Skill":(r.d.error||"Không tạo được"));if(r.ok)loadSkills()};
 $("ladd").onclick=()=>openLessonForm(null);$("l_cancel").onclick=()=>$("ldlg").close();
-$("l_save").onclick=async()=>{const body={title:$("l_title").value.trim(),rule:$("l_rule").value.trim(),when:$("l_when").value.trim()};const r=lesEdit?await api("/api/lessons",Object.assign({op:"edit",id:lesEdit.id},body)):await api("/api/lessons",Object.assign({op:"add",scope:$("l_scope").value},body));
+$("l_save").onclick=async()=>{const body={title:$("l_title").value.trim(),rule:$("l_rule").value.trim(),when:$("l_when").value.trim(),audience:$("l_aud").value};const r=lesEdit?await api("/api/lessons",Object.assign({op:"edit",id:lesEdit.id},body)):await api("/api/lessons",Object.assign({op:"add",scope:$("l_scope").value},body));
  if(!r.ok){$("l_err").textContent="Không lưu được: "+(r.d.error||r.status);return}$("ldlg").close();loadLessons()};
 $("lreflect").onclick=async()=>{if(busy){toast("Đợi lượt hiện tại xong");return}$("lreflect").disabled=true;$("lnote").textContent="Đang rút bài học… (vài chục giây)";const r=await api("/api/lessons",{op:"reflect"});$("lreflect").disabled=false;
  toast(r.ok?(r.d.added?"Đã rút "+r.d.added+" bài học mới, chờ bạn duyệt":"Không có bài học mới đáng giữ"+(r.d.skipped&&r.d.skipped.length?" ("+r.d.skipped.length+" ý bị loại vì quá cụ thể hoặc trùng)":"")):(r.d.error||"Không rút được"));loadLessons()};
@@ -600,7 +720,7 @@ function fileMenu(e,rel,kind,isDir){const items=[];
 function tabMenu(e,id){const t=tabs.find(x=>x.rel===id);showCtx(e,[{label:"Đóng tab",fn:()=>closeTab(id)},{label:"Đóng các tab khác",off:tabs.length<2,fn:()=>{dispose3d();tabs=tabs.filter(x=>x.rel===id);activate(id)}},{label:"Đóng tất cả",fn:closeAllTabs},"-",
  {label:"Hiện trong thư mục",fn:()=>post("/api/reveal",id,"Đã mở thư mục chứa tệp")},{label:"Sao chép đường dẫn đầy đủ",fn:()=>copyText(fullPath(id))}])}
 $("attbtn").onclick=()=>openFiles("");$("fclose").onclick=()=>$("fdlg").close();
-$("advchip").onclick=openSettings;let bcur="";
+let bcur="";
 async function browse(p){const {ok,d}=await api("/api/browse"+(p?"?path="+encodeURIComponent(p):""));if(!ok){alert(d.error||"không mở được thư mục");return}
  bcur=d.path;$("bpath").textContent=d.path;const l=$("blist");l.replaceChildren();
  if(d.parent){const r=el("div","opt","⬆ ..");r.style.cursor="pointer";r.onclick=()=>browse(d.parent);l.appendChild(r)}
@@ -635,12 +755,12 @@ $("histbtn").onclick=openHistory;$("hclose").onclick=()=>$("hdlg").close();$("ha
 $("setbtn").onclick=openSettings;$("cbtn").onclick=()=>$("dlg").close();
 $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=await api("/api/test",form());if(!r.ok){$("tst").textContent=r.d.error||("lỗi "+r.status);return}
  $("tst").textContent=(r.d.ok?"✓ ":"✗ ")+r.d.detail;DISC.gateway=r.d.models||[];const dl=$("models");dl.replaceChildren();(r.d.models||[]).forEach(m=>{const o=el("option");o.value=m;dl.appendChild(o)});
- if(r.d.ok&&!$("s_model").value&&r.d.models&&r.d.models.length===1)$("s_model").value=r.d.models[0];fillRolePicker("p",false);fillRolePicker("w",false)}
+ if(r.d.ok&&!$("s_model").value&&r.d.models&&r.d.models.length===1)$("s_model").value=r.d.models[0];chip()}
 $("sf").onsubmit=async e=>{e.preventDefault();const r=await api("/api/settings",form());if(!r.ok){$("tst").textContent="✗ "+(r.d.error||r.status);return}
- DET=DET;loadSettings(r.d.settings);$("planner").value=r.d.settings.planner;$("worker").value=r.d.settings.worker||"qwen";fillRolePicker("p",false);fillRolePicker("w",false);chip();$("dlg").close();if(!col().querySelector(".user"))hero(false),hero(true)};
+ DET=DET;loadSettings(r.d.settings);$("planner").value=r.d.settings.planner;$("worker").value=r.d.settings.worker||"qwen";chip();$("dlg").close();if(!col().querySelector(".user"))hero(false),hero(true)};
 $("quitbtn").onclick=async()=>{if(confirm("Tắt ứng dụng CadFabric?")){await api("/api/quit",{});document.body.textContent="Đã tắt CadFabric. Bạn có thể đóng tab này."}};
 (async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;RECENT=d.recent||[];loadLessons();api("/api/skills").then(r=>{if(r.ok){SK=r.d.skills||[];drawSkills()}});$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local||!!d.picker;window.PICKER=!!d.picker;setWs(d.settings.workspace||"");
- DET=d.cli_detected||{};PRESETS=d.cli_presets||{};loadSettings(d.settings);$("planner").value=d.default;$("worker").value=d.default_worker||"qwen";fillRolePicker("p",true);fillRolePicker("w",true);chip();
+ DET=d.cli_detected||{};PRESETS=d.cli_presets||{};loadSettings(d.settings);$("planner").value=d.default;$("worker").value=d.default_worker||"qwen";chip();if(local){discoverForId(d.default,false);discoverForId("agy",false)}
  if(!local){$("localnote").textContent="Đang truy cập từ xa: không sửa được cài đặt (chỉ sửa được trên máy chạy ứng dụng).";document.querySelectorAll("#dlg input,#dlg select,#tbtn,#sbtn").forEach(x=>x.disabled=true)}
  hero(true);poll();setInterval(poll,800);if(!d.settings.configured&&local)setTimeout(openSettings,300)})();
 </script>

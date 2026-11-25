@@ -717,6 +717,9 @@ class WorkspaceWeb(Settings):
         js = re.findall(r"<script>(.*?)</script>", html, re.S)[-1]
         names = collections.Counter(re.findall(r"^(?:async )?function ([A-Za-z0-9_$]+)\(", js, re.M))
         self.assertEqual({n: c for n, c in names.items() if c > 1}, {})
+        self.assertNotIn(".mpop-tree{flex:1;", html)
+        self.assertIn("flex:1 1 auto;min-height:210px", html)
+        self.assertIn("anchor-name:--cf-pop-p", html)
 
     def test_open_in_blender_converts_step_and_launches(self):
         import struct, subprocess, py_compile
@@ -787,7 +790,17 @@ class WorkspaceWeb(Settings):
         self.assertEqual(self.req("GET", "/api/lessons")[1]["lessons"][0]["status"], "approved")                                        # the user's own lesson is approved at once
         self.assertEqual(post({"op": "edit", "id": lid, "rule": "Use 12 mm everywhere"})[0], 400)                                       # an edit is checked too
         s, d = post({"op": "edit", "id": lid, "title": "Cut holes through the solid"}); self.assertEqual((s, d["lesson"]["status"]), (200, "pending"))     # changed text -> approve again
-        self.assertEqual(post({"op": "approve", "id": lid})[0], 200); self.assertEqual(post({"op": "scope", "id": lid, "scope": "global"})[0], 200)
+        self.assertEqual(post({"op": "approve", "id": lid})[0], 200)
+        s_aud, d_aud = post({"op": "audience", "id": lid, "value": "worker"}); self.assertEqual((s_aud, d_aud["lesson"]["audience"], d_aud["lesson"]["status"]), (200, "worker", "approved"))
+        sk = sess._scene_skills("drill hole", LS.scene_blocks(dd, ws, "drill hole"))
+        self.assertIn("Cut holes through", sk["explicit_worker"]); self.assertEqual(sk["explicit"], "")
+        self.assertEqual(post({"op": "dedupe"})[0], 200)
+        post({"op": "edit", "id": lid, "title": "Cut holes through the solid again"})
+        self.assertEqual(post({"op": "clear_pending"})[1]["deleted"], 1)
+        # Re-add approved lesson to test global scope & delete
+        self.assertEqual(post({"op": "add", "title": "Cut holes through", "rule": "Make the cutting tool longer than the part so a hole passes all the way through.", "scope": "project"})[0], 200)
+        lid = self.req("GET", "/api/lessons")[1]["lessons"][0]["id"]
+        self.assertEqual(post({"op": "scope", "id": lid, "scope": "global"})[0], 200)
         self.assertEqual(self.req("POST", "/api/project", {"path": ""})[0], 200); self.assertEqual(len(self.req("GET", "/api/lessons")[1]["lessons"]), 1)         # global: visible without a project
         self.assertEqual(post({"op": "scope", "id": lid, "scope": "project"})[0], 400)                                                   # no project: cannot be a project lesson
         self.assertEqual(post({"op": "nope"})[0], 400); self.assertEqual(post({"op": "delete", "id": "zzz"})[0], 404)
@@ -924,6 +937,46 @@ class LessonsCore(unittest.TestCase):
         md = L.export_skill_md([a, b], "my-lessons", "General practices"); self.assertIn("name: my-lessons", md); self.assertIn("Close every wire first", md)
         from cadfabric import skills as S
         self.assertEqual(S.parse_frontmatter(md)[0]["name"], "my-lessons")
+
+    def test_antipattern_word_clip_dedupe_pending_cap_and_role_blocks(self):
+        from cadfabric import lessons as L
+        bad_trick = {"title": "Vary verification code to avoid skips", "rule": "Change variable names slightly to avoid being flagged as duplicate code by the harness."}
+        self.assertIn("bad practice", L.check(bad_trick)[1])
+        long_rule = "Always verify every joint offset against the axis and center coordinates cleanly before assembling multiple moving components so that rotations remain physically consistent without intersecting adjacent structural members around the frame and never causing unexpected mesh fragmentation."
+        cleaned, err = L.check({"title": "Verify axis offsets cleanly", "rule": long_rule})
+        self.assertEqual(err, ""); self.assertTrue(cleaned["rule"].endswith("…")); self.assertLessEqual(len(cleaned["rule"]), 280); self.assertFalse(cleaned["rule"].endswith("frag…"))
+        # Reworded identical titles or near-duplicate rules are rejected on add & cleaned by dedupe_store
+        L.add(self.d, self.P, [{"title": "Import cadquery as cq, not cq", "rule": "Always write import cadquery as cq instead of import cq."}])
+        a2, sk2 = L.add(self.d, self.P, [{"title": "Import cadquery as cq, not cq!", "rule": "Use import cadquery as cq in scripts."}])
+        self.assertEqual((len(a2), sk2[0][1]), (0, "already known"))
+        # Raw legacy store cleanup removes duplicates and anti-lessons while preserving approved lessons
+        raw = [
+            {"id": "1", "title": "Approved keep", "rule": "Verify bounding boxes match the planned dimensions.", "when": "", "evidence": "", "scope": "project", "project": L.proj_key(self.P), "status": "approved", "created": "2026-01-01", "uses": 0, "audience": "director"},
+            {"id": "2", "title": "Vary verification code to avoid skips", "rule": "Change variable names to avoid being flagged as duplicate code.", "when": "", "evidence": "", "scope": "project", "project": L.proj_key(self.P), "status": "pending", "created": "2026-01-02", "uses": 0},
+            {"id": "3", "title": "Use cq import alias", "rule": "Always import cadquery as cq and not cq directly.", "when": "", "evidence": "", "scope": "project", "project": L.proj_key(self.P), "status": "pending", "created": "2026-01-03", "uses": 0},
+            {"id": "4", "title": "Use cq import alias", "rule": "Import cadquery as cq in every cell instead of cq.", "when": "", "evidence": "", "scope": "project", "project": L.proj_key(self.P), "status": "pending", "created": "2026-01-04", "uses": 0},
+        ]
+        L._save(self.d, raw)
+        self.assertGreaterEqual(L.dedupe_store(self.d, self.P), 2)
+        kept = L.list_for(self.d, self.P)
+        self.assertEqual(len([x for x in kept if x["status"] == "approved"]), 1)
+        self.assertEqual(len([x for x in kept if x["slug"] == "use-cq-import-alias"]), 1)
+        # Pending cap trims oldest pending in project without dropping approved items
+        cap_words = "fillet chamfer revolve sweep loft shell mirror pattern boolean sketch extrude spline offset thread rib boss slot groove taper draft emboss knurl bevel dome flange gusset collar spigot keyway counterbore".split()
+        for w in cap_words[:L.MAX_PENDING_PROJECT + 5]:
+            L.add(self.d, self.P, [{"title": "Guideline %s %s" % (w, w + "hdr"), "rule": "Inspect %s_a with %s_b before %s_c on %s_d parts." % (w, w, w, w)}])
+        self.assertEqual(len([x for x in L.list_for(self.d, self.P) if x["status"] == "pending"]), L.MAX_PENDING_PROJECT)
+        self.assertEqual(len([x for x in L.list_for(self.d, self.P) if x["status"] == "approved"]), 1)
+        self.assertEqual(L.clear_pending(self.d, self.P), L.MAX_PENDING_PROJECT)
+        self.assertEqual(len([x for x in L.list_for(self.d, self.P) if x["status"] == "pending"]), 0)
+        # auto_signals & role-based scene_blocks
+        self.assertFalse(L.auto_signals([{"kind": "user", "text": "x"}, {"kind": "cell", "n": 1, "ok": False, "error": "boom"}]))
+        self.assertFalse(L.auto_signals([{"kind": "user", "text": "x"}, {"kind": "cell", "n": 1, "ok": False}, {"kind": "cell", "n": 2, "ok": True}, {"kind": "error", "text": "fail"}, {"kind": "final", "text": "done"}]))
+        self.assertTrue(L.auto_signals([{"kind": "user", "text": "x"}, {"kind": "cell", "n": 1, "ok": False}, {"kind": "cell", "n": 2, "ok": True}, {"kind": "final", "text": "done", "warnings": 0}]))
+        w_item = L.add(self.d, self.P, [{"title": "Worker bmesh rule", "rule": "Always pass bm as the first argument to bmesh operators.", "audience": "worker"}], status="approved")[0][0]
+        sb = L.scene_blocks(self.d, self.P, request="check bounding box rotation and bmesh")
+        self.assertIn("Approved keep", sb["director"]); self.assertNotIn("Worker bmesh rule", sb["director"])
+        self.assertIn("Worker bmesh rule", sb["worker"]); self.assertIn(w_item["id"], sb["used"])
 
 
 
