@@ -62,3 +62,9 @@ ALWAYS prefer `bxlib` recipes over raw `bmesh` code; multi-op `"add"`/`"cut"` an
 ```
 *(Notice outer base inner opening is `100 - 2*2.4 = 95.2 mm`; lid inner lip `94.76 mm` gives `(95.2 - 94.76)/2 = 0.22 mm` slip/snap clearance on all 4 sides!)*
 
+## 6. Print-in-Place Articulated Mode (`"in_place": true`)
+When designing articulated Flexi models (dragons, fidget links, print-in-place hinges) that print already interlocked on `Z = 0`:
+- Set `"print": {"profile": "bambu_a1", "in_place": true}` so `.3mf` export preserves exact relative world positions instead of separating parts onto a shelf grid, and centers the whole interlocked assembly on the build plate at `Z = 0`.
+- Use **captive conical `Z = 0` hinges** (`r_base > r_bore_upper`, internal ceiling slope `<= 35°` from vertical so zero supports are needed, `>= 0.50 mm` radial and axial clearances so adjacent links swing freely without fusing).
+
+

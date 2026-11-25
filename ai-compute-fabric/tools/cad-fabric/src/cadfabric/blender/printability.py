@@ -124,14 +124,19 @@ def resolve_print_cfg(raw):
     if not raw:
         return None
     if raw is True:
-        return dict(PRINT_PROFILES["bambu_a1"])
+        cfg = dict(PRINT_PROFILES["bambu_a1"])
+        cfg["in_place"] = False
+        return cfg
     if isinstance(raw, str):
         key = raw.strip().lower()
-        return dict(PRINT_PROFILES.get(key, PRINT_PROFILES["bambu_a1"]))
+        cfg = dict(PRINT_PROFILES.get(key, PRINT_PROFILES["bambu_a1"]))
+        cfg["in_place"] = False
+        return cfg
     if not isinstance(raw, dict):
         return None
     prof = str(raw.get("profile") or "bambu_a1").strip().lower()
     cfg = dict(PRINT_PROFILES.get(prof, PRINT_PROFILES["bambu_a1"]))
+    cfg["in_place"] = bool(raw.get("in_place", False))
     for k in ("tech", "nozzle_mm", "layer_mm", "bed_mm", "margin_mm", "min_wall_mm", "rec_wall_mm",
               "min_feature_mm", "min_clearance_mm", "hinge_clearance_mm", "max_overhang_deg", "max_bridge_mm", "max_colors", "label"):
         if k in raw and raw[k] is not None:
@@ -492,6 +497,24 @@ def check_scene(plan):
                         "hint": "3D printable parts cannot interpenetrate (%.2f mm overlap); add >= %.2f mm clearance between mating parts" % (pen_mm, cfg["min_clearance_mm"]),
                     })
 
+    if cfg.get("in_place") and boxes:
+        s_lo = [min(b[0][i] for b in boxes.values()) * 1000.0 for i in range(3)]
+        s_hi = [max(b[1][i] for b in boxes.values()) * 1000.0 for i in range(3)]
+        s_sz = [s_hi[i] - s_lo[i] for i in range(3)]
+        fits_all = (
+            ((s_sz[0] <= ux + 0.05 and s_sz[1] <= uy + 0.05) or (s_sz[1] <= ux + 0.05 and s_sz[0] <= uy + 0.05))
+            and s_sz[2] <= uz + 0.05
+        )
+        if not fits_all:
+            issues.append({
+                "kind": "exceeds_build_volume",
+                "part": "scene_in_place",
+                "oriented_size_mm": [round(x, 1) for x in s_sz],
+                "usable_bed_mm": [round(ux, 1), round(uy, 1), round(uz, 1)],
+                "print_up": "+z",
+                "hint": "print-in-place assembly exceeds usable bed dimensions; scale down or curl/pose tighter",
+            })
+
     summary = {
         "profile": cfg["profile"],
         "label": cfg.get("label") or cfg["profile"],
@@ -501,6 +524,7 @@ def check_scene(plan):
         "max_colors": int(cfg.get("max_colors") or 0),
         "colors_used": len(colors),
         "all_watertight": bool(part_summary) and all(v["watertight"] for v in part_summary.values()),
+        "in_place": bool(cfg.get("in_place", False)),
         "parts": part_summary,
     }
     return issues, summary

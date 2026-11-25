@@ -1766,6 +1766,21 @@ class PrintabilityAnd3MFTests(unittest.TestCase):
         with zipfile.ZipFile(out_3mf, "r") as zf:
             self.assertIn('extruder" value="4"', zf.read("Metadata/model_settings.config").decode("utf-8"))
 
+        # Verify in_place preserves relative interlocked assembly offsets while dropping Z_min to 0
+        raw_glb = scene_export.glb_extract_parts(os.path.join(pdir, "scene.glb"))
+        ip_packed = scene_export.orient_and_pack_parts(
+            raw_glb,
+            dict(good_plan, print={"profile": "bambu_a1", "in_place": True}),
+        )
+        ip_by = {pid: vp for pid, vp, _t, _c, _u in ip_packed}
+        raw_dx = float(((raw_glb["status_ring"][0].min(axis=0) + raw_glb["status_ring"][0].max(axis=0)) / 2.0)[0]
+                       - ((raw_glb["box_base"][0].min(axis=0) + raw_glb["box_base"][0].max(axis=0)) / 2.0)[0])
+        c_base = (ip_by["box_base"].min(axis=0) + ip_by["box_base"].max(axis=0)) / 2.0
+        c_ring = (ip_by["status_ring"].min(axis=0) + ip_by["status_ring"].max(axis=0)) / 2.0
+        self.assertAlmostEqual(float(c_ring[0] - c_base[0]), raw_dx, delta=0.05)
+        self.assertAlmostEqual(float(c_ring[1] - c_base[1]), 0.0, delta=0.05)
+        self.assertAlmostEqual(min(float(vp[:, 2].min()) for vp in ip_by.values()), 0.0, delta=0.05)
+
         # 2. Negative gate checks
         open_raw = {"sheet": "def build(bpy, bmesh):\n    bm=bmesh.new()\n    v=[bm.verts.new(c) for c in ((0,0,0),(0.03,0,0),(0.03,0.03,0),(0,0.03,0))]\n    bm.faces.new(v); me=bpy.data.meshes.new('sheet'); bm.to_mesh(me); bm.free()\n    return bpy.data.objects.new('sheet', me)\n"}
         rep_nm, _ = _run_blender_plan("bad_nm", {"print": {"profile": "bambu_a1"}, "parts": [{"id": "sheet", "spec": "open plane", "color": "#2B2D42"}]}, raw_overrides=open_raw)

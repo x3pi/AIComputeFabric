@@ -551,6 +551,37 @@ def orient_and_pack_parts(glb_parts, plan, report=None):
     gap = 6.0
     rep_parts = ((report or {}).get("print") or {}).get("parts") or {}
 
+    if cfg.get("in_place"):
+        raw_items = []
+        seen_ip = set()
+        for p in list((plan or {}).get("parts") or ()):
+            pid = p.get("id")
+            if not pid or pid in seen_ip or pid not in glb_parts:
+                continue
+            seen_ip.add(pid)
+            v, t = glb_parts[pid]
+            if not len(v) or not len(t):
+                continue
+            col = str(p.get("color") or "#D9D9D9").strip().upper()
+            if not (len(col) == 7 and col[0] == "#"):
+                col = "#D9D9D9"
+            raw_items.append((pid, np.asarray(v, dtype=np.float64), t, col))
+        for pid in sorted(glb_parts):
+            if pid in seen_ip:
+                continue
+            v, t = glb_parts[pid]
+            if not len(v) or not len(t):
+                continue
+            raw_items.append((pid, np.asarray(v, dtype=np.float64), t, "#D9D9D9"))
+        if not raw_items:
+            return []
+        all_lo = np.min([v.min(axis=0) for _, v, _, _ in raw_items], axis=0)
+        all_hi = np.max([v.max(axis=0) for _, v, _, _ in raw_items], axis=0)
+        tx = bed[0] / 2.0 - (all_lo[0] + all_hi[0]) / 2.0
+        ty = bed[1] / 2.0 - (all_lo[1] + all_hi[1]) / 2.0
+        tz = -all_lo[2]
+        return [(pid, np.c_[v[:, 0] + tx, v[:, 1] + ty, v[:, 2] + tz], t, col, "+z") for pid, v, t, col in raw_items]
+
     items = []
     ordered_parts = list((plan or {}).get("parts") or ())
     seen = set()
