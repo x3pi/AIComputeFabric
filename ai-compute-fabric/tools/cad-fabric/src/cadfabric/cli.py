@@ -208,6 +208,10 @@ def _desktop_window(url, srv, title="CadFabric"):
         return False
 
     try:
+        try:
+            webview.settings["ALLOW_DOWNLOADS"] = True     # pywebview blocks every download (.3mf/.stl/.blend/.step) by default
+        except Exception:                                  # noqa: BLE001 - older pywebview without settings
+            pass
         win = webview.create_window(title, url, width=1280, height=860, min_size=(900, 600))
         def pick():
             try:
