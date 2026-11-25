@@ -23,6 +23,11 @@ if smoke_part:                                    # fast single-part smoke build
         err = traceback.format_exc(limit=2)[-400:]; err += bxguard.explain(bmesh, err)
     json.dump(dict(error=err), open(os.path.join(proj, "smoke_%s.json" % smoke_part), "w")); raise SystemExit
 plan = json.load(open(os.path.join(proj, "plan.json")))
+import bxlib
+_n_sc = len(plan.get("parts", []))
+bxlib.SCENE_PARTS = _n_sc
+if _n_sc > 30 and "BX_PART_VERTS" not in os.environ:
+    bxguard.MAX_VERTS = max(25000, min(150000, 3_500_000 // _n_sc))
 report = dict(part_errors={}, issues=[], missing=[], ok=False)
 bpy.ops.wm.read_factory_settings(use_empty=True)
 import signal, time as _time

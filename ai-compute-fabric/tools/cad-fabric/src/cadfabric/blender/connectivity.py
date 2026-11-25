@@ -56,5 +56,5 @@ def floating(free=()):
                 break
         if best > tol:
             out.append(dict(kind="floating_part", part=o.name, gap_mm=round(best * 1000, 1),
-                            hint="the part is not supported: it touches neither the floor nor any other part (closest gap %.0f mm); attach it with a bracket, lug, stay or move it into contact" % (best * 1000)))
+                            hint="the part is not supported: it touches neither the floor nor any other part (closest gap %.0f mm); if the TASK text gave explicit coordinates/sizes for this part, set \"free\": true on it instead of changing its given position or size; otherwise attach it with a bracket, lug, stay or move it into contact" % (best * 1000)))
     return out

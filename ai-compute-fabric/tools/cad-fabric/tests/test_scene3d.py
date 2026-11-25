@@ -552,5 +552,290 @@ class PatchPlan(unittest.TestCase):
         self.assertIn("patch_plan", S.SYSTEM)
 
 
+class CostAndQualityGates(Loop):
+    def test_worker_mirror_of_without_director_ops(self):
+        plan = {
+            "action": "plan",
+            "parts": [
+                {"id": "fork_L", "spec": "fork leg", "center_mm": [930, 75, 350], "size_mm": [180, 44, 318], "shape": {"endpoints": [[1000, 75, 200], [860, 75, 499]]}},
+                {"id": "fork_R", "mirror_of": "fork_L"},
+            ],
+            "joints": [],
+            "allowed_contacts": [],
+        }
+        fork_rec = {"ops": [{"op": "cylinder", "a": [1000, 75, 200], "b": [860, 75, 499], "r": 22}]}
+        seen = []
+        def wk(u):
+            seen.append(u)
+            return recipe_reply(fork_rec)
+        dr, w = self.models([json.dumps(plan), '{"action":"done"}', '{"action":"done"}'], wk)
+        r = self.go(dr, w)
+        self.assertTrue(r["ok"])
+        self.assertEqual(len(seen), 1)
+        self.assertIn("Part id: fork_L", seen[0])
+        r_code = open(os.path.join(self.d, "parts", "fork_R.py")).read()
+        self.assertIn("-75", r_code)
+        raw_mir = S.mirror_part_code(GOOD % ("fork_L", "fork_L"), "fork_L", "fork_R", "y", 0.0)
+        self.assertIsNone(S.static_check(raw_mir, "fork_R"))
+
+    def test_adaptive_best_of_n_picks_valid_recipe_without_blender(self):
+        plan = {
+            "action": "plan",
+            "parts": [{"id": "base", "spec": "plate 100x100x10", "center_mm": [0, 0, 5], "size_mm": [100, 100, 10]}],
+            "joints": [],
+        }
+        old_n = S.BESTOFN
+        S.BESTOFN = 2
+        try:
+            calls = {"n": 0}
+            def wk(system, user, temperature=0.3):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    return recipe_reply({"ops": [{"op": "box", "center": [0, 0, 5], "size": [20, 20, 10]}]}), {"input": 5, "output": 5, "usd": 0}
+                return recipe_reply({"ops": [{"op": "box", "center": [0, 0, 5], "size": [100, 100, 10]}]}), {"input": 5, "output": 5, "usd": 0}
+            dr = lambda p, s: (json.dumps(plan) if "Start with the plan" in p else '{"action":"done"}', {"input": 5, "output": 5, "usd": 0.01})
+            r = self.go(dr, wk)
+            self.assertTrue(r["ok"])
+            self.assertEqual(calls["n"], 2)
+            self.assertEqual(r["steps"], 1)
+
+            calls["n"] = 0
+            d2 = tempfile.mkdtemp(prefix="scene3d-fast-")
+            try:
+                def wk_fast(system, user, temperature=0.3):
+                    calls["n"] += 1
+                    return recipe_reply({"ops": [{"op": "box", "center": [0, 0, 5], "size": [100, 100, 10]}]}), {"input": 5, "output": 5, "usd": 0}
+                r2 = S.run("make it", d2, "blender", dr, wk_fast)
+                self.assertTrue(r2["ok"])
+                self.assertEqual(calls["n"], 1)
+            finally:
+                shutil.rmtree(d2, ignore_errors=True)
+        finally:
+            S.BESTOFN = old_n
+
+    def test_local_collision_self_repair_and_delta_escalation(self):
+        issue = {"kind": "collision", "pair": "base|wheel", "frames": [1], "overlap_mm": [[0, 0, 0], [10, 10, 10]]}
+        bcalls = {"n": 0}
+        def build_once(argv, **kw):
+            bcalls["n"] += 1
+            self.bl.extra = [issue] if bcalls["n"] == 1 else []
+            return FakeBlender.__call__(self.bl, argv, **kw)
+        S.subprocess.run = build_once
+        seen = []
+        def wk(u):
+            seen.append(u)
+            return good("base" if "Part id: base" in u else "wheel")
+        dr, w = self.models([json.dumps(PLAN), '{"action":"done"}'], wk)
+        r = self.go(dr, w)
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["usage"]["director"]["calls"], 2)
+        self.assertTrue(any("rest-pose collision with wheel" in u for u in seen))
+
+        big_parts = [{"id": f"p{k}", "spec": f"part {k}", "ops": [{"op": "box", "center": [k * 200, 0, 5], "size": [20, 20, 10]}]} for k in range(20)]
+        big_plan = {"parts": big_parts, "joints": [], "allowed_contacts": []}
+        rep = {"parts_bbox_mm": {f"p{k}": [[k * 200 - 10, -10, 0], [k * 200 + 10, 10, 10]] for k in range(20)}}
+        rep["parts_bbox_mm"]["p18"] = [[19 * 200 - 30, -10, 0], [19 * 200 - 10, 10, 10]]
+        dv = S.plan_delta_view(big_plan, rep, {"p19": "stuck"}, [])
+        kept_ids = {p["id"] for p in dv["parts"]}
+        self.assertEqual(kept_ids, {"p18", "p19"})
+        self.assertEqual(len(dv["healthy_locked_parts"]), 18)
+
+
+class AdaptiveScaling(Loop):
+    def test_clip_prompt_preserves_head_and_tail(self):
+        from cadfabric import advisors
+        big = "TASK: build a 100-part bike\n" + ("MIDDLE_NOISE " * 1000) + "\nISSUES\ncollision on peg_L"
+        clipped = advisors.clip_prompt(big, 800)
+        self.assertLessEqual(len(clipped), 860)
+        self.assertTrue(clipped.startswith("TASK: build a 100-part bike"))
+        self.assertTrue(clipped.endswith("ISSUES\ncollision on peg_L"))
+        self.assertIn("middle truncated", clipped)
+
+    def test_adaptive_scale_policy_and_smart_review(self):
+        self.assertEqual((S.scale_policy(10)["workers"], S.scale_policy(40)["workers"], S.scale_policy(70)["workers"]), (1, 2, 3))
+        self.assertEqual((S.scale_policy(10)["group_max"], S.scale_policy(40)["group_max"], S.scale_policy(70)["group_max"]), (4, 6, 8))
+        sc = S.Scene(self.d, "b", None, None)
+        parts = [{"id": f"p{k}", "spec": "s", "center_mm": [k * 50, 0, 5], "size_mm": [20, 20, 10], "color": "#112233", "finish": "matte"} for k in range(40)]
+        sc.plan = {"parts": parts, "joints": [{"name": "j1", "parent": "p0", "children": ["p1"], "origin_mm": [0, 0, 5], "axis": [0, 1, 0], "span_rad": 1.0}]}
+        bb = {f"p{k}": [[k * 50 - 10, -10, 0], [k * 50 + 10, 10, 10]] for k in range(40)}
+        bb["p5"] = [[5 * 50 - 10, -10, 0], [5 * 50 + 25, 10, 10]]  # drifted > 3 mm
+        txt = sc.review_text({"parts_bbox_mm": bb})
+        self.assertIn("PART INVENTORY (40 parts)", txt)
+        self.assertIn("p5: lo", txt)
+        self.assertIn("p1: lo", txt)
+        self.assertIn("static parts match planned", txt)
+
+        # structural add_parts on review triggers 1 extra review; regular patch_plan does not
+        p0 = {"action": "plan", "parts": [{"id": "a", "spec": "s"}], "joints": []}
+        add_p = {"action": "patch_plan", "add_parts": [{"id": "b", "spec": "s"}]}
+        dr, w = self.models([json.dumps(p0), json.dumps(add_p), '{"action":"done"}', '{"action":"done"}'],
+                            lambda u: good("a" if "Part id: a" in u else "b"))
+        r = self.go(dr, w)
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["usage"]["director"]["calls"], 3)
+
+    def test_parallel_worker_batches_on_medium_scene(self):
+        parts = [{"id": f"p{k}", "spec": f"box {k}", "center_mm": [k * 30, 0, 5], "size_mm": [10, 10, 10]} for k in range(30)]
+        plan = {"action": "plan", "parts": parts, "joints": []}
+        dr, w = self.models([json.dumps(plan), '{"action":"done"}', '{"action":"done"}'],
+                            lambda u: good(u.split("Part id: ")[1].splitlines()[0]))
+        r = self.go(dr, w)
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["usage"]["worker"]["calls"], 30)
+        self.assertEqual(len([f for f in os.listdir(os.path.join(self.d, "parts")) if f.endswith(".py")]), 30)
+
+    def test_jparse_resilient_and_array_contacts_and_stateful_reject(self):
+        prose_reply = 'Note on braces {not json} and coords [1,2,3].\n```json\n{"action":"done"}\n```\nTrailing {x:1}.'
+        self.assertEqual(S.jparse(prose_reply), {"action": "done"})
+        truncated = '{"action":"plan","parts":[{"id":"a","spec":"x","ops":[{"op":"box","center":[0,0,5],"size":[1,1,1]}]}]'
+        self.assertIsNone(S.jparse(truncated))
+
+        arr_plan = {
+            "action": "plan",
+            "parts": [
+                {"id": "hub", "spec": "hub"},
+                {"id": "bolt", "spec": "bolt", "ops": [{"op": "box", "center": [0, 0, 5], "size": [4, 4, 4]}], "array": {"count": 2, "step": [10, 0, 0]}},
+            ],
+            "joints": [{"name": "j1", "parent": "hub", "children": ["bolt"], "coaxial": ["bolt"], "origin_mm": [0, 0, 5], "axis": [0, 1, 0], "span_rad": 6.283}],
+            "allowed_contacts": [["hub", "bolt"]],
+        }
+        ep, errs = S.expand_plan(arr_plan)
+        self.assertEqual(errs, [])
+        self.assertEqual(S.validate_plan(ep), [])
+        self.assertEqual(ep["joints"][0]["children"], ["bolt_1", "bolt_2"])
+        self.assertEqual(ep["allowed_contacts"], [["hub", "bolt_1"], ["hub", "bolt_2"]])
+
+        bad_big = json.dumps({"action": "plan", "parts": [{"id": "base", "spec": "plate " + ("x" * 200), "center_mm": [0, 0, 5], "size_mm": [100, 100, 10]}, {"id": "dup", "spec": "s"}], "allowed_contacts": [["base", "missing_id"]]})
+        dr, w = self.models([bad_big, json.dumps(PLAN), '{"action":"done"}', '{"action":"done"}'], lambda u: good("base" if "Part id: base" in u else "wheel"))
+        r = self.go(dr, w)
+        self.assertTrue(r["ok"])
+        self.assertIn("YOUR PREVIOUS JSON", self.dprompts[1])
+        log_lines = [json.loads(ln) for ln in open(os.path.join(self.d, "director_log.jsonl"), encoding="utf-8")]
+        self.assertEqual([x["action"] for x in log_lines], ["plan", "plan", "done"])
+        self.assertTrue(log_lines[0]["errs"])
+
+    def test_role_filtered_explicit_skill_routing_in_web(self):
+        from cadfabric import web as web_mod, skills as sk
+        dd = os.path.join(self.d, "data"); ws = os.path.join(self.d, "ws")
+        os.makedirs(dd, exist_ok=True); os.makedirs(ws, exist_ok=True)
+        sess = web_mod.Session(type("L", (), {})(), {"url": "", "model": "", "planner": "nothink", "workspace": ws}, backend=type("B", (), {"measure": lambda s: None, "close": lambda s: None})(), local=True)
+        ap = [
+            {"name": "dir-skill", "status": "approved", "description": "d", "implicit": True, "audience": "director"},
+            {"name": "wrk-skill", "status": "approved", "description": "w", "implicit": True, "audience": "worker"},
+        ]
+        old = (sk.list_for, sk.explicit_block, web_mod.config.data_dir)
+        sk.list_for = lambda d, r: ap
+        sk.explicit_block = lambda d, r, names: "EXPLICIT:" + ",".join(names)
+        web_mod.config.data_dir = lambda cfg: dd
+        seen_turn = []
+        sess._scene_turn = lambda text, planner, block, images=(), worker=None: seen_turn.append(block)
+        try:
+            res = sess._scene_skills("$dir-skill $wrk-skill build")
+            sess._work("$dir-skill $wrk-skill build", "nothink")
+        finally:
+            sk.list_for, sk.explicit_block, web_mod.config.data_dir = old
+        self.assertEqual(res["explicit"], "")
+        self.assertEqual(res["explicit_worker"], "EXPLICIT:wrk-skill")
+        self.assertEqual(seen_turn, ["EXPLICIT:dir-skill"])
+
+    def test_unified_model_pool_roles_and_worker_array(self):
+        from cadfabric import advisors as A, config as cfg_mod, web as web_mod
+        import http.server, http.client, threading
+
+        seen_api = []
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+                seen_api.append({"h": {k.lower(): v for k, v in self.headers.items()}, "body": body})
+                txt = '{"action":"done"}'
+                out = {"choices": [{"message": {"content": txt}}], "usage": {"prompt_tokens": 11, "completion_tokens": 7}}
+                b = json.dumps(out).encode()
+                self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+        api_srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=api_srv.serve_forever, daemon=True).start()
+        try:
+            url = "http://127.0.0.1:%d/v1/chat/completions" % api_srv.server_address[1]
+            cfg = {"url": "http://127.0.0.1:1/v1/chat/completions", "model": "qwen-gw", "planner": "qwen", "worker": "m2",
+                   "advisors": [{"id": "m2", "label": "Big Model", "type": "api", "kind": "openai", "url": url, "model": "big-q", "external": True, "think": True}],
+                   "relay": {}, "workspace": self.d}
+            self.assertIn("qwen", A.names(cfg))
+            self.assertIn("m2", A.worker_names(cfg))
+            self.assertTrue(any(m["id"] == "qwen" and m["gateway"] for m in A.models_meta(cfg)))
+
+            t, u = A.chat_model(cfg, "m2", None, "SYS_PROMPT", "USER_PROMPT", max_tokens=512, temperature=0.1)
+            self.assertEqual(t, '{"action":"done"}')
+            self.assertEqual((u["input"], u["output"], u["estimated"]), (11, 7, False))
+            self.assertEqual(seen_api[-1]["body"]["messages"][0]["content"], "SYS_PROMPT")
+            self.assertTrue(seen_api[-1]["body"]["chat_template_kwargs"]["enable_thinking"])
+
+            clean, err = cfg_mod.validate_settings({"url": url, "model": "qwen-gw", "planner": "qwen", "worker": "m2",
+                                                    "advisors": [{"id": "m2", "label": "Big Model", "type": "api", "kind": "openai", "url": url, "model": "big-q", "external": True}], "relay": {}})
+            self.assertEqual(err, "")
+            self.assertEqual(clean["worker"], "m2")
+
+            # Web /api/send enforces confirm_external when selected worker is external
+            dd = os.path.join(self.d, "wdata"); os.makedirs(dd, exist_ok=True)
+            cfg_srv = dict(cfg, data_dir=dd, planner="nothink", worker="m2")
+            srv = web_mod.serve(type("L", (), {"chat": lambda *a, **k: {"content": "ok", "_usage": {}}, "close": lambda s: None})(), cfg_srv, port=0, token="t1", quiet=True)
+            srv.hosts.add("127.0.0.1:%d" % srv.port)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            try:
+                conn = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=10)
+                hdr = {"Cookie": "cft=t1", "X-Requested-With": "cadfabric", "Content-Type": "application/json"}
+                conn.request("POST", "/api/send", json.dumps({"text": "hi", "planner": "nothink", "worker": "m2"}), hdr)
+                self.assertEqual(conn.getresponse().status, 409)
+            finally:
+                srv.shutdown(); srv.sess.close()
+        finally:
+            api_srv.shutdown()
+
+        # Worker array without Director ops: expands to _1 + deterministic _offset_from _2.._3
+        arr_plan = {
+            "action": "plan",
+            "parts": [{"id": "fin", "spec": "cooling fin", "center_mm": [0, 0, 10], "size_mm": [10, 40, 20], "array": {"count": 3, "step": [20, 0, 0]}}],
+            "joints": [], "allowed_contacts": [],
+        }
+        fin_rec = {"ops": [{"op": "box", "center": [0, 0, 10], "size": [10, 40, 20]}]}
+        seen_w = []
+        def wk(u):
+            seen_w.append(u)
+            return recipe_reply(fin_rec)
+        dr, w = self.models([json.dumps(arr_plan), '{"action":"done"}', '{"action":"done"}'], wk)
+        r = self.go(dr, w)
+        self.assertTrue(r["ok"])
+        self.assertEqual(len(seen_w), 1)
+        self.assertIn("Part id: fin_1", seen_w[0])
+        c3 = open(os.path.join(self.d, "parts", "fin_3.py"), encoding="utf-8").read()
+        self.assertIn("40", c3)
+
+        # Worker skill reminder stays at end of system prompt when skills exist
+        sc = S.Scene(self.d, "blender", None, lambda sys_p, usr_p, temperature=0.3: (seen_w.append(sys_p) or good("x"), {}))
+        sc.skills = {"explicit_worker": "RAW BPY EXAMPLE"}
+        sc.ask_worker("Part id: x")
+        self.assertIn("ALWAYS output ONE ```json recipe block", seen_w[-1])
+
+        # ask_metered preserves full error message from Claude CLI JSON result instead of single-char indexing
+        d_bin = tempfile.mkdtemp(prefix="fake-claude-")
+        try:
+            exe = os.path.join(d_bin, "claude")
+            with open(exe, "w", encoding="utf-8") as f:
+                f.write("#!/bin/sh\necho '{\"is_error\":true,\"result\":\"You hit rate limit\"}'\nexit 1\n")
+            os.chmod(exe, 0o755)
+            old_path, old_sub = os.environ["PATH"], S.subprocess.run
+            os.environ["PATH"] = d_bin + os.pathsep + old_path
+            S.subprocess.run = self._run
+            try:
+                t_err, err_str, _ = A.ask_metered({"id": "c", "type": "cli", "preset": "claude"}, "hi", {})
+                self.assertEqual(t_err, "")
+                self.assertIn("You hit rate limit", err_str)
+            finally:
+                os.environ["PATH"] = old_path
+                S.subprocess.run = old_sub
+        finally:
+            shutil.rmtree(d_bin, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

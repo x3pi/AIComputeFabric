@@ -27,6 +27,7 @@ AXES = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}
 
 TESS_MM = float(os.environ.get("BX_TESS_MM", "0.4"))        # largest allowed gap between a true circle and its polygon (sagitta), in mm
 HARD_DEG = 30.0                                              # edges flatter than this are smooth surface, not features
+SCENE_PARTS = 0
 
 
 def _seg(o, r_mm, lo=12, hi=96):
@@ -35,7 +36,8 @@ def _seg(o, r_mm, lo=12, hi=96):
     if "seg" in o:
         return max(3, int(o["seg"]))
     r = max(float(r_mm), 1e-6)
-    n = math.ceil(math.pi / math.acos(max(-1.0, min(1.0, 1.0 - min(TESS_MM, r) / r))))
+    tess = max(TESS_MM, 0.6) if (SCENE_PARTS > 55 and r < 25.0 and "BX_TESS_MM" not in os.environ) else TESS_MM
+    n = math.ceil(math.pi / math.acos(max(-1.0, min(1.0, 1.0 - min(tess, r) / r))))
     return int(min(hi, max(lo, 4 * math.ceil(n / 4))))
 
 
@@ -60,6 +62,14 @@ def _axis(a):
     if isinstance(a, str) and a in AXES:
         return AXES[a]
     return tuple(a) if _vec(a) and any(a) else None
+
+
+def _ordered_sections(secs):
+    return list(reversed(secs)) if len(secs) >= 2 and secs[0]["x"] > secs[-1]["x"] else secs
+
+
+def _mono_x(secs):
+    return len(secs) < 2 or all(secs[k]["x"] < secs[k + 1]["x"] for k in range(len(secs) - 1)) or all(secs[k]["x"] > secs[k + 1]["x"] for k in range(len(secs) - 1))
 
 
 def _bad_sections(o, w):
@@ -114,8 +124,8 @@ def validate(recipe):
             s = o.get("sections")
             if not (isinstance(s, list) and len(s) >= 2 and all(isinstance(x, dict) and all(_num(x.get(k)) for k in ("x", "y", "z")) and _num(x.get("w"), 0) and _num(x.get("h"), 0) for x in s)):
                 e.append(w + "sections need 2 or more of {x,y,z,w>0,h>0}")
-            elif [x["x"] for x in s] != sorted(x["x"] for x in s) or len({x["x"] for x in s}) != len(s):
-                e.append(w + "section x values must be strictly increasing")
+            elif not _mono_x(s):
+                e.append(w + "section x values must be strictly monotonic (increasing or decreasing)")
             e += _bad_sections(o, w)
         elif t == "tube":
             pts = o.get("points")
@@ -127,8 +137,8 @@ def validate(recipe):
             sec = o.get("sections"); arc = o.get("arc", [0, 180])
             if not (isinstance(sec, list) and len(sec) >= 2 and all(isinstance(x, dict) and all(_num(x.get(k)) for k in ("x", "y", "z")) and _num(x.get("w"), 0) and _num(x.get("h"), 0) for x in sec)):
                 e.append(w + "sections need 2 or more of {x,y,z,w>0,h>0}")
-            elif [x["x"] for x in sec] != sorted(x["x"] for x in sec) or len({x["x"] for x in sec}) != len(sec):
-                e.append(w + "section x values must be strictly increasing")
+            elif not _mono_x(sec):
+                e.append(w + "section x values must be strictly monotonic (increasing or decreasing)")
             if not (isinstance(arc, list) and len(arc) == 2 and all(_num(a) for a in arc) and 0 < arc[1] - arc[0] <= 360):
                 e.append(w + "arc must be [deg0, deg1] with 0 < deg1-deg0 <= 360")
             if "thick" in o and not _num(o["thick"], 0):
@@ -318,7 +328,7 @@ def _ring_pt(s, a, p0):
 def _loft(bm, bmesh, o):
     n, p = int(o.get("n", 16)), float(o.get("round", 2.5))
     rings = []
-    for s in _smooth_sections(o["sections"], o.get("smooth", 0)):
+    for s in _smooth_sections(_ordered_sections(o["sections"]), o.get("smooth", 0)):
         ring = []
         for k in range(n):
             y, z = _ring_pt(s, 2 * math.pi * k / n, p)
@@ -357,7 +367,7 @@ def _panel(bm, bmesh, o):
     p = float(o.get("round", 2.5)); n = max(6, int(o.get("n", 12)))
     cols = n if full else n + 1
     rows = []
-    for s in _smooth_sections(o["sections"], o.get("smooth", 0)):
+    for s in _smooth_sections(_ordered_sections(o["sections"]), o.get("smooth", 0)):
         row = []
         for k in range(cols):
             y, z = _ring_pt(s, a0 + (a1 - a0) * k / n, p)
@@ -385,3 +395,224 @@ def _spokes(bm, bmesh, o):
         me = bpy_mesh_from(seg)
         bm.from_mesh(me); _drop(me); seg.free()
     _place(bm, bmesh, _z_to(ax), o["center"])
+
+
+# ---- pure-Python analytical bbox & plan conformance gate (runs outside Blender) ----------------------------------------
+def _norm3(v):
+    L = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    return (v[0] / L, v[1] / L, v[2] / L) if L > 1e-12 else (0.0, 0.0, 1.0)
+
+
+def _cross3(a, b):
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+
+def _dot3(a, b):
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _rot_vec(v, axis, deg):
+    k = _norm3(axis)
+    th = math.radians(deg)
+    c, s = math.cos(th), math.sin(th)
+    kv = _cross3(k, v)
+    kd = _dot3(k, v) * (1.0 - c)
+    return (v[0] * c + kv[0] * s + k[0] * kd, v[1] * c + kv[1] * s + k[1] * kd, v[2] * c + kv[2] * s + k[2] * kd)
+
+
+def _basis_py(d, up=(0, 0, 1)):
+    x = _norm3(d)
+    u = tuple(float(q) for q in up)
+    ux = _dot3(u, x)
+    z = (u[0] - x[0] * ux, u[1] - x[1] * ux, u[2] - x[2] * ux)
+    if math.sqrt(_dot3(z, z)) < 1e-6:
+        if abs(x[1]) < 0.9:
+            z = (-x[0] * x[1], 1.0 - x[1] * x[1], -x[2] * x[1])
+        else:
+            z = (1.0 - x[0] * x[0], -x[1] * x[0], -x[2] * x[0])
+    z = _norm3(z)
+    y = _cross3(z, x)
+    return x, y, z
+
+
+def _op_bbox(o):
+    """Pure-Python world AABB (lo, hi) in mm for one validated recipe op."""
+    lo = [float("inf"), float("inf"), float("inf")]
+    hi = [float("-inf"), float("-inf"), float("-inf")]
+
+    def add_pt(p):
+        for i in range(3):
+            if p[i] < lo[i]: lo[i] = float(p[i])
+            if p[i] > hi[i]: hi[i] = float(p[i])
+
+    def add_cyl(a, b, r1, r2):
+        d = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+        u = _norm3(d)
+        for i in range(3):
+            s = math.sqrt(max(0.0, 1.0 - u[i] * u[i]))
+            lo[i] = min(lo[i], a[i] - r1 * s, b[i] - r2 * s)
+            hi[i] = max(hi[i], a[i] + r1 * s, b[i] + r2 * s)
+
+    t = o["op"]
+    if t == "box":
+        hx, hy, hz = o["size"][0] / 2.0, o["size"][1] / 2.0, o["size"][2] / 2.0
+        cx, cy, cz = o["center"]
+        ax = _axis(o["rot"]["axis"]) if "rot" in o else None
+        deg = o["rot"]["deg"] if "rot" in o else 0.0
+        for sx in (-hx, hx):
+            for sy in (-hy, hy):
+                for sz in (-hz, hz):
+                    v = _rot_vec((sx, sy, sz), ax, deg) if ax is not None else (sx, sy, sz)
+                    add_pt((cx + v[0], cy + v[1], cz + v[2]))
+    elif t == "cylinder":
+        add_cyl(o["a"], o["b"], o["r"], o.get("r2", o["r"]))
+    elif t == "disc":
+        ax = _norm3(_axis(o["axis"]))
+        c, half = o["center"], o["thickness"] / 2.0
+        add_cyl([c[i] - ax[i] * half for i in range(3)], [c[i] + ax[i] * half for i in range(3)], o["r"], o["r"])
+    elif t == "ring":
+        ax = _norm3(_axis(o["axis"]))
+        c, half = o["center"], o["width"] / 2.0
+        add_cyl([c[i] - ax[i] * half for i in range(3)], [c[i] + ax[i] * half for i in range(3)], o["r_out"], o["r_out"])
+    elif t == "spokes":
+        ax = _norm3(_axis(o["axis"]))
+        c, half = o["center"], o["t"] / 2.0
+        add_cyl([c[i] - ax[i] * half for i in range(3)], [c[i] + ax[i] * half for i in range(3)], o["r_out"], o["r_out"])
+    elif t == "sphere":
+        rr = o.get("radii") or [o["r"]] * 3
+        c = o["center"]
+        for i in range(3):
+            lo[i] = c[i] - rr[i]; hi[i] = c[i] + rr[i]
+    elif t == "beam":
+        pts, up, w, h = o["points"], o.get("up", (0, 0, 1)), o["w"], o["h"]
+        for k in range(len(pts) - 1):
+            p0, p1 = pts[k], pts[k + 1]
+            d = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+            L = math.sqrt(_dot3(d, d))
+            u = _norm3(d)
+            extra = (w if k < len(pts) - 2 else 0.0) * 0.5
+            mid = ((p0[0] + p1[0]) / 2.0 + u[0] * extra / 2.0, (p0[1] + p1[1]) / 2.0 + u[1] * extra / 2.0, (p0[2] + p1[2]) / 2.0 + u[2] * extra / 2.0)
+            bx, by, bz = _basis_py(d, up)
+            hx, hy, hz = (L + extra) / 2.0, w / 2.0, h / 2.0
+            for sx in (-hx, hx):
+                for sy in (-hy, hy):
+                    for sz in (-hz, hz):
+                        add_pt((mid[0] + sx * bx[0] + sy * by[0] + sz * bz[0],
+                                mid[1] + sx * bx[1] + sy * by[1] + sz * bz[1],
+                                mid[2] + sx * bx[2] + sy * by[2] + sz * bz[2]))
+    elif t == "tube":
+        pts, r = o["points"], o["r"]
+        for a, b in zip(pts, pts[1:]):
+            add_cyl(a, b, r, r)
+        for p in pts[1:-1]:
+            for i in range(3):
+                lo[i] = min(lo[i], p[i] - r); hi[i] = max(hi[i], p[i] + r)
+    elif t == "loft":
+        n, p = int(o.get("n", 16)), float(o.get("round", 2.5))
+        for s in _smooth_sections(_ordered_sections(o["sections"]), o.get("smooth", 0)):
+            for k in range(n):
+                y, z = _ring_pt(s, 2 * math.pi * k / n, p)
+                add_pt((s["x"], s["y"] + y, s["z"] + z))
+    elif t == "panel":
+        a0, a1 = [math.radians(x) for x in o.get("arc", [0, 180])]
+        full = abs((a1 - a0) - 2 * math.pi) < 1e-6
+        p = float(o.get("round", 2.5)); n = max(6, int(o.get("n", 12)))
+        cols = n if full else n + 1
+        for s in _smooth_sections(_ordered_sections(o["sections"]), o.get("smooth", 0)):
+            for k in range(cols):
+                y, z = _ring_pt(s, a0 + (a1 - a0) * k / n, p)
+                add_pt((s["x"], s["y"] + y, s["z"] + z))
+    return lo, hi
+
+
+def recipe_bbox(recipe):
+    """Compute world-space (lo, hi) in mm for a recipe without launching Blender, or None if invalid."""
+    if validate(recipe):
+        return None
+    lo = [float("inf"), float("inf"), float("inf")]
+    hi = [float("-inf"), float("-inf"), float("-inf")]
+    for o in recipe["ops"]:
+        a, b = _op_bbox(o)
+        for i in range(3):
+            lo[i] = min(lo[i], a[i]); hi[i] = max(hi[i], b[i])
+    return ([round(x, 3) for x in lo], [round(x, 3) for x in hi]) if lo[0] <= hi[0] else None
+
+
+def bbox_error_mm(recipe, part_plan):
+    """Continuous max error in mm between a recipe's analytical bbox and plan center_mm/size_mm (0.0 if none specified)."""
+    bb = recipe_bbox(recipe)
+    if not bb or not isinstance(part_plan, dict):
+        return 0.0
+    lo, hi = bb
+    ctr = [(a + b) / 2.0 for a, b in zip(lo, hi)]
+    sz = [b - a for a, b in zip(lo, hi)]
+    err = 0.0
+    es, ec = part_plan.get("size_mm"), part_plan.get("center_mm")
+    if isinstance(es, list) and len(es) == 3:
+        err = max(err, max(abs(sz[i] - es[i]) for i in range(3)))
+    if isinstance(ec, list) and len(ec) == 3:
+        err = max(err, max(abs(ctr[i] - ec[i]) for i in range(3)))
+    return err
+
+
+def _pt_in_op(pt, o, tol):
+    """True when 3D point pt (mm) lies within tol mm of op o's simplified envelope (catches mirrored tilt on boxes/cylinders/tubes/beams)."""
+    t = o["op"]
+    if t == "cylinder":
+        a, b, r = o["a"], o["b"], max(o["r"], o.get("r2", o["r"])) + tol
+        ab = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+        ab2 = _dot3(ab, ab)
+        if ab2 < 1e-9:
+            return math.sqrt(sum((pt[i] - a[i]) ** 2 for i in range(3))) <= r
+        u = max(0.0, min(1.0, sum((pt[i] - a[i]) * ab[i] for i in range(3)) / ab2))
+        proj = (a[0] + u * ab[0], a[1] + u * ab[1], a[2] + u * ab[2])
+        return math.sqrt(sum((pt[i] - proj[i]) ** 2 for i in range(3))) <= r
+    if t == "tube":
+        pts, r = o["points"], o["r"]
+        return any(_pt_in_op(pt, {"op": "cylinder", "a": p0, "b": p1, "r": r}, tol) for p0, p1 in zip(pts, pts[1:]))
+    if t == "beam":
+        pts, r = o["points"], max(o["w"], o["h"]) / 2.0
+        return any(_pt_in_op(pt, {"op": "cylinder", "a": p0, "b": p1, "r": r}, tol) for p0, p1 in zip(pts, pts[1:]))
+    if t == "box":
+        c = o["center"]
+        rel = (pt[0] - c[0], pt[1] - c[1], pt[2] - c[2])
+        if "rot" in o:
+            rel = _rot_vec(rel, _axis(o["rot"]["axis"]), -o["rot"]["deg"])
+        return all(abs(rel[i]) <= o["size"][i] / 2.0 + tol for i in range(3))
+    lo, hi = _op_bbox(o)
+    return all(lo[i] - tol <= pt[i] <= hi[i] + tol for i in range(3))
+
+
+def check_plan_part(recipe, part_plan):
+    """Pure-Python gate checking recipe validity, world bbox (same tolerances as blender_build), and optional shape constraints. -> error or None."""
+    probs = validate(recipe)
+    if probs:
+        return "; ".join(probs[:4])
+    bb = recipe_bbox(recipe)
+    if not bb:
+        return "empty recipe"
+    lo, hi = bb
+    ctr = [(a + b) / 2.0 for a, b in zip(lo, hi)]
+    sz = [b - a for a, b in zip(lo, hi)]
+    if isinstance(part_plan, dict):
+        es, ec = part_plan.get("size_mm"), part_plan.get("center_mm")
+        if isinstance(es, list) and len(es) == 3:
+            bad = [i for i in range(3) if abs(sz[i] - es[i]) > max(6.0, 0.2 * abs(es[i]))]
+            if bad:
+                return "size_mismatch: expected %s mm, recipe gives %s mm" % (es, [round(x, 1) for x in sz])
+        if isinstance(ec, list) and len(ec) == 3:
+            tol = max(8.0, 0.08 * math.sqrt(sum(x * x for x in (es if isinstance(es, list) and len(es) == 3 else sz))))
+            if max(abs(ctr[i] - ec[i]) for i in range(3)) > tol:
+                return "position_mismatch: expected centre %s mm, recipe gives %s mm (tol %.1f mm)" % (ec, [round(x, 1) for x in ctr], tol)
+        sh = part_plan.get("shape")
+        if isinstance(sh, dict):
+            if sh.get("kind") == "ring" and not any(o.get("op") == "ring" and o.get("r_in", 0) > 0 for o in recipe["ops"]):
+                return "shape mismatch: part must use a hollow ring op (r_in > 0), not a solid shape"
+            eps = sh.get("endpoints")
+            if isinstance(eps, list) and len(eps) == 2 and all(_vec(q) for q in eps):
+                span = math.sqrt(sum((eps[1][i] - eps[0][i]) ** 2 for i in range(3)))
+                tol_ep = max(12.0, 0.15 * span)
+                for q in eps:
+                    if not any(_pt_in_op(q, o, tol_ep) for o in recipe["ops"]):
+                        return "shape mismatch: geometry misses required endpoint %s (check tilt/axis direction)" % (q,)
+    return None

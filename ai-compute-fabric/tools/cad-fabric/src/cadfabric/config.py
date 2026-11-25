@@ -6,7 +6,7 @@ Keys: url, model, key_file (path to a file holding the API key), planner, relay 
 Environment overrides: CADFABRIC_URL, CADFABRIC_MODEL, CADFABRIC_KEY (the key itself), CADFABRIC_KEY_FILE, CADFABRIC_PLANNER, CADFABRIC_DATA_DIR."""
 import json, os, sys
 
-DEFAULTS = {"url": "http://127.0.0.1:18080/v1/chat/completions", "model": "", "key_file": None, "planner": "nothink",
+DEFAULTS = {"url": "http://127.0.0.1:18080/v1/chat/completions", "model": "", "key_file": None, "planner": "nothink", "worker": "qwen",
             "relay": {"host": "", "workdir": "", "codex": "codex"}, "codex_bin": None, "data_dir": None, "advisors": [], "viewer": {"kind": "auto", "command": ""}, "workspace": "", "recent": [], "lessons_auto": True}
 PLANNERS = ("off", "nothink", "think", "codex", "codex-relay")
 
@@ -36,13 +36,17 @@ def load():
             else:
                 cfg[k] = v
     for env, k in (("CADFABRIC_URL", "url"), ("CADFABRIC_MODEL", "model"), ("CADFABRIC_KEY_FILE", "key_file"), ("CADFABRIC_PLANNER", "planner"),
-                   ("CADFABRIC_DATA_DIR", "data_dir")):
+                   ("CADFABRIC_WORKER", "worker"), ("CADFABRIC_DATA_DIR", "data_dir")):
         if os.environ.get(env):
             cfg[k] = os.environ[env]
+    if not cfg.get("worker"):
+        cfg["worker"] = "qwen"
     cfg["_path"] = path
     from . import advisors
     if cfg["planner"] not in advisors.names(cfg):
         raise SystemExit("config: planner must be one of %s (got %r)" % (", ".join(advisors.names(cfg)), cfg["planner"]))
+    if cfg["worker"] not in advisors.worker_names(cfg):
+        raise SystemExit("config: worker must be one of %s (got %r)" % (", ".join(advisors.worker_names(cfg)), cfg["worker"]))
     return cfg
 
 
@@ -112,6 +116,11 @@ def validate_settings(s):
     if planner not in known:
         return None, "unknown planner"
     out["planner"] = planner
+    worker = str(s.get("worker") or "qwen").strip()
+    known_workers = ["qwen", "nothink", "think", "codex"] + [a["id"] for a in (out.get("advisors") if "advisors" in out else s.get("_current_advisors") or [])]
+    if worker not in known_workers:
+        return None, "unknown worker"
+    out["worker"] = worker
     rel = s.get("relay") or {}
     host, workdir, codex = str(rel.get("host", "")).strip(), str(rel.get("workdir", "")).strip(), str(rel.get("codex", "") or "codex").strip()
     if host and (not _HOST.match(host) or host.startswith("-")):

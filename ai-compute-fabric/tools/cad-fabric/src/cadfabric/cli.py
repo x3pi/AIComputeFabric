@@ -14,7 +14,7 @@ def cmd_init(a):
     if os.path.exists(path) and not a.force:
         print("exists: %s (use --force to overwrite)" % path); return 1
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    cfg = {"url": a.url, "model": a.model, "key_file": a.key_file, "planner": a.planner,
+    cfg = {"url": a.url, "model": a.model, "key_file": a.key_file, "planner": a.planner, "worker": a.worker,
            "relay": {"host": "", "workdir": "", "codex": "codex"}, "codex_bin": None, "data_dir": None}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2); f.write("\n")
@@ -27,8 +27,14 @@ def cmd_configure(a):
     advs = list(cur.get("advisors") or [])
     aid = (a.advisor_cli or "") + "-cli"                                    # "codex" itself is a built-in advisor, so the CLI one is codex-cli
     if a.advisor_cli and not any(x["id"] == aid for x in advs):
-        advs.append({"id": aid, "label": advisors.CLI_PRESETS[a.advisor_cli]["label"], "type": "cli", "preset": a.advisor_cli})
+        ent = {"id": aid, "label": advisors.CLI_PRESETS[a.advisor_cli]["label"], "type": "cli", "preset": a.advisor_cli}
+        if getattr(a, "advisor_model", None):
+            ent["model"] = a.advisor_model
+        if getattr(a, "advisor_effort", None):
+            ent["effort"] = a.advisor_effort
+        advs.append(ent)
     clean, err = config.validate_settings({"advisors": [{k: v for k, v in x.items() if k != "key_file"} for x in advs], "url": a.url or cur["url"], "model": cur["model"] if a.model is None else a.model, "planner": a.planner or cur["planner"],
+                                           "worker": getattr(a, "worker", None) or cur.get("worker") or "qwen",
                                            "relay": {"host": a.relay_host if a.relay_host is not None else cur["relay"].get("host", ""),
                                                      "workdir": a.relay_workdir if a.relay_workdir is not None else cur["relay"].get("workdir", ""),
                                                      "codex": a.relay_codex or cur["relay"].get("codex", "codex")}})
@@ -79,41 +85,33 @@ def cmd_doctor(a):
 
 
 def cmd_run_scene(a):
-    """Headless scene build: `cadfabric run "<request>" [--planner claude]`. Writes <data dir>/scenes/<id>/ (scene.blend, plan.json, parts/) and prints the result."""
+    """Headless scene build: `cadfabric run "<request>" [--planner claude] [--worker qwen]`. Writes <data dir>/scenes/<id>/ and prints the result."""
     from .llm import LLM
     from . import scene3d, viewers
     cfg = config.load()
     mode = a.planner or cfg["planner"]
+    wmode = getattr(a, "worker", None) or cfg.get("worker") or "qwen"
     if mode not in advisors.names(cfg) and mode not in ("codex",):
         print("unknown planner %r; choose one of: %s" % (mode, ", ".join(advisors.names(cfg)))); return 2
+    if wmode not in advisors.worker_names(cfg):
+        print("unknown worker %r; choose one of: %s" % (wmode, ", ".join(advisors.worker_names(cfg)))); return 2
     blender = (cfg.get("blender") if os.path.isfile(str(cfg.get("blender") or "")) else None) or viewers.blender_path()
     if not blender:
         print("Blender not found: install Blender 4.x or set the BLENDER environment variable (or \"blender\" in the config file)"); return 2
-    adv = advisors.find(cfg, mode) if mode not in ("off", "nothink", "think") else None
-    if mode == "codex":
-        adv = {"id": "codex", "type": "cli", "preset": "codex", "external": True}
     llm = LLM(cfg)
     wd = os.path.join(config.data_dir(cfg), "scenes", time.strftime("%Y%m%d-%H%M%S"))
     os.makedirs(wd, exist_ok=True)
 
-    def use(m):
-        u = m.get("_usage") or {}
-        return {"input": u.get("prompt_tokens", 0), "output": u.get("completion_tokens", 0), "usd": 0, "estimated": False}
-
     def director(prompt, system):
-        if adv:
-            t, err, u = advisors.ask_metered(adv, prompt, cfg, 900, system)
-            if err:
-                raise RuntimeError("advisor: " + err)
-            return t, u
-        m = llm.chat([{"role": "system", "content": system}, {"role": "user", "content": prompt}], think=(mode == "think"), max_tokens=4000)
-        return m.get("content") or "", use(m)
+        try:
+            return advisors.chat_model(cfg, mode, llm, system, prompt, timeout=900, max_tokens=8192, temperature=0.2)
+        except RuntimeError as e:
+            raise RuntimeError("advisor: " + str(e)) from e
 
-    def worker(system, user):
-        m = llm.chat([{"role": "system", "content": system}, {"role": "user", "content": user}], think=False, max_tokens=3000)
-        return m.get("content") or "", use(m)
+    def worker_fn(system, user, temperature=0.3):
+        return advisors.chat_model(cfg, wmode, llm, system, user, timeout=900, max_tokens=3000, temperature=temperature)
 
-    r = scene3d.run(" ".join(a.request), wd, blender, director, worker, log=print, on_event=lambda k, **kw: print("[%s] %s" % (k, kw.get("what") or kw.get("describe", "")[:80] or kw.get("n", ""))))
+    r = scene3d.run(" ".join(a.request), wd, blender, director, worker_fn, log=print, on_event=lambda k, **kw: print("[%s] %s" % (k, kw.get("what") or kw.get("describe", "")[:80] or kw.get("n", ""))))
     print("\n" + r["final"]); print("\nSCENE: %s" % (r["scene"] or "(none)"))
     return 0 if r["ok"] else 2
 
@@ -287,12 +285,12 @@ def main(argv=None):
     ap.add_argument("--version", action="version", version=__version__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("init"); p.add_argument("--path"); p.add_argument("--force", action="store_true")
-    p.add_argument("--url", default=config.DEFAULTS["url"]); p.add_argument("--model", default=""); p.add_argument("--key-file", dest="key_file"); p.add_argument("--planner", default="nothink")
+    p.add_argument("--url", default=config.DEFAULTS["url"]); p.add_argument("--model", default=""); p.add_argument("--key-file", dest="key_file"); p.add_argument("--planner", default="nothink"); p.add_argument("--worker", default="qwen")
     p.set_defaults(fn=cmd_init)
-    p = sub.add_parser("configure"); p.add_argument("--url"); p.add_argument("--model"); p.add_argument("--planner"); p.add_argument("--advisor-cli", choices=sorted(advisors.CLI_PRESETS), help="add a CLI advisor; its id is <name>-cli (claude-cli, codex-cli)")
+    p = sub.add_parser("configure"); p.add_argument("--url"); p.add_argument("--model"); p.add_argument("--planner"); p.add_argument("--worker"); p.add_argument("--advisor-cli", choices=sorted(advisors.CLI_PRESETS), help="add a CLI advisor; its id is <name>-cli (claude-cli, codex-cli)"); p.add_argument("--advisor-model"); p.add_argument("--advisor-effort")
     p.add_argument("--relay-host"); p.add_argument("--relay-workdir"); p.add_argument("--relay-codex"); p.add_argument("--key-stdin", action="store_true"); p.set_defaults(fn=cmd_configure)
     sub.add_parser("doctor").set_defaults(fn=cmd_doctor)
-    p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner"); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
+    p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner"); p.add_argument("--worker"); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
     p = sub.add_parser("serve"); p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8765); p.add_argument("--allow-remote", action="store_true"); p.add_argument("--open", action="store_true"); p.set_defaults(fn=cmd_serve)
     p = sub.add_parser("app"); p.add_argument("--port", type=int, default=8765); p.add_argument("--project", help="folder of the project this window is for (a different project = a different window)"); p.add_argument("--session", help="open this saved conversation");  p.add_argument("--no-browser", action="store_true"); p.add_argument("--browser", action="store_true", help="use the web browser instead of the app window"); p.set_defaults(fn=cmd_app)
     a = ap.parse_args(argv)

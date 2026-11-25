@@ -11,10 +11,13 @@ Models are injected as callables so the loop is testable without Blender or an L
   director(prompt, system) -> (text, usage)       worker(system, user) -> (text, usage)       usage = {input, output, usd, ...}
 """
 import ast
+from concurrent.futures import ThreadPoolExecutor
+import inspect
 import json
 import os
 import re
 import subprocess
+import threading
 import time
 
 from .cq_backend import NOWIN
@@ -25,12 +28,27 @@ COLORS = os.environ.get("BX_COLORS", "1") != "0"           # the director also c
 RECIPES = os.environ.get("BX_RECIPES", "1") != "0"        # parts may be JSON recipes built by blender/bxlib.py (set 0 to force plain bmesh code)
 DIRECTOR_OPS_ON = os.environ.get("BX_DIRECTOR_OPS", "1") != "0"   # the director writes the geometry recipes of simple parts into the plan (0: the worker writes them; cheaper for the director, less reliable)
 GUARD = os.environ.get("BX_GUARD", "1") != "0"            # a repair round that makes the scene worse is undone
+BESTOFN = max(1, int(os.environ.get("BX_BESTOFN", "2")))  # adaptive local worker retries/candidates per part (free tokens, gated before Blender)
 BLENDER_BUILD = os.path.join(HERE, "blender", "blender_build.py")
 BLENDER_RENDER = os.path.join(HERE, "blender", "blender_render.py")
 MAX_TRIES = 4                  # worker attempts per part (all causes together)
 GROUP_MAX = 4                  # parts written in one worker request when the plan groups them
 FINISHES = ("matte", "gloss", "metal", "rubber", "emissive")
 PART_ISSUES = ("not_coaxial", "object_scale", "not_rigid", "wrong_pivot", "wrong_axis", "coaxial_unknown", "scale_outlier", "object_transform", "size_mismatch", "position_mismatch")
+
+
+def scale_policy(n_parts):
+    """Adaptive orchestration parameters keyed by scene part count `n_parts` (preserves legacy behavior for N <= 25)."""
+    if n_parts <= 25:
+        pol = {"tier": "small", "group_max": GROUP_MAX, "workers": 1, "max_issues": 12, "delta_radius_mm": 60.0, "min_director": 10, "compact_review": False}
+    elif n_parts <= 55:
+        pol = {"tier": "medium", "group_max": max(GROUP_MAX, 6), "workers": 2, "max_issues": 18, "delta_radius_mm": 55.0, "min_director": 12, "compact_review": True}
+    else:
+        pol = {"tier": "large", "group_max": max(GROUP_MAX, 8), "workers": 3, "max_issues": 24, "delta_radius_mm": 45.0, "min_director": 15, "compact_review": True}
+    env_w = int(os.environ.get("BX_WORKERS", "0") or 0)
+    if env_w > 0:
+        pol["workers"] = env_w
+    return pol
 
 RECIPE_OPS = """{"ops":[ {"op":"box","center":[x,y,z],"size":[dx,dy,dz],"rot":{"axis":[0,0,1],"deg":25},"bevel":2},
          {"op":"cylinder","a":[x,y,z],"b":[x,y,z],"r":20,"r2":15},                       (any direction; r2 = taper)
@@ -44,7 +62,7 @@ RECIPE_OPS = """{"ops":[ {"op":"box","center":[x,y,z],"size":[dx,dy,dz],"rot":{"
          {"op":"panel","sections":[{"x":0,"y":0,"z":800,"w":100,"h":60},{"x":300,"y":0,"z":860,"w":240,"h":140}],"arc":[0,180],"thick":3} ]}   (thin curved SHEET: fairing, fender, side panel; arc [0,180] = upper half, [180,360] = lower half)"""
 
 DIRECTOR_OPS = """GEOMETRY BY RECIPE, in tiers (every token you write costs; a local worker is free):
- - Plain parts (wheels, discs, rings, axles, tubes, beams, brackets, bolts, simple boxes, lamps): give a precise spec (shape, axis direction, hollow or solid, dimensions) plus center_mm and size_mm, and LEAVE OUT "ops". The worker builds them from the tested recipes below and the runner checks the bounding box.
+ - Plain parts (wheels, tires, rims, spokes, discs, rings, axles, straight cylinders/shocks/pegs, beams/swingarms, brackets/lugs/clamps, bolts, simple boxes/batteries/inverters/calipers, lamps): give a precise spec (shape, axis direction, hollow or solid, dimensions) plus center_mm and size_mm, and LEAVE OUT "ops" (even if a reference skill mentions recipe primitives — the worker builds those recipe primitives itself). For hollow rings/tires add "shape":{"kind":"ring"}; for tilted rods/forks add "shape":{"endpoints":[[x1,y1,z1],[x2,y2,z2]]}. For symmetric L/R pairs write one side and declare the other with "mirror_of". The worker builds them from the tested recipes below and the runner checks the bounding box and shape.
  - Parts whose look depends on your design judgement (lofted or panelled body shells, seats, tanks, tails, fairings, fenders, bent tube runs): write the "ops":[...] yourself in the plan (mm, WORLD coordinates, same format as below). The runner builds it exactly.
  - Only a shape neither tier can express is left for free code.
 Recipe format:
@@ -54,7 +72,7 @@ COLOR_RULE = """Give EVERY part a "color" and a "finish": choose ONE coherent, a
 SYSTEM = """You direct a 3D build in Blender. You do not write geometry unless told; a worker model writes one part at a time and fixes its own errors.
 You are called only to plan, to resolve what the worker could not, and for one final review against the TASK text.
 Reply with ONE JSON object, no prose. Actions:
- {"action":"plan","parts":[{"id":"p1","spec":"what it is, size mm, where (world mm, Z up)","center_mm":[x,y,z],"size_mm":[dx,dy,dz],"ops":[recipe ops, optional but preferred for simple shapes],"free":true (only for a part that is meant to hang free),"mirror_of":"id" (+"plane":"y","offset_mm":0: reflected copy of another part's ops, so state a symmetric pair ONCE),"array":{"count":n,"step":[dx,dy,dz]} (n copies p_1..p_n, for rows of bolts, keys, fins),"color":"#RRGGBB","finish":"matte|gloss|metal|rubber|emissive","group":"optional batching hint only"}],
+ {"action":"plan","parts":[{"id":"p1","spec":"what it is, size mm, where (world mm, Z up)","center_mm":[x,y,z],"size_mm":[dx,dy,dz],"ops":[recipe ops; ONLY for curved body shells/lofts/panels/bent tubes - omit on plain rings/tires/rims/spokes/discs/cylinders/axles/boxes/beams/brackets/lamps so the worker builds them],"free":true (only for a part that is meant to hang free),"mirror_of":"id" (+"plane":"y","offset_mm":0: reflected copy of another part's ops, so state a symmetric pair ONCE),"array":{"count":n,"step":[dx,dy,dz]} (n copies p_1..p_n, for rows of bolts, keys, fins),"color":"#RRGGBB","finish":"matte|gloss|metal|rubber|emissive","group":"optional batching hint only"}],
   "joints":[{"name":"j1","parent":"p1"|null,"children":["p2"],"origin_mm":[x,y,z],"axis":[x,y,z],"coaxial":["p2"],"span_rad":6.283}],
   "allowed_contacts":[["p1","p2"]]}
  {"action":"patch_plan","parts":[{"id":"p1","center_mm":[x,y,z],"ops":[...]}],"add_parts":[full part],"remove_parts":["p9"],"joints":[full joint, replaces the one with that name],"remove_joints":["j2"],"allowed_contacts_add":[["p1","p2"]],"allowed_contacts_remove":[["p3","p4"]],"notes":{"p5":"guidance for the worker"}}
@@ -62,7 +80,7 @@ Reply with ONE JSON object, no prose. Actions:
  {"action":"write_part","id":"p1","note":"guidance for the worker"}   (worker retries with your note)
  {"action":"patch_part","id":"p1","code":"<python defining build(bpy, bmesh)>"}   (you write it yourself; use when the worker is stuck)
  {"action":"done"}
-""" + (DIRECTOR_OPS if RECIPES and DIRECTOR_OPS_ON else "") + """Rules: every physical part in the TASK gets its own id and its own mesh (four posts = four parts); never merge parts. "group" only lets the worker write several separate parts in one request; use the same group name for parts of the same kind. Parts that should touch/overlap by design must be in allowed_contacts; joint children spin about axis through origin_mm (span_rad is SIGNED: sign follows the right-hand rule about axis); list a part in coaxial only if it is a body of revolution centred on the axis. Give EVERY part center_mm and size_mm: the centre and the extents (dx,dy,dz) of its world axis-aligned bounding box at rest, in mm (for a tilted part, the box of the tilted shape); they are measured after the build and the worker is told when its mesh differs, so make them consistent with the spec and with the other parts. """ + (COLOR_RULE if COLORS else "") + """In the final review compare the numbers you are shown (bounding boxes, joint spans) with the TASK text, including directions and signs, and fix what differs."""
+""" + (DIRECTOR_OPS if RECIPES and DIRECTOR_OPS_ON else "") + """Rules: every physical part in the TASK gets its own id and its own mesh (four posts = four parts); never merge parts. "group" only lets the worker write several separate parts in one request; use the same group name for parts of the same kind. Parts that should touch/overlap by design must be in allowed_contacts; joint children spin about axis through origin_mm (span_rad is SIGNED: sign follows the right-hand rule about axis); list a part in coaxial only if it is a body of revolution centred on the axis. Give EVERY part center_mm and size_mm: the centre and the extents (dx,dy,dz) of its world axis-aligned bounding box at rest, in mm (for a tilted part, the box of the tilted shape); they are measured after the build and the worker is told when its mesh differs, so make them consistent with the spec and with the other parts. Never alter explicit coordinates or dimensions stated in the TASK just to close a support gap: if TASK-given coordinates leave a part >10 mm from neighbours, mark it "free":true; only move parts or add brackets when the layout is your own design. When the TASK states a target part count (e.g. 50-60 parts), stay close to that range rather than multiplying tiny fins/fasteners far beyond it. Keep internal reasoning concise: compute coordinates once from the layout, omit "ops" on plain parts, and use "mirror_of" for every symmetric L/R pair. """ + (COLOR_RULE if COLORS else "") + """In the final review compare the numbers you are shown (bounding boxes, joint spans) with the TASK text, including directions and signs, and fix what differs."""
 
 WORKER_SYS = """You write Blender Python (bpy/bmesh) for ONE part. Output only a python code block defining build(bpy, bmesh).
 Contract: build() creates exactly one MESH object named exactly as the part id (bpy.data.objects.new(id, mesh), do NOT link it; the runner links it).
@@ -90,10 +108,35 @@ Several ops in one recipe are merged into the ONE part mesh. Use python code onl
 
 # ---------------------------------------------------------------- deterministic gates (no model, no Blender)
 def jparse(txt):
-    try:
-        return json.loads(re.search(r"\{.*\}", txt or "", re.S).group(0))
-    except Exception:  # noqa: BLE001
-        return None
+    s = txt or ""
+    has_action = '"action"' in s
+    best = None
+    for m in re.finditer(r"```(?:json)?\s*\n(.*?)```", s, re.S):
+        try:
+            obj = json.loads(m.group(1).strip())
+            if isinstance(obj, dict):
+                if "action" in obj:
+                    return obj
+                if best is None:
+                    best = obj
+        except ValueError:
+            pass
+    dec = json.JSONDecoder()
+    i = s.find("{")
+    while i >= 0:
+        try:
+            obj, end = dec.raw_decode(s, i)
+            if isinstance(obj, dict):
+                if "action" in obj:
+                    return obj
+                if best is None:
+                    best = obj
+            i = s.find("{", end)
+            continue
+        except ValueError:
+            pass
+        i = s.find("{", i + 1)
+    return None if has_action else best
 
 
 def code_of(txt):
@@ -104,7 +147,21 @@ def code_of(txt):
 RECIPE_TEMPLATE = "# recipe part (built by bxlib)\ndef build(bpy, bmesh):\n    import bxlib\n    return bxlib.build(bpy, bmesh, %r, %r)\n"
 
 
-def part_code(txt, pid):
+def _extract_recipe(code):
+    """Parse the recipe dict back out of a `# recipe part` file generated by RECIPE_TEMPLATE, or return None."""
+    if not (code or "").startswith("# recipe part"):
+        return None
+    m = re.search(r"bxlib\.build\(bpy,\s*bmesh,\s*(?:'[^']*'|\"[^\"]*\"),\s*(.*)\)\s*$", code, re.S)
+    if not m:
+        return None
+    try:
+        rec = ast.literal_eval(m.group(1).strip())
+        return rec if isinstance(rec, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def part_code(txt, pid, part_plan=None):
     """The worker's reply -> the part file: a JSON recipe becomes a call into bxlib (checked here), anything else is taken as python."""
     if RECIPES:
         m = re.search(r"```json\s*\n(.*?)```", txt or "", re.S)
@@ -116,6 +173,10 @@ def part_code(txt, pid):
             probs = bxlib.validate(rec)
             if probs:
                 return "# RECIPE ERROR: " + "; ".join(probs[:4]) + "\n"
+            if part_plan is not None:
+                p_err = bxlib.check_plan_part(rec, part_plan)
+                if p_err:
+                    return "# RECIPE ERROR: " + p_err + "\n"
             return RECIPE_TEMPLATE % (pid, rec)
     return code_of(txt)
 
@@ -145,6 +206,74 @@ def _map_op(op, pt, dr, rot_flip):
     return o
 
 
+def mirror_part_code(src_code, src_id, dst_id, plane="y", offset_mm=0.0):
+    """Deterministically reflect a built worker part (recipe or raw bmesh) across plane=offset_mm into dst_id."""
+    i = _AX[plane]
+    rec = _extract_recipe(src_code)
+    if rec and isinstance(rec.get("ops"), list):
+        if not (plane != "y" and any(o.get("op") in ("loft", "panel") for o in rec["ops"])):
+            pt = lambda q: [2 * offset_mm - q[k] if k == i else q[k] for k in range(3)]
+            dr = lambda d: [-d[k] if k == i else d[k] for k in range(3)]
+            return RECIPE_TEMPLATE % (dst_id, {"ops": [_map_op(o, pt, dr, True) for o in rec["ops"]]})
+    off_m = float(offset_mm) * 0.001
+    return (
+        "# mirrored part (from %s across %s=%s mm)\n"
+        "def build(bpy, bmesh):\n"
+        "    src_code = %r\n"
+        "    had = %r in bpy.data.objects\n"
+        "    ns = {}\n"
+        "    exec(compile(src_code, %r, 'exec'), ns)\n"
+        "    ns['build'](bpy, bmesh)\n"
+        "    src_obj = bpy.data.objects[%r]\n"
+        "    bm = bmesh.new()\n"
+        "    bm.from_mesh(src_obj.data)\n"
+        "    for v in bm.verts:\n"
+        "        v.co[%d] = %.12g - v.co[%d]\n"
+        "    if len(bm.faces):\n"
+        "        bmesh.ops.reverse_faces(bm, faces=bm.faces)\n"
+        "        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)\n"
+        "    me = bpy.data.meshes.new(%r)\n"
+        "    bm.to_mesh(me); bm.free()\n"
+        "    if not had:\n"
+        "        sm = src_obj.data\n"
+        "        bpy.data.objects.remove(src_obj, do_unlink=True)\n"
+        "        if sm and sm.users == 0:\n"
+        "            bpy.data.meshes.remove(sm)\n"
+        "    return bpy.data.objects.new(%r, me)\n"
+    ) % (src_id, plane, offset_mm, src_code, src_id, src_id + ".py", src_id, i, 2.0 * off_m, i, dst_id, dst_id)
+
+
+def offset_part_code(src_code, src_id, dst_id, delta_mm):
+    """Deterministically translate a built worker part (recipe or raw bmesh) by delta_mm [dx,dy,dz] into dst_id."""
+    rec = _extract_recipe(src_code)
+    if rec and isinstance(rec.get("ops"), list):
+        mv = lambda q: [q[k] + delta_mm[k] for k in range(3)]
+        return RECIPE_TEMPLATE % (dst_id, {"ops": [_map_op(o, mv, lambda d: d, False) for o in rec["ops"]]})
+    dx, dy, dz = [float(delta_mm[k]) * 0.001 for k in range(3)]
+    return (
+        "# offset array part (from %s + %s mm)\n"
+        "def build(bpy, bmesh):\n"
+        "    src_code = %r\n"
+        "    had = %r in bpy.data.objects\n"
+        "    ns = {}\n"
+        "    exec(compile(src_code, %r, 'exec'), ns)\n"
+        "    ns['build'](bpy, bmesh)\n"
+        "    src_obj = bpy.data.objects[%r]\n"
+        "    bm = bmesh.new()\n"
+        "    bm.from_mesh(src_obj.data)\n"
+        "    for v in bm.verts:\n"
+        "        v.co[0] += %.12g; v.co[1] += %.12g; v.co[2] += %.12g\n"
+        "    me = bpy.data.meshes.new(%r)\n"
+        "    bm.to_mesh(me); bm.free()\n"
+        "    if not had:\n"
+        "        sm = src_obj.data\n"
+        "        bpy.data.objects.remove(src_obj, do_unlink=True)\n"
+        "        if sm and sm.users == 0:\n"
+        "            bpy.data.meshes.remove(sm)\n"
+        "    return bpy.data.objects.new(%r, me)\n"
+    ) % (src_id, delta_mm, src_code, src_id, src_id + ".py", src_id, dx, dy, dz, dst_id, dst_id)
+
+
 def plan_view(plan):
     """The plan as the director sees it after the first call: the recipe of every part is replaced by a one-line marker. The geometry is already built and the bounding boxes
     in the review show where it is; resending every recipe on every call was most of the input tokens. A part is changed by sending its `ops` again; a part sent with the
@@ -152,10 +281,69 @@ def plan_view(plan):
     out = []
     for q in plan.get("parts", []):
         q = dict(q)
+        q.pop("_mirror_from", None)
+        q.pop("_offset_from", None)
         if isinstance(q.get("ops"), list):
             q["ops"] = "<%d recipe ops, built; send ops only to change this part>" % len(q["ops"])
         out.append(q)
     return dict(plan, parts=out)
+
+
+def _bbox_gap_mm(a, b):
+    d2 = 0.0
+    for i in range(3):
+        g = max(a[0][i] - b[1][i], b[0][i] - a[1][i], 0.0)
+        d2 += g * g
+    return d2 ** 0.5
+
+
+def plan_delta_view(plan, rep, stuck, others):
+    """Compact plan view for escalations on large scenes: keep full entries only for problematic parts and their neighborhood."""
+    pv = plan_view(plan)
+    parts = pv.get("parts", [])
+    if len(parts) <= 16:
+        return pv
+    rad = scale_policy(len(parts))["delta_radius_mm"]
+    focus = set((stuck or {}).keys())
+    jmap = {j.get("name"): j for j in pv.get("joints", []) if j.get("name")}
+    for i in (others or []):
+        if i.get("part"):
+            focus.add(i["part"])
+        if i.get("pair"):
+            focus.update(i["pair"].split("|"))
+        for m in i.get("missing") or []:
+            focus.add(m)
+        jn = i.get("joint")
+        if jn and jn in jmap:
+            j = jmap[jn]
+            if j.get("parent"):
+                focus.add(j["parent"])
+            focus.update(j.get("children") or [])
+            focus.update(j.get("coaxial") or [])
+    bb = (rep or {}).get("parts_bbox_mm") or {}
+    if focus and bb:
+        seed = list(focus)
+        for pid in seed:
+            if pid not in bb:
+                continue
+            for other, box in bb.items():
+                if other not in focus and _bbox_gap_mm(bb[pid], box) <= rad:
+                    focus.add(other)
+    if not focus or len(focus) >= len(parts) - 4:
+        return pv
+    kept = [q for q in parts if q["id"] in focus]
+    locked = [q["id"] for q in parts if q["id"] not in focus]
+    return {"parts": kept, "healthy_locked_parts": locked, "joints": pv.get("joints", []), "allowed_contacts": pv.get("allowed_contacts", [])}
+
+
+def review_plan_view(plan):
+    """For large scenes (>55 parts), drop cosmetic fields (color/finish/group) during final review to keep prompt concise."""
+    pv = plan_view(plan)
+    parts = pv.get("parts", [])
+    if len(parts) <= 55:
+        return pv
+    out = [{k: v for k, v in q.items() if k not in ("color", "finish", "group")} for q in parts]
+    return dict(pv, parts=out)
 
 
 def apply_patch(plan, act):
@@ -199,7 +387,7 @@ def expand_plan(plan):
     """Expand `array` and `mirror_of` parts into ordinary parts. -> (plan, errors).
     {"id":"p","ops":[..],"array":{"count":n,"step":[dx,dy,dz]}}   becomes p_1 .. p_n, each moved by k*step
     {"id":"q","mirror_of":"p","plane":"y","offset_mm":0}           becomes a copy of p reflected in the plane (default y=0); spec, colour, finish and group are inherited"""
-    errs, parts = [], []
+    errs, parts, arr_map = [], [], {}
     for p in plan.get("parts", []):
         if isinstance(p.get("ops"), str):                      # the marker of plan_view echoed back: keep the geometry that is already built
             p = {k: v for k, v in p.items() if k != "ops"}
@@ -207,15 +395,33 @@ def expand_plan(plan):
         if a is None:
             parts.append(p); continue
         n, st = (a or {}).get("count"), (a or {}).get("step")
-        if not (isinstance(n, int) and 2 <= n <= 64 and isinstance(st, list) and len(st) == 3 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in st)) or not p.get("ops"):
-            errs.append("part %s: array needs ops, count 2..64 and step [dx,dy,dz]" % p.get("id")); parts.append(p); continue
+        has_ops_arr = bool(p.get("ops"))
+        has_bbox_arr = (isinstance(p.get("center_mm"), list) and len(p["center_mm"]) == 3 and
+                        isinstance(p.get("size_mm"), list) and len(p["size_mm"]) == 3)
+        if not (isinstance(n, int) and 2 <= n <= 64 and isinstance(st, list) and len(st) == 3 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in st)) or not (has_ops_arr or has_bbox_arr):
+            errs.append("part %s: array needs count 2..64, step [dx,dy,dz] and ops (or center_mm and size_mm)" % p.get("id")); parts.append(p); continue
+        arr_ids = []
+        base_id = "%s_1" % p["id"]
         for k in range(n):
             mv = lambda q, k=k: [q[i] + st[i] * k for i in range(3)]
-            c = {x: y for x, y in p.items() if x not in ("array", "id", "ops", "center_mm")}
-            c["id"] = "%s_%d" % (p["id"], k + 1); c["ops"] = [_map_op(o, mv, lambda d: d, False) for o in p["ops"]]
+            c = {x: y for x, y in p.items() if x not in ("array", "id", "ops", "center_mm", "shape", "_offset_from")}
+            cid = "%s_%d" % (p["id"], k + 1)
+            c["id"] = cid
+            if has_ops_arr:
+                c["ops"] = [_map_op(o, mv, lambda d: d, False) for o in p["ops"]]
+            elif k > 0:
+                c["_offset_from"] = {"src": base_id, "delta_mm": [st[i] * k for i in range(3)]}
             if isinstance(p.get("center_mm"), list):
                 c["center_mm"] = mv(p["center_mm"])
+            if isinstance(p.get("shape"), dict):
+                sh = json.loads(json.dumps(p["shape"]))
+                if isinstance(sh.get("endpoints"), list) and len(sh["endpoints"]) == 2:
+                    sh["endpoints"] = [mv(q) for q in sh["endpoints"]]
+                c["shape"] = sh
+            arr_ids.append(cid)
             parts.append(c)
+        if p.get("id"):
+            arr_map[p["id"]] = arr_ids
     byid = {p.get("id"): p for p in parts}
     out = []
     for p in parts:
@@ -223,25 +429,58 @@ def expand_plan(plan):
         if src is None:
             out.append(p); continue
         base = byid.get(src); pl = str(p.get("plane", "y")); off = p.get("offset_mm", 0)
-        if base is None or not base.get("ops") or base.get("mirror_of"):
-            errs.append("part %s: mirror_of %r must name another part that has ops" % (p.get("id"), src)); out.append(p); continue
+        has_ops = bool(base and base.get("ops"))
+        has_bbox = bool(base and isinstance(base.get("center_mm"), list) and len(base["center_mm"]) == 3 and isinstance(base.get("size_mm"), list) and len(base["size_mm"]) == 3)
+        if base is None or base.get("mirror_of") or (not has_ops and not has_bbox):
+            errs.append("part %s: mirror_of %r must name another part that has ops (or center_mm and size_mm)" % (p.get("id"), src)); out.append(p); continue
         if pl not in _AX or not isinstance(off, (int, float)) or isinstance(off, bool):
             errs.append("part %s: plane must be x, y or z and offset_mm a number" % p.get("id")); out.append(p); continue
-        if pl != "y" and any(o.get("op") in ("loft", "panel") for o in base["ops"]):
+        if has_ops and pl != "y" and any(o.get("op") in ("loft", "panel") for o in base["ops"]):
             errs.append("part %s: loft and panel can only be mirrored in plane y" % p.get("id")); out.append(p); continue
         i = _AX[pl]
         def pt(q, i=i, off=off):
             q = list(q); q[i] = 2 * off - q[i]; return q
         def dr(d, i=i):
             d = list(d); d[i] = -d[i]; return d
-        c = {x: y for x, y in base.items() if x not in ("id", "ops", "center_mm", "size_mm", "mirror_of")}
+        c = {x: y for x, y in base.items() if x not in ("id", "ops", "center_mm", "size_mm", "mirror_of", "shape", "_mirror_from")}
         c.update({x: y for x, y in p.items() if x not in ("mirror_of", "plane", "offset_mm")})
-        c["spec"] = p.get("spec") or "mirror of %s in plane %s" % (src, pl); c["ops"] = [_map_op(o, pt, dr, True) for o in base["ops"]]
+        c["spec"] = p.get("spec") or "mirror of %s in plane %s" % (src, pl)
+        if has_ops:
+            c["ops"] = [_map_op(o, pt, dr, True) for o in base["ops"]]
+        else:
+            c["_mirror_from"] = {"src": src, "plane": pl, "offset_mm": off}
         for k in ("center_mm", "size_mm"):
             if isinstance(base.get(k), list) and k not in p:
-                c[k] = pt(base[k]) if k == "center_mm" else base[k]
+                c[k] = pt(base[k]) if k == "center_mm" else list(base[k])
+        if isinstance(base.get("shape"), dict) and "shape" not in p:
+            sh = json.loads(json.dumps(base["shape"]))
+            if isinstance(sh.get("endpoints"), list) and len(sh["endpoints"]) == 2:
+                sh["endpoints"] = [pt(q) for q in sh["endpoints"]]
+            c["shape"] = sh
         out.append(c)
-    return dict(plan, parts=out), errs
+    res = dict(plan, parts=out)
+    if arr_map:
+        def _ex_ids(xs):
+            res_ids = []
+            for x in xs or []:
+                res_ids.extend(arr_map.get(x, [x]))
+            return res_ids
+        if isinstance(plan.get("joints"), list):
+            res["joints"] = [
+                dict(j, children=_ex_ids(j.get("children")), coaxial=_ex_ids(j.get("coaxial"))) if isinstance(j, dict) else j
+                for j in plan["joints"]
+            ]
+        if isinstance(plan.get("allowed_contacts"), list):
+            exp_c = []
+            for pr in plan["allowed_contacts"]:
+                if isinstance(pr, (list, tuple)) and len(pr) == 2:
+                    for a in arr_map.get(pr[0], [pr[0]]):
+                        for b in arr_map.get(pr[1], [pr[1]]):
+                            exp_c.append([a, b])
+                else:
+                    exp_c.append(pr)
+            res["allowed_contacts"] = exp_c
+    return res, errs
 
 
 def validate_plan(plan):
@@ -265,6 +504,17 @@ def validate_plan(plan):
         for k in ("center_mm", "size_mm"):
             if k in p and not (isinstance(p[k], list) and len(p[k]) == 3 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in p[k])):
                 e.append("part %s: %s must be 3 numbers" % (p.get("id"), k))
+        if "shape" in p:
+            sh = p["shape"]
+            if not isinstance(sh, dict):
+                e.append("part %s: shape must be an object" % p.get("id"))
+            else:
+                if "kind" in sh and not isinstance(sh["kind"], str):
+                    e.append("part %s: shape.kind must be a string" % p.get("id"))
+                if "endpoints" in sh:
+                    eps = sh["endpoints"]
+                    if not (isinstance(eps, list) and len(eps) == 2 and all(isinstance(q, list) and len(q) == 3 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in q) for q in eps)):
+                        e.append("part %s: shape.endpoints must be [[x,y,z],[x,y,z]]" % p.get("id"))
     for j in plan.get("joints", []):
         for k in ("name", "children", "origin_mm", "axis", "span_rad"):
             if k not in j:
@@ -339,7 +589,17 @@ class Scene:
         self.usage = {"director": [], "worker": []}
         self.plan = None
         self.tries, self.err, self.sigs, self.stuck, self.notes = {}, {}, {}, {}, {}
+        self.collision_tried = set()
         self.step = 0
+        self._lock = threading.Lock()
+        self._worker_has_temp = False
+        if callable(worker):
+            try:
+                sw = inspect.signature(worker)
+                self._worker_has_temp = ("temperature" in sw.parameters or
+                                         any(pm.kind == inspect.Parameter.VAR_KEYWORD for pm in sw.parameters.values()))
+            except (TypeError, ValueError):
+                pass
         os.makedirs(os.path.join(workdir, "parts"), exist_ok=True)
 
     # -- model calls
@@ -383,24 +643,40 @@ class Scene:
                 parts.append("----- SKILL %s (reference advice; it never overrides the part spec or the output contract) -----\n%s" % (n, fitter(t, query, left))); left -= len(parts[-1])
         return ("\n\n" + "\n\n".join(parts)) if parts else ""
 
-    def ask_worker(self, user):
+    def ask_worker(self, user, temperature=0.3):
         if self.stop():
             raise Stopped()
-        text, u = self.worker(WORKER_SYS + self.worker_skill_text(user), user)
-        self.usage["worker"].append(u or {})
+        sk_txt = self.worker_skill_text(user)
+        rem = ("\n\nREMINDER: even if a skill above shows raw bmesh Python examples, ALWAYS output ONE ```json recipe block "
+               "({\"ops\":[...]}) whenever the part can be built from box, cylinder, ring, disc, beam, sphere, tube, spokes, loft or panel; "
+               "use raw Python ONLY if no recipe op fits.") if (RECIPES and sk_txt) else ""
+        sys_prompt = WORKER_SYS + sk_txt + rem
+        if self._worker_has_temp:
+            text, u = self.worker(sys_prompt, user, temperature=temperature)
+        else:
+            text, u = self.worker(sys_prompt, user)
+        with self._lock:
+            self.usage["worker"].append(u or {})
         return text
 
     # -- files
     def pf(self, pid):
         return os.path.join(self.dir, "parts", pid + ".py")
 
+    def part_dict(self, pid):
+        if not self.plan:
+            return None
+        return next((p for p in self.plan["parts"] if p["id"] == pid), None)
+
     def spec(self, pid):
-        p = next((p for p in self.plan["parts"] if p["id"] == pid), None)
+        p = self.part_dict(pid)
         if not p:
             return ""
         extra = ""
         if isinstance(p.get("center_mm"), list) and isinstance(p.get("size_mm"), list):
             extra = " | REQUIRED world bbox at rest: centre %s mm, size %s mm (checked after the build)" % (p["center_mm"], p["size_mm"])
+        if isinstance(p.get("shape"), dict):
+            extra += " | REQUIRED shape: %s" % json.dumps(p["shape"])
         return p["spec"] + extra
 
     def pick_skills(self, plan):
@@ -471,19 +747,41 @@ class Scene:
 
     # -- worker inner loop (the director is NOT called here)
     def write(self, pid, error=None):
+        p = self.part_dict(pid)
         prev = ""
         if os.path.exists(self.pf(pid)):
             with open(self.pf(pid), encoding="utf-8") as f:
                 prev = "\nPrevious code:\n```python\n" + f.read() + "```"
         if error:
             prev += "\nThis code FAILED with:\n" + error + "\nFix that error."
-        code = part_code(self.ask_worker("Part id: %s\nSpec: %s\nNote: %s%s" % (pid, self.spec(pid), self.notes.get(pid, ""), prev)), pid)
-        self.tries[pid] = self.tries.get(pid, 0) + 1
+        prompt = "Part id: %s\nSpec: %s\nNote: %s%s" % (pid, self.spec(pid), self.notes.get(pid, ""), prev)
+        n_cand = 1 if (p and p.get("ops") and RECIPES and DIRECTOR_OPS_ON) else BESTOFN
+        temps = [0.2 if n_cand > 1 else 0.3] + [min(0.8, 0.45 + 0.15 * k) for k in range(n_cand - 1)]
+        best_code, best_err_val, last_code = None, float("inf"), None
+        hint = ""
+        for temp in temps:
+            raw = self.ask_worker(prompt + hint, temperature=temp)
+            code = part_code(raw, pid, p)
+            last_code = code
+            serr = static_check(code, pid)
+            if not serr:
+                rec = _extract_recipe(code)
+                score = bxlib.bbox_error_mm(rec, p) if (rec and p) else 0.0
+                if score < best_err_val:
+                    best_err_val, best_code = score, code
+                if score <= 4.0:
+                    break
+            else:
+                hint = "\nPrevious attempt failed static check: %s. Fix it." % serr
+        chosen = best_code if best_code is not None else last_code
+        with self._lock:
+            self.tries[pid] = self.tries.get(pid, 0) + 1
         with open(self.pf(pid), "w", encoding="utf-8") as f:
-            f.write(code)
-        return code
+            f.write(chosen)
+        return chosen
 
     def write_group(self, pids):
+        p_map = {p["id"]: p for p in self.plan["parts"]} if self.plan else {}
         specs = "\n".join("- %s: %s" % (p, self.spec(p)) for p in pids)
         txt = self.ask_worker("Write ALL of these parts. For each part output a line `# PART <id>` then one code block (python defining build(bpy, bmesh)" + (", or a json recipe" if RECIPES else "") +
                               ") for that part (object named exactly the id).\n" + specs)
@@ -491,21 +789,57 @@ class Scene:
         for m in re.finditer(r"#\s*PART\s+(\S+)\s*\n```(python|json)?\n(.*?)```", txt, re.S):
             if m.group(1) in pids:
                 with open(self.pf(m.group(1)), "w", encoding="utf-8") as f:
-                    f.write(part_code("```%s\n%s```" % (m.group(2) or "python", m.group(3)), m.group(1)) if m.group(2) == "json" else m.group(3).strip() + "\n")
-                self.tries[m.group(1)] = 1
+                    f.write(part_code("```%s\n%s```" % (m.group(2) or "python", m.group(3)), m.group(1), p_map.get(m.group(1))) if m.group(2) == "json" else m.group(3).strip() + "\n")
+                with self._lock:
+                    self.tries[m.group(1)] = 1
                 got.add(m.group(1))
         return got
+
+    def _sync_mirrors(self, mirrors, offsets=None):
+        for dst_id, m in mirrors.items():
+            src_id = m["src"]
+            if not os.path.exists(self.pf(src_id)) or src_id in self.err or src_id in self.stuck:
+                continue
+            with open(self.pf(src_id), encoding="utf-8") as f:
+                src_code = f.read()
+            dst_code = mirror_part_code(src_code, src_id, dst_id, m["plane"], m["offset_mm"])
+            old = None
+            if os.path.exists(self.pf(dst_id)):
+                with open(self.pf(dst_id), encoding="utf-8") as f:
+                    old = f.read()
+            if old != dst_code:
+                with open(self.pf(dst_id), "w", encoding="utf-8") as f:
+                    f.write(dst_code)
+            self.err.pop(dst_id, None)
+            self.stuck.pop(dst_id, None)
+        for dst_id, m in (offsets or {}).items():
+            src_id = m["src"]
+            if not os.path.exists(self.pf(src_id)) or src_id in self.err or src_id in self.stuck:
+                continue
+            with open(self.pf(src_id), encoding="utf-8") as f:
+                src_code = f.read()
+            dst_code = offset_part_code(src_code, src_id, dst_id, m["delta_mm"])
+            old = None
+            if os.path.exists(self.pf(dst_id)):
+                with open(self.pf(dst_id), encoding="utf-8") as f:
+                    old = f.read()
+            if old != dst_code:
+                with open(self.pf(dst_id), "w", encoding="utf-8") as f:
+                    f.write(dst_code)
+            self.err.pop(dst_id, None)
+            self.stuck.pop(dst_id, None)
 
     def settle(self, pid, error):
         """record a failure; True when the worker should try again"""
         s = sig(error)
-        self.sigs.setdefault(pid, []).append(s)
-        if self.tries.get(pid, 0) >= MAX_TRIES:
-            self.stuck[pid] = "max tries; last: " + ((error or "").strip().splitlines() or [""])[-1][:200]
-            return False
-        if self.sigs[pid][-2:].count(s) == 2:
-            self.stuck[pid] = "same error twice: " + s
-            return False
+        with self._lock:
+            self.sigs.setdefault(pid, []).append(s)
+            if self.tries.get(pid, 0) >= MAX_TRIES:
+                self.stuck[pid] = "max tries; last: " + ((error or "").strip().splitlines() or [""])[-1][:200]
+                return False
+            if self.sigs[pid][-2:].count(s) == 2:
+                self.stuck[pid] = "same error twice: " + s
+                return False
         return True
 
     def probe(self, pid):
@@ -550,49 +884,83 @@ class Scene:
             if code is None:
                 code = self.write(pid, err)
             err = static_check(code, pid) or self.probe(pid)
-            self.step += 1
-            self.ev("cell", n=self.step, ok=not err, code=code, error=err or "", output="", part=pid)
+            with self._lock:
+                self.step += 1
+                step_n = self.step
+                self.ev("cell", n=step_n, ok=not err, code=code, error=err or "", output="", part=pid)
             if not err:
-                self.err.pop(pid, None)
+                with self._lock:
+                    self.err.pop(pid, None)
                 return
-            self.err[pid] = err
+            with self._lock:
+                self.err[pid] = err
             if not self.settle(pid, err):
                 return
             code = None
 
     def work(self):
         """bring every part to green or to stuck. -> (report, issues the worker cannot resolve)"""
-        todo = [p["id"] for p in self.plan["parts"] if p["id"] not in self.stuck and (not os.path.exists(self.pf(p["id"])) or p["id"] in self.err)]
+        pol = scale_policy(len(self.plan["parts"]))
+        gmax, n_workers = pol["group_max"], pol["workers"]
+        mirrors = {p["id"]: p["_mirror_from"] for p in self.plan["parts"] if p.get("_mirror_from") and not p.get("ops") and not self.notes.get(p["id"])}
+        offsets = {p["id"]: p["_offset_from"] for p in self.plan["parts"] if p.get("_offset_from") and not p.get("ops") and not self.notes.get(p["id"])}
+        derived = set(mirrors) | set(offsets)
+        todo = [p["id"] for p in self.plan["parts"] if p["id"] not in self.stuck and p["id"] not in derived and (not os.path.exists(self.pf(p["id"])) or p["id"] in self.err)]
         groups, singles = {}, []
         for p in self.plan["parts"]:
             if p["id"] in todo and p.get("group"):
                 groups.setdefault(p["group"], []).append(p["id"])
             elif p["id"] in todo:
                 singles.append([p["id"]])
-        batches = singles + [g[k:k + GROUP_MAX] for g in groups.values() for k in range(0, len(g), GROUP_MAX)]
-        for pids in batches:
+        batches = singles + [g[k:k + gmax] for g in groups.values() for k in range(0, len(g), gmax)]
+
+        def _run_batch(pids):
             got = self.write_group(pids) if len(pids) > 1 else set()
             for pid in pids:
                 self.attempt(pid, err=self.err.get(pid), have_code=(pid in got))
+
+        if n_workers <= 1 or len(batches) <= 1:
+            for pids in batches:
+                _run_batch(pids)
+        else:
+            with ThreadPoolExecutor(max_workers=min(n_workers, len(batches))) as ex:
+                list(ex.map(_run_batch, batches))
+        self._sync_mirrors(mirrors, offsets)
         self.ev("phase", what="build")
         rep = self.build()
         ids = {p["id"] for p in self.plan["parts"]}
         undone = False
         for _ in range(MAX_TRIES):
-            redo = {pid: e for pid, e in rep.get("part_errors", {}).items() if pid not in self.stuck}
+            redo = {pid: e for pid, e in rep.get("part_errors", {}).items() if pid not in self.stuck and pid not in derived}
             for i in rep.get("issues", []):                  # single-part issues are fixable by the worker; pair/joint issues go to the director
-                if i.get("part") in ids and i["kind"] in PART_ISSUES and i["part"] not in self.stuck:
+                if i.get("part") in ids and i["kind"] in PART_ISSUES and i["part"] not in self.stuck and i["part"] not in derived:
                     redo.setdefault(i["part"], json.dumps(i))
+            for i in rep.get("issues", []):                  # rest-pose collision with overlap_mm: give a worker part 1 local trim attempt before escalating
+                if i.get("kind") == "collision" and i.get("overlap_mm") and 1 in (i.get("frames") or []):
+                    pair = str(i.get("pair") or "").split("|")
+                    if len(pair) == 2:
+                        a, b = pair
+                        for cand, other in ((a, b), (b, a)):
+                            cp = self.part_dict(cand)
+                            if cp and not (cp.get("ops") and RECIPES and DIRECTOR_OPS_ON) and cand not in derived and cand not in self.stuck and cand not in redo and cand not in self.collision_tried:
+                                self.collision_tried.add(cand)
+                                redo[cand] = "rest-pose collision with %s (overlap box mm: %s); keep your required center_mm/size_mm but trim or reshape so it clears %s" % (other, i["overlap_mm"], other)
+                                break
             if not redo:
                 break
             saved = {}
-            for pid in redo:
+            for pid in list(redo) + [d for d, m in mirrors.items() if m["src"] in redo] + [d for d, m in offsets.items() if m["src"] in redo]:
                 if os.path.exists(self.pf(pid)):
                     with open(self.pf(pid), encoding="utf-8") as f:
                         saved[pid] = f.read()
             before = self.score(rep)
-            for pid, e in redo.items():
-                self.attempt(pid, err=e, external=True)
+            if n_workers <= 1 or len(redo) <= 1:
+                for pid, e in redo.items():
+                    self.attempt(pid, err=e, external=True)
+            else:
+                with ThreadPoolExecutor(max_workers=min(n_workers, len(redo))) as ex:
+                    list(ex.map(lambda kv: self.attempt(kv[0], err=kv[1], external=True), redo.items()))
+            self._sync_mirrors(mirrors, offsets)
             new = self.build()
             if GUARD and self.score(new) > before:           # the repair made the scene worse: put the previous code back, keep the old report
                 for pid, code in saved.items():
@@ -622,20 +990,73 @@ class Scene:
         return len(rep.get("part_errors", {})) * 2 + len(rep.get("missing", [])) * 2 + len(rep.get("issues", []))
 
     def worker_report(self, others):
-        rows = ["%s: %s (worker tries %d)" % (p["id"], ("STUCK - " + self.stuck[p["id"]]) if p["id"] in self.stuck else "built", self.tries.get(p["id"], 0)) for p in self.plan["parts"]]
-        return "PARTS\n" + "\n".join(rows) + "\nISSUES\n" + ("\n".join(json.dumps(i) for i in others[:12]) or "none")
+        parts = self.plan["parts"]
+        lim = scale_policy(len(parts))["max_issues"]
+        if len(parts) <= 16:
+            rows = ["%s: %s (worker tries %d)" % (p["id"], ("STUCK - " + self.stuck[p["id"]]) if p["id"] in self.stuck else "built", self.tries.get(p["id"], 0)) for p in parts]
+        else:
+            bad = set(self.stuck.keys())
+            for i in (others or []):
+                if i.get("part"):
+                    bad.add(i["part"])
+                if i.get("pair"):
+                    bad.update(i["pair"].split("|"))
+            rows = ["%s: %s (worker tries %d)" % (p["id"], ("STUCK - " + self.stuck[p["id"]]) if p["id"] in self.stuck else "built", self.tries.get(p["id"], 0))
+                    for p in parts if p["id"] in bad or self.tries.get(p["id"], 0) > 1]
+            clean = len(parts) - len(rows)
+            if clean > 0:
+                rows.append("... and %d other parts built cleanly" % clean)
+        return "PARTS\n" + "\n".join(rows) + "\nISSUES\n" + ("\n".join(json.dumps(i) for i in others[:lim]) or "none")
 
     def review_text(self, rep):
-        bb = "\n".join("%s: lo%s hi%s mm" % (k, v[0], v[1]) for k, v in sorted(rep.get("parts_bbox_mm", {}).items()))
+        parts = self.plan.get("parts", []) if self.plan else []
+        bb_map = rep.get("parts_bbox_mm", {})
         jt = "\n".join("%s: parent=%s children=%s origin=%s axis=%s span_rad=%s" % (j["name"], j.get("parent"), j["children"], j["origin_mm"], j["axis"], j["span_rad"])
                        for j in self.plan.get("joints", []))
-        return "ALL CHECKS PASSED. FINAL REVIEW against the TASK text.\nBOUNDING BOXES at rest\n" + bb + "\nJOINTS\n" + jt + "\nReply done, or fix what differs from the TASK."
+        if len(parts) <= 35:
+            bb = "\n".join("%s: lo%s hi%s mm" % (k, v[0], v[1]) for k, v in sorted(bb_map.items()))
+            return "ALL CHECKS PASSED. FINAL REVIEW against the TASK text.\nBOUNDING BOXES at rest\n" + bb + "\nJOINTS\n" + jt + "\nReply done, or fix what differs from the TASK."
+        joint_pids = set()
+        for j in self.plan.get("joints", []):
+            if j.get("parent"):
+                joint_pids.add(j["parent"])
+            joint_pids.update(j.get("children") or [])
+            joint_pids.update(j.get("coaxial") or [])
+        inv, notable, matched = [], [], 0
+        for p in parts:
+            pid = p["id"]
+            if pid not in bb_map:
+                notable.append("%s: MISSING" % pid)
+                continue
+            lo, hi = bb_map[pid]
+            ctr = [(a + b) / 2.0 for a, b in zip(lo, hi)]
+            sz = [b - a for a, b in zip(lo, hi)]
+            inv.append("%s(%dx%dx%d)" % (pid, round(sz[0]), round(sz[1]), round(sz[2])))
+            ec, es = p.get("center_mm"), p.get("size_mm")
+            drift = (not isinstance(ec, list) or len(ec) != 3 or not isinstance(es, list) or len(es) != 3 or
+                     any(abs(ctr[q] - ec[q]) > 3.0 or abs(sz[q] - es[q]) > 3.0 for q in range(3)))
+            if pid in joint_pids or p.get("free") or drift:
+                notable.append("%s: lo%s hi%s mm" % (pid, lo, hi))
+            else:
+                matched += 1
+        bb_txt = "\n".join(notable) + ("\n... (%d static parts match planned center_mm/size_mm within 3 mm)" % matched if matched else "")
+        return ("ALL CHECKS PASSED. FINAL REVIEW against the TASK text.\nPART INVENTORY (%d parts)\n%s\nBOUNDING BOXES at rest (joints, free, or >3 mm off plan)\n%s\nJOINTS\n%s\nReply done, or fix what differs from the TASK."
+                % (len(parts), ", ".join(inv), bb_txt, jt))
 
     def describe(self):
         lines = ["%s: %s" % (p["id"], p["spec"]) for p in self.plan["parts"]]
         for j in self.plan.get("joints", []):
             lines.append("khớp %s: %s -> %s, trục %s, tâm %s mm, góc %.3f rad" % (j["name"], j.get("parent") or "(nền)", "+".join(j["children"]), j["axis"], j["origin_mm"], float(j["span_rad"])))
         return "\n".join(lines)
+
+
+def _log_director(workdir, entry):
+    try:
+        os.makedirs(workdir, exist_ok=True)
+        with open(os.path.join(workdir, "director_log.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def _usage_totals(sc):
@@ -684,7 +1105,9 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
         ev("phase", what="plan", mode="director")
         msg = "TASK: " + request + ("\n%d picture(s) are attached: study them and write what you see (shapes, proportions, style) into the part specs, because the worker cannot see them." % len(sc.images) if sc.images else "") + "\nStart with the plan action."
     task = request
-    calls, reviewed, done_fixes, ok, stopped, why = 0, 0, 0, False, False, ""
+    calls, reviewed, extra_review_budget, done_fixes, ok, stopped, why = 0, 0, 0, 0, False, False, ""
+    default_cap = (max_director == 10)
+    eff_max = max(max_director, scale_policy(len(plan["parts"]))["min_director"]) if (plan and default_cap) else max_director
     cache_file, cached, plan_saved = None, None, False
     if plan_cache and not inner_ready and not images and os.environ.get("BX_PLANCACHE", "1") != "0":          # an identical request (and setup) reuses its plan: no director call
         import hashlib
@@ -699,27 +1122,42 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
             cached = None
     rep = {}
     try:
-        while calls < max_director:
+        while calls < eff_max:
+            t_call = time.time()
             if cached is not None and calls == 0:
                 txt = json.dumps(cached)
                 ev("phase", what="plan", mode="cache")
             else:
                 txt = sc.ask_director(msg)
+            dt_call = round(time.time() - t_call, 1)
             calls += 1
+            last_u = sc.usage["director"][-1] if sc.usage["director"] else {}
             act = jparse(txt)
             if not act:
-                msg = "TASK: " + task + "\nYour reply was not one JSON object. Reply with one JSON object."
+                _log_director(workdir, {"call": calls, "sec": dt_call, "action": None, "errs": ["jparse_failed"], "len": len(txt or ""), "head": (txt or "")[:300], "tail": (txt or "")[-300:], "usage": last_u})
+                if len(txt or "") > 4000 and not (txt or "").rstrip().endswith("}"):
+                    msg = ("TASK: " + task + "\nYour reply (%d chars) appears cut off before the closing '}' — keep internal thinking brief, omit \"ops\" on plain parts so the worker builds them, "
+                           "use \"mirror_of\" for symmetric L/R pairs, and output ONE compact JSON object." % len(txt or ""))
+                else:
+                    msg = "TASK: " + task + "\nYour reply was not one JSON object. Reply with one JSON object."
                 continue
             a = act.get("action")
             if a == "plan":
                 act, xerrs = expand_plan(act)
                 errs = xerrs or validate_plan(act)
                 if errs:
-                    msg = "TASK: " + task + "\nPLAN REJECTED by static checks:\n- " + "\n- ".join(errs) + "\nSend a corrected plan."
+                    _log_director(workdir, {"call": calls, "sec": dt_call, "action": "plan", "errs": errs[:15], "len": len(txt or ""), "usage": last_u})
+                    prev_j = ("\nYOUR PREVIOUS JSON (fix ONLY the errors listed above and reply with the corrected JSON object; do not redesign from scratch):\n" + (txt or "")[:90000]) if len(txt or "") > 200 else ""
+                    msg = "TASK: " + task + "\nPLAN REJECTED by static checks:\n- " + "\n- ".join(errs) + prev_j + "\nSend a corrected plan."
                     continue
+                _log_director(workdir, {"call": calls, "sec": dt_call, "action": "plan", "errs": [], "parts": len(act.get("parts") or []), "len": len(txt or ""), "usage": last_u})
                 sc.set_plan(act)
                 sc.pick_skills(act)
                 plan = act
+                if reviewed >= 1:
+                    extra_review_budget = 1
+                if default_cap:
+                    eff_max = max(eff_max, scale_policy(len(plan["parts"]))["min_director"])
                 if cache_file and cached is None and not plan_saved:
                     plan_saved = True
                     try:
@@ -735,16 +1173,24 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 newp, xerrs = expand_plan(newp)
                 errs = perrs + xerrs + validate_plan(newp)
                 if errs:
-                    msg = "TASK: " + task + "\nPATCH REJECTED by static checks (nothing was changed):\n- " + "\n- ".join(errs) + "\nSend a corrected patch_plan."
+                    _log_director(workdir, {"call": calls, "sec": dt_call, "action": "patch_plan", "errs": errs[:15], "len": len(txt or ""), "usage": last_u})
+                    prev_j = ("\nYOUR PREVIOUS JSON (fix ONLY the errors listed above and reply with the corrected JSON object; do not redesign from scratch):\n" + (txt or "")[:60000]) if len(txt or "") > 200 else ""
+                    msg = "TASK: " + task + "\nPATCH REJECTED by static checks (nothing was changed):\n- " + "\n- ".join(errs) + prev_j + "\nSend a corrected patch_plan."
                     continue
+                _log_director(workdir, {"call": calls, "sec": dt_call, "action": "patch_plan", "errs": [], "parts": len(newp.get("parts") or []), "len": len(txt or ""), "usage": last_u})
                 sc.set_plan(newp)
                 plan = newp
+                if reviewed >= 1 and (act.get("add_parts") or act.get("remove_parts")):
+                    extra_review_budget = 1
+                if default_cap:
+                    eff_max = max(eff_max, scale_policy(len(plan["parts"]))["min_director"])
                 for pid, note in (act.get("notes") or {}).items():
                     if pid in {p["id"] for p in plan["parts"]}:
                         sc.notes[pid] = str(note); sc.stuck.pop(pid, None); sc.sigs[pid] = []; sc.tries[pid] = 0; sc.err[pid] = "the director asked for a rewrite"
                 ev("plan", mode="Blender", ok=True, describe=sc.describe(), milestones=len(plan["parts"]), pitfalls=[], note="patch")
                 ev("phase", what="parts")
             elif a == "write_part" and plan and act.get("id") in {p["id"] for p in plan["parts"]}:
+                _log_director(workdir, {"call": calls, "sec": dt_call, "action": "write_part", "errs": [], "id": act["id"], "len": len(txt or ""), "usage": last_u})
                 pid = act["id"]
                 sc.notes[pid] = act.get("note", "")
                 sc.stuck.pop(pid, None)
@@ -752,6 +1198,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 sc.tries[pid] = 0
                 sc.err[pid] = "the director asked for a rewrite"
             elif a == "patch_part" and plan and act.get("id") in {p["id"] for p in plan["parts"]}:
+                _log_director(workdir, {"call": calls, "sec": dt_call, "action": "patch_part", "errs": [], "id": act["id"], "len": len(txt or ""), "usage": last_u})
                 pid = act["id"]
                 with open(sc.pf(pid), "w", encoding="utf-8") as f:
                     f.write(code_of(act.get("code", "")))
@@ -760,9 +1207,11 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 sc.tries[pid] = 1
                 sc.err.pop(pid, None)
             elif a == "done" and plan is None:
+                _log_director(workdir, {"call": calls, "sec": dt_call, "action": "done", "errs": ["no_plan_yet"], "len": len(txt or ""), "usage": last_u})
                 msg = "TASK: " + task + "\nNo plan yet. Send the plan action."
                 continue
             elif a == "done":
+                _log_director(workdir, {"call": calls, "sec": dt_call, "action": "done", "errs": [], "len": len(txt or ""), "usage": last_u})
                 rep = sc.build()
                 fixable = rep.get("part_errors") or rep.get("missing") or any(i.get("part") and i.get("kind") in PART_ISSUES for i in rep.get("issues", []))
                 if fixable and done_fixes < 2:                # "done" is not accepted while a part still fails to build: the worker gets another go
@@ -771,15 +1220,16 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                     ok = bool(rep.get("ok"))
                     break
             else:
+                _log_director(workdir, {"call": calls, "sec": dt_call, "action": a, "errs": ["unknown_or_no_plan"], "len": len(txt or ""), "usage": last_u})
                 msg = "TASK: " + task + "\nUnknown action or no plan. Reply with a valid action."
                 continue
             rep, others = sc.work()
             if sc.stuck or others:
-                msg = "TASK: " + task + "\nPLAN: " + json.dumps(plan_view(plan)) + "\nWORKER REPORT (the worker could not resolve these)\n" + sc.worker_report(others)
-            elif reviewed < MAX_REVIEWS:
+                msg = "TASK: " + task + "\nPLAN: " + json.dumps(plan_delta_view(plan, rep, sc.stuck, others)) + "\nWORKER REPORT (the worker could not resolve these)\n" + sc.worker_report(others)
+            elif reviewed < MAX_REVIEWS + extra_review_budget:
                 reviewed += 1
                 ev("phase", what="review")
-                msg = "TASK: " + task + "\nPLAN: " + json.dumps(plan_view(plan)) + "\n" + sc.review_text(rep)
+                msg = "TASK: " + task + "\nPLAN: " + json.dumps(review_plan_view(plan)) + "\n" + sc.review_text(rep)
                 views = sc.render_views() if review_images else []
                 if views:                                         # one look at the result: iso, side, top at rest, and iso at the end of the motion
                     sc.images = views
@@ -789,7 +1239,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 ok = bool(rep.get("ok"))
                 break
         else:
-            why = "đã dùng hết %d lượt hỏi cố vấn mà chưa xong" % max_director
+            why = "đã dùng hết %d lượt hỏi cố vấn mà chưa xong" % eff_max
     except Stopped:
         stopped = True
     sec = round(time.time() - t0, 1)

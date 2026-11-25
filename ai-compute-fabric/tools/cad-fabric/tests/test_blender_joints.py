@@ -83,5 +83,21 @@ class Floating(unittest.TestCase):
         self.assertEqual([i["part"] for i in d["issues"] if i["kind"] == "floating_part"], [])
 
 
+@unittest.skipUnless(BL and os.path.isfile(BL), "Blender not installed")
+class StaticMovingCollision(unittest.TestCase):
+    def test_static_and_moving_collisions_emit_overlap_mm(self):
+        parts = {
+            "s1": '{"op":"box","center":[0,0,50],"size":[100,100,100]}',
+            "s2": '{"op":"box","center":[80,0,50],"size":[100,100,100]}',
+            "m1": '{"op":"box","center":[500,0,50],"size":[60,60,60]}',
+        }
+        j = [{"name": "j1", "parent": None, "children": ["m1"], "origin_mm": [500, 0, 50], "axis": [0, 0, 1], "span_rad": 1.0}]
+        rep = run(parts, j)
+        cols = [i for i in rep["issues"] if i["kind"] == "collision"]
+        self.assertEqual(len(cols), 1)
+        self.assertEqual(cols[0]["pair"], "s1|s2")
+        self.assertIn("overlap_mm", cols[0])
+
+
 if __name__ == "__main__":
     unittest.main()

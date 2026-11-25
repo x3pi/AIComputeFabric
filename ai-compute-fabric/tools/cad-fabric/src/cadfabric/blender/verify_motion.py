@@ -134,12 +134,82 @@ def verify(frames, tol_mm=TOL_MM, extra_allowed=()):
     for n, (dip, f) in worst.items():
         issues.append(dict(kind="ground_penetration", part=n, frame=f, depth_mm=round(dip, 1),
                            hint="the declared motion pushes a part that rests on the ground %.0f mm below it; check which joint moves it (a suspension must move the frame, not sink the wheel) or reduce its span" % dip))
-    names = list(meshes); hits = {}
-    for f in frames:
-        bpy.context.scene.frame_set(f); T = {n: _tree(meshes[n]) for n in names}
-        for i, a in enumerate(names):
-            for b in names[i + 1:]:
-                if frozenset((a, b)) in allowed: continue
-                if T[a].overlap(T[b]): hits.setdefault(f"{a}|{b}", []).append(f)
-    for k, fl in hits.items(): issues.append(dict(kind="collision", pair=k, frames=fl))
+    joint_objs = set(joints())
+    moving = set()
+    for n, o in meshes.items():
+        cur = o.parent
+        while cur is not None:
+            if cur in joint_objs:
+                moving.add(n)
+                break
+            cur = cur.parent
+    static = set(meshes) - moving
+
+    def _aabb(P):
+        return (P.min(0), P.max(0)) if len(P) else None
+
+    def _aabb_hit(ba, bb):
+        return ba is not None and bb is not None and all(ba[1][q] >= bb[0][q] - 1e-6 and bb[1][q] >= ba[0][q] - 1e-6 for q in range(3))
+
+    def _ov(Pa, Pb):
+        if len(Pa) and len(Pb):
+            la, ha = Pa.min(0) * 1000, Pa.max(0) * 1000
+            lb, hb = Pb.min(0) * 1000, Pb.max(0) * 1000
+            return [[round(float(max(la[q], lb[q])), 1) for q in range(3)],
+                    [round(float(min(ha[q], hb[q])), 1) for q in range(3)]]
+        return None
+
+    bpy.context.scene.frame_set(frames[0])
+    T_static = {n: _tree(meshes[n]) for n in static}
+    B_static = {n: _aabb(rest[n]) for n in static}
+    static_list = sorted(static)
+    names = sorted(meshes)
+    hits = {}; ov = {}
+    for i, a in enumerate(static_list):
+        for b in static_list[i + 1:]:
+            if frozenset((a, b)) in allowed:
+                continue
+            if _aabb_hit(B_static[a], B_static[b]) and T_static[a].overlap(T_static[b]):
+                k = f"{a}|{b}" if a < b else f"{b}|{a}"
+                hits.setdefault(k, []).append(frames[0])
+                if k not in ov:
+                    box = _ov(rest[a], rest[b])
+                    if box:
+                        ov[k] = box
+
+    if moving:
+        if len(meshes) > 60 and len(frames) > 20:
+            idxs = sorted({0, len(frames) - 1} | {round(k * (len(frames) - 1) / 16) for k in range(17)})
+            c_frames = [frames[k] for k in idxs]
+        else:
+            c_frames = list(frames)
+        for f in c_frames:
+            bpy.context.scene.frame_set(f)
+            T_mov = {n: _tree(meshes[n]) for n in moving}
+            P_mov = {n: _eval(meshes[n]) for n in moving}
+            B_mov = {n: _aabb(P_mov[n]) for n in moving}
+            for i, a in enumerate(names):
+                for b in names[i + 1:]:
+                    if (a not in moving and b not in moving) or frozenset((a, b)) in allowed:
+                        continue
+                    ba = B_mov[a] if a in moving else B_static[a]
+                    bb = B_mov[b] if b in moving else B_static[b]
+                    if not _aabb_hit(ba, bb):
+                        continue
+                    ta = T_mov[a] if a in moving else T_static[a]
+                    tb = T_mov[b] if b in moving else T_static[b]
+                    if ta.overlap(tb):
+                        k = f"{a}|{b}"
+                        hits.setdefault(k, []).append(f)
+                        if k not in ov:
+                            Pa = P_mov[a] if a in moving else rest[a]
+                            Pb = P_mov[b] if b in moving else rest[b]
+                            box = _ov(Pa, Pb)
+                            if box:
+                                ov[k] = box
+    for k, fl in hits.items():
+        d = dict(kind="collision", pair=k, frames=fl)
+        if k in ov:
+            d["overlap_mm"] = ov[k]
+        issues.append(d)
     return dict(ok=not issues, issues=issues)

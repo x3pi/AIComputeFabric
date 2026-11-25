@@ -6,8 +6,8 @@ An advisor flagged `external` sends the request text to a third party, so the UI
 import base64, json, os, re, shlex, shutil, subprocess, tempfile, time, urllib.error, urllib.parse, urllib.request
 from .cq_backend import NOWIN
 
-BUILTIN = ("off", "nothink", "think", "codex", "codex-relay")
-BUILTIN_LABELS = {"off": "Không cố vấn", "nothink": "Qwen lập kế hoạch (nhanh)", "think": "Qwen suy nghĩ sâu (chậm)", "codex": "Codex trên máy này", "codex-relay": "Codex trên máy khác (ssh)"}
+BUILTIN = ("off", "qwen", "nothink", "think", "codex", "codex-relay")
+BUILTIN_LABELS = {"off": "Không cố vấn", "qwen": "Qwen API (gateway mặc định)", "nothink": "Qwen lập kế hoạch (nhanh)", "think": "Qwen suy nghĩ sâu (chậm)", "codex": "Codex trên máy này", "codex-relay": "Codex trên máy khác (ssh)"}
 BUILTIN_EXTERNAL = ("codex", "codex-relay")
 
 # model_flag / effort_flag: how the CLI takes a model and a reasoning effort (checked against `codex exec --help` and `claude --help`).
@@ -85,6 +85,8 @@ def validate(a):
         if len(model) > 120 or re.search(r"[\s\"'<>]", model) or (kind == "anthropic" and not model):
             return None, "model name is not valid (the Anthropic API needs one)"
         out.update(kind=kind, url=url, model=model, key_file=a.get("key_file") or None)
+        if kind == "openai" and a.get("think"):
+            out["think"] = True
         out["external"] = bool(a["external"]) if "external" in a else not is_private_host(url)
     elif out["type"] == "cli":
         preset = a.get("preset") or "custom"
@@ -118,8 +120,8 @@ def validate(a):
 
 
 def validate_list(lst):
-    if not isinstance(lst, list) or len(lst) > 12:
-        return None, "advisors must be a list of at most 12"
+    if not isinstance(lst, list) or len(lst) > 24:
+        return None, "advisors must be a list of at most 24"
     out, seen = [], set()
     for a in lst:
         c, err = validate(a)
@@ -142,6 +144,11 @@ def names(cfg):
     return list(BUILTIN) + [a["id"] for a in (cfg.get("advisors") or [])]
 
 
+def worker_names(cfg):
+    """Any model in the unified pool (default Qwen API gateway, custom API/CLI models, Codex CLI) can act as the worker."""
+    return ["qwen", "nothink", "think", "codex"] + [a["id"] for a in (cfg.get("advisors") or [])]
+
+
 def is_external(cfg, aid):
     a = find(cfg, aid)
     return aid in BUILTIN_EXTERNAL if a is None else bool(a.get("external"))
@@ -152,9 +159,27 @@ def meta(cfg):
     out = [{"id": b, "label": BUILTIN_LABELS[b], "external": b in BUILTIN_EXTERNAL, "builtin": True} for b in BUILTIN]
     for a in cfg.get("advisors") or []:
         d = {"id": a["id"], "label": a["label"], "external": bool(a.get("external")), "builtin": False, "type": a["type"]}
-        d.update({k: a[k] for k in ("kind", "url", "model", "effort", "preset", "command", "web") if a.get(k)})
+        d.update({k: a[k] for k in ("kind", "url", "model", "effort", "preset", "command", "web", "think") if a.get(k)})
         d["has_key"] = bool(a.get("key_file") and os.path.isfile(os.path.expanduser(a["key_file"])))
         out.append(d)
+    return out
+
+
+def models_meta(cfg):
+    """Unified model pool displayed in Settings and role pickers (Cố vấn / Thực thi)."""
+    gw_model = (cfg or {}).get("model") or ""
+    gw_url = (cfg or {}).get("url") or ""
+    out = [
+        {"id": "qwen", "label": ("Qwen API (" + gw_model + ")") if gw_model else "Qwen API (gateway mặc định)",
+         "external": False, "builtin": True, "gateway": True, "type": "api", "kind": "openai", "url": gw_url, "model": gw_model},
+        {"id": "think", "label": "Qwen API (suy nghĩ sâu)",
+         "external": False, "builtin": True, "gateway": True, "type": "api", "kind": "openai", "url": gw_url, "model": gw_model, "think": True},
+    ]
+    for a in meta(cfg):
+        if not a.get("builtin"):
+            out.append(a)
+    out.append({"id": "codex", "label": BUILTIN_LABELS["codex"], "external": True, "builtin": True, "type": "cli", "preset": "codex"})
+    out.append({"id": "codex-relay", "label": BUILTIN_LABELS["codex-relay"], "external": True, "builtin": True, "planner_only": True})
     return out
 
 
@@ -180,13 +205,27 @@ def ask(a, prompt, cfg=None, timeout=300, key=None, raw=False, skills=False):
 
 
 def can_see_images(a):
-    """Only the Claude Code CLI advisor takes images here (stream-json input)."""
-    return bool(a) and a.get("type") == "cli" and a.get("preset") == "claude"
+    """Claude Code CLI and Anthropic Messages API advisors accept image blocks."""
+    return bool(a) and ((a.get("type") == "cli" and a.get("preset") == "claude") or (a.get("type") == "api" and a.get("kind") == "anthropic"))
 
 
-def ask_metered(a, prompt, cfg=None, timeout=600, system=None, images=None):
-    """Like ask(raw=True) but also returns token usage. -> (text, error, usage). The Claude Code CLI reports real usage and cost
-    (--output-format json, and --system-prompt replaces its large default prompt); any other advisor gets an ESTIMATE (characters / 4, estimated=True)."""
+def clip_prompt(prompt, limit):
+    """Preserve head (TASK) and tail (ISSUES/WORKER REPORT/instructions) when a prompt exceeds `limit` chars."""
+    if len(prompt) <= limit:
+        return prompt
+    head = max(200, int(limit * 0.35))
+    tail = max(200, limit - head - 80)
+    if head + tail >= len(prompt):
+        return prompt
+    omitted = len(prompt) - head - tail
+    return prompt[:head] + ("\n...[middle truncated (%d chars) to fit advisor limit]...\n" % omitted) + prompt[-tail:]
+
+
+def ask_metered(a, prompt, cfg=None, timeout=600, system=None, images=None, max_tokens=None, temperature=0.2):
+    """Like ask(raw=True) but also returns token usage. -> (text, error, usage). Claude CLI & API models return real token counts when available."""
+    cli_lim = int(os.environ.get("CADFABRIC_CLI_CHARS", "180000"))
+    if a.get("type") == "api":
+        return _ask_api_metered(a, prompt, timeout, _read_key(a), system=system, max_tokens=max_tokens, temperature=temperature, images=images)
     if a.get("type") == "cli" and a.get("preset") == "claude":
         try:
             with tempfile.TemporaryDirectory(prefix="cadfabric-adv-") as wd:
@@ -197,7 +236,8 @@ def ask_metered(a, prompt, cfg=None, timeout=600, system=None, images=None):
                     argv += ["--output-format", "json"]
                 if system:
                     argv += ["--system-prompt", system]
-                stdin = prompt[:60000]
+                clipped = clip_prompt(prompt, cli_lim)
+                stdin = clipped
                 if images and (os.name == "nt" or os.environ.get("CADFABRIC_IMAGES_AS_FILES")):
                     # the CLI exits silently on Windows when given base64 image blocks: save them in the throw-away folder and let the model read them with the Read tool only
                     paths = []
@@ -208,13 +248,13 @@ def ask_metered(a, prompt, cfg=None, timeout=600, system=None, images=None):
                         paths.append(pth)
                     i = argv.index("--tools"); argv[i:i + 2] = ["--tools", "Read", "--allowedTools", "Read"]
                     argv += ["--add-dir", wd]
-                    stdin = "Look at these picture files with the Read tool first: " + ", ".join(paths) + "\n\n" + prompt[:60000]
+                    stdin = "Look at these picture files with the Read tool first: " + ", ".join(paths) + "\n\n" + clipped
                     images = None
                 if images:                                                       # images go in as base64 content blocks over stream-json
                     argv[argv.index("--output-format") + 1] = "stream-json"
                     argv += ["--input-format", "stream-json", "--verbose"]
                     blocks = [{"type": "image", "source": {"type": "base64", "media_type": im["mime"], "data": im["data"]}} for im in images]
-                    stdin = json.dumps({"type": "user", "message": {"role": "user", "content": blocks + [{"type": "text", "text": prompt[:60000]}]}}) + "\n"
+                    stdin = json.dumps({"type": "user", "message": {"role": "user", "content": blocks + [{"type": "text", "text": clipped}]}}) + "\n"
                 try:
                     r = subprocess.run(argv, input=stdin, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=wd, **NOWIN)
                 except subprocess.TimeoutExpired:
@@ -233,7 +273,8 @@ def ask_metered(a, prompt, cfg=None, timeout=600, system=None, images=None):
             u = d.get("usage") or {}
             text = (d.get("result") or "").strip()
             if r.returncode != 0 or d.get("is_error") or not text:
-                return "", "exit %d: %s" % (r.returncode, (text or (r.stderr or "").strip().splitlines()[-1:] or ["no output"])[0] if isinstance(text, str) else "no output")[:200], {}
+                err_msg = text or ((r.stderr or "").strip().splitlines() or ["no output"])[-1]
+                return "", "exit %d: %s" % (r.returncode, str(err_msg)[:200]), {}
             return text, "", {"input": u.get("input_tokens", 0), "cache_read": u.get("cache_read_input_tokens", 0), "cache_write": u.get("cache_creation_input_tokens", 0),
                               "output": u.get("output_tokens", 0), "usd": d.get("total_cost_usd", 0) or 0, "estimated": False}
         except Exception as e:                                                   # noqa: BLE001 - an advisor must never crash the agent
@@ -243,32 +284,79 @@ def ask_metered(a, prompt, cfg=None, timeout=600, system=None, images=None):
     return text, err, est
 
 
+def chat_model(cfg, model_id, llm, system, user, timeout=900, max_tokens=4000, temperature=0.2, images=None):
+    """Run any model from the unified pool (default Qwen gateway, custom API/CLI, Codex CLI) -> (text, usage)."""
+    if model_id in ("off", "qwen", "nothink", "think", "", None):
+        m = llm.chat([{"role": "system", "content": system}, {"role": "user", "content": user}],
+                     think=(model_id == "think"), max_tokens=max_tokens, temperature=temperature)
+        u = m.get("_usage") or {}
+        return m.get("content") or "", {"input": u.get("prompt_tokens", 0), "output": u.get("completion_tokens", 0),
+                                        "cache_read": 0, "cache_write": 0, "usd": 0, "estimated": False}
+    adv = {"id": "codex", "type": "cli", "preset": "codex", "external": True} if model_id == "codex" else find(cfg, model_id)
+    if adv is None:
+        raise ValueError("unknown model %r" % model_id)
+    t, err, u = ask_metered(adv, user, cfg, timeout, system=system, images=images, max_tokens=max_tokens, temperature=temperature)
+    if err:
+        raise RuntimeError(err)
+    return t, u
+
+
 def _ask_api(a, prompt, timeout, key):
-    text = PREFIX + prompt[:30000]
+    t, err, _ = _ask_api_metered(a, prompt, timeout, key)
+    return t, err
+
+
+def _ask_api_metered(a, prompt, timeout, key, system=None, max_tokens=None, temperature=0.2, images=None):
+    api_lim = int(os.environ.get("CADFABRIC_API_CHARS", "120000"))
+    clipped = clip_prompt(prompt, api_lim)
+    user_text = clipped if system is not None else (PREFIX + clipped)
     hdr = {"Content-Type": "application/json", "User-Agent": "cadfabric"}
     if a["kind"] == "anthropic":
         if key:
             hdr["x-api-key"] = key
         hdr["anthropic-version"] = "2023-06-01"
-        body = {"model": a["model"], "max_tokens": 4096, "messages": [{"role": "user", "content": text}]}
+        content = ([{"type": "image", "source": {"type": "base64", "media_type": im["mime"], "data": im["data"]}} for im in (images or [])]
+                   + [{"type": "text", "text": user_text}]) if images else user_text
+        body = {"model": a["model"], "max_tokens": max_tokens or int(os.environ.get("CADFABRIC_API_MAX_TOKENS", "16384")),
+                "temperature": temperature, "messages": [{"role": "user", "content": content}]}
+        if system:
+            body["system"] = system
+        retry_codes = (429, 502, 503, 529)
     else:
         if key:
             hdr["Authorization"] = "Bearer " + key
-        body = {"messages": [{"role": "user", "content": text}], "max_tokens": 3000, "temperature": 0.2}
+        msgs = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": user_text}]
+        body = {"messages": msgs, "max_tokens": max_tokens or int(os.environ.get("CADFABRIC_OPENAI_MAX_TOKENS", "8192")), "temperature": temperature}
         if a.get("model"):
             body["model"] = a["model"]
-    try:
-        with urllib.request.urlopen(urllib.request.Request(a["url"], json.dumps(body).encode(), hdr), timeout=timeout) as r:
-            d = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        return "", "HTTP %d from %s: %s" % (e.code, urllib.parse.urlparse(a["url"]).netloc, e.read()[:160].decode("utf-8", "replace"))
-    except urllib.error.URLError as e:
-        return "", "cannot reach %s (%s)" % (a["url"], e.reason)
+        if a.get("think"):
+            body["chat_template_kwargs"] = {"enable_thinking": True}
+        retry_codes = (429, 502, 503)
+    d = None
+    for attempt in range(5):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(a["url"], json.dumps(body).encode(), hdr), timeout=timeout) as r:
+                d = json.loads(r.read())
+            break
+        except urllib.error.HTTPError as e:
+            raw_err = e.read()[:160].decode("utf-8", "replace")
+            if e.code not in retry_codes or attempt == 4:
+                return "", "HTTP %d from %s: %s" % (e.code, urllib.parse.urlparse(a["url"]).netloc, raw_err), {}
+            time.sleep(2 + 2 * attempt)
+        except urllib.error.URLError as e:
+            return "", "cannot reach %s (%s)" % (a["url"], e.reason), {}
     if a["kind"] == "anthropic":
-        out = "".join(b.get("text", "") for b in d.get("content", []) if b.get("type") == "text")
+        out = "".join(b.get("text", "") for b in (d or {}).get("content", []) if b.get("type") == "text")
+        u = (d or {}).get("usage")
+        usage = {"input": u.get("input_tokens", 0), "output": u.get("output_tokens", 0),
+                 "cache_read": u.get("cache_read_input_tokens", 0), "cache_write": u.get("cache_creation_input_tokens", 0),
+                 "usd": 0, "estimated": False} if isinstance(u, dict) else {"input": (len(user_text) + len(system or "")) // 4, "output": len(out) // 4, "cache_read": 0, "cache_write": 0, "usd": 0, "estimated": True}
     else:
-        out = ((d.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-    return (out.strip(), "") if out.strip() else ("", "the advisor returned no text")
+        out = (((d or {}).get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+        u = (d or {}).get("usage")
+        usage = {"input": u.get("prompt_tokens", 0), "output": u.get("completion_tokens", 0),
+                 "cache_read": 0, "cache_write": 0, "usd": 0, "estimated": False} if isinstance(u, dict) and ("prompt_tokens" in u or "completion_tokens" in u) else {"input": (len(user_text) + len(system or "")) // 4, "output": len(out) // 4, "cache_read": 0, "cache_write": 0, "usd": 0, "estimated": True}
+    return (out.strip(), "", usage) if out.strip() else ("", "the advisor returned no text", {})
 
 
 def cli_argv(a, cfg, cwd, skills=False):
@@ -300,7 +388,9 @@ def cli_argv(a, cfg, cwd, skills=False):
 
 
 def _ask_cli(a, prompt, cfg, timeout, raw=False, skills=False):
-    text = prompt[:30000] if raw else (WEB_PREFIX if a.get("web") else PREFIX) + prompt[:30000]
+    cli_lim = int(os.environ.get("CADFABRIC_CLI_CHARS", "180000"))
+    clipped = clip_prompt(prompt, cli_lim)
+    text = clipped if raw else (WEB_PREFIX if a.get("web") else PREFIX) + clipped
     with tempfile.TemporaryDirectory(prefix="cadfabric-adv-") as wd:
         argv, in_args = cli_argv(a, cfg, wd, skills)
         if in_args:
