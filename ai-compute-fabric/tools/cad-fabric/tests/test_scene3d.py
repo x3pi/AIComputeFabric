@@ -1500,8 +1500,8 @@ class AdaptiveScaling(Loop):
                 c.request("GET", "/static/viewer3d.js", headers={"Cookie": "cft=t17"})
                 rv = c.getresponse(); bv = rv.read().decode("utf-8")
                 self.assertEqual((rv.status, rv.getheader("Cache-Control")), (200, "no-cache"))
-                self.assertIn("THREE.DoubleSide", bv)
-                self.assertIn("playing = hasAnimation && !!opts.autoplay", bv)
+                for tok in ("THREE.DoubleSide", "playing = hasAnimation && !!opts.autoplay", "PMREMGenerator", "Math.min(rawMetal, 0.58)", "selEdgeColor", "getCameraState", "setCameraState"):
+                    self.assertIn(tok, bv)
 
                 c.request("GET", "/static/vendor/three.module.js", headers={"Cookie": "cft=t17"})
                 rt = c.getresponse(); _ = rt.read()
@@ -1510,8 +1510,22 @@ class AdaptiveScaling(Loop):
                 c.request("GET", "/", headers={"Cookie": "cft=t17"})
                 rh = c.getresponse(); bh = rh.read().decode("utf-8")
                 self.assertEqual(rh.status, 200)
-                for tok in ('id="vsplit"', 'id="hsplit"', 'id="pmax"', 'aria-pressed="false"'):
+                for tok in ('id="vsplit"', 'id="hsplit"', 'id="pmax"', 'aria-pressed="false"', 'id="psel_col"', 'psel-swatch', 'forced-color-adjust:none', 'd.scene_mtime'):
                     self.assertIn(tok, bh)
+
+                st0 = srv.sess.state(0)
+                self.assertGreater(st0["scene_mtime"], 0)
+                os.utime(glb_p, (st0["scene_mtime"] + 5.0, st0["scene_mtime"] + 5.0))
+                self.assertGreater(srv.sess.state(0)["scene_mtime"], st0["scene_mtime"])
+                with srv.sess.lock:
+                    srv.sess.busy = True
+                    ev_base = len(srv.sess.events)
+                srv.sess.busy = False
+                srv.sess._work = lambda *a, **k: None
+                srv.sess.send("@raw_p blue", "claude")
+                if srv.sess.thread:
+                    srv.sess.thread.join(timeout=2)
+                self.assertIn("claude (sửa tiếp)", srv.sess.events[ev_base]["planner"])
             finally:
                 srv.shutdown(); srv.sess.close()
         finally:

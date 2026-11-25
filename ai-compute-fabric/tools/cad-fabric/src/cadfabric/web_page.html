@@ -105,7 +105,8 @@ aside h3{margin:0;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-tra
 .psel-row{display:flex;align-items:center;gap:6px}
 .psel-s{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:7px;padding:4px 8px;font-size:12.5px}
 .psel-card{border:1px solid var(--line);background:var(--bg);border-radius:9px;padding:8px 10px;display:flex;flex-direction:column;gap:5px}.psel-card[hidden]{display:none}
-.psel-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.psel-title b{font-size:13px;font-family:ui-monospace,Consolas,monospace;color:var(--accent)}
+.psel-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}.psel-title b{font-size:13px;font-family:ui-monospace,Consolas,monospace;color:var(--accent)}
+.psel-swatch{display:inline-block;inline-size:11px;block-size:11px;border-radius:3px;border:1px solid var(--line);vertical-align:-1px;margin-inline-end:4px;forced-color-adjust:none}
 .psel-acts{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
 .psel-acts .btn{min-block-size:24px;min-inline-size:24px;padding:3px 8px;font-size:12px}
 .psel-acts .btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
@@ -193,7 +194,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
   <div id="psel" class="psel" hidden>
    <div class="psel-row"><label for="ppick" class="small mute">Chi tiết:</label><select id="ppick" class="psel-s"><option value="">— Bấm trên 3D để chọn —</option></select><button type="button" class="btn small" id="pshowall" hidden title="Hiện lại toàn bộ chi tiết">Hiện tất cả</button></div>
    <div id="psel_card" class="psel-card" hidden>
-    <div class="psel-title"><b id="psel_id"></b><span class="mute small" id="psel_dim"></span></div>
+    <div class="psel-title"><b id="psel_id"></b><span class="mute small" id="psel_col"></span><span class="mute small" id="psel_dim"></span></div>
     <div class="mute small" id="psel_spec"></div>
     <div class="psel-acts" role="group" aria-label="Thao tác chi tiết đang chọn"><button type="button" class="btn small" id="pfoc" title="Xoay tâm nhìn tới chi tiết này">🎯 Góc nhìn</button><button type="button" class="btn small" id="phide" aria-pressed="false" title="Ẩn hoặc hiện chi tiết này">Ẩn</button><button type="button" class="btn small" id="piso" aria-pressed="false" title="Chỉ hiện riêng chi tiết này">Cô lập</button><a class="btn small" id="pdlstl" href="/api/part.stl">⬇ .stl</a><button type="button" class="btn small primary" id="pedit">✏ Sửa chi tiết này</button></div>
    </div>
@@ -362,7 +363,7 @@ function hero(show){const h=$("hero");if(show&&!h){const x=el("div","hero");x.id
   if(cfgd&&!cfgd.configured){const b=el("div","banner","Chưa cấu hình URL API. ");const bt=el("button","btn small","Mở cài đặt");bt.onclick=openSettings;b.appendChild(bt);x.appendChild(b)}
   const c=el("div","chips");["Tạo hộp 80×50×30 mm, khoan lỗ xuyên Ø10 ở tâm mặt trên, báo thể tích.","Đĩa tròn Ø100 dày 10, khoan 6 lỗ Ø8 đều trên vòng tròn Ø70.","Trục bậc: đoạn Ø30 dài 40 và đoạn Ø20 dài 30 cùng trục, vát 2 mm đầu trục."].forEach(t=>{const k=el("div","chip",t);k.onclick=()=>{$("text").value=t;$("text").focus();grow()};c.appendChild(k)});x.appendChild(c);col().prepend(x)}
  else if(!show&&h)h.remove()}
-let curView="3d",lastScene=false,lastUsageKey="",preview3d=null,APP_VER="",sceneMeta={parts:[],map:{},joints:[]};
+let curView="3d",lastScene=false,lastUsageKey="",preview3d=null,lastTargetPart=null,APP_VER="",sceneMeta={parts:[],map:{},joints:[]};
 const loadViewer3d=()=>import("/static/viewer3d.js"+(APP_VER?"?v="+encodeURIComponent(APP_VER):""));
 function syncSlider(inp,pctEl,v){if(!inp)return;const val=Math.max(0,Math.min(1000,Math.round(v)));inp.value=String(val);
  inp.style.setProperty("--attr-min",inp.min||0);inp.style.setProperty("--attr-max",inp.max||1000);inp.style.setProperty("--control-value",val);
@@ -393,6 +394,8 @@ function renderSelectedPart(id){
  if(card)card.hidden=false;
  const meta=sceneMeta.map[id]||{},dim=meta.size_mm&&meta.size_mm.length===3?meta.size_mm:h.getPartBoxMm(id);
  if($("psel_id"))$("psel_id").textContent=id;
+ const colEl=$("psel_col");
+ if(colEl){colEl.replaceChildren();if(meta.color&&/^#[0-9a-fA-F]{6}$/.test(meta.color)){const sw=document.createElement("span");sw.className="psel-swatch";sw.style.backgroundColor=meta.color;colEl.appendChild(sw);colEl.appendChild(document.createTextNode(meta.color.toUpperCase()+(meta.finish?" · "+meta.finish:"")))}}
  if($("psel_dim"))$("psel_dim").textContent=dim&&dim.length===3?dim.map(v=>Math.round(v*10)/10).join(" × ")+" mm":"";
  const info=[];if(meta.spec)info.push(meta.spec);if(meta.joint)info.push("Khớp "+meta.joint);
  if($("psel_spec"))$("psel_spec").textContent=info.join(" · ");
@@ -415,13 +418,16 @@ function showSceneView(view){disposePreview3d();curView=view||"iso";const pv=$("
  im.src="/api/scene_view?view="+encodeURIComponent(curView)+"&_="+Date.now();
  $("preview").replaceChildren(im)}
 async function showScene3D(){curView="3d";const pv=$("pviews");if(pv)[...pv.children].forEach(b=>b.classList.toggle("on",b.dataset.view==="3d"));
+ const prevCam=preview3d&&preview3d.getCameraState?preview3d.getCameraState():null;
+ const focusTarget=lastTargetPart;
+ const prevSel=focusTarget||(preview3d?preview3d.selected:null);
  disposePreview3d();const box=$("preview");box.textContent="Đang tải mô hình 3D…";
  try{const [r,rm]=await Promise.all([fetch("/api/scene.glb?_="+Date.now()),api("/api/scene_meta?_="+Date.now())]);if(!r.ok)throw new Error("no glb");
   const buf=await r.arrayBuffer();if(curView!=="3d")return;
   const m=await loadViewer3d();if(curView!=="3d")return;
   sceneMeta={parts:(rm.ok&&rm.d.parts)||[],map:{},joints:(rm.ok&&rm.d.joints)||[]};
   for(const p of sceneMeta.parts)sceneMeta.map[p.id]=p;
-  const labels={};for(const p of sceneMeta.parts){const dm=p.size_mm;labels[p.id]=p.id+(dm&&dm.length===3?" ("+dm.map(x=>Math.round(x)).join("×")+" mm)":"")}
+  const labels={};for(const p of sceneMeta.parts){const dm=p.size_mm;labels[p.id]=p.id+(dm&&dm.length===3?" ("+dm.map(x=>Math.round(x)).join("×")+" mm)":"")+(p.color?" "+p.color.toUpperCase():"")}
   box.classList.add("is3d");
   const h=await m.showGlb(box,buf,{onTick:p=>{if(!preview3d||!preview3d.playing)return;syncSlider($("prange"),$("ppct"),p*1000)},onSelect:id=>renderSelectedPart(id),onHover:id=>{const ph=$("phint");if(ph)ph.textContent=id?"Trỏ: "+id+" — bấm chọn":(preview3d&&preview3d.selected?"Đang chọn: "+preview3d.selected+" · Bấm lại nếu bị che":"Kéo xoay · Bấm chọn chi tiết")},partLabels:labels});
   if(curView!=="3d"){h.dispose();return}
@@ -431,7 +437,10 @@ async function showScene3D(){curView="3d";const pv=$("pviews");if(pv)[...pv.chil
    for(const pid of ordered){const o=document.createElement("option");o.value=pid;const dm=sceneMeta.map[pid]&&sceneMeta.map[pid].size_mm;o.textContent=pid+(dm&&dm.length===3?" ("+dm.map(x=>Math.round(x)).join("×")+")":"");pk.appendChild(o)}}
   bind3dControls(h,$("panim"),$("pplay"),$("prange"),$("ppct"),$("prst"));
   bindExplodeControl(h,$("pexpw"),$("pexp"),$("pexpp"));
-  renderSelectedPart(null)}
+  if(prevCam)h.setCameraState(prevCam);
+  if(prevSel&&(h.partIds||[]).includes(prevSel)){h.selectPart(prevSel)}else{renderSelectedPart(null)}
+  if(focusTarget&&(h.partIds||[]).includes(focusTarget)){h.focusPart(focusTarget);lastTargetPart=null}
+ }
  catch(e){disposePreview3d();showSceneView("iso")}}
 async function exportSceneVideo(){disposePreview3d();const vb=$("vidbtn");if(vb){vb.disabled=true;vb.textContent="Đang xuất MP4…"}
  const r=await api("/api/scene_video",{});if(vb){vb.disabled=false;vb.textContent="🎬 Xuất MP4"}
@@ -484,11 +493,11 @@ async function poll(){if(polling)return;polling=true;try{await poll1()}finally{p
 async function poll1(){const mine=since;const {ok,d}=await api("/api/state?since="+since);if(!ok||mine!==since)return;
  d.events.forEach(render);since=d.next;if(d.busy!==busy)setBusy(d.busy);if(!col().children.length||(col().children.length===1&&workEl))hero(true);
  $("hint").textContent=d.follow_up?"Tin nhắn tiếp theo sẽ chỉnh sửa chi tiết này (phần chỉnh sửa không có kế hoạch kiểm tra riêng).":"Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /open mở trong CAD · /stop dừng";
- const key=d.measure?d.measure.volume+"|"+d.measure.faces:null;const svKey=d.usage&&d.usage.savings?d.usage.savings.saved_tok_pct+"|"+d.usage.director.calls:"";
+ const key=d.measure?d.measure.volume+"|"+d.measure.faces+"|"+(d.scene_mtime||0):null;const svKey=d.usage&&d.usage.savings?d.usage.savings.saved_tok_pct+"|"+d.usage.director.calls:"";
  if(key!==lastVol||!!d.is_scene!==lastScene||svKey!==lastUsageKey){lastVol=key;lastScene=!!d.is_scene;lastUsageKey=svKey;showPart(d.measure,!!d.is_scene,d.usage)}}
 let autoSend=false;let lastAsk="",autoN=0,userStopped=false,live=false;const CONT_TEXT="Tiếp tục: hoàn thành các tính năng còn thiếu. Đừng lặp lại cách đã thất bại, thử cách khác.";
-async function redo(text,planner,send){if(busy)return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;lastScene=false;lastUsageKey="";curView="3d";disposePreview3d();hero(true);poll();$("text").value=text;grow();if(planner){$("planner").value=planner;chip()}$("text").focus();if(send)submit()}
-async function newPart(){if(busy)return;if(lastVol&&!confirm("Bắt đầu chi tiết mới? Chi tiết hiện tại sẽ bị xóa khỏi phiên."))return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;lastScene=false;lastUsageKey="";curView="3d";disposePreview3d();hero(true);poll()}
+async function redo(text,planner,send){if(busy)return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;lastScene=false;lastUsageKey="";lastTargetPart=null;curView="3d";disposePreview3d();hero(true);poll();$("text").value=text;grow();if(planner){$("planner").value=planner;chip()}$("text").focus();if(send)submit()}
+async function newPart(){if(busy)return;if(lastVol&&!confirm("Bắt đầu chi tiết mới? Chi tiết hiện tại sẽ bị xóa khỏi phiên."))return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;lastScene=false;lastUsageKey="";lastTargetPart=null;curView="3d";disposePreview3d();hero(true);poll()}
 async function submit(){if(sending)return;sending=true;try{await submit1()}finally{sending=false}}
 async function submit1(){const text=$("text").value.trim();if(!text)return;
  if(text==="/new"){$("text").value="";grow();return newPart()}if(text==="/stop"){$("text").value="";grow();return api("/api/stop",{})}
@@ -508,7 +517,7 @@ async function submit1(){const text=$("text").value.trim();if(!text)return;
  if(needExt.length){if(!confirm("Model '"+needExt.join(", ")+"' gửi nội dung yêu cầu ra dịch vụ bên ngoài. Tiếp tục? (chỉ hỏi một lần cho model này)"))return;needExt.forEach(v=>okExt.add(v))}
  if((att.length||ups.length||imgs.length)&&(ext.includes(planner)||ext.includes(worker))&&!confirm("Nội dung của "+(att.length+ups.length+imgs.length)+" tệp đính kèm ("+att.concat(ups.map(u=>u.name),imgs.map(u=>u.name)).join(", ")+") cũng sẽ được gửi cho model bên ngoài. Gửi?"))return;
  if(ext.includes(planner)||ext.includes(worker))body.confirm_external=true;
- const r=await api("/api/send",body);if(r.ok){live=true;userStopped=false;if(!autoSend)autoN=0;autoSend=false;$("text").value="";grow();att=[];ups=[];imgs=[];drawAtt()}else put(el("div","err","Không gửi được: "+(r.d.error||r.status)));poll()}
+ const r=await api("/api/send",body);if(r.ok){const mt=text.match(/(?:^|\s)@([A-Za-z_][A-Za-z0-9_]*)\b/);lastTargetPart=mt?mt[1]:null;live=true;userStopped=false;if(!autoSend)autoN=0;autoSend=false;$("text").value="";grow();att=[];ups=[];imgs=[];drawAtt()}else put(el("div","err","Không gửi được: "+(r.d.error||r.status)));poll()}
 function grow(){const t=$("text");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,200)+"px"}
 $("text").oninput=grow;$("text").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing&&!e.repeat){e.preventDefault();submit()}};
 $("send").onclick=submit;$("stop").onclick=()=>{userStopped=true;api("/api/stop",{})};try{$("autocont").checked=localStorage.getItem("cf_autocont")==="1"}catch(e){}$("autocont").onchange=()=>{try{localStorage.setItem("cf_autocont",$("autocont").checked?"1":"0")}catch(e){}autoN=0};$("newbtn").onclick=newPart;$("partbtn").onclick=()=>$("side").classList.toggle("open");

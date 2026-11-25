@@ -91,9 +91,10 @@ export function parseGlb(buffer) {
     const pbr = m.pbrMetallicRoughness || {};
     const bcf = Array.isArray(pbr.baseColorFactor) ? pbr.baseColorFactor : [0.78, 0.80, 0.84, 1];
     const col = new THREE.Color().setRGB(bcf[0] ?? 0.78, bcf[1] ?? 0.80, bcf[2] ?? 0.84, THREE.LinearSRGBColorSpace);
+    const rawMetal = pbr.metallicFactor !== undefined ? pbr.metallicFactor : 1.0;
     const matOpts = {
       color: col,
-      metalness: pbr.metallicFactor !== undefined ? pbr.metallicFactor : 1.0,
+      metalness: Math.min(rawMetal, 0.58),
       roughness: pbr.roughnessFactor !== undefined ? pbr.roughnessFactor : 1.0,
       side: THREE.DoubleSide,
       polygonOffset: true,
@@ -385,6 +386,35 @@ export async function showStep(host, mesh) {
   };
 }
 
+function _createStudioEnv(renderer) {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envScene = new THREE.Scene();
+  envScene.background = new THREE.Color(0xdbe2ec);
+  const specs = [
+    [[3, 4, 3], [5, 5], 0xffffff],
+    [[-3, 3, -2], [5, 5], 0xeaf2ff],
+    [[0, 5, -3], [6, 6], 0xfff5e8],
+    [[0, -3, 2], [6, 6], 0xd8e0ea],
+  ];
+  const meshes = [];
+  for (const [pos, sz, hex] of specs) {
+    const geom = new THREE.PlaneGeometry(sz[0], sz[1]);
+    const mat = new THREE.MeshBasicMaterial({ color: hex, side: THREE.DoubleSide });
+    const plane = new THREE.Mesh(geom, mat);
+    plane.position.set(pos[0], pos[1], pos[2]);
+    plane.lookAt(0, 0, 0);
+    envScene.add(plane);
+    meshes.push([geom, mat]);
+  }
+  const envRT = pmrem.fromScene(envScene, 0.04);
+  for (const [geom, mat] of meshes) {
+    geom.dispose();
+    mat.dispose();
+  }
+  pmrem.dispose();
+  return envRT;
+}
+
 export async function showGlb(host, buffer, opts = {}) {
   const parsed = parseGlb(buffer);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -394,8 +424,13 @@ export async function showGlb(host, buffer, opts = {}) {
   if ("outputColorSpace" in renderer && THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.replaceChildren(renderer.domElement);
   renderer.domElement.style.cssText = "display:block;width:100%;height:100%";
+  renderer.domElement.setAttribute("role", "img");
+  renderer.domElement.setAttribute("aria-label", "Khung xem 3D tương tác");
 
   const scene = new THREE.Scene();
+  const envRT = _createStudioEnv(renderer);
+  scene.environment = envRT.texture;
+  if ("environmentIntensity" in scene) scene.environmentIntensity = 0.9;
   scene.add(new THREE.HemisphereLight(0xffffff, 0x6f7580, 1.35));
   const key = new THREE.DirectionalLight(0xffffff, 1.85); key.position.set(2.5, 4.0, 3.0); scene.add(key);
   const fill = new THREE.DirectionalLight(0xffffff, 0.95); fill.position.set(-3.0, 2.0, -2.0); scene.add(fill);
@@ -451,20 +486,25 @@ export async function showGlb(host, buffer, opts = {}) {
   }
 
   let selectedId = null, hoveredId = null, isolatedId = null, explodeAmt = 0;
-  const hiEmissive = new THREE.Color(0xd97757);
-  const hovEmissive = new THREE.Color(0x4a90e2);
+  const selEdgeColor = new THREE.Color(0xff9f1c);
+  const hovEdgeColor = new THREE.Color(0x38bdf8);
   const applyVisibilityAndHighlight = () => {
     for (const entry of parsed.partsMap.values()) {
       entry.wrap.visible = isolatedId ? (entry.id === isolatedId) : !entry.hidden;
       const isSel = entry.id === selectedId;
       const isHov = !isSel && entry.id === hoveredId;
       for (const m of entry.meshes) {
-        m.material.emissive.copy(isSel ? hiEmissive : (isHov ? hovEmissive : m.userData.origEm));
-        m.material.emissiveIntensity = isSel ? 0.45 : (isHov ? 0.24 : m.userData.origEmI);
+        if (isSel || isHov) {
+          m.material.emissive.copy(m.userData.origEmI > 0 ? m.userData.origEm : m.material.color);
+          m.material.emissiveIntensity = m.userData.origEmI > 0 ? m.userData.origEmI : (isSel ? 0.12 : 0.06);
+        } else {
+          m.material.emissive.copy(m.userData.origEm);
+          m.material.emissiveIntensity = m.userData.origEmI;
+        }
       }
       for (const e of entry.edges) {
-        e.material.color.copy(isSel ? hiEmissive : (isHov ? hovEmissive : e.userData.origColor));
-        e.material.opacity = isSel ? 0.95 : (isHov ? 0.72 : e.userData.origOpacity);
+        e.material.color.copy(isSel ? selEdgeColor : (isHov ? hovEdgeColor : e.userData.origColor));
+        e.material.opacity = isSel ? 1.0 : (isHov ? 0.85 : e.userData.origOpacity);
       }
     }
   };
@@ -623,6 +663,24 @@ export async function showGlb(host, buffer, opts = {}) {
     const depthInfo = ids.length > 1 ? `[${idx + 1}/${ids.length}]` : "";
     showTip(pid, ev.clientX, ev.clientY, rect, depthInfo);
   };
+  const focusPart = (id) => {
+    const entry = parsed.partsMap.get(id);
+    if (!entry) return;
+    parsed.root.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(entry.wrap);
+    if (b.isEmpty()) return;
+    const partCenter = b.getCenter(new THREE.Vector3());
+    const partSize = b.getSize(new THREE.Vector3());
+    const partRad = Math.max(partSize.x, partSize.y, partSize.z, 0.02) * 0.5;
+    const dir = camera.position.clone().sub(controls.target);
+    if (dir.lengthSq() < 1e-8) dir.copy(homeDir);
+    else dir.normalize();
+    const dist = Math.max(partRad * 4.2, radius * 0.18);
+    controls.target.copy(partCenter);
+    camera.position.copy(partCenter).addScaledVector(dir, dist);
+    controls.update();
+    renderNow();
+  };
   const onWinUp = () => { dragging = false; downBtn = -1; };
   const onDblClick = (ev) => {
     const { hits } = raycastParts(ev.clientX, ev.clientY);
@@ -630,16 +688,7 @@ export async function showGlb(host, buffer, opts = {}) {
     if (!ids.length) return;
     const pid = (selectedId && ids.includes(selectedId)) ? selectedId : ids[0];
     selectPart(pid);
-    const entry = parsed.partsMap.get(pid);
-    if (entry) {
-      parsed.root.updateMatrixWorld(true);
-      const b = new THREE.Box3().setFromObject(entry.wrap);
-      if (!b.isEmpty()) {
-        controls.target.copy(b.getCenter(new THREE.Vector3()));
-        controls.update();
-        renderNow();
-      }
-    }
+    focusPart(pid);
   };
   renderer.domElement.addEventListener("pointerdown", onDown, { capture: true });
   renderer.domElement.addEventListener("pointermove", onMove);
@@ -664,13 +713,14 @@ export async function showGlb(host, buffer, opts = {}) {
       return e ? e.restSizeMm : null;
     },
     selectPart,
-    focusPart(id) {
-      const entry = parsed.partsMap.get(id);
-      if (!entry) return;
-      parsed.root.updateMatrixWorld(true);
-      const b = new THREE.Box3().setFromObject(entry.wrap);
-      if (b.isEmpty()) return;
-      controls.target.copy(b.getCenter(new THREE.Vector3()));
+    focusPart,
+    getCameraState() {
+      return { pos: camera.position.toArray(), target: controls.target.toArray() };
+    },
+    setCameraState(st) {
+      if (!st || !Array.isArray(st.pos) || !Array.isArray(st.target)) return;
+      camera.position.fromArray(st.pos);
+      controls.target.fromArray(st.target);
       controls.update();
       renderNow();
     },
@@ -731,6 +781,7 @@ export async function showGlb(host, buffer, opts = {}) {
       window.removeEventListener("pointerup", onWinUp);
       tip.remove();
       controls.dispose();
+      envRT.dispose();
       renderer.dispose();
       parsed.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
       grid.geometry.dispose();

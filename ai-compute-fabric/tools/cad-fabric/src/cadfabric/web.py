@@ -53,8 +53,20 @@ class Session:
 
     def state(self, since):
         with self.lock:
+            is_sc = bool(isinstance(self.history, dict) and self.history.get("scene3d"))
+            smtime = 0.0
+            if is_sc:
+                wd = self.history.get("workdir") or ""
+                for fn in ("scene.glb", "scene.blend", "plan.json"):
+                    p = os.path.join(wd, fn) if wd else ""
+                    if p and os.path.isfile(p):
+                        try:
+                            smtime = round(os.path.getmtime(p), 3)
+                            break
+                        except OSError:
+                            pass
             return {"busy": self.busy, "events": self.events[since:], "next": len(self.events), "measure": self.measure, "has_part": self.measure is not None,
-                    "follow_up": self.history is not None, "is_scene": bool(isinstance(self.history, dict) and self.history.get("scene3d")), "usage": self.last_usage}
+                    "follow_up": self.history is not None, "is_scene": is_sc, "scene_mtime": smtime, "usage": self.last_usage}
 
     def send(self, text, planner, files=(), uploads=None, images=None, worker=None, planner_model="", planner_effort="", worker_model="", worker_effort=""):
         with self.lock:
@@ -67,7 +79,9 @@ class Session:
         w_id = worker or self.cfg.get("worker") or "qwen"
         p_meta = " · ".join(x for x in (planner_model, planner_effort) if x)
         w_meta = " · ".join(x for x in (worker_model, worker_effort) if x)
-        p_tag = (planner + (" [" + p_meta + "]" if p_meta else "")) if self.history is None else "(follow-up: no plan)"
+        p_base = planner + (" [" + p_meta + "]" if p_meta else "")
+        is_sc_fu = isinstance(self.history, dict) and bool(self.history.get("scene3d"))
+        p_tag = p_base if self.history is None else ((p_base + " (sửa tiếp)") if is_sc_fu else "(follow-up: no plan)")
         w_tag = w_id + (" [" + w_meta + "]" if w_meta else "")
         self.emit("user", files=list(files) + [u["name"] for u in (uploads or [])] + [i["name"] for i in (images or [])], text=text,
                   planner=p_tag, worker=w_tag)
