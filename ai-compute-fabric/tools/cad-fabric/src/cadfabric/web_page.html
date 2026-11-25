@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CadFabric</title>
 <style>
-:root{--bg:#f7f6f3;--panel:#fff;--ink:#1f2328;--mute:#6b7280;--line:#e3e1db;--accent:#c96442;--m1:#c96442;--m2:#a8502f;--m3:#8f3b21;--accent-ink:#fff;--ok:#18794e;--bad:#c4321f;--warn:#9a6700;--warn-bg:#fff6dc;--user:#ece9e1;--code:#f1efe9;color-scheme:light}
+:root{--bg:#f7f6f3;--panel:#fff;--ink:#1f2328;--mute:#6b7280;--line:#e3e1db;--accent:#c96442;--m1:#c96442;--m2:#a8502f;--m3:#8f3b21;--accent-ink:#fff;--ok:#18794e;--bad:#c4321f;--warn:#9a6700;--warn-bg:#fff6dc;--user:#ece9e1;--code:#f1efe9;--side-w:360px;--prev-h:260px;color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#1c1b19;--panel:#252320;--ink:#ece9e2;--mute:#9a968c;--line:#38352f;--accent:#d97757;--m1:#d97757;--m2:#b9593a;--m3:#98452a;--accent-ink:#1c1b19;--ok:#5cc693;--bad:#ff8a78;--warn:#f0b24c;--warn-bg:#352c16;--user:#2f2c27;--code:#1f1d1a;color-scheme:dark}}
 *{box-sizing:border-box}html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,"Segoe UI",sans-serif;display:flex;flex-direction:column;accent-color:var(--accent)}
@@ -78,9 +78,17 @@ textarea{border:0;outline:0;background:transparent;resize:none;width:100%;max-he
 .mpop-ft .mft-l{font-size:11px;color:var(--mute);flex:none}.meffs{display:flex;gap:4px;flex-wrap:wrap}
 .meff{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 8px;font-size:11.5px;cursor:pointer}.meff:hover{border-color:var(--mute)}.meff.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
 .hint{max-width:780px;margin:5px auto 0;color:var(--mute);font-size:12.5px;text-align:center}
-aside{width:360px;border-left:1px solid var(--line);background:var(--panel);overflow:auto;display:flex;flex-direction:column}
+aside{inline-size:var(--side-w,360px);min-inline-size:280px;max-inline-size:78%;flex:none;background:var(--panel);overflow:auto;display:flex;flex-direction:column}
 aside h3{margin:0;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);border-bottom:1px solid var(--line)}
-#preview{margin:12px;border-radius:10px;min-height:190px;background:#fff;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:14px;overflow:hidden;position:relative}#preview.is3d{height:260px;min-height:260px;content-visibility:auto;contain-intrinsic-size:auto none auto 260px}#preview svg{width:100%;height:auto}#preview img,#preview video{width:100%;height:auto;display:block;border-radius:8px}
+#vsplit{inline-size:6px;flex:none;cursor:col-resize;touch-action:none;user-select:none;-webkit-user-select:none;background:transparent;border-inline-start:1px solid var(--line);display:flex;align-items:center;justify-content:center;padding:0;transition:background .15s}
+#vsplit::after{content:"";inline-size:3px;block-size:32px;border-radius:999px;background:var(--line);transition:background .15s}
+#vsplit:hover::after,#vsplit.drag::after,#vsplit:focus-visible::after{background:var(--accent)}
+#hsplit{block-size:9px;flex:none;cursor:row-resize;touch-action:none;user-select:none;-webkit-user-select:none;background:transparent;display:flex;align-items:center;justify-content:center;margin:0 12px 4px;padding:0}
+#hsplit::after{content:"";inline-size:40px;block-size:3px;border-radius:999px;background:var(--line);transition:background .15s}
+#hsplit:hover::after,#hsplit.drag::after,#hsplit:focus-visible::after{background:var(--accent)}
+.pbar{display:flex;align-items:center;gap:6px;padding:8px 14px 0}.pbar .sp{flex:1}.pbar .btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.layout.wide aside{inline-size:max(var(--side-w,360px),min(660px,56%))}.layout.wide #preview.is3d{block-size:max(var(--prev-h,260px),440px);min-block-size:440px}
+#preview{margin:8px 12px 2px;border-radius:10px;min-block-size:180px;background:#fff;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:14px;overflow:hidden;position:relative}#preview.is3d{block-size:var(--prev-h,260px);min-block-size:180px;content-visibility:auto;contain-intrinsic-size:auto none auto 260px}#preview svg{width:100%;height:auto}#preview img,#preview video{width:100%;height:auto;display:block;border-radius:8px}
 .panim{display:flex;align-items:center;gap:6px;padding:0 14px 8px}.panim[hidden]{display:none}.panim-p{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
 .cfrange{--slider-track-size:.38rem;--slider-thumb-size:.95rem;--slider-track-radius:999px;--slider-thumb-radius:50%;--slider-track-color:var(--line);--slider-fill-color:var(--accent);--slider-thumb-color:var(--accent);--slider-direction:to right;--attr-min:attr(min type(<number>),0);--attr-max:attr(max type(<number>),1000);--control-value:attr(value type(<number>),0);--slider-progress:calc(progress(var(--control-value),var(--attr-min),var(--attr-max)) * 100%);appearance:none;flex:1;min-width:0;block-size:1.75rem;margin:0;padding:0;border:0;background:transparent;cursor:pointer}
 @supports not (opacity:progress(1,0,100)){.cfrange{--slider-progress:calc((var(--control-value) - var(--attr-min)) / max(1,(var(--attr-max) - var(--attr-min))) * 100%)}}
@@ -91,12 +99,21 @@ aside h3{margin:0;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-tra
 .cfrange::-moz-range-progress{block-size:var(--slider-track-size);border-radius:var(--slider-track-radius);background:var(--slider-fill-color)}
 .cfrange::-moz-range-thumb{inline-size:var(--slider-thumb-size);block-size:var(--slider-thumb-size);border:0;border-radius:var(--slider-thumb-radius);background:var(--slider-thumb-color)}
 @supports not (accent-color:auto){input[type="checkbox"]{outline:1px solid var(--line)}}
-.v3ctrl{position:absolute;left:12px;right:12px;bottom:12px;padding:6px 10px;border-radius:10px;background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);backdrop-filter:blur(6px);z-index:4}
+:where(.btn,.mpill,.meff,.psel-s,#vsplit,#hsplit):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.v3ctrl{position:absolute;left:12px;right:12px;bottom:12px;padding:6px 10px;border-radius:10px;background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);backdrop-filter:blur(6px);z-index:4;flex-wrap:wrap}
+.psel{padding:0 14px 8px;display:flex;flex-direction:column;gap:6px}.psel[hidden]{display:none}
+.psel-row{display:flex;align-items:center;gap:6px}
+.psel-s{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:7px;padding:4px 8px;font-size:12.5px}
+.psel-card{border:1px solid var(--line);background:var(--bg);border-radius:9px;padding:8px 10px;display:flex;flex-direction:column;gap:5px}.psel-card[hidden]{display:none}
+.psel-title{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.psel-title b{font-size:13px;font-family:ui-monospace,Consolas,monospace;color:var(--accent)}
+.psel-acts{display:flex;gap:5px;flex-wrap:wrap;margin-top:2px}
+.psel-acts .btn{min-block-size:24px;min-inline-size:24px;padding:3px 8px;font-size:12px}
+.psel-acts .btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
 .pviews{display:flex;gap:5px;flex-wrap:wrap;padding:0 14px 8px}.pviews[hidden]{display:none}.pviews button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 table{width:calc(100% - 28px);margin:0 14px 10px;border-collapse:collapse;font-size:14px}td{padding:5px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 .side-actions{padding:0 14px 14px;display:flex;gap:8px;flex-wrap:wrap}a.btn{text-decoration:none;color:var(--ink)}
 @media(max-width:640px){header{gap:6px;padding:8px 10px}#status,#ver{display:none}.btn.small{padding:5px 8px;font-size:13px}}
-@media(max-width:900px){aside{display:none;position:fixed;inset:48px 0 0 auto;width:min(360px,100%);z-index:5;box-shadow:-8px 0 24px #0004}aside.open{display:flex}}
+@media(max-width:900px){#vsplit{display:none}aside{display:none;position:fixed;inset:48px 0 0 auto;inline-size:min(420px,100%);max-inline-size:100%;z-index:5;box-shadow:-8px 0 24px #0004}aside.open{display:flex}}
 dialog{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:14px;padding:0;width:min(560px,94vw);max-height:92vh}dialog::backdrop{background:#0006}
 dialog form{padding:18px 20px;display:flex;flex-direction:column;gap:12px}dialog h2{margin:0;font-size:18px}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--mute)}label.f input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;font-size:14px;color:var(--ink)}
@@ -158,7 +175,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
   <div id="tabbar" hidden></div>
   <div id="log"><div class="col" id="col"></div></div>
   <div id="viewer"><div class="sfhead"><b id="vname"></b><span id="vmodes"></span><span class="sp"></span><span class="mute small" id="vinfo"></span><button type="button" class="btn small" id="vatt">Đính kèm vào chat</button></div>
-   <div id="vbody"><img id="vimg" hidden alt=""><video id="vvid" controls width="960" height="720" hidden></video><div id="v3d" hidden></div><div id="v3ctrl" class="panim v3ctrl" hidden><button type="button" class="btn small" id="vplay" title="Phát / Tạm dừng chuyển động">⏸</button><label for="vrange" class="vh">Tiến độ chuyển động</label><input type="range" id="vrange" class="cfrange" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="vpct">0%</span><button type="button" class="btn small" id="vrst" title="Đặt lại góc nhìn 3D">⟲</button></div><div id="vmd" class="md" hidden></div><div id="vcode" hidden></div><pre id="vtext"></pre></div></div>
+   <div id="vbody"><img id="vimg" hidden alt=""><video id="vvid" controls width="960" height="720" hidden></video><div id="v3d" hidden></div><div id="v3ctrl" class="panim v3ctrl" hidden><button type="button" class="btn small" id="vplay" title="Phát / Tạm dừng chuyển động">⏸</button><label for="vrange" class="vh">Tiến độ chuyển động</label><input type="range" id="vrange" class="cfrange" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="vpct">0%</span><button type="button" class="btn small" id="vrst" title="Đặt lại góc nhìn 3D">⟲</button><span id="vexpw" style="display:inline-flex;align-items:center;gap:5px;margin-left:6px"><label for="vexp" class="small mute">💥 Tách lớp</label><input type="range" id="vexp" class="cfrange" style="width:92px" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="vexpp">0%</span></span></div><div id="vmd" class="md" hidden></div><div id="vcode" hidden></div><pre id="vtext"></pre></div></div>
   <div class="composer">
    <div class="box">
     <textarea id="text" rows="1" maxlength="8000" placeholder="Mô tả chi tiết cần tạo, hoặc yêu cầu chỉnh sửa chi tiết hiện tại…"></textarea>
@@ -169,9 +186,20 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
    <div class="hint" id="hint">Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /stop dừng</div>
   </div>
  </div>
+ <div id="vsplit" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Điều chỉnh độ rộng khung chi tiết 3D" aria-valuemin="280" aria-valuemax="920" aria-valuenow="360" title="Kéo hoặc nhấn mũi tên trái/phải để chỉnh độ rộng (đúp chuột để đặt lại)"></div>
  <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button><button type="button" id="tablessons">Bài học</button><button type="button" id="tabskills">Skill</button></div>
- <div id="pane_part"><div id="preview">chưa có chi tiết</div><div id="panim" class="panim" hidden><button type="button" class="btn small" id="pplay" title="Phát / Tạm dừng chuyển động">⏸</button><label for="prange" class="vh">Tiến độ chuyển động</label><input type="range" id="prange" class="cfrange" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="ppct">0%</span><button type="button" class="btn small" id="prst" title="Đặt lại góc nhìn 3D">⟲</button></div><div id="pviews" class="pviews" hidden></div><table id="meas"></table>
-  <div class="side-actions"><button type="button" class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><button type="button" class="btn small" id="vidbtn" hidden>🎬 Xuất MP4</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a><a class="btn small" id="dlglb" href="/api/part.glb" hidden>Tải .glb</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
+ <div id="pane_part"><div class="pbar"><span class="mute small" id="phint">Kéo xoay · Bấm chọn chi tiết</span><span class="sp"></span><button type="button" class="btn small" id="pmax" aria-pressed="false" title="Mở rộng / thu gọn khung xem 3D">⤢ Mở rộng</button></div><div id="preview">chưa có chi tiết</div><div id="hsplit" role="separator" tabindex="0" aria-orientation="horizontal" aria-label="Điều chỉnh chiều cao khung xem 3D" aria-valuemin="180" aria-valuemax="720" aria-valuenow="260" title="Kéo hoặc nhấn mũi tên lên/xuống để chỉnh chiều cao (đúp chuột để đặt lại)"></div><div id="panim" class="panim" hidden><button type="button" class="btn small" id="pplay" title="Phát / Tạm dừng chuyển động">⏸</button><label for="prange" class="vh">Tiến độ chuyển động</label><input type="range" id="prange" class="cfrange" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="ppct">0%</span><button type="button" class="btn small" id="prst" title="Đặt lại góc nhìn 3D">⟲</button></div>
+  <div id="pexpw" class="panim" hidden><label for="pexp" class="small mute">💥 Tách lớp</label><input type="range" id="pexp" class="cfrange" min="0" max="1000" step="1" value="0" aria-valuetext="0%"><span class="small mute panim-p" id="pexpp">0%</span></div>
+  <div id="psel" class="psel" hidden>
+   <div class="psel-row"><label for="ppick" class="small mute">Chi tiết:</label><select id="ppick" class="psel-s"><option value="">— Bấm trên 3D để chọn —</option></select><button type="button" class="btn small" id="pshowall" hidden title="Hiện lại toàn bộ chi tiết">Hiện tất cả</button></div>
+   <div id="psel_card" class="psel-card" hidden>
+    <div class="psel-title"><b id="psel_id"></b><span class="mute small" id="psel_dim"></span></div>
+    <div class="mute small" id="psel_spec"></div>
+    <div class="psel-acts" role="group" aria-label="Thao tác chi tiết đang chọn"><button type="button" class="btn small" id="pfoc" title="Xoay tâm nhìn tới chi tiết này">🎯 Góc nhìn</button><button type="button" class="btn small" id="phide" aria-pressed="false" title="Ẩn hoặc hiện chi tiết này">Ẩn</button><button type="button" class="btn small" id="piso" aria-pressed="false" title="Chỉ hiện riêng chi tiết này">Cô lập</button><a class="btn small" id="pdlstl" href="/api/part.stl">⬇ .stl</a><button type="button" class="btn small primary" id="pedit">✏ Sửa chi tiết này</button></div>
+   </div>
+  </div>
+  <div id="pviews" class="pviews" hidden></div><table id="meas"></table>
+  <div class="side-actions"><button type="button" class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><button type="button" class="btn small" id="vidbtn" hidden>🎬 Xuất MP4</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a><a class="btn small" id="dlglb" href="/api/part.glb" hidden>Tải .glb</a><a class="btn small" id="dlstl" href="/api/part.stl" hidden>Tải .stl</a><a class="btn small" id="dlstep" href="/api/scene.step" hidden>Tải .step</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
  <div id="pane_lessons" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="lreflect">Rút bài học từ cuộc này</button><button type="button" class="btn small" id="ladd">+ Thêm</button><button type="button" class="btn small" id="ldedupe" title="Xoá các bài học chờ duyệt bị trùng hoặc sai quy tắc">Lọc trùng</button><button type="button" class="btn small" id="lclearp" title="Xoá toàn bộ bài học đang chờ duyệt trong dự án này" hidden>Xoá chờ duyệt</button><button type="button" class="btn small" id="lskill" title="Gộp các bài đã duyệt thành một skill (chờ duyệt)">Gộp thành skill</button></div>
   <search id="lsearch" class="lsearch" hidden><label for="lfilter" class="vh">Lọc bài học</label><input type="search" id="lfilter" name="lfilter" placeholder="Lọc tiêu đề, quy tắc, #tên…" autocorrect="off" autocapitalize="none" spellcheck="false"></search>
   <div class="mute small" id="lnote" style="padding:0 14px 8px"></div><div id="llist"></div></div>
@@ -334,7 +362,8 @@ function hero(show){const h=$("hero");if(show&&!h){const x=el("div","hero");x.id
   if(cfgd&&!cfgd.configured){const b=el("div","banner","Chưa cấu hình URL API. ");const bt=el("button","btn small","Mở cài đặt");bt.onclick=openSettings;b.appendChild(bt);x.appendChild(b)}
   const c=el("div","chips");["Tạo hộp 80×50×30 mm, khoan lỗ xuyên Ø10 ở tâm mặt trên, báo thể tích.","Đĩa tròn Ø100 dày 10, khoan 6 lỗ Ø8 đều trên vòng tròn Ø70.","Trục bậc: đoạn Ø30 dài 40 và đoạn Ø20 dài 30 cùng trục, vát 2 mm đầu trục."].forEach(t=>{const k=el("div","chip",t);k.onclick=()=>{$("text").value=t;$("text").focus();grow()};c.appendChild(k)});x.appendChild(c);col().prepend(x)}
  else if(!show&&h)h.remove()}
-let curView="3d",lastScene=false,lastUsageKey="",preview3d=null;
+let curView="3d",lastScene=false,lastUsageKey="",preview3d=null,APP_VER="",sceneMeta={parts:[],map:{},joints:[]};
+const loadViewer3d=()=>import("/static/viewer3d.js"+(APP_VER?"?v="+encodeURIComponent(APP_VER):""));
 function syncSlider(inp,pctEl,v){if(!inp)return;const val=Math.max(0,Math.min(1000,Math.round(v)));inp.value=String(val);
  inp.style.setProperty("--attr-min",inp.min||0);inp.style.setProperty("--attr-max",inp.max||1000);inp.style.setProperty("--control-value",val);
  const pct=Math.round(val/10)+"%";inp.setAttribute("aria-valuetext",pct);if(pctEl)pctEl.textContent=pct}
@@ -348,7 +377,38 @@ function bind3dControls(h,bar,playBtn,rangeInp,pctEl,rstBtn){
  rstBtn.onclick=()=>h.resetView();
  rangeInp.oninput=()=>{h.setPlaying(false);updBtn();const v=Number(rangeInp.value)||0;syncSlider(rangeInp,pctEl,v);h.seek(v/1000)};
 }
-function disposePreview3d(){if(preview3d){try{preview3d.dispose()}catch(e){}preview3d=null}if($("preview"))$("preview").classList.remove("is3d");if($("panim"))$("panim").hidden=true}
+function bindExplodeControl(h,wrap,rangeInp,pctEl){
+ if(!wrap||!rangeInp)return;
+ const show=!!(h&&h.partIds&&h.partIds.length>1);wrap.hidden=!show;
+ syncSlider(rangeInp,pctEl,0);if(!show)return;
+ rangeInp.oninput=()=>{const v=Number(rangeInp.value)||0;syncSlider(rangeInp,pctEl,v);h.setExplode(v/1000)};
+}
+function renderSelectedPart(id){
+ const h=preview3d,ps=$("psel"),card=$("psel_card"),pk=$("ppick"),sa=$("pshowall");
+ if(!h||!ps){if(ps)ps.hidden=true;return}
+ const pids=h.partIds||[];ps.hidden=!pids.length;if(!pids.length)return;
+ if(pk&&pk.value!==(id||""))pk.value=id||"";
+ if(sa)sa.hidden=!(h.isolated||pids.some(p=>h.isPartHidden(p)));
+ if(!id||!pids.includes(id)){if(card)card.hidden=true;return}
+ if(card)card.hidden=false;
+ const meta=sceneMeta.map[id]||{},dim=meta.size_mm&&meta.size_mm.length===3?meta.size_mm:h.getPartBoxMm(id);
+ if($("psel_id"))$("psel_id").textContent=id;
+ if($("psel_dim"))$("psel_dim").textContent=dim&&dim.length===3?dim.map(v=>Math.round(v*10)/10).join(" × ")+" mm":"";
+ const info=[];if(meta.spec)info.push(meta.spec);if(meta.joint)info.push("Khớp "+meta.joint);
+ if($("psel_spec"))$("psel_spec").textContent=info.join(" · ");
+ if($("phide"))$("phide").setAttribute("aria-pressed",h.isPartHidden(id)?"true":"false");
+ if($("piso"))$("piso").setAttribute("aria-pressed",h.isolated===id?"true":"false");
+ if($("pdlstl"))$("pdlstl").href="/api/part.stl?part="+encodeURIComponent(id);
+}
+if($("ppick"))$("ppick").onchange=()=>{if(preview3d)preview3d.selectPart($("ppick").value||null)};
+if($("pshowall"))$("pshowall").onclick=()=>{if(preview3d){preview3d.showAllParts();renderSelectedPart(preview3d.selected)}};
+if($("pfoc"))$("pfoc").onclick=()=>{if(preview3d&&preview3d.selected)preview3d.focusPart(preview3d.selected)};
+if($("phide"))$("phide").onclick=()=>{const h=preview3d;if(!h||!h.selected)return;h.setPartHidden(h.selected,!h.isPartHidden(h.selected));renderSelectedPart(h.selected)};
+if($("piso"))$("piso").onclick=()=>{const h=preview3d;if(!h||!h.selected)return;h.setIsolated(h.isolated===h.selected?null:h.selected);renderSelectedPart(h.selected)};
+if($("pedit"))$("pedit").onclick=()=>{const id=preview3d&&preview3d.selected;if(!id)return;if(curTab!=="chat")activate("chat");
+ const tx=$("text"),tag="@"+id;if(!new RegExp("(?:^|\\s)@"+id+"\\b").test(tx.value)){tx.value=tx.value.trim()?tag+" "+tx.value.trim():tag+" ";grow()}
+ tx.focus();toast("Đã chọn "+tag+" — gõ yêu cầu sửa rồi bấm Gửi")};
+function disposePreview3d(){if(preview3d){try{preview3d.dispose()}catch(e){}preview3d=null}if($("preview"))$("preview").classList.remove("is3d");if($("phint"))$("phint").textContent="Kéo xoay · Bấm chọn chi tiết";if($("panim"))$("panim").hidden=true;if($("pexpw"))$("pexpw").hidden=true;if($("psel"))$("psel").hidden=true;if($("psel_card"))$("psel_card").hidden=true}
 function showSceneView(view){disposePreview3d();curView=view||"iso";const pv=$("pviews");if(pv)[...pv.children].forEach(b=>b.classList.toggle("on",b.dataset.view===curView));
  const im=document.createElement("img");im.alt="Bản xem trước cảnh 3D";im.width=640;im.height=480;
  im.onerror=()=>{$("preview").textContent="không tải được ảnh xem trước"};
@@ -356,13 +416,22 @@ function showSceneView(view){disposePreview3d();curView=view||"iso";const pv=$("
  $("preview").replaceChildren(im)}
 async function showScene3D(){curView="3d";const pv=$("pviews");if(pv)[...pv.children].forEach(b=>b.classList.toggle("on",b.dataset.view==="3d"));
  disposePreview3d();const box=$("preview");box.textContent="Đang tải mô hình 3D…";
- try{const r=await fetch("/api/scene.glb?_="+Date.now());if(!r.ok)throw new Error("no glb");
+ try{const [r,rm]=await Promise.all([fetch("/api/scene.glb?_="+Date.now()),api("/api/scene_meta?_="+Date.now())]);if(!r.ok)throw new Error("no glb");
   const buf=await r.arrayBuffer();if(curView!=="3d")return;
-  const m=await import("/static/viewer3d.js");if(curView!=="3d")return;
+  const m=await loadViewer3d();if(curView!=="3d")return;
+  sceneMeta={parts:(rm.ok&&rm.d.parts)||[],map:{},joints:(rm.ok&&rm.d.joints)||[]};
+  for(const p of sceneMeta.parts)sceneMeta.map[p.id]=p;
+  const labels={};for(const p of sceneMeta.parts){const dm=p.size_mm;labels[p.id]=p.id+(dm&&dm.length===3?" ("+dm.map(x=>Math.round(x)).join("×")+" mm)":"")}
   box.classList.add("is3d");
-  const h=await m.showGlb(box,buf,{onTick:p=>{if(!preview3d||!preview3d.playing)return;syncSlider($("prange"),$("ppct"),p*1000)}});
+  const h=await m.showGlb(box,buf,{onTick:p=>{if(!preview3d||!preview3d.playing)return;syncSlider($("prange"),$("ppct"),p*1000)},onSelect:id=>renderSelectedPart(id),onHover:id=>{const ph=$("phint");if(ph)ph.textContent=id?"Trỏ: "+id+" — bấm chọn":(preview3d&&preview3d.selected?"Đang chọn: "+preview3d.selected+" · Bấm lại nếu bị che":"Kéo xoay · Bấm chọn chi tiết")},partLabels:labels});
   if(curView!=="3d"){h.dispose();return}
-  preview3d=h;bind3dControls(h,$("panim"),$("pplay"),$("prange"),$("ppct"),$("prst"))}
+  preview3d=h;
+  const pk=$("ppick");if(pk){pk.replaceChildren(el("option","","— Bấm trên 3D để chọn ("+(h.partIds||[]).length+") —"));pk.firstChild.value="";
+   const ordered=[...sceneMeta.parts.map(p=>p.id).filter(id=>(h.partIds||[]).includes(id)),...(h.partIds||[]).filter(id=>!sceneMeta.map[id])];
+   for(const pid of ordered){const o=document.createElement("option");o.value=pid;const dm=sceneMeta.map[pid]&&sceneMeta.map[pid].size_mm;o.textContent=pid+(dm&&dm.length===3?" ("+dm.map(x=>Math.round(x)).join("×")+")":"");pk.appendChild(o)}}
+  bind3dControls(h,$("panim"),$("pplay"),$("prange"),$("ppct"),$("prst"));
+  bindExplodeControl(h,$("pexpw"),$("pexp"),$("pexpp"));
+  renderSelectedPart(null)}
  catch(e){disposePreview3d();showSceneView("iso")}}
 async function exportSceneVideo(){disposePreview3d();const vb=$("vidbtn");if(vb){vb.disabled=true;vb.textContent="Đang xuất MP4…"}
  const r=await api("/api/scene_video",{});if(vb){vb.disabled=false;vb.textContent="🎬 Xuất MP4"}
@@ -371,18 +440,18 @@ async function exportSceneVideo(){disposePreview3d();const vb=$("vidbtn");if(vb)
  const v=document.createElement("video");v.controls=true;v.autoplay=true;v.loop=true;v.muted=true;v.width=640;v.height=480;v.src=r.d.url;
  $("preview").replaceChildren(v);toast(r.d.saved?"Đã lưu "+r.d.saved+" vào thư mục làm việc":"Đã xuất video MP4")}
 if($("vidbtn"))$("vidbtn").onclick=exportSceneVideo;
-async function showPart(m,isScene,usage){const t=$("meas"),pv=$("pviews"),vb=$("vidbtn"),dg=$("dlglb");t.replaceChildren();
- if(!m){disposePreview3d();$("preview").textContent="chưa có chi tiết";pv.hidden=true;pv.replaceChildren();$("dl").hidden=true;if(dg)dg.hidden=true;$("openbtn").hidden=true;vb.hidden=true;return}
+async function showPart(m,isScene,usage){const t=$("meas"),pv=$("pviews"),vb=$("vidbtn"),dg=$("dlglb"),ds=$("dlstl"),dp=$("dlstep");t.replaceChildren();
+ if(!m){disposePreview3d();$("preview").textContent="chưa có chi tiết";pv.hidden=true;pv.replaceChildren();$("dl").hidden=true;if(dg)dg.hidden=true;if(ds)ds.hidden=true;if(dp)dp.hidden=true;$("openbtn").hidden=true;vb.hidden=true;return}
  for(const [k,v] of [["Thể tích (mm³)",fmt(m.volume)],["Bbox (mm)",m.bbox_size.map(fmt).join(" × ")],["Tâm khối lượng",m.com.map(fmt).join(", ")],["Mặt / cạnh / đỉnh",m.faces+" / "+m.edges+" / "+m.vertices],["Số solid",m.solids],["Hợp lệ",m.valid?"có":"KHÔNG"]]){const tr=t.insertRow();tr.insertCell().textContent=k;tr.insertCell().textContent=v}
  if(usage&&usage.director){const d=usage.director,sv=usage.savings||{};
   const tr1=t.insertRow();tr1.insertCell().textContent="Chi phí cố vấn";tr1.insertCell().textContent=d.estimated?(d.calls+" lượt (ước lượng)"):(d.usd.toFixed(4)+" USD ("+d.calls+" lượt)");
   if(sv.saved_tok_pct!==undefined){const tr2=t.insertRow();tr2.insertCell().textContent="Tiết kiệm token";tr2.insertCell().textContent="~"+sv.saved_tok_pct+"% ("+Math.round(sv.offload_calls_pct||0)+"% lượt thực thi)"}}
  $("dl").hidden=false;$("openbtn").hidden=!local;
- if(isScene){$("dl").href="/api/part.blend";$("dl").textContent="Tải .blend";if(dg)dg.hidden=false;vb.hidden=!local;pv.hidden=false;
+ if(isScene){$("dl").href="/api/part.blend";$("dl").textContent="Tải .blend";if(dg)dg.hidden=false;if(ds){ds.href="/api/part.stl";ds.hidden=false}if(dp){dp.href="/api/scene.step";dp.hidden=false}vb.hidden=!local;pv.hidden=false;
   if(!pv.children.length){for(const [k,lbl] of [["3d","🧊 3D"],["iso","Phối cảnh"],["side","Ngang"],["top","Trên"],["iso_end_of_motion","Cuối chuyển động"],["video","🎬 MP4"]]){
    const b=el("button","btn small"+(k===curView?" on":""),lbl);b.type="button";b.dataset.view=k;b.onclick=()=>k==="video"?exportSceneVideo():(k==="3d"?showScene3D():showSceneView(k));pv.appendChild(b)}}
   $("openbtn").textContent="Mở trong Blender";(curView==="3d"||curView==="video")?showScene3D():showSceneView(curView);return}
- disposePreview3d();pv.hidden=true;pv.replaceChildren();vb.hidden=true;if(dg)dg.hidden=true;$("dl").href="/api/part.step";$("dl").textContent="Tải STEP";
+ disposePreview3d();pv.hidden=true;pv.replaceChildren();vb.hidden=true;if(dg)dg.hidden=true;if(ds){ds.href="/api/part.stl";ds.hidden=false}if(dp)dp.hidden=true;$("dl").href="/api/part.step";$("dl").textContent="Tải STEP";
  $("openbtn").textContent="Mở trong "+((cfgd&&cfgd.viewer_label)||"CAD");
  try{const r=await fetch("/api/part.svg?"+Date.now());if(r.ok){const d=new DOMParser().parseFromString(await r.text(),"image/svg+xml").documentElement;$("preview").replaceChildren(document.importNode(d,true))}}catch(e){}}
 function setBusy(b){busy=b;$("dot").className="dot"+(b?" busy":"");$("status").textContent=b?"đang làm…":"sẵn sàng";$("send").hidden=b;$("stop").hidden=!b;$("newbtn").disabled=b;$("histbtn").disabled=b;
@@ -768,7 +837,7 @@ async function sfOpen(rel){const L=$("sflist");L.replaceChildren();
  for(const e of d.entries){const full=(d.path?d.path+"/":"")+e.name;const r=el("div","opt");
   r.oncontextmenu=ev=>fileMenu(ev,full,e.kind,e.dir);
   if(e.dir){r.textContent="📁 "+e.name;r.onclick=()=>sfOpen(full)}
-  else{r.textContent=({text:"📄 ",image:"🖼 ",video:"🎬 ",step:"🧊 ",glb:"🧊 ",blend:"🧊 "}[e.kind]||"· ")+e.name+"  ("+e.size+" B)";if(e.kind)r.onclick=()=>sfView(full,e.kind);else r.classList.add("dim")}
+  else{r.textContent=({text:"📄 ",image:"🖼 ",video:"🎬 ",step:"🧊 ",stl:"🧊 ",glb:"🧊 ",blend:"🧊 "}[e.kind]||"· ")+e.name+"  ("+e.size+" B)";if(e.kind)r.onclick=()=>sfView(full,e.kind);else r.classList.add("dim")}
   L.appendChild(r)}
  if(!d.entries.length)L.appendChild(el("div","mute small","(thư mục trống)"));if(d.truncated)L.appendChild(el("div","mute small","(chỉ hiện 400 mục đầu)"))}
 let tabs=[],curTab="chat";
@@ -796,13 +865,13 @@ async function mdHtml(text,rel){await Promise.all([loadScript("/static/vendor/ma
 function drawTabs(){const bar=$("tabbar");const keep=bar.scrollLeft;bar.replaceChildren();bar.hidden=!tabs.length;if(!tabs.length)return;
  const mk=(id,label,closable)=>{const t=el("span","tab"+(curTab===id?" on":""));t.appendChild(el("span","tl",label));t.title=id;t.onclick=()=>activate(id);
   if(closable){const x=el("i",0,"✕");x.title="Đóng tab";x.onclick=e=>{e.stopPropagation();closeTab(id)};t.appendChild(x);t.oncontextmenu=e=>{e.preventDefault();tabMenu(e,id)}}bar.appendChild(t)};
- mk("chat","💬 Trò chuyện",false);for(const t of tabs)mk(t.rel,({text:"📄 ",image:"🖼 ",video:"🎬 ",step:"🧊 ",glb:"🧊 ",blend:"🧊 "}[t.kind]||"")+t.rel.split("/").pop(),true);bar.scrollLeft=keep;const on=bar.querySelector(".tab.on");if(on)on.scrollIntoView({block:"nearest",inline:"nearest"})}
+ mk("chat","💬 Trò chuyện",false);for(const t of tabs)mk(t.rel,({text:"📄 ",image:"🖼 ",video:"🎬 ",step:"🧊 ",stl:"🧊 ",glb:"🧊 ",blend:"🧊 "}[t.kind]||"")+t.rel.split("/").pop(),true);bar.scrollLeft=keep;const on=bar.querySelector(".tab.on");if(on)on.scrollIntoView({block:"nearest",inline:"nearest"})}
 $("tabbar").addEventListener("wheel",e=>{if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){e.preventDefault();$("tabbar").scrollLeft+=e.deltaY}},{passive:false});
 function dispose3d(){for(const t of tabs)if(t.h3d){try{t.h3d.dispose()}catch(e){}t.h3d=null}if($("v3ctrl"))$("v3ctrl").hidden=true}
 function closeTab(id){const t=tabs.find(x=>x.rel===id);if(t&&t.h3d){try{t.h3d.dispose()}catch(e){}}tabs=tabs.filter(t=>t.rel!==id);if(curTab===id)curTab=tabs.length?tabs[tabs.length-1].rel:"chat";activate(curTab)}
-function modesFor(t){const e=extOf(t.rel);if(t.kind==="step")return[["3d","3D"],["svg","Nét 2D"],["text","Văn bản"]];if(t.kind==="glb"||t.kind==="blend")return[["3d","3D"]];if(t.kind==="text"&&e==="md")return[["view","Xem"],["text","Mã nguồn"]];if(t.kind==="text"&&(e==="csv"||e==="tsv"))return[["view","Bảng"],["text","Văn bản"]];return[]}
+function modesFor(t){const e=extOf(t.rel);if(t.kind==="step")return[["3d","3D"],["svg","Nét 2D"],["text","Văn bản"]];if(t.kind==="stl")return[["3d","3D"],["text","Văn bản"]];if(t.kind==="glb"||t.kind==="blend")return[["3d","3D"]];if(t.kind==="text"&&e==="md")return[["view","Xem"],["text","Mã nguồn"]];if(t.kind==="text"&&(e==="csv"||e==="tsv"))return[["view","Bảng"],["text","Văn bản"]];return[]}
 async function activate(id){curTab=id;const chat=id==="chat"||!tabs.some(t=>t.rel===id);if(chat)curTab="chat";document.querySelector(".chat").classList.toggle("viewing",!chat);drawTabs();dispose3d();if(chat)return;
- const t=tabs.find(x=>x.rel===id);$("vname").textContent=t.rel;$("vatt").hidden=t.kind==="image"||t.kind==="video"||t.kind==="glb"||t.kind==="blend";$("vatt").textContent=att.includes(t.rel)?"Đã đính kèm":"Đính kèm vào chat";
+ const t=tabs.find(x=>x.rel===id);$("vname").textContent=t.rel;$("vatt").hidden=t.kind==="image"||t.kind==="video"||t.kind==="glb"||t.kind==="blend"||t.kind==="stl";$("vatt").textContent=att.includes(t.rel)?"Đã đính kèm":"Đính kèm vào chat";
  const ms=modesFor(t);if(!t.mode)t.mode=ms.length?ms[0][0]:"";const bar=$("vmodes");bar.replaceChildren();
  for(const [k,l] of ms){const b=el("button","btn small"+(t.mode===k?" on":""),l);b.type="button";b.onclick=()=>{t.mode=k;activate(id)};bar.appendChild(b)}
  await renderTab(t)}
@@ -813,11 +882,18 @@ async function renderTab(t){const id=t.rel,live=()=>curTab===id&&t.mode!==undefi
  if(t.kind==="video"){vid.onerror=()=>{if(live()){vid.hidden=true;msg("Không phát được video này.")}};vid.onloadedmetadata=()=>{if(live()){tx.hidden=true;$("vinfo").textContent=vid.videoWidth+"×"+vid.videoHeight+" px · "+vid.duration.toFixed(1)+" s"}};vid.src="/api/raw?path="+encodeURIComponent(t.rel);vid.hidden=false;tx.hidden=true;return}
  if(t.kind==="glb"||t.kind==="blend"){msg(t.kind==="blend"?"Đang chuyển .blend sang 3D…":"Đang tải mô hình 3D…");
   try{if(!t.glb){const r=await fetch("/api/blendglb?path="+encodeURIComponent(t.rel)+"&_="+Date.now());if(!r.ok)throw new Error("không chuyển được sang 3D");t.glb=await r.arrayBuffer()}
-   if(!live())return;d3.hidden=false;const m=await import("/static/viewer3d.js");if(!live()){d3.hidden=true;return}
+   if(!live())return;d3.hidden=false;const m=await loadViewer3d();if(!live()){d3.hidden=true;return}
    const h=await m.showGlb(d3,t.glb,{onTick:p=>{if(!t.h3d||!t.h3d.playing)return;syncSlider($("vrange"),$("vpct"),p*1000)}});
-   if(!live()){h.dispose();return}t.h3d=h;tx.hidden=true;bind3dControls(h,v3c,$("vplay"),$("vrange"),$("vpct"),$("vrst"));
+   if(!live()){h.dispose();return}t.h3d=h;tx.hidden=true;bind3dControls(h,v3c,$("vplay"),$("vrange"),$("vpct"),$("vrst"));bindExplodeControl(h,$("vexpw"),$("vexp"),$("vexpp"));
    const z=h.size.map(v=>Math.round(v));$("vinfo").textContent=z.join(" × ")+" mm ("+h.parts+" chi tiết) · kéo để xoay, cuộn để phóng"}
   catch(e){d3.hidden=true;if(v3c)v3c.hidden=true;msg("Không mở được xem trước 3D ("+(e.message||e)+"). Dùng chuột phải → Mở bằng Blender.")}
+  return}
+ if(t.kind==="stl"&&t.mode==="3d"){msg("Đang tải STL 3D…");
+  try{if(!t.stl){const r=await fetch("/api/rawstl?path="+encodeURIComponent(t.rel)+"&_="+Date.now());if(!r.ok)throw new Error("không đọc được STL");t.stl=await r.arrayBuffer()}
+   if(!live())return;d3.hidden=false;const m=await loadViewer3d();if(!live()){d3.hidden=true;return}
+   const h=await m.showStl(d3,t.stl);if(!live()){h.dispose();return}t.h3d=h;tx.hidden=true;
+   const z=h.size.map(v=>Math.round(v*10)/10);$("vinfo").textContent=z.join(" × ")+" ("+h.parts+" tam giác) · kéo để xoay, cuộn để phóng"}
+  catch(e){d3.hidden=true;msg("Không mở được xem trước STL 3D ("+(e.message||e)+").")}
   return}
  const needText=t.kind==="text"||t.mode==="text";
  if(needText&&t.text===undefined){const {ok,d}=await api("/api/file?path="+encodeURIComponent(t.rel));t.text=ok?d.text:null;t.err=ok?"":(d.error||"")}
@@ -825,7 +901,7 @@ async function renderTab(t){const id=t.rel,live=()=>curTab===id&&t.mode!==undefi
  if(t.kind==="step"&&t.mode==="svg"){pic.onerror=()=>{if(live()){pic.hidden=true;msg("Không dựng được hình nét của tệp STEP này.")}};pic.onload=()=>{if(live())tx.hidden=true};msg("Đang dựng hình…");pic.src="/api/preview?path="+encodeURIComponent(t.rel);pic.hidden=false;return}
  if(t.kind==="step"&&t.mode==="3d"){msg("Đang dựng mô hình 3D…");
   try{if(!t.mesh){const r=await api("/api/stepmesh?path="+encodeURIComponent(t.rel));if(!r.ok)throw new Error(r.d.error||"không chuyển được sang 3D");t.mesh=r.d}
-   if(!live())return;d3.hidden=false;const m=await import("/static/viewer3d.js");if(!live()){d3.hidden=true;return}
+   if(!live())return;d3.hidden=false;const m=await loadViewer3d();if(!live()){d3.hidden=true;return}
    const h=await m.showStep(d3,t.mesh);if(!live()){h.dispose();return}t.h3d=h;tx.hidden=true;const z=h.size.map(v=>Math.round(v*100)/100);$("vinfo").textContent=z.join(" × ")+" (đơn vị của tệp) · kéo để xoay, cuộn để phóng, chuột phải kéo để dịch"}
   catch(e){d3.hidden=true;t.mode="svg";const b=[...$("vmodes").children];b.forEach(x=>x.classList.toggle("on",x.textContent==="Nét 2D"));msg("Không dựng được 3D ("+(e.message||e)+"). Chuyển sang hình nét…");pic.onerror=()=>{if(live()){pic.hidden=true;msg("Không xem trước được tệp STEP này.")}};pic.onload=()=>{if(live())tx.hidden=true};pic.src="/api/preview?path="+encodeURIComponent(t.rel);pic.hidden=false}
   return}
@@ -897,11 +973,30 @@ $("tbtn").onclick=async()=>{$("tst").textContent="đang kiểm tra…";const r=a
 $("sf").onsubmit=async e=>{e.preventDefault();const r=await api("/api/settings",form());if(!r.ok){$("tst").textContent="✗ "+(r.d.error||r.status);return}
  DET=DET;loadSettings(r.d.settings);$("planner").value=r.d.settings.planner;$("worker").value=r.d.settings.worker||"qwen";chip();$("dlg").close();if(!col().querySelector(".user"))hero(false),hero(true)};
 $("quitbtn").onclick=async()=>{if(confirm("Tắt ứng dụng CadFabric?")){await api("/api/quit",{});document.body.textContent="Đã tắt CadFabric. Bạn có thể đóng tab này."}};
-(async()=>{const {d}=await api("/api/config");ext=d.external||[];local=d.local;cfgd=d.settings;RECENT=d.recent||[];loadLessons();api("/api/skills").then(r=>{if(r.ok){SK=r.d.skills||[];drawSkills()}});$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local||!!d.picker;window.PICKER=!!d.picker;setWs(d.settings.workspace||"");
+(async()=>{const {d}=await api("/api/config");APP_VER=String(d.version||"");ext=d.external||[];local=d.local;cfgd=d.settings;RECENT=d.recent||[];loadLessons();api("/api/skills").then(r=>{if(r.ok){SK=r.d.skills||[];drawSkills()}});$("ver").textContent="v"+d.version;$("quitbtn").hidden=!local||!!d.picker;window.PICKER=!!d.picker;setWs(d.settings.workspace||"");
  DET=d.cli_detected||{};PRESETS=d.cli_presets||{};AVAIL=d.availability||{};loadSettings(d.settings);if($("planner").querySelector('option[value="'+d.default+'"]'))$("planner").value=d.default;if($("worker").querySelector('option[value="'+(d.default_worker||"qwen")+'"]'))$("worker").value=d.default_worker||"qwen";ensureWorkingRoles(true);chip();if(local){discoverForId("qwen",false);if(d.default&&d.default!=="qwen")discoverForId(d.default,false);discoverForId("agy",false)}
  if(!local){$("localnote").textContent="Đang truy cập từ xa: không sửa được cài đặt (chỉ sửa được trên máy chạy ứng dụng).";document.querySelectorAll("#dlg input,#dlg select,#tbtn,#sbtn").forEach(x=>x.disabled=true)}
  hero(true);poll();setInterval(poll,800);if(!d.settings.configured&&local)setTimeout(openSettings,300)})();
+if($("pmax"))$("pmax").onclick=()=>{const lay=document.querySelector(".layout");if(!lay)return;const wide=lay.classList.toggle("wide");$("pmax").setAttribute("aria-pressed",wide?"true":"false");$("pmax").textContent=wide?"⤡ Thu gọn":"⤢ Mở rộng";const sr=$("sr_live");if(sr)sr.textContent=wide?"Đã mở rộng khung xem 3D":"Đã thu gọn khung xem 3D"};
+function bindSplitter(el,axis,cssVar,lsKey,defVal,minV,maxFn){
+ if(!el)return;
+ const apply=(val,save=true)=>{const mx=Math.max(minV,maxFn());const v=Math.round(Math.max(minV,Math.min(mx,val)));document.documentElement.style.setProperty(cssVar,v+"px");el.setAttribute("aria-valuemax",String(Math.round(mx)));el.setAttribute("aria-valuenow",String(v));if(save)try{localStorage.setItem(lsKey,String(v))}catch(e){}return v};
+ try{const sv=Number(localStorage.getItem(lsKey));if(Number.isFinite(sv)&&sv>=minV)apply(sv,false)}catch(e){}
+ let startP=0,startV=0,pid=-1;
+ el.addEventListener("pointerdown",e=>{if(e.button!==0)return;pid=e.pointerId;el.setPointerCapture(pid);el.classList.add("drag");startP=axis==="x"?e.clientX:e.clientY;const side=$("side"),pv=$("preview");startV=axis==="x"?(side?side.getBoundingClientRect().width:defVal):(pv?pv.getBoundingClientRect().height:defVal);e.preventDefault()});
+ el.addEventListener("pointermove",e=>{if(pid!==e.pointerId)return;const d=(axis==="x"?startP-e.clientX:e.clientY-startP);apply(startV+d,false)});
+ const endDrag=e=>{if(pid!==e.pointerId)return;pid=-1;el.classList.remove("drag");const side=$("side"),pv=$("preview");apply(axis==="x"?(side?side.getBoundingClientRect().width:defVal):(pv?pv.getBoundingClientRect().height:defVal),true)};
+ el.addEventListener("pointerup",endDrag);el.addEventListener("pointercancel",endDrag);
+ el.addEventListener("dblclick",()=>{const v=apply(defVal,true);const sr=$("sr_live");if(sr)sr.textContent="Đặt lại kích thước "+v+" px"});
+ el.addEventListener("keydown",e=>{const step=e.shiftKey?48:16;const cur=Number(el.getAttribute("aria-valuenow"))||defVal;let nx=null;
+  if(axis==="x"){if(e.key==="ArrowLeft")nx=cur+step;else if(e.key==="ArrowRight")nx=cur-step}
+  else{if(e.key==="ArrowDown")nx=cur+step;else if(e.key==="ArrowUp")nx=cur-step}
+  if(nx!==null){e.preventDefault();const v=apply(nx,true);const sr=$("sr_live");if(sr)sr.textContent=v+" px"}});
+}
+bindSplitter($("vsplit"),"x","--side-w","cf_side_w",360,280,()=>Math.min(920,Math.floor(innerWidth*0.76)));
+bindSplitter($("hsplit"),"y","--prev-h","cf_prev_h",260,180,()=>Math.min(720,Math.floor(innerHeight*0.72)));
 </script>
+<div id="sr_live" class="vh" aria-live="polite" aria-atomic="true"></div>
 <div id="dropov" hidden>Thả tệp vào đây (văn bản: txt, md, csv, json, dxf, step, py… hoặc ảnh png/jpg/webp tối đa 3 ảnh, gửi được cho cố vấn Claude hoặc Antigravity)</div>
 <div id="ctx" hidden></div><div id="toast" hidden></div>
 <canvas id="fx" hidden></canvas>

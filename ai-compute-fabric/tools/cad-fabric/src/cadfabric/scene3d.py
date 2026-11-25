@@ -42,11 +42,11 @@ PART_ISSUES = ("not_coaxial", "object_scale", "not_rigid", "wrong_pivot", "wrong
 def scale_policy(n_parts):
     """Adaptive orchestration parameters keyed by scene part count `n_parts` (preserves legacy behavior for N <= 25)."""
     if n_parts <= 25:
-        pol = {"tier": "small", "group_max": GROUP_MAX, "workers": 1, "max_issues": 12, "delta_radius_mm": 60.0, "min_director": 10, "compact_review": False}
+        pol = {"tier": "small", "group_max": GROUP_MAX, "workers": 1, "max_issues": 16, "delta_radius_mm": 60.0, "min_director": 10, "compact_review": False}
     elif n_parts <= 55:
-        pol = {"tier": "medium", "group_max": max(GROUP_MAX, 6), "workers": 2, "max_issues": 18, "delta_radius_mm": 55.0, "min_director": 12, "compact_review": True}
+        pol = {"tier": "medium", "group_max": max(GROUP_MAX, 6), "workers": 2, "max_issues": 28, "delta_radius_mm": 55.0, "min_director": 12, "compact_review": True}
     else:
-        pol = {"tier": "large", "group_max": max(GROUP_MAX, 8), "workers": 3, "max_issues": 24, "delta_radius_mm": 45.0, "min_director": 15, "compact_review": True}
+        pol = {"tier": "large", "group_max": max(GROUP_MAX, 8), "workers": 3, "max_issues": 40, "delta_radius_mm": 45.0, "min_director": 15, "compact_review": True}
     env_w = int(os.environ.get("BX_WORKERS", "0") or 0)
     if env_w > 0:
         pol["workers"] = env_w
@@ -285,6 +285,7 @@ def plan_view(plan):
         q = dict(q)
         q.pop("_mirror_from", None)
         q.pop("_offset_from", None)
+        q.pop("_derived_kind", None)
         if isinstance(q.get("ops"), list):
             q["ops"] = "<%d recipe ops, built; send ops only to change this part>" % len(q["ops"])
         out.append(q)
@@ -356,6 +357,9 @@ def apply_patch(plan, act):
     for q in act.get("parts") or []:
         if not isinstance(q, dict) or q.get("id") not in parts:
             errs.append("patch_plan: unknown part %r (use add_parts for a new one)" % (q.get("id") if isinstance(q, dict) else q)); continue
+        if "mirror_of" not in q and any(k in q for k in ("ops", "center_mm", "size_mm", "spec", "shape")):
+            for dk in ("_derived_kind", "_mirror_from", "_offset_from"):
+                parts[q["id"]].pop(dk, None)
         for k, v in q.items():
             if k != "id":
                 parts[q["id"]][k] = v
@@ -385,9 +389,32 @@ def apply_patch(plan, act):
     return new, errs
 
 
-_LR_MIRROR_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*?)(_?)(fl|fr|rl|rr|l|r)$", re.I)
-_LR_PAIR = {"l": "r", "fl": "fr", "rl": "rr"}
+_LR_SUFFIX_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*?)_(fl|fr|rl|rr|left|right|l|r)$", re.I)
+_LR_PREFIX_RE = re.compile(r"^(fl|fr|rl|rr|left|right)_([A-Za-z0-9_]+)$", re.I)
+_LR_MID_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*?)_(fl|fr|rl|rr|left|right|l|r)_([A-Za-z0-9_]+)$", re.I)
+_LR_LEGACY_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_]{1,}?)(fl|fr|rl|rr|l|r)$", re.I)
+_LR_SIDE = {"l": "l", "left": "l", "fl": "l", "rl": "l", "r": "r", "right": "r", "fr": "r", "rr": "r"}
+_LR_SLOT = {"fl": "f", "fr": "f", "rl": "r", "rr": "r"}
 _AG_STEM_RE = re.compile(r"^([A-Za-z][A-Za-z0-9]*?)(?:_(?:fl|fr|rl|rr|front|rear|left|right|lo|up|f|r|l|u|\d+)|\d+)$", re.I)
+
+
+def _match_lr_id(pid):
+    """Identify left/right naming patterns (suffix, prefix, mid-token) -> ((kind, stem, slot), 'l'|'r') or None."""
+    s = str(pid or "")
+    for kind, pat in ((1, _LR_SUFFIX_RE), (2, _LR_PREFIX_RE), (3, _LR_MID_RE), (4, _LR_LEGACY_RE)):
+        m = pat.match(s)
+        if not m:
+            continue
+        if kind == 2:
+            tok, stem = m.group(1).lower(), m.group(2).lower()
+        elif kind == 3:
+            tok, stem = m.group(2).lower(), "%s_%s" % (m.group(1).lower(), m.group(3).lower())
+        else:
+            stem, tok = m.group(1).lower(), m.group(2).lower()
+        if len(stem) < 2:
+            continue
+        return (kind, stem, _LR_SLOT.get(tok, "")), _LR_SIDE[tok]
+    return None
 
 
 def auto_group_key(pid):
@@ -487,8 +514,11 @@ def expand_plan(plan):
             c["id"] = cid
             if has_ops_arr:
                 c["ops"] = [_map_op(o, mv, lambda d: d, False) for o in p["ops"]]
+                if k > 0:
+                    c["_derived_kind"] = "array"
             elif k > 0:
                 c["_offset_from"] = {"src": base_id, "delta_mm": [st[i] * k for i in range(3)]}
+                c["_derived_kind"] = "array"
             if isinstance(p.get("center_mm"), list):
                 c["center_mm"] = mv(p["center_mm"])
             if isinstance(p.get("shape"), dict):
@@ -502,6 +532,7 @@ def expand_plan(plan):
             arr_map[p["id"]] = arr_ids
     byid = {p.get("id"): p for p in parts}
     out = []
+    mir_rels = []
     for p in parts:
         src = p.get("mirror_of")
         if src is None:
@@ -520,13 +551,15 @@ def expand_plan(plan):
             q = list(q); q[i] = 2 * off - q[i]; return q
         def dr(d, i=i):
             d = list(d); d[i] = -d[i]; return d
-        c = {x: y for x, y in base.items() if x not in ("id", "ops", "center_mm", "size_mm", "mirror_of", "shape", "_mirror_from")}
+        c = {x: y for x, y in base.items() if x not in ("id", "ops", "center_mm", "size_mm", "mirror_of", "shape", "_mirror_from", "_derived_kind")}
         c.update({x: y for x, y in p.items() if x not in ("mirror_of", "plane", "offset_mm")})
         c["spec"] = p.get("spec") or "mirror of %s in plane %s" % (src, pl)
+        c["_derived_kind"] = "mirror"
         if has_ops:
             c["ops"] = [_map_op(o, pt, dr, True) for o in base["ops"]]
         else:
             c["_mirror_from"] = {"src": src, "plane": pl, "offset_mm": off}
+        mir_rels.append((src, p.get("id"), pl, round(float(off), 3)))
         for k in ("center_mm", "size_mm"):
             if isinstance(base.get(k), list) and k not in p:
                 c[k] = pt(base[k]) if k == "center_mm" else list(base[k])
@@ -567,25 +600,63 @@ def expand_plan(plan):
                 continue
             if not (_num3(p.get("center_mm")) and _num3(p.get("size_mm"))):
                 continue
-            m = _LR_MIRROR_RE.match(str(p.get("id") or ""))
-            if m and len(m.group(1)) >= 2:
-                stem, sep, side = m.group(1).lower(), m.group(2), m.group(3).lower()
-                candidates.setdefault((stem, sep), {})[side] = (idx_p, p)
-        for (_stem, _sep), sides in candidates.items():
-            for ls, rs in _LR_PAIR.items():
-                if ls in sides and rs in sides:
-                    idxL, pL = sides[ls]
-                    idxR, pR = sides[rs]
-                    if pR.get("id") in derived_srcs:
-                        continue
-                    cL, sL = pL["center_mm"], pL["size_mm"]
-                    cR, sR = pR["center_mm"], pR["size_mm"]
-                    if (abs(cL[0] - cR[0]) <= 0.5 and abs(cL[1] + cR[1]) <= 0.5 and abs(cL[1]) >= 5.0 and abs(cL[2] - cR[2]) <= 0.5
-                            and all(abs(sL[k] - sR[k]) <= 0.5 for k in range(3)) and _shapes_y_mirror(pL, pR)):
-                        pR_new = dict(pR)
-                        pR_new["_mirror_from"] = {"src": pL["id"], "plane": "y", "offset_mm": 0}
-                        out[idxR] = pR_new
-                        derived_srcs.add(pL["id"])
+            m = _match_lr_id(p.get("id"))
+            if m:
+                key_lr, side = m
+                candidates.setdefault(key_lr, {})[side] = (idx_p, p)
+        for _key_lr, sides in candidates.items():
+            if "l" in sides and "r" in sides:
+                idxL, pL = sides["l"]
+                idxR, pR = sides["r"]
+                if pR.get("id") in derived_srcs:
+                    continue
+                cL, sL = pL["center_mm"], pL["size_mm"]
+                cR, sR = pR["center_mm"], pR["size_mm"]
+                if (abs(cL[0] - cR[0]) <= 1.0 and abs(cL[1] + cR[1]) <= 1.0 and abs(cL[1]) >= 5.0 and abs(cL[2] - cR[2]) <= 1.0
+                        and all(abs(sL[k] - sR[k]) <= 1.0 for k in range(3)) and _shapes_y_mirror(pL, pR)):
+                    pR_new = dict(pR)
+                    pR_new["_mirror_from"] = {"src": pL["id"], "plane": "y", "offset_mm": 0}
+                    pR_new["_derived_kind"] = "mirror"
+                    out[idxR] = pR_new
+                    derived_srcs.add(pL["id"])
+                    mir_rels.append((pL["id"], pR["id"], "y", 0.0))
+    if mir_rels and isinstance(res.get("allowed_contacts"), list):
+        byid_out = {p.get("id"): p for p in out if p.get("id")}
+        mir_by_key, mir_list = {}, {}
+        for src_id, dst_id, pl, off in mir_rels:
+            if src_id in byid_out and dst_id in byid_out:
+                mir_by_key[(src_id, pl, off)] = dst_id
+                mir_by_key[(dst_id, pl, off)] = src_id
+                mir_list.setdefault(src_id, []).append((dst_id, pl, off))
+                mir_list.setdefault(dst_id, []).append((src_id, pl, off))
+
+        def _straddles(part, pl, off):
+            idx = _AX[pl]
+            if isinstance(part.get("ops"), list) and part["ops"]:
+                bb = bxlib.recipe_bbox({"ops": part["ops"]})
+                if bb:
+                    return bb[0][idx] - 2.0 <= off <= bb[1][idx] + 2.0
+            if _num3(part.get("center_mm")) and _num3(part.get("size_mm")):
+                c, s = part["center_mm"][idx], part["size_mm"][idx]
+                return (c - s / 2.0) - 2.0 <= off <= (c + s / 2.0) + 2.0
+            return False
+
+        sym_pairs, bad_contacts = set(), []
+        for pr in res["allowed_contacts"]:
+            if not (isinstance(pr, (list, tuple)) and len(pr) == 2 and all(isinstance(x, str) for x in pr)):
+                bad_contacts.append(pr); continue
+            a, b = pr
+            sym_pairs.add(tuple(sorted((a, b))))
+            if a in byid_out and b in byid_out:
+                for a_m, pl, off in mir_list.get(a, ()):
+                    if (b, pl, off) in mir_by_key:
+                        sym_pairs.add(tuple(sorted((a_m, mir_by_key[(b, pl, off)]))))
+                    elif _straddles(byid_out[b], pl, off):
+                        sym_pairs.add(tuple(sorted((a_m, b))))
+                for b_m, pl, off in mir_list.get(b, ()):
+                    if (a, pl, off) not in mir_by_key and _straddles(byid_out[a], pl, off):
+                        sym_pairs.add(tuple(sorted((a, b_m))))
+        res["allowed_contacts"] = [list(pr) for pr in sorted(sym_pairs)] + bad_contacts
     pids = {p.get("id") for p in out if p.get("id")}
     if isinstance(res.get("joints"), list):
         res["joints"] = _normalize_nested_joints(res["joints"], pids)
@@ -709,18 +780,27 @@ class Scene:
                                          any(pm.kind == inspect.Parameter.VAR_KEYWORD for pm in sw.parameters.values()))
             except (TypeError, ValueError):
                 pass
+        self._director_has_phase = False
+        if callable(director):
+            try:
+                sd = inspect.signature(director)
+                self._director_has_phase = ("phase" in sd.parameters or
+                                            any(pm.kind == inspect.Parameter.VAR_KEYWORD for pm in sd.parameters.values()))
+            except (TypeError, ValueError):
+                pass
         os.makedirs(os.path.join(workdir, "parts"), exist_ok=True)
 
     # -- model calls
-    def ask_director(self, prompt):
+    def ask_director(self, prompt, phase="plan"):
         if self.stop():
             raise Stopped()
         system = SYSTEM + self.director_skill_text()
+        kw = {"phase": phase} if self._director_has_phase else {}
         if self.images:                                   # the pictures go to the director once, with its first message
             imgs, self.images = self.images, []
-            text, u = self.director(prompt, system, images=imgs)
+            text, u = self.director(prompt, system, images=imgs, **kw)
         else:
-            text, u = self.director(prompt, system)
+            text, u = self.director(prompt, system, **kw)
         self.usage["director"].append(u or {})
         return text
 
@@ -793,20 +873,30 @@ class Scene:
         want = plan.get("skills") if isinstance(plan.get("skills"), list) else []
         self.skill_names = [n for n in want if isinstance(n, str) and n in known][:3]
 
+    @staticmethod
+    def _part_plan_sig(p):
+        return (p.get("spec"), p.get("center_mm"), p.get("size_mm"), p.get("shape"))
+
     def set_plan(self, plan):
         keep = {p["id"] for p in plan["parts"]}
         old = self.plan
         self.plan = plan
         with open(os.path.join(self.dir, "plan.json"), "w", encoding="utf-8") as f:
             json.dump(plan, f, indent=1)
-        if old:                                           # a part whose spec changed must be rewritten, a removed part must go
+        if old:                                           # a part whose spec/bbox/shape changed must be rewritten, a removed part must go
             for p in old["parts"]:
                 if p["id"] not in keep and os.path.exists(self.pf(p["id"])):
                     os.unlink(self.pf(p["id"]))
-            newspec = {p["id"]: p["spec"] for p in plan["parts"]}
-            for p in old["parts"]:
-                if p["id"] in keep and newspec[p["id"]] != p["spec"]:
-                    self.err[p["id"]] = "the spec of this part changed; rewrite it"
+            old_by = {p["id"]: p for p in old["parts"]}
+            for p in plan["parts"]:
+                pid = p["id"]
+                if pid in old_by and not (p.get("ops") and RECIPES and DIRECTOR_OPS_ON):
+                    if self._part_plan_sig(p) != self._part_plan_sig(old_by[pid]):
+                        self.err[pid] = "the planned spec/bbox/shape of this part changed; rewrite it"
+                        self.tries[pid] = 0
+                        self.sigs[pid] = []
+                        self.stuck.pop(pid, None)
+                        self.collision_tried.discard(pid)
         for p in plan["parts"]:                           # parts the director gave as recipes are built here, with no worker call
             if p.get("ops") and RECIPES and DIRECTOR_OPS_ON:
                 before = next((q.get("ops") for q in old["parts"] if q["id"] == p["id"]), None) if old else None
@@ -1116,11 +1206,14 @@ class Scene:
     def worker_report(self, others):
         parts = self.plan["parts"]
         lim = scale_policy(len(parts))["max_issues"]
+        prio = {"blender_failed": 0, "joint_skipped": 1, "joint_partial": 1, "span_mismatch": 2, "not_rigid": 2,
+                "wrong_axis": 2, "wrong_pivot": 2, "ground_penetration": 3, "floating_part": 4, "collision": 5}
+        ordered = sorted(others or (), key=lambda it: prio.get(it.get("kind"), 3))
         if len(parts) <= 16:
             rows = ["%s: %s (worker tries %d)" % (p["id"], ("STUCK - " + self.stuck[p["id"]]) if p["id"] in self.stuck else "built", self.tries.get(p["id"], 0)) for p in parts]
         else:
             bad = set(self.stuck.keys())
-            for i in (others or []):
+            for i in ordered:
                 if i.get("part"):
                     bad.add(i["part"])
                 if i.get("pair"):
@@ -1130,7 +1223,7 @@ class Scene:
             clean = len(parts) - len(rows)
             if clean > 0:
                 rows.append("... and %d other parts built cleanly" % clean)
-        return "PARTS\n" + "\n".join(rows) + "\nISSUES\n" + ("\n".join(json.dumps(i) for i in others[:lim]) or "none")
+        return "PARTS\n" + "\n".join(rows) + "\nISSUES\n" + ("\n".join(json.dumps(i) for i in ordered[:lim]) or "none")
 
     def review_text(self, rep):
         parts = self.plan.get("parts", []) if self.plan else []
@@ -1196,8 +1289,9 @@ def _usage_totals(sc):
     w_tok = w_in + t["worker"]["output"]
     parts = sc.plan.get("parts", []) if sc.plan else []
     n_parts = len(parts)
-    n_derived = sum(1 for p in parts if p.get("_mirror_from") or p.get("_offset_from"))
-    n_dir_ops = sum(1 for p in parts if p.get("ops") and not p.get("_mirror_from") and not p.get("_offset_from"))
+    is_der = lambda p: bool(p.get("_derived_kind") or p.get("_mirror_from") or p.get("_offset_from"))
+    n_derived = sum(1 for p in parts if is_der(p))
+    n_dir_ops = sum(1 for p in parts if p.get("ops") and not is_der(p))
     n_worker_parts = max(0, n_parts - n_derived - n_dir_ops)
     avg_w = (w_tok / n_worker_parts) if (n_worker_parts > 0 and w_tok > 0) else (1500.0 if n_derived > 0 else 0.0)
     derived_tok_est = int(round(n_derived * avg_w))
@@ -1209,6 +1303,19 @@ def _usage_totals(sc):
                     "worker_tokens": w_tok, "director_tokens": d_tok, "derived_parts": n_derived,
                     "worker_parts": n_worker_parts, "director_ops_parts": n_dir_ops}
     return t
+
+
+def extract_part_mentions(request, plan):
+    """Extract ordered unique `@part_id` references present in `plan['parts']`."""
+    if not isinstance(plan, dict):
+        return []
+    pids = {p.get("id") for p in (plan.get("parts") or ()) if p.get("id")}
+    seen, out = set(), []
+    for m in re.findall(r"(?:^|[\s,(])@([A-Za-z][A-Za-z0-9_]{0,40})\b", str(request or "")):
+        if m in pids and m not in seen:
+            seen.add(m)
+            out.append(m)
+    return out
 
 
 def run(request, workdir, blender, director, worker, on_event=None, should_stop=None, log=print, resume=False, max_director=10, skills=None, images=None, review_images=False, plan_cache=None):
@@ -1241,13 +1348,22 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 rep0 = json.load(f)
         except (OSError, ValueError):
             pass
-        msg = ("CURRENT SCENE (already built)\nPLAN: " + json.dumps(plan_view(plan)) + "\n" + sc.review_text(rep0) +
-               "\nThe user now asks: " + request + "\nReply with the action(s) needed (plan for a new structure, patch_plan to change several things at once, write_part/patch_part for one part), or done if nothing changes.")
+        mentions = extract_part_mentions(request, plan)
+        if mentions:
+            dplan = plan_delta_view(plan, rep0, {m: "targeted" for m in mentions}, [])
+            msg = ("CURRENT SCENE (already built)\nPLAN: " + json.dumps(dplan) +
+                   "\nUSER TARGETED PART(S): " + ", ".join(mentions) +
+                   " — modify ONLY the targeted part(s) (using write_part, patch_part, or a minimal patch_plan) unless connected parts or joints must also adjust." +
+                   "\nThe user now asks: " + request)
+        else:
+            msg = ("CURRENT SCENE (already built)\nPLAN: " + json.dumps(plan_view(plan)) + "\n" + sc.review_text(rep0) +
+                   "\nThe user now asks: " + request + "\nReply with the action(s) needed (plan for a new structure, patch_plan to change several things at once, write_part/patch_part for one part), or done if nothing changes.")
     else:
         ev("phase", what="plan", mode="director")
         msg = "TASK: " + request + ("\n%d picture(s) are attached: study them and write what you see (shapes, proportions, style) into the part specs, because the worker cannot see them." % len(sc.images) if sc.images else "") + "\nStart with the plan action."
     task = request
     calls, reviewed, extra_review_budget, done_fixes, ok, stopped, why = 0, 0, 0, 0, False, False, ""
+    cur_phase = "followup" if inner_ready else "plan"
     default_cap = (max_director == 10)
     eff_max = max(max_director, scale_policy(len(plan["parts"]))["min_director"]) if (plan and default_cap) else max_director
     cache_file, cached, plan_saved = None, None, False
@@ -1270,7 +1386,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 txt = json.dumps(cached)
                 ev("phase", what="plan", mode="cache")
             else:
-                txt = sc.ask_director(msg)
+                txt = sc.ask_director(msg, phase=cur_phase)
             dt_call = round(time.time() - t_call, 1)
             calls += 1
             last_u = sc.usage["director"][-1] if sc.usage["director"] else {}
@@ -1282,6 +1398,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                            "use \"mirror_of\" for symmetric L/R pairs, and output ONE compact JSON object." % len(txt or ""))
                 else:
                     msg = "TASK: " + task + "\nYour reply was not one JSON object. Reply with one JSON object."
+                cur_phase = "patch"
                 continue
             a = act.get("action")
             if a == "plan":
@@ -1291,6 +1408,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                     _log_director(workdir, {"call": calls, "sec": dt_call, "action": "plan", "errs": errs[:15], "len": len(txt or ""), "usage": last_u})
                     prev_j = ("\nYOUR PREVIOUS JSON (fix ONLY the errors listed above and reply with the corrected JSON object; do not redesign from scratch):\n" + (txt or "")[:90000]) if len(txt or "") > 200 else ""
                     msg = "TASK: " + task + "\nPLAN REJECTED by static checks:\n- " + "\n- ".join(errs) + prev_j + "\nSend a corrected plan."
+                    cur_phase = "patch"
                     continue
                 _log_director(workdir, {"call": calls, "sec": dt_call, "action": "plan", "errs": [], "parts": len(act.get("parts") or []), "len": len(txt or ""), "usage": last_u})
                 sc.set_plan(act)
@@ -1318,6 +1436,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                     _log_director(workdir, {"call": calls, "sec": dt_call, "action": "patch_plan", "errs": errs[:15], "len": len(txt or ""), "usage": last_u})
                     prev_j = ("\nYOUR PREVIOUS JSON (fix ONLY the errors listed above and reply with the corrected JSON object; do not redesign from scratch):\n" + (txt or "")[:60000]) if len(txt or "") > 200 else ""
                     msg = "TASK: " + task + "\nPATCH REJECTED by static checks (nothing was changed):\n- " + "\n- ".join(errs) + prev_j + "\nSend a corrected patch_plan."
+                    cur_phase = "patch"
                     continue
                 _log_director(workdir, {"call": calls, "sec": dt_call, "action": "patch_plan", "errs": [], "parts": len(newp.get("parts") or []), "len": len(txt or ""), "usage": last_u})
                 sc.set_plan(newp)
@@ -1351,6 +1470,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
             elif a == "done" and plan is None:
                 _log_director(workdir, {"call": calls, "sec": dt_call, "action": "done", "errs": ["no_plan_yet"], "len": len(txt or ""), "usage": last_u})
                 msg = "TASK: " + task + "\nNo plan yet. Send the plan action."
+                cur_phase = "patch"
                 continue
             elif a == "done":
                 _log_director(workdir, {"call": calls, "sec": dt_call, "action": "done", "errs": [], "len": len(txt or ""), "usage": last_u})
@@ -1364,14 +1484,17 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
             else:
                 _log_director(workdir, {"call": calls, "sec": dt_call, "action": a, "errs": ["unknown_or_no_plan"], "len": len(txt or ""), "usage": last_u})
                 msg = "TASK: " + task + "\nUnknown action or no plan. Reply with a valid action."
+                cur_phase = "patch"
                 continue
             rep, others = sc.work()
             if sc.stuck or others:
                 msg = "TASK: " + task + "\nPLAN: " + json.dumps(plan_delta_view(plan, rep, sc.stuck, others)) + "\nWORKER REPORT (the worker could not resolve these)\n" + sc.worker_report(others)
+                cur_phase = "patch"
             elif reviewed < MAX_REVIEWS + extra_review_budget:
                 reviewed += 1
                 ev("phase", what="review")
                 msg = "TASK: " + task + "\nPLAN: " + json.dumps(review_plan_view(plan)) + "\n" + sc.review_text(rep)
+                cur_phase = "review"
                 views = sc.render_views() if review_images else []
                 if views:                                         # one look at the result: iso, side, top at rest, and iso at the end of the motion
                     sc.images = views

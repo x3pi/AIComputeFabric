@@ -6,7 +6,7 @@ Chạy headless trên Linux, Windows, macOS. Không cần SolidWorks, không c�
 
 ## Chiến thuật dựng cảnh 3D (0.8.x, thay vòng lặp CadQuery cũ)
 
-Từ 0.8.0 mặc định cadfabric dựng **cảnh nhiều chi tiết, có chuyển động, trong Blender** (cần Blender 4.x; tìm theo biến `BLENDER`, khoá `"blender"` trong cấu hình, `PATH` rồi các chỗ cài thông dụng). Vòng lặp CadQuery từng bước cũ **không còn là đường chạy mặc định**; mã vòng lặp cũ đã được xoá khỏi 0.9.9 (chỉ còn phần xem/xuất STEP dùng CadQuery). Đầu ra là `<tên>.blend` và thư mục `<tên>.scene/` (`plan.json`, `parts/*.py`) trong thư mục dự án; xuất STEP chính xác chưa có trong chiến thuật này.
+Từ 0.8.0 mặc định cadfabric dựng **cảnh nhiều chi tiết, có chuyển động, trong Blender** (cần Blender 4.x; tìm theo biến `BLENDER`, khoá `"blender"` trong cấu hình, `PATH` rồi các chỗ cài thông dụng). Vòng lặp CadQuery từng bước cũ **không còn là đường chạy mặc định**; mã vòng lặp cũ đã được xoá khỏi 0.9.9 (chỉ còn phần xem/xuất STEP/STL dùng CadQuery). Đầu ra là `<tên>.blend` và thư mục `<tên>.scene/` (`plan.json`, `parts/*.py`, `scene.glb`), kèm xuất `.glb`, `.stl` (cả cảnh hoặc từng chi tiết), `.mp4` và `.step` lắp ghép nhiều màu B-Rep ngay trên giao diện; nếu chỉ cần một chi tiết CAD đơn giản từ dòng lệnh cũ hãy xem `CADFABRIC_LEGACY_AGENT=1`.
 
 Phân vai (mục tiêu: dùng model mạnh ít nhất có thể mà không giảm chất lượng):
 
@@ -18,7 +18,7 @@ Phân vai (mục tiêu: dùng model mạnh ít nhất có thể mà không giả
 
 **Kỹ năng (skill)**: kỹ năng đã cài **và được bạn duyệt** đều dùng được ở chế độ này. Cố vấn thấy danh mục (tên + mô tả) và có thể chọn tối đa 3 kỹ năng đưa cho Qwen (`"skills"` trong kế hoạch, nội dung giới hạn 14000 ký tự để không tràn ngữ cảnh); gõ `$tên-kỹ-năng` để ép dùng cho cả cố vấn lẫn Qwen. Có sẵn kỹ năng mẫu `bpy-bmesh-recipes` (vành/lốp, bo cạnh, vỏ loft, nan hoa, nghiêng; đã chạy thử trong Blender 4.2): nhập từ thư mục `skills` rồi duyệt.
 
-**Ảnh**: kéo thả tối đa 3 ảnh (png/jpg/gif/webp, mỗi ảnh dưới 1,4 MB) vào chat để cố vấn nhìn (chỉ cố vấn **Claude Code**; Qwen không nhận ảnh nên cố vấn phải ghi điều nhìn thấy vào mô tả từng chi tiết). Ở lượt duyệt cuối, cố vấn Claude còn nhận 3–4 ảnh dựng thử (iso, ngang, trên, và iso ở cuối chuyển động; mỗi chi tiết một màu) để bắt lỗi chi tiết thiếu/lơ lửng/sai tỉ lệ. Trên Windows, ảnh được lưu ra thư mục tạm cho cố vấn đọc bằng công cụ Read vì CLI báo lỗi với ảnh base64.
+**Ảnh**: kéo thả tối đa 3 ảnh (png/jpg/gif/webp, mỗi ảnh dưới 1,4 MB) vào chat để cố vấn nhìn (hỗ trợ cố vấn **Claude Code**, **Antigravity CLI (`agy`)** hoặc **Anthropic API**; Qwen không nhận ảnh nên cố vấn phải ghi điều nhìn thấy vào mô tả từng chi tiết). Ở lượt duyệt cuối, các cố vấn nhận ảnh nêu trên còn nhận 4 ảnh dựng thử (`iso`, `side`, `top`, `iso_end_of_motion`; mỗi chi tiết một màu) để bắt lỗi chi tiết thiếu/lơ lửng/sai tỉ lệ. Trên Windows với Claude CLI, ảnh được lưu ra thư mục tạm để cố vấn đọc bằng công cụ Read.
 
 Cùng một lỗi hai lần liên tiếp hoặc 4 lần thử thì chi tiết đó **kẹt** và được báo lên cố vấn (sửa bằng ghi chú cho worker, hoặc tự viết mã chi tiết). Lỗi của cặp chi tiết (va chạm) hay của khớp không bao giờ đưa cho worker. Nhắn tiếp ("làm bánh to hơn") sẽ nạp lại kế hoạch đã lưu và chỉ viết lại chi tiết bị đổi. Mỗi lượt báo chi phí thật: Claude CLI trả token và USD; cố vấn khác chỉ ước lượng.
 
@@ -35,16 +35,16 @@ Lần đầu chạy, hộp **Cài đặt** tự mở:
 | URL API Qwen | endpoint tương thích OpenAI (ví dụ `http://192.168.1.40:18080/v1/chat/completions`) |
 | Tên model | để trống nếu máy chủ tự chọn; nút **Kiểm tra kết nối** liệt kê model có sẵn |
 | Khoá API | lưu vào file riêng `key.txt` trong thư mục cấu hình của người dùng (quyền 0600), **không bao giờ** vào file JSON và không bao giờ gửi ngược lại trình duyệt |
-| Cố vấn | có sẵn `off`, `nothink`, `think`, `codex`, `codex-relay` (xem bảng bên dưới) và các cố vấn bạn tự thêm. Cố vấn gửi nội dung ra ngoài luôn hỏi xác nhận |
+| Cố vấn | có sẵn `off`, `nothink`, `think`, `codex`, `agy`, `codex-relay` và các cố vấn/thực thi bạn tự thêm; hiển thị rõ trạng thái cài đặt/đăng nhập (`✓ sẵn sàng`, `✗ chưa cài`, …) và chặn chọn nhầm model lỗi |
 
 ### Thêm cố vấn của riêng bạn (URL hoặc CLI)
 
-Trong **Cài đặt → + Thêm cố vấn** có hai loại, đều chỉ nhận văn bản (cố vấn không có công cụ, không đọc được file):
+Trong **Cài đặt → + Thêm model** có hai loại, đều chỉ nhận văn bản (model không có công cụ, không đọc trực tiếp tệp trên máy):
 
 | Loại | Điền | Ghi chú |
 |---|---|---|
 | **API (URL)** | kiểu `OpenAI-compatible` hoặc `Anthropic`, URL, model, khoá | khoá lưu file riêng `key-<id>.txt` (0600), không vào JSON; URL ở mạng LAN thì mặc định không tính là "gửi ra ngoài" |
-| **CLI** | chọn `Claude Code`, `Codex` (ứng dụng báo đã thấy chương trình ở đâu) hoặc lệnh tự đặt; với Claude/Codex chọn thêm **model** (yếu/nhanh như `haiku`, hay mạnh như `opus`) và **mức suy nghĩ** (`--effort` của Claude: low…max; `model_reasoning_effort` của Codex: low/medium/high) | chạy không qua shell, trong thư mục tạm rỗng, lời nhắc qua stdin (hoặc tham số `{prompt}`) |
+| **CLI** | chọn `Claude Code`, `Antigravity CLI (agy)`, `Codex` (ứng dụng báo đã thấy chương trình ở đâu) hoặc lệnh tự đặt; chọn thêm **model** và **mức suy nghĩ** (`--effort` của Claude/`agy`, `model_reasoning_effort` của Codex) | chạy không qua shell, trong thư mục tạm rỗng, lời nhắc qua stdin (hoặc tham số `{prompt}`) |
 
 Với cố vấn API, ô Model chọn model của dịch vụ đó. Đã đo thật với Claude CLI: `haiku` 3,6 s, `sonnet` 2,6 s, `opus` (effort low) 3,8 s, model sai cho lỗi đọc được.
 
@@ -54,7 +54,7 @@ Cố vấn được chọn ngay trên ô nhập từng lần gửi. Ứng dụng
 
 ### Xem tệp trong dự án
 
-Tab **Tệp** ở panel phải liệt kê thư mục dự án; bấm một tệp để mở trong tab cạnh khung chat (mở nhiều tab, cuộn ngang, chuột phải vào tab để đóng). Cách hiển thị: mã có tô màu và số dòng (highlight.js), Markdown (marked + DOMPurify), CSV/TSV dạng bảng, ảnh, và STEP dạng **3D xoay được** (máy chủ chia lưới bằng CadQuery, trình duyệt vẽ bằng three.js), hoặc hình nét 2D. **Chuột phải** vào tệp: mở trong tab, đính kèm vào chat, mở trong chương trình CAD, mở bằng chương trình mặc định (chỉ loại tệp không chạy mã), hiện trong thư mục, sao chép đường dẫn. Thư viện giao diện nằm trong gói (`src/cadfabric/static`, giấy phép trong `static/licenses`), không tải gì từ Internet.
+Tab **Tệp** ở panel phải liệt kê thư mục dự án; bấm một tệp để mở trong tab cạnh khung chat (mở nhiều tab, cuộn ngang, chuột phải vào tab để đóng). Cách hiển thị: mã có tô màu và số dòng (highlight.js), Markdown (marked + DOMPurify), CSV/TSV dạng bảng, ảnh/video MP4, STEP, **STL**, và `.blend`/`.glb` dạng **3D xoay được + tách lớp** bằng `three.js`. **Chuột phải** vào tệp: mở trong tab, đính kèm vào chat, mở trong chương trình CAD/Blender, mở bằng chương trình mặc định (chỉ loại tệp không chạy mã), hiện trong thư mục, sao chép đường dẫn. Thư viện giao diện nằm trong gói (`src/cadfabric/static`, giấy phép trong `static/licenses`), không tải gì từ Internet.
 
 ### Làm việc nhiều bước (sổ làm việc, nén ngữ cảnh, chống kẹt)
 
@@ -255,3 +255,7 @@ Mỗi cuộc trò chuyện tự lưu vào `<data dir>/history/<id>.json` (0600, 
 **0.9.15 - xem 3D `.glb` xoay & chạy khớp động trực tiếp + tối ưu chi phí & tốc độ.** (1) `blender_build.py` đặt lại quaternion nghỉ cho từng khớp trước khi dựng khớp con và tự xuất `scene.glb` (chuyển động khớp + vật liệu PBR); thêm `blender_glb.py`, `/api/scene.glb`, `/api/part.glb`, `/api/blendglb` cùng bộ phân tích glTF 2.0 offline trong `viewer3d.js` cho phép xoay/zoom 3D và kéo thanh tiến độ chuyển động ngay trên panel phải và tab mở `.blend`/`.glb`. (2) `expand_plan` tự khai triển khớp lồng nhau (`children`/`parent`), tự nhận diện cặp L/R đối xứng mặt `y=0` khi thiếu `mirror_of` (`BX_AUTOMIRROR`), tự gom nhóm chi tiết cùng họ cho thực thi (`BX_AUTOGROUP`), và đưa skill/hướng dẫn cố vấn vào `system` + Anthropic `cache_control` để tăng tỉ lệ đọc prompt cache.
 
 **0.9.16 - hiển thị rõ trạng thái cài đặt & khả năng gọi model, chặn chọn nhầm model lỗi.** (1) Kiểm tra đồng bộ `advisors.availability()` (CLI chưa cài, chưa thấy phiên đăng nhập, thiếu khoá API Anthropic, URL sai, `codex-relay` không hỗ trợ 3D) và trạng thái gọi trực tiếp từ `discover_*` / `POST /api/probe_model`. (2) Cây chọn model `Cố vấn` / `Thực thi` tách nhóm khả dụng (`✓ sẵn sàng` / `✓ đã cài` / `⚠ kiểm tra đăng nhập`) lên trên, đẩy nhóm không dùng được xuống dưới cùng huy hiệu `✗ chưa cài` / `✗ mất kết nối` / `✗ không hỗ trợ 3D`, khóa chọn (`aria-disabled="true"` + cảnh báo rõ nguyên nhân + nút `✓ thử` một chạm), tự chuyển về model khả dụng nếu mặc định bị hỏng, và chặn ở `/api/send`.
+
+**0.9.17 - tối ưu vòng vá `patch_plan` + chọn chi tiết 3D + xuất `.stl`/`.step` một chạm.** (1) `Scene.set_plan` phát hiện thay đổi `center_mm`/`size_mm`/`shape` (không chỉ `spec`) để dựng lại đúng chi tiết sau `patch_plan`; `expand_plan` khử trùng tên trái/phải tổng quát (`_match_lr_id`), lan truyền `allowed_contacts` đối xứng tự động (kể cả qua mặt cắt giữa), nâng `max_issues` và phân tầng ưu tiên vấn đề trong `worker_report`, kèm tự điều chỉnh `effort` theo pha (`BX_AUTO_EFFORT`). (2) `viewer3d.js` hỗ trợ bấm chọn chi tiết trực tiếp bằng raycast, tô sáng, zoom góc nhìn, **Ẩn / Cô lập**, thanh kéo **💥 Tách lớp**, và nút **✏ Sửa chi tiết này** chèn `@id` vào chat (chỉ gửi delta vùng quanh chi tiết đó). (3) `scene_export.py` + `/api/part.stl`, `/api/scene.step`, `/api/scene_meta`, `/api/rawstl` xuất `.stl` nhị phân (cả cảnh hoặc từng chi tiết) và `.step` lắp ghép nhiều màu B-Rep, cùng xem tệp `.stl` trong tab tệp.
+
+**0.9.18 - chỉnh kích thước khung xem 3D, mặc định đứng yên & trỏ chuột chính xác.** (1) Thêm thanh kéo giãn ngang (`#vsplit`, lưu `cf_side_w`), kéo giãn dọc (`#hsplit`, lưu `cf_prev_h`), phím mũi tên điều chỉnh + đúp chuột đặt lại, và nút một chạm **`⤢ Mở rộng`** (`#pmax`, `aria-pressed`) mở rộng đồng thời bảng phải và khung 3D. (2) Mặc định khung 3D dừng ở tư thế nghỉ (`autoplay=false`, nút `▶` sẵn sàng phát khi bấm hoặc kéo thanh tiến độ). (3) Nâng độ chính xác trỏ & bấm chuột trên 3D: vật liệu `THREE.DoubleSide` + tính `boundingBox`/`boundingSphere`, tô sáng trước khi rê chuột kèm nhãn nổi theo con trỏ (`.v3-tip`), raycast capture-phase chính xác theo `matrixWorld`, bấm lặp tại chỗ để xuyên lớp chọn chi tiết bị che (`[k/N]`), đúp chuột zoom vào chi tiết, và phục vụ `/static/viewer3d.js` với `Cache-Control: no-cache` để nâng cấp áp dụng ngay.

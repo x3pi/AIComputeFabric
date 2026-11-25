@@ -95,7 +95,7 @@ export function parseGlb(buffer) {
       color: col,
       metalness: pbr.metallicFactor !== undefined ? pbr.metallicFactor : 1.0,
       roughness: pbr.roughnessFactor !== undefined ? pbr.roughnessFactor : 1.0,
-      side: m.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+      side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
@@ -131,12 +131,15 @@ export function parseGlb(buffer) {
       if (pr.indices !== undefined) {
         g.setIndex(new THREE.BufferAttribute(_readAccessor(gltf, ab, binOff, binLen, pr.indices), 1));
       }
+      g.computeBoundingBox();
+      g.computeBoundingSphere();
       const mat = pr.material !== undefined && materials[pr.material] ? materials[pr.material] : defaultMat;
       prims.push({ geometry: g, material: mat, vCount: pos.length / 3 });
     }
     return prims;
   });
 
+  const partsMap = new Map();
   const nodes = (gltf.nodes || []).map((nd, idx) => {
     const grp = new THREE.Group();
     grp.name = nd.name || ("node_" + idx);
@@ -149,12 +152,42 @@ export function parseGlb(buffer) {
       if (Array.isArray(nd.scale)) grp.scale.set(nd.scale[0], nd.scale[1], nd.scale[2]);
     }
     if (nd.mesh !== undefined && meshData[nd.mesh]) {
+      const wrap = new THREE.Group();
+      wrap.name = grp.name + "__wrap";
+      grp.add(wrap);
+      let entry = partsMap.get(grp.name);
+      if (!entry) {
+        entry = {
+          id: grp.name,
+          node: grp,
+          wrap,
+          meshes: [],
+          edges: [],
+          hidden: false,
+          localExplodeDir: new THREE.Vector3(),
+          restCenterWorld: new THREE.Vector3(),
+          restSizeMm: [0, 0, 0],
+        };
+        partsMap.set(grp.name, entry);
+      }
       for (const pr of meshData[nd.mesh]) {
-        const m = new THREE.Mesh(pr.geometry, pr.material);
+        const mat = pr.material.clone();
+        const origEm = mat.emissive ? mat.emissive.clone() : new THREE.Color(0x000000);
+        const origEmI = mat.emissiveIntensity || 0;
+        const m = new THREE.Mesh(pr.geometry, mat);
         m.name = grp.name;
-        grp.add(m);
+        m.userData.partId = grp.name;
+        m.userData.origEm = origEm;
+        m.userData.origEmI = origEmI;
+        wrap.add(m);
+        entry.meshes.push(m);
         if (pr.vCount > 0 && pr.vCount <= 25000) {
-          grp.add(new THREE.LineSegments(new THREE.EdgesGeometry(pr.geometry, 34), edgeMat));
+          const em = edgeMat.clone();
+          const ls = new THREE.LineSegments(new THREE.EdgesGeometry(pr.geometry, 34), em);
+          ls.userData.origColor = em.color.clone();
+          ls.userData.origOpacity = em.opacity;
+          wrap.add(ls);
+          entry.edges.push(ls);
         }
       }
     }
@@ -207,8 +240,84 @@ export function parseGlb(buffer) {
     }
   }
   const clip = tracks.length ? new THREE.AnimationClip("motion", maxDuration || 1, tracks) : null;
-  const partCount = (gltf.meshes || []).length;
-  return { root, clip, partCount, materials, edgeMat, defaultMat };
+  const partCount = partsMap.size || (gltf.meshes || []).length;
+  return { root, clip, partCount, partsMap, materials, edgeMat, defaultMat };
+}
+
+export function parseStl(buffer) {
+  const ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  if (ab.byteLength < 15) throw new Error("Invalid STL file");
+  const dv = new DataView(ab);
+  let pos = null;
+  if (ab.byteLength >= 84) {
+    const triCount = dv.getUint32(80, true);
+    if (84 + triCount * 50 === ab.byteLength) {
+      pos = new Float32Array(triCount * 9);
+      let k = 0;
+      for (let i = 0; i < triCount; i++) {
+        const base = 84 + i * 50;
+        for (let v = 0; v < 3; v++) {
+          const vo = base + 12 + v * 12;
+          pos[k++] = dv.getFloat32(vo, true);
+          pos[k++] = dv.getFloat32(vo + 4, true);
+          pos[k++] = dv.getFloat32(vo + 8, true);
+        }
+      }
+    }
+  }
+  if (!pos) {
+    const txt = new TextDecoder("utf-8").decode(new Uint8Array(ab));
+    const coords = [];
+    const re = /vertex\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)/g;
+    let m;
+    while ((m = re.exec(txt))) {
+      coords.push(parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3]));
+    }
+    if (coords.length < 9) throw new Error("Empty or unreadable STL file");
+    pos = new Float32Array(coords);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return { geometry: g, triangles: pos.length / 9 };
+}
+
+export async function showStl(host, buffer) {
+  const { geometry, triangles } = parseStl(buffer);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  renderer.setClearColor(dark ? 0x1b1d21 : 0xf4f5f7, 1);
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  host.replaceChildren(renderer.domElement);
+  renderer.domElement.style.cssText = "display:block;width:100%;height:100%";
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x6f7580, 1.3));
+  const key = new THREE.DirectionalLight(0xffffff, 1.75); key.position.set(3, -4, 6); scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.85); fill.position.set(-4, 3, 2); scene.add(fill);
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8d9db0, metalness: 0.2, roughness: 0.5, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  const lineMat = new THREE.LineBasicMaterial({ color: dark ? 0x0b0c0e : 0x20242a, transparent: true, opacity: 0.35 });
+  group.add(new THREE.Mesh(geometry, mat));
+  if (triangles <= 60000) group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 32), lineMat));
+  scene.add(group);
+  const box = new THREE.Box3().setFromObject(group), size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
+  const radius = Math.max(size.x, size.y, size.z, 1e-3);
+  const camera = new THREE.PerspectiveCamera(35, 1, Math.max(radius / 200, 1e-4), radius * 100);
+  camera.up.set(0, 0, 1);
+  camera.position.copy(center).add(new THREE.Vector3(1, -1.25, 0.9).normalize().multiplyScalar(radius * 2.5));
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.copy(center); controls.enableDamping = true; controls.update();
+  let alive = true, paused = false, raf = 0;
+  const fit = () => { const w = host.clientWidth || 300, h = host.clientHeight || 300; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); };
+  const ro = new ResizeObserver(fit); ro.observe(host); fit();
+  const loop = () => { raf = 0; if (!alive || paused) return; controls.update(); renderer.render(scene, camera); raf = requestAnimationFrame(loop); };
+  const detachVis = _attachRenderPause(host, (p) => { paused = p; if (!p && alive && !raf) loop(); });
+  loop();
+  return {
+    size: [size.x, size.y, size.z],
+    parts: triangles,
+    dispose() { alive = false; if (raf) cancelAnimationFrame(raf); detachVis(); ro.disconnect(); controls.dispose(); renderer.dispose(); geometry.dispose(); mat.dispose(); lineMat.dispose(); renderer.domElement.remove(); },
+  };
 }
 
 function _attachRenderPause(host, setPaused) {
@@ -297,6 +406,21 @@ export async function showGlb(host, buffer, opts = {}) {
   const box = new THREE.Box3().setFromObject(parsed.root);
   const size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
   const radius = Math.max(size.x, size.y, size.z, 0.1);
+  const invLinear = new THREE.Matrix4();
+  const tmpBox = new THREE.Box3();
+  const tmpSz = new THREE.Vector3();
+  for (const entry of parsed.partsMap.values()) {
+    tmpBox.setFromObject(entry.wrap);
+    tmpBox.getCenter(entry.restCenterWorld);
+    tmpBox.getSize(tmpSz);
+    entry.restSizeMm = [
+      Math.round(tmpSz.x * 1000 * 10) / 10,
+      Math.round(tmpSz.z * 1000 * 10) / 10,
+      Math.round(tmpSz.y * 1000 * 10) / 10,
+    ];
+    invLinear.copy(entry.node.matrixWorld).setPosition(0, 0, 0).invert();
+    entry.localExplodeDir.copy(entry.restCenterWorld).sub(center).applyMatrix4(invLinear);
+  }
   const grid = new THREE.GridHelper(radius * 2.2, 12, dark ? 0x3b4048 : 0xc5c9d0, dark ? 0x2a2d33 : 0xe0e3e8);
   grid.position.set(center.x, isFinite(box.min.y) ? box.min.y - 0.001 : 0, center.z);
   scene.add(grid);
@@ -317,13 +441,33 @@ export async function showGlb(host, buffer, opts = {}) {
   const action = mixer ? mixer.clipAction(parsed.clip) : null;
   const duration = parsed.clip ? parsed.clip.duration : 0;
   const hasAnimation = !!(action && duration > 0);
-  const reduced = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let playing = hasAnimation && (opts.autoplay !== undefined ? !!opts.autoplay : !reduced);
+  // Rest-pose default: keep motion paused on load until the user clicks Play or scrubs.
+  let playing = hasAnimation && !!opts.autoplay;
   if (action) {
     action.setLoop(THREE.LoopRepeat, Infinity);
     action.play();
     mixer.setTime(0);
+    mixer.update(0);
   }
+
+  let selectedId = null, hoveredId = null, isolatedId = null, explodeAmt = 0;
+  const hiEmissive = new THREE.Color(0xd97757);
+  const hovEmissive = new THREE.Color(0x4a90e2);
+  const applyVisibilityAndHighlight = () => {
+    for (const entry of parsed.partsMap.values()) {
+      entry.wrap.visible = isolatedId ? (entry.id === isolatedId) : !entry.hidden;
+      const isSel = entry.id === selectedId;
+      const isHov = !isSel && entry.id === hoveredId;
+      for (const m of entry.meshes) {
+        m.material.emissive.copy(isSel ? hiEmissive : (isHov ? hovEmissive : m.userData.origEm));
+        m.material.emissiveIntensity = isSel ? 0.45 : (isHov ? 0.24 : m.userData.origEmI);
+      }
+      for (const e of entry.edges) {
+        e.material.color.copy(isSel ? hiEmissive : (isHov ? hovEmissive : e.userData.origColor));
+        e.material.opacity = isSel ? 0.95 : (isHov ? 0.72 : e.userData.origOpacity);
+      }
+    }
+  };
 
   let alive = true, visPaused = false, raf = 0, lastT = performance.now();
   const fit = () => {
@@ -358,14 +502,208 @@ export async function showGlb(host, buffer, opts = {}) {
     visPaused = p;
     if (!p && alive && !raf) { lastT = performance.now(); loop(lastT); }
   });
+
+  const selectPart = (id, silent = false) => {
+    selectedId = (id && parsed.partsMap.has(id)) ? id : null;
+    applyVisibilityAndHighlight();
+    renderNow();
+    if (!silent && typeof opts.onSelect === "function") opts.onSelect(selectedId);
+    return selectedId;
+  };
+
+  if (getComputedStyle(host).position === "static") host.style.position = "relative";
+  const tip = document.createElement("div");
+  tip.className = "v3-tip";
+  tip.hidden = true;
+  tip.style.cssText = "position:absolute;pointer-events:none;z-index:5;padding:3px 8px;border-radius:6px;background:rgba(24,25,28,.88);color:#fff;font:12px/1.35 ui-monospace,Consolas,monospace;white-space:nowrap;box-shadow:0 3px 10px #0004;transform:translate(10px,-115%)";
+  host.appendChild(tip);
+  renderer.domElement.style.cursor = "grab";
+
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  const raycastParts = (clientX, clientY) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return { hits: [], rect };
+    ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    camera.updateMatrixWorld();
+    parsed.root.updateMatrixWorld(true);
+    raycaster.setFromCamera(ndc, camera);
+    const targets = [];
+    for (const entry of parsed.partsMap.values()) {
+      if (entry.wrap.visible) targets.push(...entry.meshes);
+    }
+    return { hits: raycaster.intersectObjects(targets, false), rect };
+  };
+  const uniqueHitIds = (hits) => {
+    const ids = [];
+    for (const hit of hits) {
+      const pid = hit.object?.userData?.partId;
+      if (pid && !ids.includes(pid)) ids.push(pid);
+    }
+    return ids;
+  };
+  const showTip = (pid, clientX, clientY, rect, depthInfo = "") => {
+    if (!pid) { tip.hidden = true; return; }
+    const base = opts.partLabels?.[pid] || pid;
+    tip.textContent = depthInfo ? `${base} ${depthInfo}` : base;
+    tip.hidden = false;
+    const hr = host.getBoundingClientRect();
+    const x = Math.min(Math.max(8, clientX - hr.left), Math.max(8, hr.width - 150));
+    const y = Math.max(28, clientY - hr.top);
+    tip.style.left = `${x}px`;
+    tip.style.top = `${y}px`;
+  };
+
+  let downX = 0, downY = 0, downBtn = -1, dragging = false;
+  let lastClickX = 0, lastClickY = 0;
+  const onDown = (ev) => {
+    downX = ev.clientX; downY = ev.clientY; downBtn = ev.button;
+    dragging = ev.button === 0 || ev.button === 2;
+  };
+  const onMove = (ev) => {
+    if (dragging) {
+      if (Math.hypot(ev.clientX - downX, ev.clientY - downY) >= 5) {
+        renderer.domElement.style.cursor = "grabbing";
+        tip.hidden = true;
+      }
+      return;
+    }
+    const { hits, rect } = raycastParts(ev.clientX, ev.clientY);
+    const ids = uniqueHitIds(hits);
+    const hid = ids.length ? ids[0] : null;
+    if (hid !== hoveredId) {
+      hoveredId = hid;
+      applyVisibilityAndHighlight();
+      renderNow();
+      if (typeof opts.onHover === "function") opts.onHover(hoveredId);
+    }
+    renderer.domElement.style.cursor = hid ? "pointer" : "grab";
+    const depthInfo = (hid && ids.length > 1) ? `[1/${ids.length}]` : "";
+    showTip(hid, ev.clientX, ev.clientY, rect, depthInfo);
+  };
+  const onLeave = () => {
+    dragging = false;
+    tip.hidden = true;
+    renderer.domElement.style.cursor = "grab";
+    if (hoveredId !== null) {
+      hoveredId = null;
+      applyVisibilityAndHighlight();
+      renderNow();
+      if (typeof opts.onHover === "function") opts.onHover(null);
+    }
+  };
+  const onUp = (ev) => {
+    const wasBtn = downBtn;
+    dragging = false;
+    downBtn = -1;
+    if (wasBtn !== 0 || Math.hypot(ev.clientX - downX, ev.clientY - downY) >= 5) {
+      renderer.domElement.style.cursor = hoveredId ? "pointer" : "grab";
+      return;
+    }
+    const { hits, rect } = raycastParts(ev.clientX, ev.clientY);
+    const ids = uniqueHitIds(hits);
+    if (!ids.length) {
+      selectPart(null);
+      tip.hidden = true;
+      return;
+    }
+    // Same-spot repeat clicks cycle cleanly through occluded parts behind the front mesh.
+    const sameSpot = Math.hypot(ev.clientX - lastClickX, ev.clientY - lastClickY) < 5;
+    let pid = ids[0];
+    if (sameSpot && selectedId && ids.includes(selectedId) && ids.length > 1) {
+      pid = ids[(ids.indexOf(selectedId) + 1) % ids.length];
+    }
+    lastClickX = ev.clientX;
+    lastClickY = ev.clientY;
+    hoveredId = pid;
+    selectPart(pid);
+    renderer.domElement.style.cursor = "pointer";
+    const idx = ids.indexOf(pid);
+    const depthInfo = ids.length > 1 ? `[${idx + 1}/${ids.length}]` : "";
+    showTip(pid, ev.clientX, ev.clientY, rect, depthInfo);
+  };
+  const onWinUp = () => { dragging = false; downBtn = -1; };
+  const onDblClick = (ev) => {
+    const { hits } = raycastParts(ev.clientX, ev.clientY);
+    const ids = uniqueHitIds(hits);
+    if (!ids.length) return;
+    const pid = (selectedId && ids.includes(selectedId)) ? selectedId : ids[0];
+    selectPart(pid);
+    const entry = parsed.partsMap.get(pid);
+    if (entry) {
+      parsed.root.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(entry.wrap);
+      if (!b.isEmpty()) {
+        controls.target.copy(b.getCenter(new THREE.Vector3()));
+        controls.update();
+        renderNow();
+      }
+    }
+  };
+  renderer.domElement.addEventListener("pointerdown", onDown, { capture: true });
+  renderer.domElement.addEventListener("pointermove", onMove);
+  renderer.domElement.addEventListener("pointerleave", onLeave);
+  renderer.domElement.addEventListener("pointerup", onUp, { capture: true });
+  renderer.domElement.addEventListener("dblclick", onDblClick, { capture: true });
+  window.addEventListener("pointerup", onWinUp);
   loop(lastT);
 
   return {
     size: [size.x * 1000, size.z * 1000, size.y * 1000],
     parts: parsed.partCount,
+    partIds: [...parsed.partsMap.keys()],
     hasAnimation,
     duration,
     get playing() { return playing; },
+    get selected() { return selectedId; },
+    get isolated() { return isolatedId; },
+    get explode() { return explodeAmt; },
+    getPartBoxMm(id) {
+      const e = parsed.partsMap.get(id);
+      return e ? e.restSizeMm : null;
+    },
+    selectPart,
+    focusPart(id) {
+      const entry = parsed.partsMap.get(id);
+      if (!entry) return;
+      parsed.root.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(entry.wrap);
+      if (b.isEmpty()) return;
+      controls.target.copy(b.getCenter(new THREE.Vector3()));
+      controls.update();
+      renderNow();
+    },
+    setPartHidden(id, hidden) {
+      const entry = parsed.partsMap.get(id);
+      if (!entry) return;
+      entry.hidden = !!hidden;
+      if (isolatedId === id && entry.hidden) isolatedId = null;
+      applyVisibilityAndHighlight();
+      renderNow();
+    },
+    isPartHidden(id) {
+      return !!parsed.partsMap.get(id)?.hidden;
+    },
+    setIsolated(id) {
+      isolatedId = (id && parsed.partsMap.has(id)) ? id : null;
+      if (isolatedId) parsed.partsMap.get(isolatedId).hidden = false;
+      applyVisibilityAndHighlight();
+      renderNow();
+    },
+    showAllParts() {
+      isolatedId = null;
+      for (const entry of parsed.partsMap.values()) entry.hidden = false;
+      applyVisibilityAndHighlight();
+      renderNow();
+    },
+    setExplode(norm) {
+      explodeAmt = Math.max(0, Math.min(1, Number(norm) || 0));
+      for (const entry of parsed.partsMap.values()) {
+        entry.wrap.position.copy(entry.localExplodeDir).multiplyScalar(explodeAmt * 0.9);
+      }
+      renderNow();
+    },
     setPlaying(b) {
       if (!hasAnimation) return;
       playing = !!b;
@@ -385,11 +723,22 @@ export async function showGlb(host, buffer, opts = {}) {
       if (raf) cancelAnimationFrame(raf);
       detachVis();
       ro.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", onDown, { capture: true });
+      renderer.domElement.removeEventListener("pointermove", onMove);
+      renderer.domElement.removeEventListener("pointerleave", onLeave);
+      renderer.domElement.removeEventListener("pointerup", onUp, { capture: true });
+      renderer.domElement.removeEventListener("dblclick", onDblClick, { capture: true });
+      window.removeEventListener("pointerup", onWinUp);
+      tip.remove();
       controls.dispose();
       renderer.dispose();
       parsed.root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
       grid.geometry.dispose();
       grid.material.dispose();
+      for (const entry of parsed.partsMap.values()) {
+        entry.meshes.forEach((m) => m.material.dispose());
+        entry.edges.forEach((e) => e.material.dispose());
+      }
       parsed.materials.forEach((m) => m.dispose());
       parsed.edgeMat.dispose();
       parsed.defaultMat.dispose();

@@ -1317,6 +1317,206 @@ class AdaptiveScaling(Loop):
             shutil.rmtree(empty_bin, ignore_errors=True)
             shutil.rmtree(empty_home, ignore_errors=True)
 
+    def test_v0917_patch_invalidation_mirror_contacts_auto_effort_and_exports(self):
+        import http.client, struct, threading, time
+        from cadfabric import scene_export, web as web_mod, workspace as ws_mod
+
+        # 1. set_plan invalidates part when center_mm/size_mm changes without spec changing
+        sc = S.Scene(self.d, "b", None, None)
+        p1 = {"action": "plan", "parts": [{"id": "lamp", "spec": "round lamp", "center_mm": [100, 0, 50], "size_mm": [40, 40, 40]}]}
+        sc.set_plan(p1)
+        with open(sc.pf("lamp"), "w", encoding="utf-8") as fh:
+            fh.write("# old\n")
+        sc.tries["lamp"] = 3
+        sc.sigs["lamp"] = ["sig1", "sig1"]
+        sc.stuck["lamp"] = "max tries"
+        p2, _ = S.apply_patch(p1, {"action": "patch_plan", "parts": [{"id": "lamp", "center_mm": [200, 0, 80]}]})
+        sc.set_plan(p2)
+        self.assertIn("lamp", sc.err)
+        self.assertEqual((sc.tries.get("lamp"), sc.sigs.get("lamp"), sc.stuck.get("lamp")), (0, [], None))
+
+        # 2. expand_plan L/R patterns (left_arm/right_arm, leg_l_1/leg_r_1) + symmetric allowed_contacts + ops mirror derived count
+        sym_plan = {
+            "action": "plan",
+            "parts": [
+                {"id": "body", "spec": "center body", "center_mm": [0, 0, 100], "size_mm": [200, 80, 80]},
+                {"id": "left_arm", "spec": "left arm", "center_mm": [50, 60, 100], "size_mm": [40, 20, 20]},
+                {"id": "right_arm", "spec": "right arm", "center_mm": [50, -60, 100], "size_mm": [40, 20, 20]},
+                {"id": "leg_l_1", "spec": "left leg", "center_mm": [-50, 45, 50], "size_mm": [20, 20, 100]},
+                {"id": "leg_r_1", "spec": "right leg", "center_mm": [-50, -45, 50], "size_mm": [20, 20, 100]},
+                {"id": "wing_l", "spec": "left wing", "ops": [{"op": "box", "center": [0, 70, 110], "size": [60, 40, 10]}]},
+                {"id": "wing_r", "spec": "right wing", "mirror_of": "wing_l"},
+            ],
+            "allowed_contacts": [["left_arm", "body"], ["wing_l", "left_arm"]],
+        }
+        ep, errs = S.expand_plan(sym_plan)
+        self.assertEqual(errs, [])
+        p_map = {p["id"]: p for p in ep["parts"]}
+        self.assertEqual(p_map["right_arm"]["_mirror_from"]["src"], "left_arm")
+        self.assertEqual(p_map["leg_r_1"]["_mirror_from"]["src"], "leg_l_1")
+        self.assertEqual(p_map["wing_r"]["_derived_kind"], "mirror")
+        ac_set = {tuple(pr) for pr in ep["allowed_contacts"]}
+        self.assertIn(("body", "right_arm"), ac_set)     # straddling centerline propagation
+        self.assertIn(("right_arm", "wing_r"), ac_set)  # twin-to-twin propagation
+        sc_u = S.Scene(self.d, "b", None, None); sc_u.plan = ep
+        sv = S._usage_totals(sc_u)["savings"]
+        self.assertEqual((sv["derived_parts"], sv["director_ops_parts"]), (3, 1))
+
+        # 3. Stratified worker_report puts structural/floating ahead of bulk collisions
+        sc_r = S.Scene(self.d, "b", None, None)
+        sc_r.plan = {"parts": [{"id": f"p{i}", "spec": "s"} for i in range(40)]}
+        many_issues = [{"kind": "collision", "pair": f"p{i}|p{i+1}"} for i in range(35)] + [
+            {"kind": "floating_part", "part": "p39", "gap_mm": 25.0},
+            {"kind": "joint_skipped", "joint": "j1", "reason": "missing part"},
+        ]
+        rep_txt = sc_r.worker_report(many_issues)
+        self.assertLess(rep_txt.index('"joint_skipped"'), rep_txt.index('"floating_part"'))
+        self.assertLess(rep_txt.index('"floating_part"'), rep_txt.index('"collision"'))
+
+        # 4. @part_id surgical follow-up delta & phase forwarding
+        phases, prompts = [], []
+        def fake_dir(prompt, system, images=None, phase="plan"):
+            phases.append(phase); prompts.append(prompt)
+            if len(phases) == 1:
+                return json.dumps({"action": "done"}), {"input": 1, "output": 1}
+            return json.dumps({"action": "done"}), {"input": 1, "output": 1}
+        fdir = os.path.join(self.d, "follow")
+        os.makedirs(os.path.join(fdir, "parts"), exist_ok=True)
+        big_plan = {"parts": [{"id": f"k{i}", "spec": f"part {i}", "center_mm": [i * 200, 0, 10], "size_mm": [20, 20, 20]} for i in range(20)], "joints": [], "allowed_contacts": []}
+        with open(os.path.join(fdir, "plan.json"), "w", encoding="utf-8") as fh:
+            json.dump(big_plan, fh)
+        for i in range(20):
+            with open(os.path.join(fdir, "parts", f"k{i}.py"), "w", encoding="utf-8") as fh:
+                fh.write(GOOD % (f"k{i}", f"k{i}"))
+        with open(os.path.join(fdir, "report.json"), "w", encoding="utf-8") as fh:
+            json.dump({"ok": True, "parts_bbox_mm": {f"k{i}": [[i * 200 - 10, -10, 0], [i * 200 + 10, 10, 20]] for i in range(20)}}, fh)
+        self.assertEqual(S.extract_part_mentions("change @k3 and @k3 and @unknown", big_plan), ["k3"])
+        old_max_rev, S.MAX_REVIEWS = S.MAX_REVIEWS, 0
+        try:
+            S.run("make @k3 taller", fdir, "blender", fake_dir, lambda s, u, temperature=0.3: (good("k0"), {}), resume=True)
+        finally:
+            S.MAX_REVIEWS = old_max_rev
+        self.assertEqual(phases[0], "followup")
+        self.assertIn("USER TARGETED PART(S): k3", prompts[0])
+        self.assertIn("healthy_locked_parts", prompts[0])
+
+        # 5. scene_export STL + colored STEP (bxlib ops + raw mesh fallback) + workspace/web endpoints
+        self.assertEqual(ws_mod.kind_of("wheel.stl"), "stl")
+        # Build minimal valid GLB containing two meshes: 'box_p' (bxlib recipe) & 'raw_p' (raw mesh fallback)
+        def _pack_glb(meshes_def):
+            bin_chunks = bytearray()
+            accessors, bvs, g_meshes, g_nodes = [], [], [], []
+            for name, verts, idx in meshes_def:
+                v_off = len(bin_chunks)
+                v_bytes = b"".join(struct.pack("<3f", *v) for v in verts)
+                bin_chunks.extend(v_bytes)
+                while len(bin_chunks) % 4: bin_chunks.append(0)
+                i_off = len(bin_chunks)
+                i_bytes = b"".join(struct.pack("<H", x) for x in idx)
+                bin_chunks.extend(i_bytes)
+                while len(bin_chunks) % 4: bin_chunks.append(0)
+                lo = [min(v[k] for v in verts) for k in range(3)]
+                hi = [max(v[k] for v in verts) for k in range(3)]
+                bv_v = len(bvs); bvs.append({"buffer": 0, "byteOffset": v_off, "byteLength": len(v_bytes)})
+                bv_i = len(bvs); bvs.append({"buffer": 0, "byteOffset": i_off, "byteLength": len(i_bytes)})
+                acc_v = len(accessors); accessors.append({"bufferView": bv_v, "componentType": 5126, "count": len(verts), "type": "VEC3", "min": lo, "max": hi})
+                acc_i = len(accessors); accessors.append({"bufferView": bv_i, "componentType": 5123, "count": len(idx), "type": "SCALAR"})
+                mi = len(g_meshes); g_meshes.append({"name": name, "primitives": [{"attributes": {"POSITION": acc_v}, "indices": acc_i}]})
+                g_nodes.append({"name": name, "mesh": mi})
+            gltf_doc = {"asset": {"version": "2.0"}, "scenes": [{"nodes": list(range(len(g_nodes)))}], "scene": 0,
+                        "nodes": g_nodes, "meshes": g_meshes, "accessors": accessors, "bufferViews": bvs, "buffers": [{"byteLength": len(bin_chunks)}]}
+            jb = json.dumps(gltf_doc, separators=(",", ":")).encode("utf-8")
+            while len(jb) % 4: jb += b" "
+            while len(bin_chunks) % 4: bin_chunks.append(0)
+            tot = 12 + 8 + len(jb) + 8 + len(bin_chunks)
+            return struct.pack("<III", 0x46546C67, 2, tot) + struct.pack("<II", len(jb), 0x4E4F534A) + jb + struct.pack("<II", len(bin_chunks), 0x004E4942) + bytes(bin_chunks)
+
+        # glTF Y-up metres -> CAD Z-up mm (x, -z, y)
+        box_v = [(0.0, 0.0, 0.0), (0.02, 0.0, 0.0), (0.02, 0.02, 0.0), (0.0, 0.02, 0.0),
+                 (0.0, 0.0, -0.02), (0.02, 0.0, -0.02), (0.02, 0.02, -0.02), (0.0, 0.02, -0.02)]
+        box_i = [0,1,2, 0,2,3, 4,6,5, 4,7,6, 0,4,5, 0,5,1, 1,5,6, 1,6,2, 2,6,7, 2,7,3, 3,7,4, 3,4,0]
+        raw_v = [(0.05, 0.0, 0.0), (0.06, 0.0, 0.0), (0.05, 0.01, 0.0), (0.05, 0.0, -0.01)]
+        raw_i = [0,2,1, 0,1,3, 1,2,3, 2,0,3]
+
+        ws_d = os.path.join(self.d, "ws17"); wd_d = os.path.join(self.d, "wd17"); dd_d = os.path.join(self.d, "dd17")
+        for dx in (ws_d, os.path.join(wd_d, "parts"), dd_d): os.makedirs(dx, exist_ok=True)
+        blend_p = os.path.join(wd_d, "scene.blend")
+        with open(blend_p, "wb") as fh: fh.write(b"BLENDER")
+        t_old = time.time() - 5.0
+        os.utime(blend_p, (t_old, t_old))
+        glb_p = os.path.join(wd_d, "scene.glb")
+        with open(glb_p, "wb") as fh: fh.write(_pack_glb([("box_p", box_v, box_i), ("raw_p", raw_v, raw_i)]))
+        with open(os.path.join(wd_d, "plan.json"), "w", encoding="utf-8") as fh:
+            json.dump({"parts": [
+                {"id": "box_p", "spec": "20mm cube", "color": "#C96442", "finish": "matte", "size_mm": [20, 20, 20]},
+                {"id": "raw_p", "spec": "tetra", "color": "#224466", "finish": "metal", "size_mm": [10, 10, 10]},
+            ], "joints": [{"name": "j1", "parent": "box_p", "children": ["raw_p"], "origin_mm": [50, 0, 0], "axis": [0, 1, 0], "span_rad": 1.0}]}, fh)
+        with open(os.path.join(wd_d, "parts", "box_p.py"), "w", encoding="utf-8") as fh:
+            fh.write(S.RECIPE_TEMPLATE % ("box_p", {"ops": [{"op": "box", "center": [10, 10, 10], "size": [20, 20, 20]}]}))
+        with open(os.path.join(wd_d, "parts", "raw_p.py"), "w", encoding="utf-8") as fh:
+            fh.write(GOOD % ("raw_p", "raw_p"))
+
+        ext_parts = scene_export.glb_extract_parts(glb_p)
+        self.assertEqual(set(ext_parts), {"box_p", "raw_p"})
+        full_stl = os.path.join(ws_d, "full.stl")
+        ntri, e_stl = scene_export.export_stl(glb_p, full_stl)
+        self.assertEqual((ntri, e_stl, os.path.getsize(full_stl)), (16, "", 84 + 16 * 50))
+        step_out = os.path.join(self.d, "out17.step")
+        old_sub, S.subprocess.run = S.subprocess.run, self._run
+        try:
+            n_st, e_st = scene_export.export_step(wd_d, glb_p, step_out)
+            self.assertEqual((n_st, e_st), (2, ""))
+            self.assertTrue(open(step_out, "rb").read(20).startswith(b"ISO-10303-21;"))
+
+            cfg_s = {"url": "http://127.0.0.1:1/v1/chat/completions", "model": "q", "planner": "nothink", "worker": "qwen",
+                     "advisors": [], "relay": {}, "workspace": ws_d, "data_dir": dd_d}
+            srv = web_mod.serve(type("L", (), {"chat": lambda *a, **k: {"content": "ok", "_usage": {}}, "close": lambda s: None})(), cfg_s, port=0, token="t17", quiet=True)
+            srv.hosts.add("127.0.0.1:%d" % srv.port)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            try:
+                srv.sess.history = {"scene3d": True, "workdir": wd_d}
+                c = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=15)
+                c.request("GET", "/api/scene_meta", headers={"Cookie": "cft=t17"})
+                rm = c.getresponse(); dm = json.loads(rm.read())
+                self.assertEqual((rm.status, dm["ok"], [p["id"] for p in dm["parts"]]), (200, True, ["box_p", "raw_p"]))
+
+                c.request("GET", "/api/part.stl?part=raw_p", headers={"Cookie": "cft=t17"})
+                rp = c.getresponse(); bp = rp.read()
+                self.assertEqual((rp.status, len(bp)), (200, 84 + 4 * 50))
+
+                c.request("GET", "/api/part.stl", headers={"Cookie": "cft=t17"})
+                ra = c.getresponse(); ba = ra.read()
+                self.assertEqual((ra.status, len(ba)), (200, 84 + 16 * 50))
+
+                c.request("GET", "/api/scene.step", headers={"Cookie": "cft=t17"})
+                rs = c.getresponse(); bs = rs.read()
+                self.assertEqual(rs.status, 200)
+                self.assertTrue(bs.startswith(b"ISO-10303-21;"))
+
+                c.request("GET", "/api/rawstl?path=full.stl", headers={"Cookie": "cft=t17"})
+                rr = c.getresponse(); br = rr.read()
+                self.assertEqual((rr.status, len(br)), (200, 84 + 16 * 50))
+
+                c.request("GET", "/static/viewer3d.js", headers={"Cookie": "cft=t17"})
+                rv = c.getresponse(); bv = rv.read().decode("utf-8")
+                self.assertEqual((rv.status, rv.getheader("Cache-Control")), (200, "no-cache"))
+                self.assertIn("THREE.DoubleSide", bv)
+                self.assertIn("playing = hasAnimation && !!opts.autoplay", bv)
+
+                c.request("GET", "/static/vendor/three.module.js", headers={"Cookie": "cft=t17"})
+                rt = c.getresponse(); _ = rt.read()
+                self.assertEqual((rt.status, rt.getheader("Cache-Control")), (200, "private, max-age=86400"))
+
+                c.request("GET", "/", headers={"Cookie": "cft=t17"})
+                rh = c.getresponse(); bh = rh.read().decode("utf-8")
+                self.assertEqual(rh.status, 200)
+                for tok in ('id="vsplit"', 'id="hsplit"', 'id="pmax"', 'aria-pressed="false"'):
+                    self.assertIn(tok, bh)
+            finally:
+                srv.shutdown(); srv.sess.close()
+        finally:
+            S.subprocess.run = old_sub
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

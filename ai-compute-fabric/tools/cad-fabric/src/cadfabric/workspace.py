@@ -10,11 +10,13 @@ DENY_DIRS = {".git", ".ssh", ".gnupg", ".aws", ".config", "node_modules", "__pyc
 IMAGE_EXT = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp", ".svg": "image/svg+xml"}
 VIDEO_EXT = {".mp4": "video/mp4", ".webm": "video/webm"}
 STEP_EXT = {".step", ".stp"}
+STL_EXT = {".stl"}
 GLB_EXT = {".glb"}
 BLEND_EXT = {".blend"}
 MAX_IMAGE = 8_000_000
 MAX_VIDEO = 40_000_000
 MAX_STEP = 20_000_000
+MAX_STL = 60_000_000
 MAX_GLB = 40_000_000
 MAX_BLEND = 60_000_000
 MAX_READ = 60_000
@@ -68,28 +70,28 @@ def resolve(root, rel):
 
 
 def kind_of(name):
-    """How the file can be viewed: 'step' (drawn), 'glb', 'blend', 'image', 'video', 'text', or None."""
+    """How the file can be viewed: 'step' (drawn), 'stl', 'glb', 'blend', 'image', 'video', 'text', or None."""
     e = os.path.splitext(name)[1].lower()
-    return "step" if e in STEP_EXT else "glb" if e in GLB_EXT else "blend" if e in BLEND_EXT else "image" if e in IMAGE_EXT else "video" if e in VIDEO_EXT else "text" if e in TEXT_EXT else None
+    return "step" if e in STEP_EXT else "stl" if e in STL_EXT else "glb" if e in GLB_EXT else "blend" if e in BLEND_EXT else "image" if e in IMAGE_EXT else "video" if e in VIDEO_EXT else "text" if e in TEXT_EXT else None
 
 
 def binary_file(root, rel, kind):
-    """-> (absolute path, mime, error) for an image, video, glb, blend, or STEP file inside the folder, size-capped."""
+    """-> (absolute path, mime, error) for an image, video, stl, glb, blend, or STEP file inside the folder, size-capped."""
     full, err = resolve(root, rel)
     if err:
         return None, None, err
     e = os.path.splitext(full)[1].lower()
     ok_ext = ((kind == "image" and e in IMAGE_EXT) or (kind == "video" and e in VIDEO_EXT) or (kind == "step" and e in STEP_EXT)
-              or (kind == "glb" and e in GLB_EXT) or (kind == "blend" and e in BLEND_EXT))
+              or (kind == "stl" and e in STL_EXT) or (kind == "glb" and e in GLB_EXT) or (kind == "blend" and e in BLEND_EXT))
     if not os.path.isfile(full) or not ok_ext:
         return None, None, "no such %s file: %s" % (kind, rel)
     try:
-        cap = {"video": MAX_VIDEO, "image": MAX_IMAGE, "glb": MAX_GLB, "blend": MAX_BLEND}.get(kind, MAX_STEP)
+        cap = {"video": MAX_VIDEO, "image": MAX_IMAGE, "stl": MAX_STL, "glb": MAX_GLB, "blend": MAX_BLEND}.get(kind, MAX_STEP)
         if os.path.getsize(full) > cap:
             return None, None, "file is too large to preview"
     except OSError as ex:
         return None, None, str(ex)[:120]
-    mime = VIDEO_EXT.get(e) if kind == "video" else IMAGE_EXT.get(e) if kind == "image" else ("model/gltf-binary" if kind == "glb" else "application/octet-stream")
+    mime = VIDEO_EXT.get(e) if kind == "video" else IMAGE_EXT.get(e) if kind == "image" else ("model/stl" if kind == "stl" else "model/gltf-binary" if kind == "glb" else "application/octet-stream")
     return full, mime, ""
 
 
