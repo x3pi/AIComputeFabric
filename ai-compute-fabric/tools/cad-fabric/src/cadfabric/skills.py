@@ -15,6 +15,7 @@ MAX_FILE = 400_000
 MAX_BODY = 12_000                    # characters handed to the model per use_skill call
 CATALOG_BUDGET = 8000                # characters of the skills list in the prompt (like Codex: descriptions are shortened when many skills are installed)
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+BUILTIN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin_skills")
 STATUSES = ("pending", "approved", "rejected")
 TEXT_EXT = {".md", ".txt", ".json", ".yaml", ".yml", ".csv", ".py", ".toml", ".rst"}
 FLAGS = [(re.compile(r"ignore (all |any )?(previous|prior|above) (instructions|rules)|disregard (the )?(system|previous)|you are now ", re.I), "tries to override instructions"),
@@ -334,6 +335,52 @@ def install_local(data_dir, project, path, scope=None):
 def _visible(m, project):
     key = os.path.realpath(project) if project else ""
     return m.get("scope") == "global" or (m.get("scope") == "project" and m.get("project") == key)
+
+
+def ensure_builtin(data_dir):
+    """Auto-seed bundled CadFabric open skills as approved global skills (once per skill; updates SKILL.md if builtin source is newer)."""
+    if not os.path.isdir(BUILTIN_DIR):
+        return []
+    root = _root(data_dir)
+    stamp_file = os.path.join(root, ".builtin_seeded.json")
+    try:
+        with open(stamp_file, encoding="utf-8") as f:
+            seeded = set(json.load(f) or [])
+    except (OSError, ValueError):
+        seeded = set()
+    added = []
+    changed = False
+    for d in find_skills(BUILTIN_DIR):
+        name = os.path.basename(os.path.normpath(d))
+        if not NAME.match(name):
+            continue
+        cur = _read_meta(data_dir, name)
+        if name not in seeded and cur is None:
+            m, _err = import_folder(data_dir, "", d, "builtin:cadfabric", scope="global")
+            if m:
+                m["status"] = "approved"
+                _write_meta(data_dir, name, m)
+                added.append(name)
+            seeded.add(name)
+            changed = True
+        elif cur is not None and cur.get("source") == "builtin:cadfabric":
+            src_md = os.path.join(d, "SKILL.md")
+            dst_md = os.path.join(root, name, "SKILL.md")
+            try:
+                if os.path.isfile(src_md) and (not os.path.isfile(dst_md) or os.path.getmtime(src_md) > os.path.getmtime(dst_md)):
+                    shutil.copyfile(src_md, dst_md)
+            except OSError:
+                pass
+            if name not in seeded:
+                seeded.add(name)
+                changed = True
+    if changed:
+        try:
+            with open(stamp_file, "w", encoding="utf-8") as f:
+                json.dump(sorted(seeded), f)
+        except OSError:
+            pass
+    return added
 
 
 def list_for(data_dir, project):

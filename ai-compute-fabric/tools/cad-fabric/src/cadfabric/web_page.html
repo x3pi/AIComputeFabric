@@ -181,7 +181,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
    <div class="box">
     <textarea id="text" rows="1" maxlength="8000" placeholder="Mô tả chi tiết cần tạo, hoặc yêu cầu chỉnh sửa chi tiết hiện tại…"></textarea>
     <div class="chipsrow" id="attached" hidden></div>
-    <div class="tools"><button class="btn small" id="attbtn" title="Đính kèm tệp trong thư mục làm việc để Qwen và cố vấn đọc" hidden>📎 Tệp</button><select id="planner" hidden></select><select id="worker" hidden></select><button type="button" class="mpill" id="p_trig" popovertarget="mpop_p"><span class="mrole">Cố vấn</span><b id="p_lbl">—</b><span class="mchev" aria-hidden="true">▾</span></button><div id="mpop_p" class="mpop" popover="auto"></div><button type="button" class="mpill" id="w_trig" popovertarget="mpop_w"><span class="mrole">Thực thi</span><b id="w_lbl">—</b><span class="mchev" aria-hidden="true">▾</span></button><div id="mpop_w" class="mpop" popover="auto"></div><label class="autoc" title="Khi lượt làm việc dừng vì hết bước hoặc bị kẹt, tự gửi 'Tiếp tục' (tối đa 5 lần liên tiếp, bấm Dừng để ngừng)"><input type="checkbox" id="autocont"> Tự động tiếp tục</label><span class="sp"></span>
+    <div class="tools"><button class="btn small" id="attbtn" title="Đính kèm tệp trong thư mục làm việc để Qwen và cố vấn đọc" hidden>📎 Tệp</button><select id="planner" hidden></select><select id="worker" hidden></select><button type="button" class="mpill" id="p_trig" popovertarget="mpop_p"><span class="mrole">Cố vấn</span><b id="p_lbl">—</b><span class="mchev" aria-hidden="true">▾</span></button><div id="mpop_p" class="mpop" popover="auto"></div><button type="button" class="mpill" id="w_trig" popovertarget="mpop_w"><span class="mrole">Thực thi</span><b id="w_lbl">—</b><span class="mchev" aria-hidden="true">▾</span></button><div id="mpop_w" class="mpop" popover="auto"></div><label for="print_mode" class="vh">Chế độ in 3D</label><select id="print_mode" name="print_mode" title="Kiểm tra khả năng in 3D &amp; xuất bàn in .3mf (tự bật khi đề cập tới in 3D hoặc chọn máy in)"><option value="auto">🖨 In 3D: Tự động</option><option value="bambu_a1">🖨 Bambu A1 (4 màu)</option><option value="bambu_a1_mini">🖨 Bambu A1 Mini</option><option value="fdm_04">🖨 FDM 0.4 mm</option><option value="fdm_06">🖨 FDM 0.6 mm</option><option value="sla">🖨 SLA (Resin)</option><option value="off">🖨 Tắt kiểm in</option></select><label class="autoc" title="Khi lượt làm việc dừng vì hết bước hoặc bị kẹt, tự gửi 'Tiếp tục' (tối đa 5 lần liên tiếp, bấm Dừng để ngừng)"><input type="checkbox" id="autocont"> Tự động tiếp tục</label><span class="sp"></span>
      <button class="btn primary" id="send">Gửi</button><button class="btn" id="stop" hidden>Dừng</button></div>
    </div>
    <div class="hint" id="hint">Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /stop dừng</div>
@@ -200,7 +200,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
    </div>
   </div>
   <div id="pviews" class="pviews" hidden></div><table id="meas"></table>
-  <div class="side-actions"><button type="button" class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><button type="button" class="btn small" id="vidbtn" hidden>🎬 Xuất MP4</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a><a class="btn small" id="dlglb" href="/api/part.glb" hidden>Tải .glb</a><a class="btn small" id="dlstl" href="/api/part.stl" hidden>Tải .stl</a><a class="btn small" id="dlstep" href="/api/scene.step" hidden>Tải .step</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
+  <div class="side-actions"><button type="button" class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><button type="button" class="btn small" id="vidbtn" hidden>🎬 Xuất MP4</button><a class="btn small" id="dl3mf" href="/api/scene.3mf" title="Tải bàn in .3mf đa màu (tự xoay mặt phẳng &amp; xếp bàn in cho Bambu Studio / OrcaSlicer)" hidden>🖨 Tải .3mf</a><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a><a class="btn small" id="dlglb" href="/api/part.glb" hidden>Tải .glb</a><a class="btn small" id="dlstl" href="/api/part.stl" hidden>Tải .stl</a><a class="btn small" id="dlstep" href="/api/scene.step" hidden>Tải .step</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
  <div id="pane_lessons" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="lreflect">Rút bài học từ cuộc này</button><button type="button" class="btn small" id="ladd">+ Thêm</button><button type="button" class="btn small" id="ldedupe" title="Xoá các bài học chờ duyệt bị trùng hoặc sai quy tắc">Lọc trùng</button><button type="button" class="btn small" id="lclearp" title="Xoá toàn bộ bài học đang chờ duyệt trong dự án này" hidden>Xoá chờ duyệt</button><button type="button" class="btn small" id="lskill" title="Gộp các bài đã duyệt thành một skill (chờ duyệt)">Gộp thành skill</button></div>
   <search id="lsearch" class="lsearch" hidden><label for="lfilter" class="vh">Lọc bài học</label><input type="search" id="lfilter" name="lfilter" placeholder="Lọc tiêu đề, quy tắc, #tên…" autocorrect="off" autocapitalize="none" spellcheck="false"></search>
   <div class="mute small" id="lnote" style="padding:0 14px 8px"></div><div id="llist"></div></div>
@@ -398,7 +398,7 @@ function renderSelectedPart(id){
  const colEl=$("psel_col");
  if(colEl){colEl.replaceChildren();if(meta.color&&/^#[0-9a-fA-F]{6}$/.test(meta.color)){const sw=document.createElement("span");sw.className="psel-swatch";sw.style.backgroundColor=meta.color;colEl.appendChild(sw);colEl.appendChild(document.createTextNode(meta.color.toUpperCase()+(meta.finish?" · "+meta.finish:"")))}}
  if($("psel_dim"))$("psel_dim").textContent=dim&&dim.length===3?dim.map(v=>Math.round(v*10)/10).join(" × ")+" mm":"";
- const info=[];if(meta.spec)info.push(meta.spec);if(meta.joint)info.push("Khớp "+meta.joint);
+ const info=[];if(meta.spec)info.push(meta.spec);if(meta.joint)info.push("Khớp "+meta.joint);if(meta.print_up)info.push("Hướng in "+meta.print_up);
  if($("psel_spec"))$("psel_spec").textContent=info.join(" · ");
  if($("phide"))$("phide").setAttribute("aria-pressed",h.isPartHidden(id)?"true":"false");
  if($("piso"))$("piso").setAttribute("aria-pressed",h.isolated===id?"true":"false");
@@ -453,18 +453,19 @@ async function exportSceneVideo(){disposePreview3d();const vb=$("vidbtn");if(vb)
  const v=document.createElement("video");v.controls=true;v.autoplay=true;v.loop=true;v.muted=true;v.width=640;v.height=480;v.src=r.d.url;
  $("preview").replaceChildren(v);toast(r.d.saved?"Đã lưu "+r.d.saved+" vào thư mục làm việc":"Đã xuất video MP4")}
 if($("vidbtn"))$("vidbtn").onclick=exportSceneVideo;
-async function showPart(m,isScene,usage){const t=$("meas"),pv=$("pviews"),vb=$("vidbtn"),dg=$("dlglb"),ds=$("dlstl"),dp=$("dlstep");t.replaceChildren();
- if(!m){disposePreview3d();$("preview").textContent="chưa có chi tiết";pv.hidden=true;pv.replaceChildren();$("dl").hidden=true;if(dg)dg.hidden=true;if(ds)ds.hidden=true;if(dp)dp.hidden=true;$("openbtn").hidden=true;vb.hidden=true;return}
+async function showPart(m,isScene,usage){const t=$("meas"),pv=$("pviews"),vb=$("vidbtn"),dg=$("dlglb"),ds=$("dlstl"),dp=$("dlstep"),d3=$("dl3mf");t.replaceChildren();
+ if(!m){disposePreview3d();$("preview").textContent="chưa có chi tiết";pv.hidden=true;pv.replaceChildren();$("dl").hidden=true;if(d3)d3.hidden=true;if(dg)dg.hidden=true;if(ds)ds.hidden=true;if(dp)dp.hidden=true;$("openbtn").hidden=true;vb.hidden=true;return}
  for(const [k,v] of [["Thể tích (mm³)",fmt(m.volume)],["Bbox (mm)",m.bbox_size.map(fmt).join(" × ")],["Tâm khối lượng",m.com.map(fmt).join(", ")],["Mặt / cạnh / đỉnh",m.faces+" / "+m.edges+" / "+m.vertices],["Số solid",m.solids],["Hợp lệ",m.valid?"có":"KHÔNG"]]){const tr=t.insertRow();tr.insertCell().textContent=k;tr.insertCell().textContent=v}
+ if(m.print_report){const pr=m.print_report;const trp=t.insertRow();trp.insertCell().textContent="In 3D ("+(pr.profile||"FDM")+")";trp.insertCell().textContent=(m.valid&&pr.all_watertight?"đạt":"chưa đạt")+(pr.max_colors?" · "+pr.colors_used+"/"+pr.max_colors+" màu":"")}
  if(usage&&usage.director){const d=usage.director,sv=usage.savings||{};
   const tr1=t.insertRow();tr1.insertCell().textContent="Chi phí cố vấn";tr1.insertCell().textContent=d.estimated?(d.calls+" lượt (ước lượng)"):(d.usd.toFixed(4)+" USD ("+d.calls+" lượt)");
   if(sv.saved_tok_pct!==undefined){const tr2=t.insertRow();tr2.insertCell().textContent="Tiết kiệm token";tr2.insertCell().textContent="~"+sv.saved_tok_pct+"% ("+Math.round(sv.offload_calls_pct||0)+"% lượt thực thi)"}}
  $("dl").hidden=false;$("openbtn").hidden=!local;
- if(isScene){$("dl").href="/api/part.blend";$("dl").textContent="Tải .blend";if(dg)dg.hidden=false;if(ds){ds.href="/api/part.stl";ds.hidden=false}if(dp){dp.href="/api/scene.step";dp.hidden=false}vb.hidden=!local;pv.hidden=false;
+ if(isScene){$("dl").href="/api/part.blend";$("dl").textContent="Tải .blend";if(d3){d3.href="/api/scene.3mf";d3.hidden=false}if(dg)dg.hidden=false;if(ds){ds.href="/api/part.stl";ds.hidden=false}if(dp){dp.href="/api/scene.step";dp.hidden=false}vb.hidden=!local;pv.hidden=false;
   if(!pv.children.length){for(const [k,lbl] of [["3d","🧊 3D"],["iso","Phối cảnh"],["side","Ngang"],["top","Trên"],["iso_end_of_motion","Cuối chuyển động"],["video","🎬 MP4"]]){
    const b=el("button","btn small"+(k===curView?" on":""),lbl);b.type="button";b.dataset.view=k;b.onclick=()=>k==="video"?exportSceneVideo():(k==="3d"?showScene3D():showSceneView(k));pv.appendChild(b)}}
   $("openbtn").textContent="Mở trong Blender";(curView==="3d"||curView==="video")?showScene3D():showSceneView(curView);return}
- disposePreview3d();pv.hidden=true;pv.replaceChildren();vb.hidden=true;if(dg)dg.hidden=true;if(ds){ds.href="/api/part.stl";ds.hidden=false}if(dp)dp.hidden=true;$("dl").href="/api/part.step";$("dl").textContent="Tải STEP";
+ disposePreview3d();pv.hidden=true;pv.replaceChildren();vb.hidden=true;if(d3)d3.hidden=true;if(dg)dg.hidden=true;if(ds){ds.href="/api/part.stl";ds.hidden=false}if(dp)dp.hidden=true;$("dl").href="/api/part.step";$("dl").textContent="Tải STEP";
  $("openbtn").textContent="Mở trong "+((cfgd&&cfgd.viewer_label)||"CAD");
  try{const r=await fetch("/api/part.svg?"+Date.now());if(r.ok){const d=new DOMParser().parseFromString(await r.text(),"image/svg+xml").documentElement;$("preview").replaceChildren(document.importNode(d,true))}}catch(e){}}
 function setBusy(b){busy=b;$("dot").className="dot"+(b?" busy":"");$("status").textContent=b?"đang làm…":"sẵn sàng";$("send").hidden=b;$("stop").hidden=!b;$("newbtn").disabled=b;$("histbtn").disabled=b;
@@ -512,7 +513,7 @@ async function submit1(){const text=$("text").value.trim();if(!text)return;
  const ps=providerStatus(planner),ws=providerStatus(worker);
  if(!ps.ok){toast("Không gửi được: Cố vấn '"+planner+"' "+ps.reason);return}
  if(!ws.ok){toast("Không gửi được: Thực thi '"+worker+"' "+ws.reason);return}
- const body={text,planner,worker};
+ const body={text,planner,worker,print_mode:($("print_mode")?$("print_mode").value:"auto")};
  const po=roleOver.p[planner]||{},wo=roleOver.w[worker]||{};
  if(po.model)body.planner_model=po.model;if(po.effort)body.planner_effort=po.effort;
  if(wo.model)body.worker_model=wo.model;if(wo.effort)body.worker_effort=wo.effort;
@@ -524,7 +525,7 @@ async function submit1(){const text=$("text").value.trim();if(!text)return;
  const r=await api("/api/send",body);if(r.ok){const mt=text.match(/(?:^|\s)@([A-Za-z_][A-Za-z0-9_]*)\b/);lastTargetPart=mt?mt[1]:null;live=true;userStopped=false;if(!autoSend)autoN=0;autoSend=false;$("text").value="";grow();att=[];ups=[];imgs=[];drawAtt()}else put(el("div","err","Không gửi được: "+(r.d.error||r.status)));poll()}
 function grow(){const t=$("text");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,200)+"px"}
 $("text").oninput=grow;$("text").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing&&!e.repeat){e.preventDefault();submit()}};
-$("send").onclick=submit;$("stop").onclick=()=>{userStopped=true;api("/api/stop",{})};try{$("autocont").checked=localStorage.getItem("cf_autocont")==="1"}catch(e){}$("autocont").onchange=()=>{try{localStorage.setItem("cf_autocont",$("autocont").checked?"1":"0")}catch(e){}autoN=0};$("newbtn").onclick=newPart;$("partbtn").onclick=()=>$("side").classList.toggle("open");
+$("send").onclick=submit;$("stop").onclick=()=>{userStopped=true;api("/api/stop",{})};try{$("autocont").checked=localStorage.getItem("cf_autocont")==="1";const pm=localStorage.getItem("cf_print_mode");if(pm&&$("print_mode")&&$("print_mode").querySelector('option[value="'+pm+'"]'))$("print_mode").value=pm}catch(e){}$("autocont").onchange=()=>{try{localStorage.setItem("cf_autocont",$("autocont").checked?"1":"0")}catch(e){}autoN=0};if($("print_mode"))$("print_mode").onchange=()=>{try{localStorage.setItem("cf_print_mode",$("print_mode").value)}catch(e){}};$("newbtn").onclick=newPart;$("partbtn").onclick=()=>$("side").classList.toggle("open");
 let ADVS=[],DET={},PRESETS={},custom=[],advKeys={},editId=null,DISC={},roleOver={p:{},w:{}},AGY_PROBED=false,AVAIL={},PROBE={},PROBING={};
 const probeKey=id=>["qwen","nothink","think"].includes(id)?"gateway":id;
 function providerStatus(id){

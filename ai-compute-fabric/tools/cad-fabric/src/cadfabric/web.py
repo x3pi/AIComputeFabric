@@ -68,7 +68,7 @@ class Session:
             return {"busy": self.busy, "events": self.events[since:], "next": len(self.events), "measure": self.measure, "has_part": self.measure is not None,
                     "follow_up": self.history is not None, "is_scene": is_sc, "scene_mtime": smtime, "usage": self.last_usage}
 
-    def send(self, text, planner, files=(), uploads=None, images=None, worker=None, planner_model="", planner_effort="", worker_model="", worker_effort=""):
+    def send(self, text, planner, files=(), uploads=None, images=None, worker=None, planner_model="", planner_effort="", worker_model="", worker_effort="", print_mode="auto"):
         with self.lock:
             if self.busy:
                 return False
@@ -86,11 +86,11 @@ class Session:
         self.emit("user", files=list(files) + [u["name"] for u in (uploads or [])] + [i["name"] for i in (images or [])], text=text,
                   planner=p_tag, worker=w_tag)
         self.thread = threading.Thread(target=self._work, args=(text, planner, tuple(files), uploads or [], images or [], w_id,
-                                                               planner_model, planner_effort, worker_model, worker_effort), daemon=True)
+                                                               planner_model, planner_effort, worker_model, worker_effort, print_mode), daemon=True)
         self.thread.start()
         return True
 
-    def _work(self, text, planner, files=(), uploads=(), images=(), worker=None, planner_model="", planner_effort="", worker_model="", worker_effort=""):
+    def _work(self, text, planner, files=(), uploads=(), images=(), worker=None, planner_model="", planner_effort="", worker_model="", worker_effort="", print_mode="auto"):
         try:
             root = self.cfg.get("workspace") or ""
             q = skillq.detect(text) if (self.local and not files and not uploads) else None       # "what skills do you have?" is answered by the harness
@@ -133,6 +133,8 @@ class Session:
                     self.emit("lessons_used", n=len(lblocks["used"]), names=lblocks["names"][:6])
             extra_kw = {k: v for k, v in (("planner_model", planner_model), ("planner_effort", planner_effort),
                                           ("worker_model", worker_model), ("worker_effort", worker_effort)) if v}
+            if print_mode and print_mode != "auto":
+                extra_kw["print_mode"] = print_mode
             self._turn_lessons = lblocks
             return self._scene_turn(text, planner, block, images=list(images), worker=worker, **extra_kw)
         except Exception as e:                                                   # noqa: BLE001 - show the failure in the chat
@@ -181,7 +183,7 @@ class Session:
         c = str(self.cfg.get("blender") or "")
         return c if os.path.isfile(c) else viewers.blender_path()
 
-    def _scene_turn(self, text, planner, block, images=(), worker=None, planner_model="", planner_effort="", worker_model="", worker_effort="", lessons_blocks=None):
+    def _scene_turn(self, text, planner, block, images=(), worker=None, planner_model="", planner_effort="", worker_model="", worker_effort="", lessons_blocks=None, print_mode="auto"):
         """One user turn with the scene agent. Both director (`planner`) and worker (`worker`) can be any model in the unified pool."""
         blender = self.blender_exe()
         if not blender:
@@ -224,7 +226,7 @@ class Session:
         resume = isinstance(self.history, dict) and bool(self.history.get("scene3d"))
         r = scene3d.run(request, wd, blender, director, worker_fn, on_event=lambda kind, **kw: self.emit(kind, **kw), should_stop=lambda: self.stop, resume=resume,
                         skills=self._scene_skills(text, lb), images=list(images), review_images=advisors.can_see_images(adv),
-                        plan_cache=os.path.join(config.data_dir(self.cfg), "plan_cache"))
+                        plan_cache=os.path.join(config.data_dir(self.cfg), "plan_cache"), print_mode=print_mode)
         self.history = r["history"]
         self.last_usage = r.get("usage")
         rep = r.get("report") or {}
@@ -235,7 +237,8 @@ class Session:
                 hi = [max(v[1][i] for v in bb.values()) for i in range(3)]
                 t = rep.get("totals") or {}
                 self.measure = {"volume": t.get("volume_mm3", 0), "bbox_size": [h - l for h, l in zip(hi, lo)], "bbox_min": lo, "bbox_max": hi, "com": [(h + l) / 2 for h, l in zip(hi, lo)],
-                                "faces": t.get("faces", 0), "edges": t.get("edges", 0), "vertices": t.get("vertices", 0), "solids": len(bb), "valid": bool(r.get("ok")), "links": ""}
+                                "faces": t.get("faces", 0), "edges": t.get("edges", 0), "vertices": t.get("vertices", 0), "solids": len(bb), "valid": bool(r.get("ok")), "links": "",
+                                "print_report": rep.get("print")}
         self.emit("final", text=r["final"] or ("(stopped)" if r.get("stopped") else "(ended)"), warnings=r["warnings"], gates=0, steps=r["steps"], sec=r["sec"],
                   resume=bool(r.get("stuck") or r.get("ended_by_limit")), budget=None, peak_ctx=0, usage=r.get("usage"))
 
@@ -525,6 +528,25 @@ class Session:
             except OSError: pass
         return stl_p, ""
 
+    def ensure_scene_3mf(self):
+        """Export auto-oriented, build-plate packed, multi-color 3MF into <workdir>/scene.3mf."""
+        wd, blend = self.scene_paths()
+        if not blend or not wd or not os.path.isfile(os.path.join(wd, "plan.json")):
+            return "", "no scene yet"
+        glb, gerr = self.ensure_scene_glb()
+        if not glb:
+            return "", gerr or "no GLB available"
+        tmf_p = os.path.join(wd, "scene.3mf")
+        need = (not os.path.isfile(tmf_p)) or os.path.getmtime(tmf_p) < max(os.path.getmtime(glb), os.path.getmtime(os.path.join(wd, "plan.json")))
+        if need:
+            cnt, err = scene_export.export_3mf(wd, glb, tmf_p)
+            if not cnt or err:
+                return "", err or "3MF export failed"
+        if self.local and self.autofile and self.autofile.endswith(".blend"):
+            try: shutil.copyfile(tmf_p, self.autofile[:-6] + ".3mf")
+            except OSError: pass
+        return tmf_p, ""
+
     def ensure_scene_step(self):
         """Export multi-part colored XCAF STEP assembly from plan + GLB into <workdir>/scene.step."""
         wd, blend = self.scene_paths()
@@ -596,6 +618,7 @@ class Session:
             if j.get("parent") and j["parent"] not in jmap:
                 jmap[j["parent"]] = (jn, "parent")
         parts_out = []
+        pr_parts = (rep.get("print") or {}).get("parts") or {}
         for p in plan.get("parts") or ():
             pid = p.get("id") or ""
             b = bb.get(pid)
@@ -606,9 +629,10 @@ class Session:
                 sz = p.get("size_mm") or []
                 ctr = p.get("center_mm") or []
             jn, jr = jmap.get(pid, ("", ""))
+            pup = p.get("print_up") or (pr_parts.get(pid) or {}).get("print_up") or ""
             parts_out.append({"id": pid, "spec": p.get("spec") or "", "bbox_mm": b, "size_mm": sz, "center_mm": ctr,
-                              "color": p.get("color") or "", "finish": p.get("finish") or "", "joint": jn, "joint_role": jr})
-        return {"ok": True, "parts": parts_out, "joints": joints_out}
+                              "color": p.get("color") or "", "finish": p.get("finish") or "", "joint": jn, "joint_role": jr, "print_up": pup})
+        return {"ok": True, "parts": parts_out, "joints": joints_out, "print": rep.get("print")}
 
     def render_scene_video(self):
         """Render animated MP4 preview of the active Blender scene using blender_video.py + ffmpeg. -> (status, dict)."""
@@ -913,6 +937,14 @@ def make_handler(sess, token, hosts, data_dir):
                                 except OSError: pass
                 else:
                     return self._send(404, {"error": "no part yet"})
+            elif u.path == "/api/scene.3mf":
+                tmf_p, err = sess.ensure_scene_3mf()
+                if not tmf_p:
+                    return self._send(404, {"error": err or "no scene yet"})
+                _wd, blend = sess.scene_paths()
+                fn = (os.path.splitext(os.path.basename(blend or "scene"))[0] + ".3mf").replace('"', "") or "scene.3mf"
+                with open(tmf_p, "rb") as f:
+                    self._send(200, f.read(), "model/3mf", [("Content-Disposition", 'attachment; filename="%s"' % fn)])
             elif u.path == "/api/scene.step":
                 step_p, err = sess.ensure_scene_step()
                 if not step_p:
@@ -1040,7 +1072,8 @@ def make_handler(sess, token, hosts, data_dir):
                     if not advisors.can_see_images(a):
                         return self._send(400, {"error": "pictures can only be sent to Claude or Antigravity CLI (choose one of them as the advisor)"})
                 ok = sess.send(text, planner, files, ups, imgs or None, worker=worker,
-                               planner_model=p_model, planner_effort=p_effort, worker_model=w_model, worker_effort=w_effort)
+                               planner_model=p_model, planner_effort=p_effort, worker_model=w_model, worker_effort=w_effort,
+                               print_mode=str(body.get("print_mode") or "auto").strip().lower())
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
             elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/discover_models", "/api/probe_model", "/api/open", "/api/scene_video", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender", "/api/lessons", "/api/skills"):
                 if not sess.local:

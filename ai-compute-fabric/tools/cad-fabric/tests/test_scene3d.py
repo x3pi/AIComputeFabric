@@ -1532,5 +1532,263 @@ class AdaptiveScaling(Loop):
             S.subprocess.run = old_sub
 
 
+class PrintabilityAnd3MFTests(unittest.TestCase):
+    def setUp(self):
+        self.d = tempfile.mkdtemp(prefix="cf-print-")
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_profile_detection_validation_and_builtin_skill(self):
+        from cadfabric import skills as skills_mod
+        from cadfabric.blender import bxlib, printability
+
+        self.assertEqual(S.detect_print_profile("Thiết kế vỏ hộp mạch in 3D trên máy Bambu Lab A1"), "bambu_a1")
+        self.assertEqual(S.detect_print_profile("Vỏ cảm biến in bằng Bambu A1 mini"), "bambu_a1_mini")
+        self.assertEqual(S.detect_print_profile("Mặt nạ in SLA resin"), "sla")
+        self.assertEqual(S.detect_print_profile("Gá kẹp in FDM vòi 0.6 mm"), "fdm_06")
+        self.assertEqual(S.detect_print_profile("Dựng xe máy điện thể thao"), "")
+
+        rec = {"ops": [
+            {"op": "shell", "center": [0, 0, 15], "size": [100, 60, 30], "wall": 2.0, "open": "+z", "bevel": 2.0},
+            {"op": "box", "center": [50, 0, 12], "size": [8, 12, 6], "mode": "cut"},
+        ]}
+        self.assertEqual(bxlib.validate(rec), [])
+        self.assertEqual(bxlib.recipe_bbox(rec), ([-50.0, -30.0, 0.0], [50.0, 30.0, 30.0]))
+        self.assertTrue(bxlib.validate({"ops": [{"op": "box", "center": [0, 0, 0], "size": [10, 10, 10], "mode": "cut"}]}))
+        self.assertTrue(bxlib.validate({"ops": [{"op": "shell", "center": [0, 0, 0], "size": [4, 10, 10], "wall": 2.0}]}))
+
+        bad_colors = {
+            "print": {"profile": "bambu_a1"},
+            "parts": [{"id": f"p{i}", "spec": "x", "color": f"#1020{i}0"} for i in range(5)],
+        }
+        self.assertTrue(any("at most 4" in m for m in S.validate_plan(bad_colors)))
+        ok_colors = {
+            "print": {"profile": "bambu_a1"},
+            "parts": [{"id": f"p{i}", "spec": "x", "color": f"#1020{i}0", "print_up": "-z" if i == 1 else "auto"} for i in range(4)],
+        }
+        self.assertEqual(S.validate_plan(ok_colors), [])
+        self.assertTrue(S.validate_plan({"parts": [{"id": "p0", "spec": "x", "print_up": "upside"}]}))
+
+        dd = os.path.join(self.d, "data")
+        self.assertIn("printable-design-blender", skills_mod.ensure_builtin(dd))
+        listed = skills_mod.list_for(dd, "")
+        bm = next((m for m in listed if m["name"] == "printable-design-blender"), None)
+        self.assertIsNotNone(bm)
+        self.assertEqual((bm["status"], bm["audience"]), ("approved", "both"))
+
+        for up in ("+z", "-z", "+x", "-x", "+y", "-y"):
+            R = printability.up_rotation_matrix_3x3(up)
+            det = (R[0][0] * (R[1][1] * R[2][2] - R[1][2] * R[2][1])
+                   - R[0][1] * (R[1][0] * R[2][2] - R[1][2] * R[2][0])
+                   + R[0][2] * (R[1][0] * R[2][1] - R[1][1] * R[2][0]))
+            self.assertAlmostEqual(det, 1.0, places=6)
+
+    def test_export_3mf_orientation_packing_and_web_endpoint(self):
+        import http.client, struct, threading, zipfile
+        from cadfabric import scene_export, web as web_mod
+
+        def _pack_glb(meshes_def):
+            bin_chunks, accessors, bvs, g_meshes, g_nodes = bytearray(), [], [], [], []
+            for name, verts, idx in meshes_def:
+                v_off = len(bin_chunks)
+                v_bytes = b"".join(struct.pack("<3f", *v) for v in verts)
+                bin_chunks.extend(v_bytes)
+                while len(bin_chunks) % 4: bin_chunks.append(0)
+                i_off = len(bin_chunks)
+                i_bytes = b"".join(struct.pack("<H", x) for x in idx)
+                bin_chunks.extend(i_bytes)
+                while len(bin_chunks) % 4: bin_chunks.append(0)
+                lo = [min(v[k] for v in verts) for k in range(3)]
+                hi = [max(v[k] for v in verts) for k in range(3)]
+                bv_v = len(bvs); bvs.append({"buffer": 0, "byteOffset": v_off, "byteLength": len(v_bytes)})
+                bv_i = len(bvs); bvs.append({"buffer": 0, "byteOffset": i_off, "byteLength": len(i_bytes)})
+                acc_v = len(accessors); accessors.append({"bufferView": bv_v, "componentType": 5126, "count": len(verts), "type": "VEC3", "min": lo, "max": hi})
+                acc_i = len(accessors); accessors.append({"bufferView": bv_i, "componentType": 5123, "count": len(idx), "type": "SCALAR"})
+                mi = len(g_meshes); g_meshes.append({"name": name, "primitives": [{"attributes": {"POSITION": acc_v}, "indices": acc_i}]})
+                g_nodes.append({"name": name, "mesh": mi})
+            gltf_doc = {"asset": {"version": "2.0"}, "scenes": [{"nodes": list(range(len(g_nodes)))}], "scene": 0,
+                        "nodes": g_nodes, "meshes": g_meshes, "accessors": accessors, "bufferViews": bvs, "buffers": [{"byteLength": len(bin_chunks)}]}
+            jb = json.dumps(gltf_doc, separators=(",", ":")).encode("utf-8")
+            while len(jb) % 4: jb += b" "
+            while len(bin_chunks) % 4: bin_chunks.append(0)
+            tot = 12 + 8 + len(jb) + 8 + len(bin_chunks)
+            return struct.pack("<III", 0x46546C67, 2, tot) + struct.pack("<II", len(jb), 0x4E4F534A) + jb + struct.pack("<II", len(bin_chunks), 0x004E4942) + bytes(bin_chunks)
+
+        # Two floating cubes at Z=40..60 and Z=80..95 -> orient_and_pack drops both to Z=0 side-by-side
+        def _cube_gltf(z0, z1, s):
+            return [(0.0, z0, 0.0), (s, z0, 0.0), (s, z0, -s), (0.0, z0, -s),
+                    (0.0, z1, 0.0), (s, z1, 0.0), (s, z1, -s), (0.0, z1, -s)]
+        ci = [0,1,2, 0,2,3, 4,6,5, 4,7,6, 0,4,5, 0,5,1, 1,5,6, 1,6,2, 2,6,7, 2,7,3, 3,7,4, 3,4,0]
+        wd = os.path.join(self.d, "wd3mf")
+        ws = os.path.join(self.d, "ws3mf")
+        dd = os.path.join(self.d, "dd3mf")
+        for x in (wd, ws, dd):
+            os.makedirs(x, exist_ok=True)
+        blend_p = os.path.join(wd, "scene.blend")
+        glb_p = os.path.join(wd, "scene.glb")
+        with open(blend_p, "wb") as fh: fh.write(b"B")
+        with open(glb_p, "wb") as fh:
+            fh.write(_pack_glb([("tray", _cube_gltf(0.04, 0.06, 0.03), ci), ("lid", _cube_gltf(0.08, 0.095, 0.03), ci)]))
+        with open(os.path.join(wd, "plan.json"), "w", encoding="utf-8") as fh:
+            json.dump({"print": {"profile": "bambu_a1"}, "parts": [
+                {"id": "tray", "spec": "tray", "color": "#2B2D42", "print_up": "+z"},
+                {"id": "lid", "spec": "lid", "color": "#EDF2F4", "print_up": "-z"},
+            ]}, fh)
+
+        out_3mf = os.path.join(wd, "out.3mf")
+        cnt, err = scene_export.export_3mf(wd, glb_p, out_3mf)
+        self.assertEqual((cnt, err), (2, ""))
+        with zipfile.ZipFile(out_3mf, "r") as zf:
+            names = set(zf.namelist())
+            self.assertEqual(names, {"[Content_Types].xml", "_rels/.rels", "3D/3dmodel.model", "Metadata/model_settings.config"})
+            mxml = zf.read("3D/3dmodel.model").decode("utf-8")
+            mcfg = zf.read("Metadata/model_settings.config").decode("utf-8")
+            self.assertIn("#2B2D42FF", mxml)
+            self.assertIn("#EDF2F4FF", mxml)
+            self.assertIn('extruder" value="2"', mcfg)
+        packed = scene_export.orient_and_pack_parts(scene_export.glb_extract_parts(glb_p), {"print": {"profile": "bambu_a1"}, "parts": [
+            {"id": "tray", "color": "#2B2D42", "print_up": "+z"},
+            {"id": "lid", "color": "#EDF2F4", "print_up": "-z"},
+        ]})
+        for _pid, verts, _tris, _col, _up in packed:
+            self.assertAlmostEqual(float(verts[:, 2].min()), 0.0, places=3)
+            self.assertTrue(0.0 <= float(verts[:, 0].min()) and float(verts[:, 0].max()) <= 256.0)
+            self.assertTrue(0.0 <= float(verts[:, 1].min()) and float(verts[:, 1].max()) <= 256.0)
+        b0, b1 = packed[0][1], packed[1][1]
+        self.assertTrue(b0[:, 0].max() < b1[:, 0].min() or b1[:, 0].max() < b0[:, 0].min() or b0[:, 1].max() < b1[:, 1].min() or b1[:, 1].max() < b0[:, 1].min())
+
+        cfg_s = {"url": "http://127.0.0.1:1/v1/chat/completions", "model": "q", "planner": "nothink", "worker": "qwen",
+                 "advisors": [], "relay": {}, "workspace": ws, "data_dir": dd}
+        srv = web_mod.serve(type("L", (), {"chat": lambda *a, **k: {"content": "ok", "_usage": {}}, "close": lambda s: None})(), cfg_s, port=0, token="t3mf", quiet=True)
+        srv.hosts.add("127.0.0.1:%d" % srv.port)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            srv.sess.history = {"scene3d": True, "workdir": wd}
+            c = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=15)
+            c.request("GET", "/api/scene.3mf", headers={"Cookie": "cft=t3mf"})
+            r3 = c.getresponse(); b3 = r3.read()
+            self.assertEqual((r3.status, r3.getheader("Content-Type")), (200, "model/3mf"))
+            self.assertTrue(b3.startswith(b"PK"))
+            c.request("GET", "/", headers={"Cookie": "cft=t3mf"})
+            rh = c.getresponse(); bh = rh.read().decode("utf-8")
+            for tok in ('for="print_mode"', 'id="print_mode"', 'name="print_mode"', 'id="dl3mf"', 'Bambu A1 (4 màu)'):
+                self.assertIn(tok, bh)
+        finally:
+            srv.shutdown(); srv.sess.close()
+
+    def test_real_blender_bambu_a1_enclosure_and_negative_gates(self):
+        from cadfabric import viewers, scene_export
+        bl = viewers.blender_path()
+        if not bl or not os.path.isfile(bl):
+            self.skipTest("Blender not installed")
+        import subprocess, zipfile
+
+        def _run_blender_plan(sub, plan_obj, raw_overrides=None):
+            pdir = os.path.join(self.d, sub)
+            os.makedirs(os.path.join(pdir, "parts"), exist_ok=True)
+            with open(os.path.join(pdir, "plan.json"), "w", encoding="utf-8") as fh:
+                json.dump(plan_obj, fh)
+            for p in plan_obj["parts"]:
+                pid = p["id"]
+                with open(os.path.join(pdir, "parts", pid + ".py"), "w", encoding="utf-8") as fh:
+                    if raw_overrides and pid in raw_overrides:
+                        fh.write(raw_overrides[pid])
+                    else:
+                        fh.write(S.RECIPE_TEMPLATE % (pid, {"ops": p["ops"]}))
+            subprocess.run([bl, "-b", "--python", S.BLENDER_BUILD, "--", pdir], capture_output=True, text=True, timeout=120, check=True)
+            with open(os.path.join(pdir, "report.json"), encoding="utf-8") as fh:
+                return json.load(fh), pdir
+
+        # 1. Valid 4-color Bambu A1 printable electronics enclosure with USB-C cutout, M3 bosses/holes & print-in-place hinge
+        good_plan = {
+            "print": {"profile": "bambu_a1"},
+            "parts": [
+                {
+                    "id": "box_base",
+                    "spec": "Enclosure base 90x64x28mm, wall 2.0mm, open +z, USB-C cutout, 4 M3 holes, side hinge knuckles",
+                    "color": "#2B2D42",
+                    "print_up": "+z",
+                    "ops": [
+                        {"op": "shell", "center": [0, 0, 14], "size": [90, 64, 28], "wall": 2.0, "open": "+z", "bevel": 2.0},
+                        {"op": "box", "center": [45, 0, 12], "size": [8, 12, 6], "mode": "cut"},
+                        {"op": "cylinder", "a": [-39, -26, -1], "b": [-39, -26, 20], "r": 1.7, "mode": "cut"},
+                        {"op": "box", "center": [-47, -19, 26.2], "size": [4.4, 10.0, 3.2], "mode": "add"},
+                        {"op": "box", "center": [-47, 19, 26.2], "size": [4.4, 10.0, 3.2], "mode": "add"},
+                        {"op": "cylinder", "a": [-49, -24, 28], "b": [-49, -14, 28], "r": 3.5, "mode": "add"},
+                        {"op": "cylinder", "a": [-49, 14, 28], "b": [-49, 24, 28], "r": 3.5, "mode": "add"},
+                        {"op": "cylinder", "a": [-49, -26, 28], "b": [-49, 26, 28], "r": 2.05, "mode": "cut"},
+                    ],
+                },
+                {
+                    "id": "box_lid",
+                    "spec": "Top lid 90x64x10mm, open -z, inner lip +0.25mm clearance, central hinge knuckle + pin",
+                    "color": "#EDF2F4",
+                    "print_up": "-z",
+                    "ops": [
+                        {"op": "shell", "center": [0, 0, 33.2], "size": [90, 64, 10], "wall": 2.0, "open": "-z", "bevel": 1.6},
+                        {"op": "shell", "center": [0, 0, 28.2], "size": [85.4, 59.4, 4.0], "wall": 1.6, "open": "-z", "mode": "add"},
+                        {"op": "box", "center": [-46.8, 0, 29.8], "size": [4.4, 26.8, 3.2], "mode": "add"},
+                        {"op": "cylinder", "a": [-49, -13.4, 28], "b": [-49, 13.4, 28], "r": 3.5, "mode": "add"},
+                        {"op": "cylinder", "a": [-49, -23.5, 28], "b": [-49, 23.5, 28], "r": 1.65, "mode": "add"},
+                    ],
+                },
+                {
+                    "id": "status_ring",
+                    "spec": "LED bezel ring on lid",
+                    "color": "#EF233C",
+                    "print_up": "+z",
+                    "ops": [{"op": "ring", "center": [18, 0, 39.2], "axis": "z", "r_out": 8.0, "r_in": 4.5, "width": 2.0}],
+                },
+                {
+                    "id": "power_btn",
+                    "spec": "Power button inside LED ring",
+                    "color": "#3A86FF",
+                    "print_up": "+z",
+                    "ops": [{"op": "cylinder", "a": [18, 0, 38.2], "b": [18, 0, 41.2], "r": 4.1}],
+                },
+            ],
+            "joints": [
+                {"name": "j_lid", "parent": "box_base", "children": ["box_lid", "status_ring", "power_btn"],
+                 "origin_mm": [-49, 0, 28], "axis": [0, 1, 0], "span_rad": -1.5}
+            ],
+            "allowed_contacts": [["box_lid", "status_ring"], ["box_lid", "power_btn"]],
+        }
+        rep, pdir = _run_blender_plan("ok_box", good_plan)
+        self.assertTrue(rep["ok"], f"Expected clean printable box, got issues={rep.get('issues')} errors={rep.get('part_errors')}")
+        self.assertEqual(rep["print"]["all_watertight"], True)
+        self.assertEqual(rep["print"]["colors_used"], 4)
+        self.assertEqual(rep["print"]["parts"]["box_lid"]["print_up"], "-z")
+
+        out_3mf = os.path.join(pdir, "plate.3mf")
+        cnt, err = scene_export.export_3mf(pdir, os.path.join(pdir, "scene.glb"), out_3mf)
+        self.assertEqual((cnt, err), (4, ""))
+        with zipfile.ZipFile(out_3mf, "r") as zf:
+            self.assertIn('extruder" value="4"', zf.read("Metadata/model_settings.config").decode("utf-8"))
+
+        # 2. Negative gate checks
+        open_raw = {"sheet": "def build(bpy, bmesh):\n    bm=bmesh.new()\n    v=[bm.verts.new(c) for c in ((0,0,0),(0.03,0,0),(0.03,0.03,0),(0,0.03,0))]\n    bm.faces.new(v); me=bpy.data.meshes.new('sheet'); bm.to_mesh(me); bm.free()\n    return bpy.data.objects.new('sheet', me)\n"}
+        rep_nm, _ = _run_blender_plan("bad_nm", {"print": {"profile": "bambu_a1"}, "parts": [{"id": "sheet", "spec": "open plane", "color": "#2B2D42"}]}, raw_overrides=open_raw)
+        self.assertIn("non_manifold", [i["kind"] for i in rep_nm["issues"]])
+
+        rep_tw, _ = _run_blender_plan("bad_wall", {"print": {"profile": "bambu_a1"}, "parts": [{"id": "thin", "spec": "thin shell", "color": "#2B2D42", "ops": [{"op": "shell", "center": [0, 0, 10], "size": [40, 40, 20], "wall": 0.5}]}]})
+        self.assertIn("wall_too_thin", [i["kind"] for i in rep_tw["issues"]])
+
+        rep_big, _ = _run_blender_plan("bad_big", {"print": {"profile": "bambu_a1"}, "parts": [{"id": "slab", "spec": "oversized", "color": "#2B2D42", "ops": [{"op": "box", "center": [0, 0, 10], "size": [280, 100, 20]}]}]})
+        self.assertIn("exceeds_build_volume", [i["kind"] for i in rep_big["issues"]])
+
+        rep_ov, _ = _run_blender_plan("bad_ov", {"print": {"profile": "bambu_a1"}, "parts": [
+            {"id": "pa", "spec": "a", "color": "#2B2D42", "ops": [{"op": "box", "center": [0, 0, 10], "size": [20, 20, 20]}]},
+            {"id": "pb", "spec": "b", "color": "#EDF2F4", "ops": [{"op": "box", "center": [15, 0, 10], "size": [20, 20, 20]}]},
+        ], "allowed_contacts": [["pa", "pb"]]})
+        self.assertIn("print_overlap", [i["kind"] for i in rep_ov["issues"]])
+
+        rep_cl, _ = _run_blender_plan("bad_hinge", {"print": {"profile": "bambu_a1"}, "parts": [
+            {"id": "ha", "spec": "base", "color": "#2B2D42", "ops": [{"op": "cylinder", "a": [0, 0, 10], "b": [0, 20, 10], "r": 5.0}]},
+            {"id": "hb", "spec": "arm", "color": "#EDF2F4", "ops": [{"op": "cylinder", "a": [0, 20.05, 10], "b": [0, 35, 10], "r": 5.0}]},
+        ], "joints": [{"name": "j", "parent": "ha", "children": ["hb"], "origin_mm": [0, 20, 10], "axis": [0, 1, 0], "span_rad": 1.0}]})
+        self.assertIn("clearance_too_tight", [i["kind"] for i in rep_cl["issues"]])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

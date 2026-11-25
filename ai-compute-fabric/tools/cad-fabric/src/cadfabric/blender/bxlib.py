@@ -21,8 +21,10 @@ recipe = {"ops": [ {"op": "box", "center": [x,y,z], "size": [dx,dy,dz], "rot": {
 import math, os
 
 M = 0.001
-OPS = {"box", "cylinder", "ring", "beam", "sphere", "loft", "spokes", "disc", "tube", "panel"}
+OPS = {"box", "cylinder", "ring", "beam", "sphere", "loft", "spokes", "disc", "tube", "panel", "shell"}
 AXES = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}
+SHELL_OPEN = ("+x", "-x", "+y", "-y", "+z", "-z", "none")
+MODES = ("add", "cut")
 
 
 TESS_MM = float(os.environ.get("BX_TESS_MM", "0.4"))        # largest allowed gap between a true circle and its polygon (sagitta), in mm
@@ -95,11 +97,32 @@ def validate(recipe):
         w = "op %d (%s): " % (i, t)
         if t not in OPS:
             e.append("op %d: unknown op %r (use %s)" % (i, t, ", ".join(sorted(OPS)))); continue
+        mode = o.get("mode", "add")
+        if mode not in MODES:
+            e.append(w + 'mode must be "add" or "cut"')
+        elif i == 0 and mode == "cut":
+            e.append(w + 'first op cannot have mode "cut"')
         if "bevel" in o and not _num(o["bevel"], -1e-9):
             e.append(w + "bevel must be a number >= 0")
         if t == "box":
             if not _vec(o.get("center")) or not _vec(o.get("size")) or not all(x > 0 for x in o.get("size", [0])):
                 e.append(w + "needs center [x,y,z] and size [dx,dy,dz] > 0")
+            if "rot" in o and not (isinstance(o["rot"], dict) and _axis(o["rot"].get("axis")) and _num(o["rot"].get("deg"))):
+                e.append(w + 'rot must be {"axis": [..], "deg": number}')
+        elif t == "shell":
+            sz = o.get("size")
+            wall = o.get("wall")
+            opn = o.get("open", "+z")
+            if not _vec(o.get("center")) or not _vec(sz) or not all(x > 0 for x in sz or [0]) or not _num(wall, 0.399):
+                e.append(w + "needs center [x,y,z], size [dx,dy,dz] > 0, and wall >= 0.4")
+            elif opn not in SHELL_OPEN:
+                e.append(w + 'open must be one of %s' % ", ".join(SHELL_OPEN))
+            else:
+                for ax_i, ax_ch in enumerate("xyz"):
+                    req = float(wall) + 0.2 if (opn != "none" and opn[1] == ax_ch) else (2.0 * float(wall) + 0.2)
+                    if float(sz[ax_i]) <= req:
+                        e.append(w + "size[%d] (%.1f) too small for wall=%.1f (needs > %.1f)" % (ax_i, sz[ax_i], wall, req))
+                        break
             if "rot" in o and not (isinstance(o["rot"], dict) and _axis(o["rot"].get("axis")) and _num(o["rot"].get("deg"))):
                 e.append(w + 'rot must be {"axis": [..], "deg": number}')
         elif t == "cylinder":
@@ -153,19 +176,137 @@ def validate(recipe):
     return e
 
 
+def _build_single_op_mesh(bpy, bmesh, o, tag):
+    if o["op"] == "shell":
+        return _build_shell_mesh(bpy, bmesh, o, tag)
+    bm = bmesh.new()
+    try:
+        _emit(bm, bmesh, bpy, o)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        me = bpy.data.meshes.new(tag)
+        bm.to_mesh(me)
+        return me
+    finally:
+        bm.free()
+
+
+def _bool_meshes(bpy, bmesh, me_a, me_b, operation, tag):
+    """Run Exact Boolean CSG on two meshes without bpy.ops and return a cleaned 2-manifold mesh."""
+    me_out = None
+    col = bpy.context.scene.collection.objects
+    for solver in ("EXACT", "FAST"):
+        ob_a = bpy.data.objects.new("_bx_bool_a", me_a)
+        ob_b = bpy.data.objects.new("_bx_bool_b", me_b)
+        col.link(ob_a); col.link(ob_b)
+        try:
+            md = ob_a.modifiers.new("bx_bool", "BOOLEAN")
+            md.operation = operation
+            md.object = ob_b
+            md.solver = solver
+            if hasattr(md, "use_self"):
+                md.use_self = True
+            if hasattr(md, "use_hole_tolerant"):
+                md.use_hole_tolerant = True
+            dg = bpy.context.evaluated_depsgraph_get()
+            cand = bpy.data.meshes.new_from_object(ob_a.evaluated_get(dg))
+            if len(cand.vertices) > 0 and len(cand.polygons) > 0:
+                me_out = cand
+                break
+            bpy.data.meshes.remove(cand)
+        except Exception:  # noqa: BLE001
+            if me_out is not None:
+                bpy.data.meshes.remove(me_out)
+                me_out = None
+        finally:
+            if ob_a.name in col:
+                col.unlink(ob_a)
+            if ob_b.name in col:
+                col.unlink(ob_b)
+            bpy.data.objects.remove(ob_a)
+            bpy.data.objects.remove(ob_b)
+    if me_out is None:
+        me_out = me_a.copy()
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me_out)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+        bmesh.ops.dissolve_degenerate(bm, dist=1e-7, edges=bm.edges)
+        ngons = [f for f in bm.faces if len(f.verts) > 4]
+        if ngons:
+            bmesh.ops.triangulate(bm, faces=ngons)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.to_mesh(me_out)
+    finally:
+        bm.free()
+    me_out.name = tag
+    for old in (me_a, me_b):
+        if old and old.users == 0:
+            bpy.data.meshes.remove(old)
+    return me_out
+
+
+def _build_shell_mesh(bpy, bmesh, o, tag):
+    """Build a watertight hollow box shell (`open` face open, `wall` thickness, optional outer bevel & rotation)."""
+    from mathutils import Matrix
+    dx, dy, dz = [float(x) for x in o["size"]]
+    wall = float(o["wall"])
+    opn = o.get("open", "+z")
+    bev = float(o.get("bevel") or 0.0)
+    cx, cy, cz = [float(x) for x in o["center"]]
+
+    outer_op = {"op": "box", "center": [0.0, 0.0, 0.0], "size": [dx, dy, dz]}
+    if bev > 0:
+        outer_op["bevel"] = bev
+    in_sz = [dx - 2.0 * wall, dy - 2.0 * wall, dz - 2.0 * wall]
+    in_loc = [0.0, 0.0, 0.0]
+    if opn != "none":
+        sgn = 1.0 if opn[0] == "+" else -1.0
+        ax = "xyz".index(opn[1])
+        over = max(2.0, bev + 2.0)
+        in_sz[ax] = [dx, dy, dz][ax] - wall + over
+        in_loc[ax] = sgn * (wall + over) / 2.0
+    in_bev = max(0.0, min(bev - wall, min(in_sz) * 0.3))
+    inner_op = {"op": "box", "center": in_loc, "size": in_sz}
+    if in_bev > 0.05:
+        inner_op["bevel"] = in_bev
+
+    r = Matrix.Identity(3)
+    if "rot" in o:
+        r = Matrix.Rotation(math.radians(o["rot"]["deg"]), 3, _axis(o["rot"]["axis"]))
+    me_out = _build_single_op_mesh(bpy, bmesh, outer_op, "_bx_sh_out")
+    me_in = _build_single_op_mesh(bpy, bmesh, inner_op, "_bx_sh_in")
+    for me in (me_out, me_in):
+        bm = bmesh.new()
+        try:
+            bm.from_mesh(me)
+            _place(bm, bmesh, r, [cx, cy, cz])
+            bm.to_mesh(me)
+        finally:
+            bm.free()
+    return _bool_meshes(bpy, bmesh, me_out, me_in, "DIFFERENCE", tag)
+
+
 def build(bpy, bmesh, pid, recipe):
     """Create ONE mesh object named pid from the recipe (world coordinates, metres; object transform identity). Raises ValueError on a bad recipe."""
     probs = validate(recipe)
     if probs:
         raise ValueError("bad recipe: " + "; ".join(probs[:4]))
-    bm = bmesh.new()
-    for o in recipe["ops"]:
-        _emit(bm, bmesh, bpy, o)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    me = bpy.data.meshes.new(pid)
-    bm.to_mesh(me)
-    bm.free()
-    return bpy.data.objects.new(pid, me)
+    ops = recipe["ops"]
+    if len(ops) == 1 and ops[0]["op"] != "shell" and ops[0].get("mode", "add") == "add":
+        bm = bmesh.new()
+        _emit(bm, bmesh, bpy, ops[0])
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        me = bpy.data.meshes.new(pid)
+        bm.to_mesh(me)
+        bm.free()
+        return bpy.data.objects.new(pid, me)
+    acc = _build_single_op_mesh(bpy, bmesh, ops[0], "_bx_acc_0")
+    for idx, o in enumerate(ops[1:], start=1):
+        op_me = _build_single_op_mesh(bpy, bmesh, o, "_bx_op_%d" % idx)
+        oper = "DIFFERENCE" if o.get("mode", "add") == "cut" else "UNION"
+        acc = _bool_meshes(bpy, bmesh, acc, op_me, oper, "_bx_acc_%d" % idx)
+    acc.name = pid
+    return bpy.data.objects.new(pid, acc)
 
 
 # ---- internals (Blender only) -------------------------------------------------------------------------------------------
@@ -454,7 +595,7 @@ def _op_bbox(o):
             hi[i] = max(hi[i], a[i] + r1 * s, b[i] + r2 * s)
 
     t = o["op"]
-    if t == "box":
+    if t in ("box", "shell"):
         hx, hy, hz = o["size"][0] / 2.0, o["size"][1] / 2.0, o["size"][2] / 2.0
         cx, cy, cz = o["center"]
         ax = _axis(o["rot"]["axis"]) if "rot" in o else None
@@ -532,6 +673,8 @@ def recipe_bbox(recipe):
     lo = [float("inf"), float("inf"), float("inf")]
     hi = [float("-inf"), float("-inf"), float("-inf")]
     for o in recipe["ops"]:
+        if o.get("mode", "add") == "cut":
+            continue
         a, b = _op_bbox(o)
         for i in range(3):
             lo[i] = min(lo[i], a[i]); hi[i] = max(hi[i], b[i])
@@ -573,7 +716,7 @@ def _pt_in_op(pt, o, tol):
     if t == "beam":
         pts, r = o["points"], max(o["w"], o["h"]) / 2.0
         return any(_pt_in_op(pt, {"op": "cylinder", "a": p0, "b": p1, "r": r}, tol) for p0, p1 in zip(pts, pts[1:]))
-    if t == "box":
+    if t in ("box", "shell"):
         c = o["center"]
         rel = (pt[0] - c[0], pt[1] - c[1], pt[2] - c[2])
         if "rot" in o:

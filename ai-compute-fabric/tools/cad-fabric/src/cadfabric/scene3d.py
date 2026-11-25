@@ -23,7 +23,7 @@ import time
 from .cq_backend import NOWIN
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-from .blender import bxlib
+from .blender import bxlib, printability
 COLORS = os.environ.get("BX_COLORS", "1") != "0"           # the director also chooses colours and finishes (applied by the runner)
 RECIPES = os.environ.get("BX_RECIPES", "1") != "0"        # parts may be JSON recipes built by blender/bxlib.py (set 0 to force plain bmesh code)
 DIRECTOR_OPS_ON = os.environ.get("BX_DIRECTOR_OPS", "1") != "0"   # the director writes the geometry recipes of simple parts into the plan (0: the worker writes them; cheaper for the director, less reliable)
@@ -36,7 +36,31 @@ BLENDER_RENDER = os.path.join(HERE, "blender", "blender_render.py")
 MAX_TRIES = 4                  # worker attempts per part (all causes together)
 GROUP_MAX = 4                  # parts written in one worker request when the plan groups them
 FINISHES = ("matte", "gloss", "metal", "rubber", "emissive")
-PART_ISSUES = ("not_coaxial", "object_scale", "not_rigid", "wrong_pivot", "wrong_axis", "coaxial_unknown", "scale_outlier", "object_transform", "size_mismatch", "position_mismatch")
+PART_ISSUES = ("not_coaxial", "object_scale", "not_rigid", "wrong_pivot", "wrong_axis", "coaxial_unknown", "scale_outlier", "object_transform", "size_mismatch", "position_mismatch",
+               "non_manifold", "inverted_normals", "wall_too_thin", "feature_too_small")
+
+
+_PRINT_INTENT_RE = re.compile(
+    r"(?:\bin\s*3\s*d\b|\bmáy\s*in\b|\bbàn\s*in\b|\bbambu\b|\ba1\s*mini\b|\bams\b|\b3mf\b|\bslicer\b|\borca\b|\bprusaslicer\b|"
+    r"\bfdm\b|\bsla\b|\bresin\b|\bsls\b|\bpla\b|\bpetg\b|\btpu\b|\bprint[- ]in[- ]place\b|\b3d[- ]print|\$printable-design-blender|\bxuất\s*in\b|\bđem\s*in\b|\bin\s*thử\b|\bvòi\s*0[.,][46]\b)",
+    re.I,
+)
+
+
+def detect_print_profile(text):
+    """Detect explicit/implicit 3D printing intent -> profile id in PRINT_PROFILES, or ''."""
+    s = str(text or "")
+    if not _PRINT_INTENT_RE.search(s):
+        return ""
+    if re.search(r"\ba1\s*mini\b", s, re.I):
+        return "bambu_a1_mini"
+    if re.search(r"\bsla\b|\bresin\b", s, re.I):
+        return "sla"
+    if re.search(r"\bsls\b", s, re.I):
+        return "sls"
+    if re.search(r"\bvòi\s*0[.,]6\b|\b0[.,]6\s*mm\b", s, re.I):
+        return "fdm_06"
+    return "bambu_a1"
 
 
 def scale_policy(n_parts):
@@ -61,7 +85,8 @@ RECIPE_OPS = """{"ops":[ {"op":"box","center":[x,y,z],"size":[dx,dy,dz],"rot":{"
          {"op":"loft","sections":[{"x":0,"y":0,"z":800,"w":100,"h":60},{"x":300,"y":0,"z":860,"w":240,"h":140}],"round":3},   (streamlined shell along X; a section may add "round_top"/"round_bottom" (2 round, 6 flat and boxy) so a seat is flat on top and curved below; "smooth":3 adds interpolated sections so a few stations give a continuous curved body)
          {"op":"spokes","center":[x,y,z],"axis":"y","n":5,"r_in":45,"r_out":214,"w":24,"t":14},
          {"op":"tube","points":[[x,y,z],[x,y,z],[x,y,z]],"r":12},                           (bent ROUND tube with smooth joints: fork leg, handlebar, exhaust, spar)
-         {"op":"panel","sections":[{"x":0,"y":0,"z":800,"w":100,"h":60},{"x":300,"y":0,"z":860,"w":240,"h":140}],"arc":[0,180],"thick":3} ]}   (thin curved SHEET: fairing, fender, side panel; arc [0,180] = upper half, [180,360] = lower half)"""
+         {"op":"panel","sections":[{"x":0,"y":0,"z":800,"w":100,"h":60},{"x":300,"y":0,"z":860,"w":240,"h":140}],"arc":[0,180],"thick":3},   (thin curved SHEET: fairing, fender, side panel)
+         {"op":"shell","center":[x,y,z],"size":[dx,dy,dz],"wall":2,"open":"+z|-z|+x|-x|+y|-y|none","bevel":2} ]}   (watertight hollow enclosure; any op may set "mode":"add"|"cut" to subtract holes/slots via Boolean CSG)"""
 
 DIRECTOR_OPS = """GEOMETRY BY RECIPE, in tiers (every token you write costs; a local worker is free):
  - Plain parts (wheels, tires, rims, spokes, discs, rings, axles, straight cylinders/shocks/pegs, beams/swingarms, brackets/lugs/clamps, bolts, simple boxes/batteries/inverters/calipers, lamps): give a precise spec (shape, axis direction, hollow or solid, dimensions) plus center_mm and size_mm, and LEAVE OUT "ops" (even if a reference skill mentions recipe primitives — the worker builds those recipe primitives itself). For hollow rings/tires add "shape":{"kind":"ring"}; for tilted rods/forks add "shape":{"endpoints":[[x1,y1,z1],[x2,y2,z2]]}. For symmetric L/R pairs write one side and declare the other with "mirror_of". The worker builds them from the tested recipes below and the runner checks the bounding box and shape.
@@ -76,7 +101,8 @@ You are called only to plan, to resolve what the worker could not, and for one f
 Reply with ONE JSON object, no prose. Actions:
  {"action":"plan","parts":[{"id":"p1","spec":"what it is, size mm, where (world mm, Z up)","center_mm":[x,y,z],"size_mm":[dx,dy,dz],"ops":[recipe ops; ONLY for curved body shells/lofts/panels/bent tubes - omit on plain rings/tires/rims/spokes/discs/cylinders/axles/boxes/beams/brackets/lamps so the worker builds them],"free":true (only for a part that is meant to hang free),"mirror_of":"id" (+"plane":"y","offset_mm":0: reflected copy of another part's ops, so state a symmetric pair ONCE),"array":{"count":n,"step":[dx,dy,dz]} (n copies p_1..p_n, for rows of bolts, keys, fins),"color":"#RRGGBB","finish":"matte|gloss|metal|rubber|emissive","group":"optional batching hint only"}],
   "joints":[{"name":"j1","parent":"p1"|null,"children":["p2"],"origin_mm":[x,y,z],"axis":[x,y,z],"coaxial":["p2"],"span_rad":6.283}],
-  "allowed_contacts":[["p1","p2"]]}
+  "allowed_contacts":[["p1","p2"]],
+  "print":{"profile":"bambu_a1"} (optional: include for 3D-print checks; parts may also declare "print_up":"+z|-z|+x|-x|+y|-y|auto")}
  {"action":"patch_plan","parts":[{"id":"p1","center_mm":[x,y,z],"ops":[...]}],"add_parts":[full part],"remove_parts":["p9"],"joints":[full joint, replaces the one with that name],"remove_joints":["j2"],"allowed_contacts_add":[["p1","p2"]],"allowed_contacts_remove":[["p3","p4"]],"notes":{"p5":"guidance for the worker"}}
    (a CHANGE to the plan: send only what changes, never the whole plan again; every key is optional; "parts" entries carry only the fields to change; "notes" makes the worker rewrite those parts)
  {"action":"write_part","id":"p1","note":"guidance for the worker"}   (worker retries with your note)
@@ -203,8 +229,19 @@ def _map_op(op, pt, dr, rot_flip):
     for k in ("axis", "up"):
         if isinstance(o.get(k), list):
             o[k] = dr(o[k])
-    if isinstance(o.get("rot"), dict) and isinstance(o["rot"].get("axis"), list):
-        o["rot"] = dict(o["rot"], axis=dr(o["rot"]["axis"]), deg=(-o["rot"]["deg"] if rot_flip else o["rot"]["deg"]))
+    if o.get("op") == "shell" and isinstance(o.get("open"), str) and len(o["open"]) == 2 and o["open"][1] in "xyz":
+        sgn = 1 if o["open"][0] == "+" else -1
+        v = [0, 0, 0]
+        v["xyz".index(o["open"][1])] = sgn
+        v2 = dr(v)
+        for idx, ax_ch in enumerate("xyz"):
+            if abs(v2[idx]) > 0.5:
+                o["open"] = ("+" if v2[idx] > 0 else "-") + ax_ch
+                break
+    if isinstance(o.get("rot"), dict) and o["rot"].get("axis") is not None:
+        ax = bxlib._axis(o["rot"]["axis"])
+        if ax is not None:
+            o["rot"] = dict(o["rot"], axis=dr(list(ax)), deg=(-o["rot"]["deg"] if rot_flip else o["rot"]["deg"]))
     return o
 
 
@@ -336,7 +373,10 @@ def plan_delta_view(plan, rep, stuck, others):
         return pv
     kept = [{k: v for k, v in q.items() if k not in ("color", "finish", "group")} for q in parts if q["id"] in focus]
     locked = [q["id"] for q in parts if q["id"] not in focus]
-    return {"parts": kept, "healthy_locked_parts": locked, "joints": pv.get("joints", []), "allowed_contacts": pv.get("allowed_contacts", [])}
+    out_d = {"parts": kept, "healthy_locked_parts": locked, "joints": pv.get("joints", []), "allowed_contacts": pv.get("allowed_contacts", [])}
+    if "print" in pv:
+        out_d["print"] = pv["print"]
+    return out_d
 
 
 def review_plan_view(plan):
@@ -386,6 +426,11 @@ def apply_patch(plan, act):
     contacts |= {pair(c) for c in act.get("allowed_contacts_add") or [] if pair(c)}
     contacts -= {pair(c) for c in act.get("allowed_contacts_remove") or []}
     new["allowed_contacts"] = sorted(list(c) for c in contacts)
+    if "print" in act:
+        if act["print"]:
+            new["print"] = act["print"]
+        else:
+            new.pop("print", None)
     return new, errs
 
 
@@ -709,6 +754,19 @@ def validate_plan(plan):
     for pr in plan.get("allowed_contacts", []):
         if len(pr) != 2 or any(x not in ids for x in pr):
             e.append("allowed_contacts bad pair %r" % (pr,))
+    for p in plan.get("parts", []):
+        if "print_up" in p and str(p["print_up"]).strip().lower() not in printability.PRINT_UP_VALUES:
+            e.append("part %s: print_up must be one of %s" % (p.get("id"), ", ".join(printability.PRINT_UP_VALUES)))
+    if plan.get("print"):
+        pcfg = printability.resolve_print_cfg(plan.get("print"))
+        if not pcfg or not isinstance(pcfg.get("bed_mm"), list) or len(pcfg["bed_mm"]) != 3 or any(not isinstance(v, (int, float)) or v <= 0 for v in pcfg["bed_mm"]):
+            e.append("print.bed_mm must be 3 positive numbers")
+        else:
+            max_c = int(pcfg.get("max_colors") or 0)
+            if max_c > 0:
+                cols = {str(p["color"]).lower() for p in plan.get("parts", []) if isinstance(p.get("color"), str) and re.match(r"^#[0-9a-fA-F]{6}$", p["color"])}
+                if len(cols) > max_c:
+                    e.append("print profile %s allows at most %d filament colors (AMS slots), got %d: consolidate colors to <= %d" % (pcfg["profile"], max_c, len(cols), max_c))
     return e
 
 
@@ -1206,8 +1264,8 @@ class Scene:
     def worker_report(self, others):
         parts = self.plan["parts"]
         lim = scale_policy(len(parts))["max_issues"]
-        prio = {"blender_failed": 0, "joint_skipped": 1, "joint_partial": 1, "span_mismatch": 2, "not_rigid": 2,
-                "wrong_axis": 2, "wrong_pivot": 2, "ground_penetration": 3, "floating_part": 4, "collision": 5}
+        prio = {"blender_failed": 0, "joint_skipped": 1, "joint_partial": 1, "exceeds_build_volume": 1, "clearance_too_tight": 2, "print_overlap": 2,
+                "span_mismatch": 2, "not_rigid": 2, "wrong_axis": 2, "wrong_pivot": 2, "ground_penetration": 3, "floating_part": 4, "collision": 5}
         ordered = sorted(others or (), key=lambda it: prio.get(it.get("kind"), 3))
         if len(parts) <= 16:
             rows = ["%s: %s (worker tries %d)" % (p["id"], ("STUCK - " + self.stuck[p["id"]]) if p["id"] in self.stuck else "built", self.tries.get(p["id"], 0)) for p in parts]
@@ -1228,11 +1286,17 @@ class Scene:
     def review_text(self, rep):
         parts = self.plan.get("parts", []) if self.plan else []
         bb_map = rep.get("parts_bbox_mm", {})
+        pr_info = ""
+        if isinstance(rep.get("print"), dict):
+            pr = rep["print"]
+            pr_info = "\nPRINTABILITY (%s): watertight=%s colors=%d/%s min_wall>=%.1fmm bed=%smm" % (
+                pr.get("profile"), pr.get("all_watertight"), pr.get("colors_used", 0),
+                pr.get("max_colors") or "any", pr.get("min_wall_mm", 0), pr.get("bed_mm"))
         jt = "\n".join("%s: parent=%s children=%s origin=%s axis=%s span_rad=%s" % (j["name"], j.get("parent"), j["children"], j["origin_mm"], j["axis"], j["span_rad"])
                        for j in self.plan.get("joints", []))
         if len(parts) <= 35:
             bb = "\n".join("%s: lo%s hi%s mm" % (k, v[0], v[1]) for k, v in sorted(bb_map.items()))
-            return "ALL CHECKS PASSED. FINAL REVIEW against the TASK text.\nBOUNDING BOXES at rest\n" + bb + "\nJOINTS\n" + jt + "\nReply done, or fix what differs from the TASK."
+            return "ALL CHECKS PASSED. FINAL REVIEW against the TASK text.\nBOUNDING BOXES at rest\n" + bb + pr_info + "\nJOINTS\n" + jt + "\nReply done, or fix what differs from the TASK."
         joint_pids = set()
         for j in self.plan.get("joints", []):
             if j.get("parent"):
@@ -1318,11 +1382,13 @@ def extract_part_mentions(request, plan):
     return out
 
 
-def run(request, workdir, blender, director, worker, on_event=None, should_stop=None, log=print, resume=False, max_director=10, skills=None, images=None, review_images=False, plan_cache=None):
+def run(request, workdir, blender, director, worker, on_event=None, should_stop=None, log=print, resume=False, max_director=10, skills=None, images=None, review_images=False, plan_cache=None, print_mode="auto"):
     """-> dict like agent.run: final, steps, warnings, sec, history, stuck, stopped, ended_by_limit, ok, usage, scene, report."""
     t0 = time.time()
     sc = Scene(workdir, blender, director, worker, on_event, should_stop, log, skills, images)
     ev = sc.ev
+    pm = str(print_mode or "auto").strip().lower()
+    eff_print = "" if pm == "off" else (pm if pm in printability.PRINT_PROFILES else detect_print_profile(request))
     plan = None
     if resume:                                              # a follow-up: continue from the saved plan and the last report
         try:
@@ -1360,7 +1426,20 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                    "\nThe user now asks: " + request + "\nReply with the action(s) needed (plan for a new structure, patch_plan to change several things at once, write_part/patch_part for one part), or done if nothing changes.")
     else:
         ev("phase", what="plan", mode="director")
-        msg = "TASK: " + request + ("\n%d picture(s) are attached: study them and write what you see (shapes, proportions, style) into the part specs, because the worker cannot see them." % len(sc.images) if sc.images else "") + "\nStart with the plan action."
+        print_hint = ""
+        if eff_print:
+            pcfg = printability.PRINT_PROFILES[eff_print]
+            print_hint = (
+                "\n3D PRINT TARGET: %s (profile %r, usable bed %.0fx%.0fx%.0f mm, min wall >= %.1f mm, mating gap >= %.2f mm, "
+                "hinge/moving clearance >= %.2f mm, max overhang %.0f deg%s). "
+                "Set \"print\":{\"profile\":%r} on the plan, set per-part \"print_up\" (e.g. \"+z\" for tray, \"-z\" for flat-topped lid), "
+                "use \"shell\" and \"mode\":\"cut\" in ops for enclosures/holes, and NEVER leave overlapping meshes (even in allowed_contacts)."
+                % (pcfg["label"], eff_print,
+                   pcfg["bed_mm"][0] - 2 * pcfg["margin_mm"], pcfg["bed_mm"][1] - 2 * pcfg["margin_mm"], pcfg["bed_mm"][2],
+                   pcfg["rec_wall_mm"], pcfg["min_clearance_mm"], pcfg["hinge_clearance_mm"], pcfg["max_overhang_deg"],
+                   (", max %d AMS colors" % pcfg["max_colors"]) if pcfg["max_colors"] else "", eff_print)
+            )
+        msg = "TASK: " + request + ("\n%d picture(s) are attached: study them and write what you see (shapes, proportions, style) into the part specs, because the worker cannot see them." % len(sc.images) if sc.images else "") + print_hint + "\nStart with the plan action."
     task = request
     calls, reviewed, extra_review_budget, done_fixes, ok, stopped, why = 0, 0, 0, 0, False, False, ""
     cur_phase = "followup" if inner_ready else "plan"
@@ -1369,7 +1448,7 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
     cache_file, cached, plan_saved = None, None, False
     if plan_cache and not inner_ready and not images and os.environ.get("BX_PLANCACHE", "1") != "0":          # an identical request (and setup) reuses its plan: no director call
         import hashlib
-        key = hashlib.sha256(json.dumps([request, sorted((skills or {}).get("names") or []), (skills or {}).get("explicit", ""), SYSTEM], sort_keys=True).encode()).hexdigest()[:24]
+        key = hashlib.sha256(json.dumps([request, sorted((skills or {}).get("names") or []), (skills or {}).get("explicit", ""), SYSTEM, pm, eff_print], sort_keys=True).encode()).hexdigest()[:24]
         cache_file = os.path.join(plan_cache, key + ".json")
         try:
             with open(cache_file, encoding="utf-8") as f:
@@ -1402,6 +1481,10 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 continue
             a = act.get("action")
             if a == "plan":
+                if pm == "off":
+                    act.pop("print", None)
+                elif eff_print and not act.get("print"):
+                    act["print"] = {"profile": eff_print}
                 act, xerrs = expand_plan(act)
                 errs = xerrs or validate_plan(act)
                 if errs:
@@ -1413,6 +1496,10 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 _log_director(workdir, {"call": calls, "sec": dt_call, "action": "plan", "errs": [], "parts": len(act.get("parts") or []), "len": len(txt or ""), "usage": last_u})
                 sc.set_plan(act)
                 sc.pick_skills(act)
+                if eff_print and "printable-design-blender" not in sc.skill_names:
+                    known_sk = set((sc.skills or {}).get("worker_names") or (sc.skills or {}).get("names") or [])
+                    if "printable-design-blender" in known_sk:
+                        sc.skill_names = (["printable-design-blender"] + sc.skill_names)[:3]
                 plan = act
                 if reviewed >= 1:
                     extra_review_budget = 1
@@ -1521,6 +1608,14 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
         final = ("%s %d chi tiết trong Blender%s.\n\n%s\n\n" % ("Đã dựng cảnh" if ok else "Cảnh CHƯA hoàn tất:", parts, " (có chuyển động)" if plan.get("joints") else "", sc.describe()))
         if ok:
             final += "Kiểm tra độc lập: **đạt** (đủ chi tiết, không xuyên nhau, khớp quay đúng trục, kích thước hợp lý)."
+            if isinstance(rep.get("print"), dict):
+                pr = rep["print"]
+                bd = pr.get("bed_mm") or [256, 256, 256]
+                final += "\nKiểm tra in 3D (%s): **đạt** — lưới kín 2-manifold, thành >= %.1f mm, vừa bàn in %.0f×%.0f×%.0f mm%s." % (
+                    pr.get("label") or pr.get("profile") or "FDM",
+                    float(pr.get("min_wall_mm") or 1.0), bd[0], bd[1], bd[2],
+                    (", %d/%d màu AMS" % (pr.get("colors_used", 0), pr["max_colors"])) if pr.get("max_colors") else "",
+                )
         else:
             final += "Kiểm tra độc lập: **chưa đạt**.\n" + "\n".join("- " + json.dumps(i, ensure_ascii=False) for i in issues[:8])
             if rep.get("part_errors"):

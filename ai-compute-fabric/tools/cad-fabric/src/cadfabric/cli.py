@@ -93,8 +93,9 @@ def cmd_doctor(a):
 def cmd_run_scene(a):
     """Headless scene build: `cadfabric run "<request>" [--planner claude:sonnet@medium] [--worker qwen]`. Writes <data dir>/scenes/<id>/ and prints the result."""
     from .llm import LLM
-    from . import scene3d, viewers
+    from . import scene3d, skills, viewers
     cfg = config.load()
+    skills.ensure_builtin(config.data_dir(cfg))
     mode, pm0, pe0 = advisors.parse_model_spec(a.planner or cfg["planner"], cfg)
     wmode, wm0, we0 = advisors.parse_model_spec(getattr(a, "worker", None) or cfg.get("worker") or "qwen", cfg)
     p_model = (getattr(a, "planner_model", None) or getattr(a, "advisor_model", None) or pm0 or "").strip()
@@ -165,8 +166,9 @@ def cmd_run(a):
 
 def cmd_serve(a):
     from .llm import LLM
-    from . import web
+    from . import skills, web
     cfg = config.load()
+    skills.ensure_builtin(config.data_dir(cfg))
     if a.host not in ("127.0.0.1", "localhost") and not a.allow_remote:
         print("refusing to listen on %s without --allow-remote (the chat can run CAD code and spend your LLM quota; anyone with the token can use it)" % a.host); return 2
     srv = web.serve(_make_llm(cfg), cfg, a.host, a.port, token=os.environ.get("CADFABRIC_TOKEN"))
@@ -241,11 +243,12 @@ def _watch_quit(srv, win):
 
 def cmd_app(a):
     import socket, threading, urllib.request, webbrowser
-    from . import web
+    from . import skills, web
     import hashlib
     from . import workspace as ws_mod
     cfg = config.load()
     data = config.data_dir(cfg)
+    skills.ensure_builtin(data)
     if sys.stdout is None or sys.stderr is None:            # started with pythonw / a shortcut: no console, log to a file
         sys.stdout = sys.stderr = open(os.path.join(data, "app.log"), "a", buffering=1, encoding="utf-8")
     if getattr(a, "project", None):                          # one window per project: this one is for that folder

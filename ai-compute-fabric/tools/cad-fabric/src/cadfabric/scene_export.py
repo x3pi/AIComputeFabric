@@ -1,11 +1,13 @@
-"""Universal scene exporter for CadFabric: converts GLB/bxlib 3D scenes to binary STL (full or single part)
-and colored multi-part XCAF STEP assemblies (analytical B-Rep for bxlib recipes + sewn mesh fallback).
-Run as subprocess for STEP export: `python -I scene_export.py step <scene_dir> <glb_path> <out_path>`."""
+"""Universal scene exporter for CadFabric: converts GLB/bxlib 3D scenes to binary STL (full or single part),
+auto-oriented multi-color 3MF build plates (Bambu Studio / OrcaSlicer ready), and colored multi-part XCAF STEP assemblies.
+Run as subprocess for STEP/3MF export: `python -I scene_export.py step|3mf <scene_dir> <glb_path> <out_path>`."""
 import json
 import math
 import os
 import struct
 import sys
+import zipfile
+from xml.sax.saxutils import escape as _xml_esc
 
 import numpy as np
 
@@ -231,6 +233,32 @@ def _op_to_cq(o):
         cx, cy, cz = [float(x) for x in o["center"]]
         return s.translate(cq.Vector(cx, cy, cz))
 
+    if t == "shell":
+        dx, dy, dz = [float(x) for x in o["size"]]
+        wall = float(o["wall"])
+        opn = o.get("open", "+z")
+        outer = cq.Solid.makeBox(dx, dy, dz, cq.Vector(-dx / 2.0, -dy / 2.0, -dz / 2.0))
+        if 0.0 < bev < min(dx, dy, dz) * 0.45:
+            try:
+                outer = cq.Shape.cast(outer).fillet(bev, outer.Edges()) if hasattr(cq.Shape.cast(outer), "fillet") else cq.Workplane(obj=outer).edges().fillet(bev).val()
+            except Exception:  # noqa: BLE001
+                pass
+        in_sz = [dx - 2.0 * wall, dy - 2.0 * wall, dz - 2.0 * wall]
+        in_loc = [0.0, 0.0, 0.0]
+        if opn != "none":
+            sgn = 1.0 if opn[0] == "+" else -1.0
+            ax = "xyz".index(opn[1])
+            over = max(2.0, bev + 2.0)
+            in_sz[ax] = [dx, dy, dz][ax] - wall + over
+            in_loc[ax] = sgn * (wall + over) / 2.0
+        inner = cq.Solid.makeBox(in_sz[0], in_sz[1], in_sz[2], cq.Vector(-in_sz[0] / 2.0 + in_loc[0], -in_sz[1] / 2.0 + in_loc[1], -in_sz[2] / 2.0 + in_loc[2]))
+        s = outer.cut(inner)
+        if "rot" in o:
+            ax_r = bxlib._axis(o["rot"]["axis"])
+            s = s.rotate(cq.Vector(0, 0, 0), cq.Vector(*ax_r), float(o["rot"]["deg"]))
+        cx, cy, cz = [float(x) for x in o["center"]]
+        return s.translate(cq.Vector(cx, cy, cz))
+
     if t == "cylinder":
         a, b = [float(x) for x in o["a"]], [float(x) for x in o["b"]]
         d = [b[i] - a[i] for i in range(3)]
@@ -398,14 +426,30 @@ def _recipe_to_cq(rec):
     import cadquery as cq
     if not isinstance(rec, dict) or not isinstance(rec.get("ops"), list) or not rec["ops"]:
         return None
-    sols = []
+    acc = None
+    extras = []
     for o in rec["ops"]:
         s = _op_to_cq(o)
-        if s is not None:
-            sols.append(s)
-    if not sols:
+        if s is None:
+            continue
+        mode = o.get("mode", "add")
+        if acc is None:
+            if mode == "cut":
+                continue
+            acc = s
+        elif mode == "cut":
+            try:
+                acc = acc.cut(s)
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            try:
+                acc = acc.fuse(s)
+            except Exception:  # noqa: BLE001
+                extras.append(s)
+    if acc is None:
         return None
-    return sols[0] if len(sols) == 1 else cq.Compound.makeCompound(sols)
+    return acc if not extras else cq.Compound.makeCompound([acc] + extras)
 
 
 def _mesh_to_cq(verts_mm, tris):
@@ -496,10 +540,200 @@ def export_step(scene_dir, glb_path, out_path):
     return count, ""
 
 
+def orient_and_pack_parts(glb_parts, plan, report=None):
+    """Rotate every part so its print_up points to +Z, drop to Z=0, and 2D shelf-pack onto the build plate.
+    -> list of (pid, verts_packed_mm Nx3, tris Mx3, color_hex, up_dir)."""
+    from cadfabric.blender import printability
+
+    cfg = printability.resolve_print_cfg((plan or {}).get("print") or "bambu_a1")
+    bed = [float(x) for x in cfg["bed_mm"]]
+    margin = float(cfg.get("margin_mm", 5.0))
+    gap = 6.0
+    rep_parts = ((report or {}).get("print") or {}).get("parts") or {}
+
+    items = []
+    ordered_parts = list((plan or {}).get("parts") or ())
+    seen = set()
+    for p in ordered_parts:
+        pid = p.get("id")
+        if not pid or pid in seen or pid not in glb_parts:
+            continue
+        seen.add(pid)
+        v, t = glb_parts[pid]
+        if not len(v) or not len(t):
+            continue
+        up = str(p.get("print_up") or (rep_parts.get(pid) or {}).get("print_up") or "auto").strip().lower()
+        if up not in ("+z", "-z", "+x", "-x", "+y", "-y"):
+            up = printability.choose_auto_print_up(v, t)
+        R = np.asarray(printability.up_rotation_matrix_3x3(up), dtype=np.float64)
+        vr = np.asarray(v, dtype=np.float64) @ R.T
+        lo = vr.min(axis=0)
+        hi = vr.max(axis=0)
+        cx, cy = (lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0
+        vr_local = np.c_[vr[:, 0] - cx, vr[:, 1] - cy, vr[:, 2] - lo[2]]
+        dx, dy, dz = float(hi[0] - lo[0]), float(hi[1] - lo[1]), float(hi[2] - lo[2])
+        col = str(p.get("color") or "#D9D9D9").strip().upper()
+        if not (len(col) == 7 and col[0] == "#"):
+            col = "#D9D9D9"
+        items.append({"pid": pid, "v": vr_local, "t": t, "dx": dx, "dy": dy, "dz": dz, "color": col, "up": up})
+
+    for pid in sorted(glb_parts):
+        if pid in seen:
+            continue
+        v, t = glb_parts[pid]
+        if not len(v) or not len(t):
+            continue
+        up = printability.choose_auto_print_up(v, t)
+        R = np.asarray(printability.up_rotation_matrix_3x3(up), dtype=np.float64)
+        vr = np.asarray(v, dtype=np.float64) @ R.T
+        lo, hi = vr.min(axis=0), vr.max(axis=0)
+        vr_local = np.c_[vr[:, 0] - (lo[0] + hi[0]) / 2.0, vr[:, 1] - (lo[1] + hi[1]) / 2.0, vr[:, 2] - lo[2]]
+        items.append({"pid": pid, "v": vr_local, "t": t, "dx": float(hi[0] - lo[0]), "dy": float(hi[1] - lo[1]), "dz": float(hi[2] - lo[2]), "color": "#D9D9D9", "up": up})
+
+    if not items:
+        return []
+
+    usable_w = max(bed[0] - 2.0 * margin, max(max(it["dx"], it["dy"]) for it in items) + 1.0)
+    items.sort(key=lambda it: max(it["dx"], it["dy"]), reverse=True)
+    placed = []
+    cur_x, cur_y, row_h = 0.0, 0.0, 0.0
+    for it in items:
+        v, dx, dy = it["v"], it["dx"], it["dy"]
+        # Rotate 90 deg around +Z (det=+1) when it helps fit narrow shelves cleanly
+        if (dx > dy and cur_x > 0.0 and cur_x + dx > usable_w and cur_x + dy <= usable_w) or (dy > dx and cur_x == 0.0):
+            v = np.c_[-v[:, 1], v[:, 0], v[:, 2]]
+            dx, dy = dy, dx
+        if cur_x > 0.0 and cur_x + dx > usable_w + 1e-6:
+            cur_x = 0.0
+            cur_y += row_h + gap
+            row_h = 0.0
+        px = cur_x + dx / 2.0
+        py = cur_y + dy / 2.0
+        placed.append((it["pid"], v, it["t"], it["color"], it["up"], px, py, dx, dy))
+        cur_x += dx + gap
+        row_h = max(row_h, dy)
+
+    total_w = max(px + dx / 2.0 for _, _, _, _, _, px, _, dx, _ in placed)
+    total_h = max(py + dy / 2.0 for _, _, _, _, _, _, py, _, dy in placed)
+    off_x = (bed[0] - total_w) / 2.0 if total_w <= bed[0] - 2.0 * margin else margin
+    off_y = (bed[1] - total_h) / 2.0 if total_h <= bed[1] - 2.0 * margin else margin
+
+    out = []
+    for pid, v, t, col, up, px, py, _dx, _dy in placed:
+        vp = np.c_[v[:, 0] + px + off_x, v[:, 1] + py + off_y, v[:, 2]]
+        out.append((pid, vp, t, col, up))
+    return out
+
+
+def export_3mf(scene_dir, glb_path, out_path):
+    """Export auto-oriented, build-plate packed, multi-color Bambu/Orca-compatible 3MF archive. -> (part_count, error)."""
+    try:
+        with open(os.path.join(scene_dir, "plan.json"), encoding="utf-8") as f:
+            plan = json.load(f)
+    except (OSError, ValueError) as e:
+        return 0, "missing or invalid plan.json: %s" % str(e)[:120]
+    report = {}
+    rp = os.path.join(scene_dir, "report.json")
+    if os.path.isfile(rp):
+        try:
+            with open(rp, encoding="utf-8") as f:
+                report = json.load(f)
+        except (OSError, ValueError):
+            report = {}
+    try:
+        glb_parts = glb_extract_parts(glb_path)
+    except Exception as e:  # noqa: BLE001
+        return 0, str(e)[:160]
+    packed = orient_and_pack_parts(glb_parts, plan, report=report)
+    if not packed:
+        return 0, "no mesh parts to export"
+
+    palette = []
+    col_idx = {}
+    for _pid, _v, _t, col, _up in packed:
+        if col not in col_idx:
+            col_idx[col] = len(palette)
+            palette.append(col)
+
+    base_lines = [
+        '      <base name="Slot %d (%s)" displaycolor="%sFF"/>' % (i + 1, _xml_esc(c), _xml_esc(c))
+        for i, c in enumerate(palette)
+    ]
+    obj_blocks = []
+    build_lines = []
+    cfg_blocks = []
+    for idx, (pid, verts, tris, col, _up) in enumerate(packed, start=2):
+        pindex = col_idx[col]
+        extruder = pindex + 1
+        v_lines = ["          <vertex x=\"%.4f\" y=\"%.4f\" z=\"%.4f\"/>" % (p[0], p[1], p[2]) for p in verts]
+        t_lines = ["          <triangle v1=\"%d\" v2=\"%d\" v3=\"%d\"/>" % (int(tri[0]), int(tri[1]), int(tri[2])) for tri in tris]
+        obj_blocks.append(
+            '    <object id="%d" name="%s" type="model" pid="1" pindex="%d">\n'
+            '      <mesh>\n'
+            '        <vertices>\n%s\n        </vertices>\n'
+            '        <triangles>\n%s\n        </triangles>\n'
+            '      </mesh>\n'
+            '    </object>' % (idx, _xml_esc(pid), pindex, "\n".join(v_lines), "\n".join(t_lines))
+        )
+        build_lines.append('    <item objectid="%d" transform="1 0 0 0 1 0 0 0 1 0 0 0" printable="1"/>' % idx)
+        cfg_blocks.append(
+            '  <object id="%d">\n'
+            '    <metadata key="name" value="%s"/>\n'
+            '    <metadata key="extruder" value="%d"/>\n'
+            '  </object>' % (idx, _xml_esc(pid), extruder)
+        )
+
+    model_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n'
+        '  <metadata name="Application">CadFabric</metadata>\n'
+        '  <resources>\n'
+        '    <basematerials id="1">\n' + "\n".join(base_lines) + '\n    </basematerials>\n'
+        + "\n".join(obj_blocks) + '\n'
+        '  </resources>\n'
+        '  <build>\n' + "\n".join(build_lines) + '\n  </build>\n'
+        '</model>\n'
+    )
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n'
+        '  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n'
+        '  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>\n'
+        '  <Default Extension="config" ContentType="text/plain"/>\n'
+        '</Types>\n'
+    )
+    rels_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n'
+        '  <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n'
+        '</Relationships>\n'
+    )
+    model_cfg = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<config>\n' + "\n".join(cfg_blocks) + '\n</config>\n'
+    )
+
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    tmp = out_path + ".tmp.3mf"
+    with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", content_types.encode("utf-8"))
+        zf.writestr("_rels/.rels", rels_xml.encode("utf-8"))
+        zf.writestr("3D/3dmodel.model", model_xml.encode("utf-8"))
+        zf.writestr("Metadata/model_settings.config", model_cfg.encode("utf-8"))
+    os.replace(tmp, out_path)
+    return len(packed), ""
+
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     if mode == "step" and len(sys.argv) >= 5:
         cnt, err = export_step(sys.argv[2], sys.argv[3], sys.argv[4])
+        if err:
+            sys.stderr.write(err + "\n")
+            raise SystemExit(1)
+        print(json.dumps({"ok": True, "parts": cnt}))
+    elif mode == "3mf" and len(sys.argv) >= 5:
+        cnt, err = export_3mf(sys.argv[2], sys.argv[3], sys.argv[4])
         if err:
             sys.stderr.write(err + "\n")
             raise SystemExit(1)
