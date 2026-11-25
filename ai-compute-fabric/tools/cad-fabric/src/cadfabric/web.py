@@ -52,7 +52,7 @@ class Session:
             return {"busy": self.busy, "events": self.events[since:], "next": len(self.events), "measure": self.measure, "has_part": self.measure is not None,
                     "follow_up": self.history is not None}
 
-    def send(self, text, planner, files=(), uploads=None, images=None, worker=None):
+    def send(self, text, planner, files=(), uploads=None, images=None, worker=None, planner_model="", planner_effort="", worker_model="", worker_effort=""):
         with self.lock:
             if self.busy:
                 return False
@@ -61,13 +61,18 @@ class Session:
             self.sid, self.created, self.title = history_mod.new_id(), time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(text.split())[:60]
             self.ledger = ledger_mod.Ledger(self._ledger_path(self.sid))
         w_id = worker or self.cfg.get("worker") or "qwen"
+        p_meta = " · ".join(x for x in (planner_model, planner_effort) if x)
+        w_meta = " · ".join(x for x in (worker_model, worker_effort) if x)
+        p_tag = (planner + (" [" + p_meta + "]" if p_meta else "")) if self.history is None else "(follow-up: no plan)"
+        w_tag = w_id + (" [" + w_meta + "]" if w_meta else "")
         self.emit("user", files=list(files) + [u["name"] for u in (uploads or [])] + [i["name"] for i in (images or [])], text=text,
-                  planner=planner if self.history is None else "(follow-up: no plan)", worker=w_id)
-        self.thread = threading.Thread(target=self._work, args=(text, planner, tuple(files), uploads or [], images or [], w_id), daemon=True)
+                  planner=p_tag, worker=w_tag)
+        self.thread = threading.Thread(target=self._work, args=(text, planner, tuple(files), uploads or [], images or [], w_id,
+                                                               planner_model, planner_effort, worker_model, worker_effort), daemon=True)
         self.thread.start()
         return True
 
-    def _work(self, text, planner, files=(), uploads=(), images=(), worker=None):
+    def _work(self, text, planner, files=(), uploads=(), images=(), worker=None, planner_model="", planner_effort="", worker_model="", worker_effort=""):
         try:
             root = self.cfg.get("workspace") or ""
             q = skillq.detect(text) if (self.local and not files and not uploads) else None       # "what skills do you have?" is answered by the harness
@@ -103,7 +108,9 @@ class Session:
                     dnames0 = [n for n in names if n in by_name0 and skills_mod.for_role(by_name0[n], "director")]
                     if dnames0:
                         block = "\n\n".join(x for x in (block, skills_mod.explicit_block(dd0, root, dnames0)) if x)
-            return self._scene_turn(text, planner, block, images=list(images), worker=worker)
+            extra_kw = {k: v for k, v in (("planner_model", planner_model), ("planner_effort", planner_effort),
+                                          ("worker_model", worker_model), ("worker_effort", worker_effort)) if v}
+            return self._scene_turn(text, planner, block, images=list(images), worker=worker, **extra_kw)
         except Exception as e:                                                   # noqa: BLE001 - show the failure in the chat
             self.emit("error", text="%s: %s" % (type(e).__name__, str(e)[:300]))
         finally:
@@ -143,17 +150,17 @@ class Session:
         c = str(self.cfg.get("blender") or "")
         return c if os.path.isfile(c) else viewers.blender_path()
 
-    def _scene_turn(self, text, planner, block, images=(), worker=None):
+    def _scene_turn(self, text, planner, block, images=(), worker=None, planner_model="", planner_effort="", worker_model="", worker_effort=""):
         """One user turn with the scene agent. Both director (`planner`) and worker (`worker`) can be any model in the unified pool."""
         blender = self.blender_exe()
         if not blender:
             raise ValueError("Không tìm thấy Blender. Cài Blender 4.x (hoặc đặt biến môi trường BLENDER trỏ tới chương trình) rồi thử lại.")
         w_id = worker or self.cfg.get("worker") or "qwen"
         adv = advisors.find(self.cfg, planner) if planner not in ("off", "qwen", "nothink", "think") else None
-        if planner == "codex":
-            adv = {"id": "codex", "type": "cli", "preset": "codex", "external": True}
+        if planner in ("codex", "agy"):
+            adv = {"id": planner, "type": "cli", "preset": planner, "external": True}
         elif planner == "codex-relay":
-            raise ValueError("Cố vấn 'Codex trên máy khác (ssh)' chưa hỗ trợ ở chế độ dựng cảnh 3D. Chọn Claude, Codex trên máy này hoặc Qwen.")
+            raise ValueError("Cố vấn 'Codex trên máy khác (ssh)' chưa hỗ trợ ở chế độ dựng cảnh 3D. Chọn Claude, Antigravity, Codex trên máy này hoặc Qwen.")
         elif planner not in ("off", "qwen", "nothink", "think") and adv is None:
             raise ValueError("Không tìm thấy cố vấn '%s' trong cấu hình." % planner)
         if w_id not in advisors.worker_names(self.cfg):
@@ -164,15 +171,17 @@ class Session:
 
         def director(prompt, system, images=None):
             try:
-                return advisors.chat_model(self.cfg, planner, self.llm, system, prompt, timeout=900, max_tokens=8192, temperature=0.2, images=images)
+                return advisors.chat_model(self.cfg, planner, self.llm, system, prompt, timeout=900, max_tokens=8192, temperature=0.2,
+                                           images=images, submodel=planner_model or None, effort=planner_effort or None)
             except RuntimeError as e:
                 raise RuntimeError("cố vấn không trả lời: " + str(e)) from e
 
         def worker_fn(system, user, temperature=0.3):
-            return advisors.chat_model(self.cfg, w_id, self.llm, system, user, timeout=900, max_tokens=3000, temperature=temperature)
+            return advisors.chat_model(self.cfg, w_id, self.llm, system, user, timeout=900, max_tokens=3000, temperature=temperature,
+                                       submodel=worker_model or None, effort=worker_effort or None)
 
         if images and not advisors.can_see_images(adv):
-            raise ValueError("Ảnh chỉ gửi được cho cố vấn Claude (Claude Code CLI hoặc Anthropic API). Chọn Claude làm cố vấn, hoặc bỏ ảnh đính kèm.")
+            raise ValueError("Ảnh chỉ gửi được cho cố vấn Claude hoặc Antigravity CLI (agy). Chọn một trong hai làm cố vấn, hoặc bỏ ảnh đính kèm.")
         resume = isinstance(self.history, dict) and bool(self.history.get("scene3d"))
         r = scene3d.run(request, wd, blender, director, worker_fn, on_event=lambda kind, **kw: self.emit(kind, **kw), should_stop=lambda: self.stop, resume=resume,
                         skills=self._scene_skills(text), images=list(images), review_images=advisors.can_see_images(adv),
@@ -487,7 +496,7 @@ def make_handler(sess, token, hosts, data_dir):
                 self._send(200, {"planners": advisors.names(sess.cfg), "workers": advisors.worker_names(sess.cfg),
                                  "external": [n for n in advisors.worker_names(sess.cfg) + ["codex-relay"] if advisors.is_external(sess.cfg, n)],
                                  "default": sess.cfg["planner"], "default_worker": sess.cfg.get("worker") or "qwen",
-                                 "advisors": advisors.meta(sess.cfg), "models": advisors.models_meta(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "cli_presets": advisors.presets_info(), "viewer_label": viewers.resolve(sess.cfg)[1], "version": __import__("cadfabric").__version__,
+                                 "advisors": advisors.meta(sess.cfg), "models": advisors.models_meta(sess.cfg), "cli_detected": advisors.detected(sess.cfg), "cli_presets": advisors.presets_info(sess.cfg), "viewer_label": viewers.resolve(sess.cfg)[1], "version": __import__("cadfabric").__version__,
                                  "recent": sess.recent() if sess.local else [], "local": sess.local, "picker": bool(sess.picker and sess.local), "settings": public_settings(sess.cfg)})
             elif u.path == "/api/history":
                 every = (q.get("all") or [""])[0] == "1"
@@ -593,14 +602,22 @@ def make_handler(sess, token, hosts, data_dir):
                 return self._send(400, {"error": "bad json"})
             if u.path == "/api/send":
                 text = str(body.get("text", "")).strip()
-                planner = body.get("planner") or sess.cfg["planner"]
-                worker = str(body.get("worker") or sess.cfg.get("worker") or "qwen").strip()
+                planner, pm0, pe0 = advisors.parse_model_spec(str(body.get("planner") or sess.cfg["planner"]).strip(), sess.cfg)
+                worker, wm0, we0 = advisors.parse_model_spec(str(body.get("worker") or sess.cfg.get("worker") or "qwen").strip(), sess.cfg)
+                p_model = str(body.get("planner_model") or pm0 or "").strip()
+                p_effort = str(body.get("planner_effort") or pe0 or "").strip()
+                w_model = str(body.get("worker_model") or wm0 or "").strip()
+                w_effort = str(body.get("worker_effort") or we0 or "").strip()
                 if not text or len(text) > 8000:
                     return self._send(400, {"error": "empty or too long"})
                 if planner not in advisors.names(sess.cfg):
                     return self._send(400, {"error": "unknown planner"})
                 if worker not in advisors.worker_names(sess.cfg):
                     return self._send(400, {"error": "unknown worker"})
+                if not advisors.valid_model_override(p_model) or not advisors.valid_model_override(w_model):
+                    return self._send(400, {"error": "invalid model name"})
+                if not advisors.valid_effort_override(p_effort, sess.cfg) or not advisors.valid_effort_override(w_effort, sess.cfg):
+                    return self._send(400, {"error": "invalid reasoning effort"})
                 if (advisors.is_external(sess.cfg, planner) or advisors.is_external(sess.cfg, worker)) and not body.get("confirm_external"):
                     return self._send(409, {"error": "selected planner or worker sends your request to an external service; confirm_external is required"})
                 files = body.get("files") or []
@@ -623,12 +640,13 @@ def make_handler(sess, token, hosts, data_dir):
                     imgs, ierr = ws_mod.images(imgs)
                     if ierr:
                         return self._send(400, {"error": ierr})
-                    a = advisors.find(sess.cfg, planner)
+                    a = {"id": planner, "type": "cli", "preset": planner} if planner in ("codex", "agy") else advisors.find(sess.cfg, planner)
                     if not advisors.can_see_images(a):
-                        return self._send(400, {"error": "pictures can only be sent to the Claude Code advisor (choose it as the advisor)"})
-                ok = sess.send(text, planner, files, ups, imgs or None, worker=worker)
+                        return self._send(400, {"error": "pictures can only be sent to Claude or Antigravity CLI (choose one of them as the advisor)"})
+                ok = sess.send(text, planner, files, ups, imgs or None, worker=worker,
+                               planner_model=p_model, planner_effort=p_effort, worker_model=w_model, worker_effort=w_effort)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/open", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender", "/api/lessons", "/api/skills"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/discover_models", "/api/open", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender", "/api/lessons", "/api/skills"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
                 if u.path == "/api/quit":
@@ -739,6 +757,62 @@ def make_handler(sess, token, hosts, data_dir):
                         a["key_file"] = (saved.get(a["id"]) or {}).get("key_file")         # never a path chosen by the browser
                     k = str(body.get("key") or "").strip()
                     return self._send(200, advisors.self_test(a, cur, key=k if k else None))
+                if u.path == "/api/discover_models":
+                    src = str(body.get("source") or "").strip() if isinstance(body, dict) else ""
+                    aid = str(body.get("advisor_id") or "").strip() if isinstance(body, dict) else ""
+                    res = None
+                    if src == "claude":
+                        res = dict(advisors.discover_claude_models(), ok=True); res["detail"] = "%d model" % len(res["models"])
+                    elif src == "codex":
+                        res = dict(advisors.discover_codex_models(cur, probe_rpc=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                    elif src == "agy":
+                        res = dict(advisors.discover_agy_models(cur, probe_cli=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                    elif src == "gateway" or aid in ("qwen", "nothink", "think"):
+                        try:
+                            gk = config.read_key(cur)
+                        except SystemExit:
+                            gk = ""
+                        res = advisors.discover_api_models(cur["url"], "openai", gk)
+                    elif aid == "codex":
+                        res = dict(advisors.discover_codex_models(cur, probe_rpc=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                    elif aid == "agy":
+                        res = dict(advisors.discover_agy_models(cur, probe_cli=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                    elif aid:
+                        a = saved.get(aid)
+                        if not a:
+                            return self._send(404, {"error": "unknown advisor"})
+                        if a["type"] == "api":
+                            res = advisors.discover_api_models(a["url"], a["kind"], advisors._read_key(a))
+                        elif a.get("preset") == "claude":
+                            res = dict(advisors.discover_claude_models(), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        elif a.get("preset") == "codex":
+                            res = dict(advisors.discover_codex_models(cur, probe_rpc=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        elif a.get("preset") == "agy":
+                            res = dict(advisors.discover_agy_models(cur, probe_cli=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        else:
+                            res = {"ok": True, "models": [], "catalog": [], "detail": "custom CLI"}
+                    elif isinstance(body, dict) and body.get("advisor"):
+                        raw_adv = dict(body.get("advisor") or {}); raw_adv.pop("key_file", None)
+                        a, err = advisors.validate(raw_adv)
+                        if err:
+                            return self._send(400, {"error": err})
+                        if a["type"] == "api":
+                            a["key_file"] = (saved.get(a["id"]) or {}).get("key_file")
+                            k = str(body.get("key") or "").strip() or advisors._read_key(a)
+                            res = advisors.discover_api_models(a["url"], a["kind"], k)
+                        elif a.get("preset") == "claude":
+                            res = dict(advisors.discover_claude_models(), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        elif a.get("preset") == "codex":
+                            res = dict(advisors.discover_codex_models(cur, probe_rpc=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        elif a.get("preset") == "agy":
+                            res = dict(advisors.discover_agy_models(cur, probe_cli=True), ok=True); res["detail"] = "%d model" % len(res["models"])
+                        else:
+                            res = {"ok": True, "models": [], "catalog": [], "detail": "custom CLI"}
+                    else:
+                        res = {"ok": True, "cli_presets": advisors.presets_info(cur)}
+                    if src in ("claude", "codex", "agy") or (aid and aid not in ("qwen", "nothink", "think")):
+                        res["cli_presets"] = advisors.presets_info(cur)
+                    return self._send(200, res)
                 for a in body.get("advisors") or []:
                     if isinstance(a, dict):
                         a.pop("key_file", None)                                               # the browser never chooses which file is read as a key

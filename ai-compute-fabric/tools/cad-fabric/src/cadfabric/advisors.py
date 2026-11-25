@@ -6,21 +6,31 @@ An advisor flagged `external` sends the request text to a third party, so the UI
 import base64, json, os, re, shlex, shutil, subprocess, tempfile, time, urllib.error, urllib.parse, urllib.request
 from .cq_backend import NOWIN
 
-BUILTIN = ("off", "qwen", "nothink", "think", "codex", "codex-relay")
-BUILTIN_LABELS = {"off": "Không cố vấn", "qwen": "Qwen API (gateway mặc định)", "nothink": "Qwen lập kế hoạch (nhanh)", "think": "Qwen suy nghĩ sâu (chậm)", "codex": "Codex trên máy này", "codex-relay": "Codex trên máy khác (ssh)"}
-BUILTIN_EXTERNAL = ("codex", "codex-relay")
+BUILTIN = ("off", "qwen", "nothink", "think", "codex", "agy", "codex-relay")
+BUILTIN_LABELS = {"off": "Không cố vấn", "qwen": "Qwen API (gateway mặc định)", "nothink": "Qwen lập kế hoạch (nhanh)", "think": "Qwen suy nghĩ sâu (chậm)", "codex": "Codex trên máy này", "agy": "Antigravity CLI trên máy này", "codex-relay": "Codex trên máy khác (ssh)"}
+BUILTIN_EXTERNAL = ("codex", "agy", "codex-relay")
 
-# model_flag / effort_flag: how the CLI takes a model and a reasoning effort (checked against `codex exec --help` and `claude --help`).
+# model_flag / effort_flag: how the CLI takes a model and a reasoning effort (checked against `codex exec --help`, `claude --help`, and `agy --help`).
 # `at`: where the extra flags go (codex needs the final "-" to stay last, so they go right after "exec").
 CLI_PRESETS = {
     "codex": {"label": "Codex CLI", "exe": "codex", "args": ["exec", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "-C", "{cwd}", "-"],
-              "web_args": ["--search"], "web_at": 0, "model_flag": ["-m"], "effort_flag": lambda e: ["-c", 'model_reasoning_effort="%s"' % e], "efforts": ("low", "medium", "high"), "at": 1, "models": ()},
+              "web_args": ["--search"], "web_at": 0, "model_flag": ["-m"], "effort_flag": lambda e: ["-c", 'model_reasoning_effort="%s"' % e], "efforts": ("minimal", "low", "medium", "high", "xhigh", "max"), "at": 1, "models": ()},
     "claude": {"label": "Claude Code CLI", "exe": "claude", "args": ["-p", "--tools", "", "--no-session-persistence", "--disable-slash-commands", "--strict-mcp-config",
                                                                       "--output-format", "text"],
-               "web_tools": ["--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch"], "model_flag": ["--model"], "effort_flag": lambda e: ["--effort", e], "efforts": ("low", "medium", "high", "xhigh", "max"), "at": None,
-               "models": ("haiku", "sonnet", "opus")},
+               "web_tools": ["--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch"], "model_flag": ["--model"], "fallback_flag": ["--fallback-model"],
+               "effort_flag": lambda e: ["--effort", e], "efforts": ("low", "medium", "high", "xhigh", "max"), "at": None,
+               "models": ("haiku", "sonnet", "opus", "fable")},
+    "agy": {"label": "Antigravity CLI (agy)", "exe": "agy",
+            "args": ["--disable-slash-commands", "--input-format", "stream-json", "--output-format", "stream-json"],
+            "model_flag": ["--model"], "effort_flag": lambda e: ["--effort", e],
+            "efforts": ("low", "medium", "high", "xhigh", "max"), "at": 0,
+            "models": ("gemini-4-neon", "gemini-4-hydrogen", "gemini-4-carbon", "gemini-3.8-flash", "claude-opus-5-5", "claude-sonnet-5-5")},
 }
 _MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@\-]{0,79}$")
+_EFFORT = re.compile(r"^[a-z][a-z0-9_-]{0,19}$")
+_AGY_SUFFIX = re.compile(r"^(.+?)-(minimal|low|medium|high|xhigh|max)$")
+ALL_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max", "think", "nothink")
+_AGY_CACHE = {"models": [], "efforts": [], "catalog": []}
 API_KINDS = ("openai", "anthropic")
 WEB_PREFIX = ("You are an advisor for a CAD automation agent. You MAY search the web or open public web pages to check standards, standard part dimensions or formulas; "
               "name the source in one short line. Do not run any command and do not read or write any local file. Answer in plain text, concisely.\n\n")
@@ -30,10 +40,21 @@ _ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,23}$")
 
 
 def find_exe(name, cfg=None):
-    """Resolve a CLI program: PATH first, then (for codex) the desktop app's folder on Windows."""
+    """Resolve a CLI program: PATH first, then (for codex/agy) common install folders."""
     if name == "codex":
         from . import planners
         return planners.find_codex(cfg or {})
+    if name == "agy":
+        cands = [os.environ.get("CADFABRIC_AGY"), shutil.which("agy"),
+                 os.path.expanduser("~/.local/bin/agy"), os.path.expanduser("~/.antigravity/bin/agy")]
+        if os.name == "nt":
+            cands += [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Antigravity", "bin", "agy.exe"),
+                      os.path.join(os.environ.get("USERPROFILE", ""), ".local", "bin", "agy.exe"),
+                      os.path.join(os.environ.get("APPDATA", ""), "npm", "agy.cmd")]
+        for c in cands:
+            if c and (os.path.isfile(c) or shutil.which(c)):
+                return c
+        return None
     p = shutil.which(name)
     if p:
         return p
@@ -44,9 +65,271 @@ def find_exe(name, cfg=None):
     return None
 
 
-def presets_info():
-    """What the UI needs to build the model / effort pickers."""
-    return {k: {"label": v["label"], "efforts": list(v["efforts"]), "models": list(v["models"])} for k, v in CLI_PRESETS.items()}
+def _valid_efforts(raw, dst):
+    """Collect valid lowercase effort identifiers while keeping order."""
+    out = []
+    for item in raw or ():
+        s = str((item.get("id") or item.get("effort") or item.get("reasoningEffort")) if isinstance(item, dict) else (item or "")).strip().lower()
+        if s and _EFFORT.match(s):
+            if s not in out:
+                out.append(s)
+            if s not in dst:
+                dst.append(s)
+    return out
+
+
+def discover_claude_models(home=None):
+    """Read Claude CLI's local model-catalog cache (no secrets) + rolling aliases so new releases appear automatically."""
+    cdir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(home or os.path.expanduser("~"), ".claude")
+    mc_dir = os.path.join(cdir, "cache", "model-catalog")
+    aliases = ["haiku", "sonnet", "opus", "fable"]
+    efforts = list(CLI_PRESETS["claude"]["efforts"])
+    main_items, other_items, seen = [], [], set()
+    if os.path.isdir(mc_dir):
+        files = sorted((os.path.join(mc_dir, f) for f in os.listdir(mc_dir) if f.endswith("-cc.json")), key=os.path.getmtime, reverse=True)
+        for fp in files:
+            try:
+                with open(fp, encoding="utf-8") as f:
+                    d = json.load(f)
+                ms = ((d.get("catalog") or {}).get("config") or {}).get("models") or []
+            except (OSError, ValueError, TypeError):
+                ms = []
+            for m in ms:
+                if not isinstance(m, dict):
+                    continue
+                mid = str(m.get("id") or "").strip()
+                if not mid or not _MODEL.match(mid) or mid in seen:
+                    continue
+                rt = m.get("runtime") or {}
+                short = str(m.get("short_name") or rt.get("family") or "").strip().lower()
+                if short and _MODEL.match(short) and short not in aliases:
+                    aliases.append(short)
+                meffs = _valid_efforts(rt.get("effort_levels") or ((m.get("thinking") or {}).get("effort_options") or []), efforts)
+                item = {"id": mid, "label": str(m.get("name") or mid).strip(), "efforts": meffs or list(efforts), "alias": False}
+                seen.add(mid)
+                (main_items if m.get("section") == "main" else other_items).append(item)
+            if main_items or other_items:
+                break
+        if not (main_items or other_items):
+            pfiles = sorted((os.path.join(mc_dir, f) for f in os.listdir(mc_dir) if f.startswith("published-") and f.endswith(".json") and f != "published-floor.json"),
+                            key=os.path.getmtime, reverse=True)
+            for fp in pfiles:
+                try:
+                    with open(fp, encoding="utf-8") as f:
+                        d = json.load(f)
+                    doc = json.loads(base64.b64decode(d.get("documentBytes") or "").decode("utf-8"))
+                    cc = ((doc.get("surfaces") or {}).get("cc") or {})
+                except (OSError, ValueError, TypeError):
+                    cc = {}
+                for st in cc.get("model_selector_state") or []:
+                    if not isinstance(st, dict):
+                        continue
+                    cands = [{"id": st.get("model"), "thinking": st.get("thinking")}] + [x for x in (st.get("thinking_by_model") or []) if isinstance(x, dict)]
+                    for c in cands:
+                        mid = str(c.get("id") or "").strip()
+                        if not mid or not _MODEL.match(mid) or mid in seen:
+                            continue
+                        th = c.get("thinking") or {}
+                        _valid_efforts([th.get("effort")] if th.get("effort") else [], efforts)
+                        seen.add(mid)
+                        main_items.append({"id": mid, "label": mid, "efforts": list(efforts), "alias": False})
+                if main_items:
+                    break
+    catalog = [{"id": a, "label": a + " (mới nhất)", "efforts": list(efforts), "alias": True} for a in aliases]
+    for it in main_items + other_items:
+        if it["id"] not in aliases:
+            catalog.append(it)
+    return {"models": [c["id"] for c in catalog], "efforts": efforts, "catalog": catalog}
+
+
+def discover_codex_models(cfg=None, home=None, probe_rpc=False):
+    """Discover Codex CLI models & reasoning efforts from local cache, config.toml, and optionally `codex app-server` JSON-RPC."""
+    cdir = os.environ.get("CODEX_HOME") or os.path.join(home or os.path.expanduser("~"), ".codex")
+    efforts = list(CLI_PRESETS["codex"]["efforts"])
+    catalog, seen = [], set()
+
+    def add(mid, label="", meffs=()):
+        s = str(mid or "").strip()
+        if not s or not _MODEL.match(s) or s in seen:
+            return
+        seen.add(s)
+        clean_e = _valid_efforts(meffs, efforts)
+        catalog.append({"id": s, "label": str(label or s).strip(), "efforts": clean_e or list(efforts), "alias": False})
+
+    cache_p = os.path.join(cdir, "models_cache.json")
+    if os.path.isfile(cache_p):
+        try:
+            with open(cache_p, encoding="utf-8") as f:
+                cd = json.load(f)
+            ms = cd.get("models") if isinstance(cd, dict) else (cd if isinstance(cd, list) else [])
+            for m in ms or []:
+                if not isinstance(m, dict):
+                    continue
+                lv = m.get("supported_reasoning_levels") or []
+                _valid_efforts(lv, efforts)
+                if m.get("visibility") != "hide":
+                    add(m.get("slug") or m.get("id") or m.get("model"), m.get("name") or m.get("description") or "", lv)
+        except (OSError, ValueError, TypeError):
+            pass
+
+    toml_p = os.path.join(cdir, "config.toml")
+    if os.path.isfile(toml_p):
+        try:
+            with open(toml_p, encoding="utf-8", errors="replace") as f:
+                for ln in f:
+                    m = re.match(r'^\s*model\s*=\s*["\']([^"\']+)["\']', ln)
+                    if m:
+                        add(m.group(1), m.group(1) + " (config.toml)")
+        except OSError:
+            pass
+
+    if probe_rpc:
+        exe = find_exe("codex", cfg)
+        if exe:
+            try:
+                msgs = [
+                    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"clientInfo": {"name": "cadfabric", "version": "0.9.11"}}},
+                    {"jsonrpc": "2.0", "method": "initialized", "params": {}},
+                    {"jsonrpc": "2.0", "id": 2, "method": "model/list", "params": {}},
+                ]
+                r = subprocess.run([exe, "app-server"], input="\n".join(json.dumps(x) for x in msgs) + "\n",
+                                   capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=4, **NOWIN)
+                for ln in (r.stdout or "").splitlines():
+                    try:
+                        resp = json.loads(ln)
+                    except ValueError:
+                        continue
+                    if isinstance(resp, dict) and resp.get("id") == 2:
+                        for m in ((resp.get("result") or {}).get("data") or []):
+                            if isinstance(m, dict):
+                                add(m.get("id") or m.get("model"), m.get("displayName") or m.get("id") or "", m.get("supportedReasoningEfforts") or [])
+            except (OSError, subprocess.TimeoutExpired, ValueError):
+                pass
+    return {"models": [c["id"] for c in catalog], "efforts": efforts, "catalog": catalog}
+
+
+def discover_api_models(url, kind="openai", key="", timeout=15):
+    """Query `GET /models` on an OpenAI-compatible or Anthropic Messages API endpoint. Never raises."""
+    u = str(url or "").strip()
+    if not re.match(r"^https?://[^\s\"'<>]{1,300}$", u):
+        return {"ok": False, "models": [], "catalog": [], "detail": "invalid URL"}
+    hdr = {"User-Agent": "cadfabric"}
+    if kind == "anthropic":
+        base = re.sub(r"/messages/?$", "", u.rstrip("/"))
+        if not urllib.parse.urlparse(base).path.rstrip("/"):
+            base = base.rstrip("/") + "/v1"
+        target = base + "/models?limit=100"
+        hdr["anthropic-version"] = "2023-06-01"
+        if key:
+            hdr["x-api-key"] = key
+    else:
+        base = u.split("/chat/completions")[0].rstrip("/")
+        target = base + "/models"
+        if key:
+            hdr["Authorization"] = "Bearer " + key
+    try:
+        with urllib.request.urlopen(urllib.request.Request(target, headers=hdr), timeout=timeout) as r:
+            d = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "models": [], "catalog": [], "detail": "HTTP %d" % e.code}
+    except Exception as e:                                                   # noqa: BLE001 - discovery must stay safe
+        return {"ok": False, "models": [], "catalog": [], "detail": str(getattr(e, "reason", None) or type(e).__name__)[:120]}
+    catalog, seen = [], set()
+    raw_items = (d.get("data") if isinstance(d, dict) else None) or (d.get("models") if isinstance(d, dict) else None) or []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        mid = str(item.get("id") or item.get("name") or item.get("model") or "").strip()
+        if not mid or not _MODEL.match(mid) or mid in seen:
+            continue
+        seen.add(mid)
+        catalog.append({"id": mid, "label": str(item.get("display_name") or mid).strip()})
+    return {"ok": True, "models": [c["id"] for c in catalog], "catalog": catalog, "detail": "%d model" % len(catalog)}
+
+
+def _agy_model_effort(model, effort):
+    """Strip any baked effort suffix (-low/-medium/-high/-xhigh/-max) when an explicit --effort is also chosen so `agy` does not reject the pair."""
+    m = str(model or "").strip()
+    e = str(effort or "").strip()
+    if m and e:
+        m = _AGY_SUFFIX.sub(r"\1", m)
+    return m, e
+
+
+def discover_agy_models(cfg=None, home=None, probe_cli=False):
+    """Discover Antigravity CLI (`agy`) models & efforts from settings/cache and live `agy models` output."""
+    efforts = list(CLI_PRESETS["agy"]["efforts"])
+    for e in _AGY_CACHE.get("efforts") or ():
+        if e not in efforts:
+            efforts.append(e)
+    catalog, seen = [], set()
+
+    def add(mid, label="", meffs=()):
+        s = str(mid or "").strip()
+        if not s or not _MODEL.match(s) or s in seen:
+            return
+        seen.add(s)
+        clean_e = _valid_efforts(meffs, efforts)
+        catalog.append({"id": s, "label": str(label or s).strip(), "efforts": clean_e or list(efforts), "alias": False})
+
+    for base in CLI_PRESETS["agy"]["models"]:
+        add(base, base + " (base)")
+
+    sdir = os.path.join(home or os.path.expanduser("~"), ".gemini", "antigravity-cli")
+    sp = os.path.join(sdir, "settings.json")
+    if os.path.isfile(sp):
+        try:
+            with open(sp, encoding="utf-8") as f:
+                sd = json.load(f)
+            if isinstance(sd, dict) and sd.get("model"):
+                add(sd["model"], str(sd["model"]) + " (settings.json)")
+        except (OSError, ValueError, TypeError):
+            pass
+
+    for c in _AGY_CACHE.get("catalog") or ():
+        if isinstance(c, dict):
+            add(c.get("id"), c.get("label") or "", c.get("efforts") or ())
+
+    if probe_cli:
+        exe = find_exe("agy", cfg)
+        if exe:
+            try:
+                r = subprocess.run([exe, "models"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=12, **NOWIN)
+                clean = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", r.stdout or "")
+                parsed_full = []
+                for ln in re.split(r"[\r\n]+", clean):
+                    m = re.match(r"^\s*([A-Za-z0-9][A-Za-z0-9._:/@\-]{0,79})(?:\t|\s{2,})(.+?)\s*$", ln)
+                    if not m:
+                        continue
+                    slug, label = m.group(1).strip(), m.group(2).strip()
+                    msuf = _AGY_SUFFIX.match(slug)
+                    if msuf:
+                        base_slug, suf_eff = msuf.group(1), msuf.group(2)
+                        if suf_eff not in efforts:
+                            efforts.append(suf_eff)
+                        add(base_slug, re.sub(r"\s*\([^)]+\)\s*$", "", label) + " (base)")
+                    parsed_full.append((slug, label))
+                for slug, label in parsed_full:
+                    add(slug, label)
+                if parsed_full:
+                    _AGY_CACHE["models"] = [c["id"] for c in catalog]
+                    _AGY_CACHE["efforts"] = list(efforts)
+                    _AGY_CACHE["catalog"] = list(catalog)
+            except (OSError, subprocess.TimeoutExpired, ValueError):
+                pass
+    return {"models": [c["id"] for c in catalog], "efforts": efforts, "catalog": catalog}
+
+
+def presets_info(cfg=None):
+    """What the UI needs to build the model / effort pickers (merging CLI_PRESETS with live local discovery)."""
+    cl = discover_claude_models()
+    cx = discover_codex_models(cfg, probe_rpc=False)
+    ag = discover_agy_models(cfg, probe_cli=False)
+    return {
+        "codex": {"label": CLI_PRESETS["codex"]["label"], "efforts": cx["efforts"], "models": cx["models"], "catalog": cx["catalog"]},
+        "claude": {"label": CLI_PRESETS["claude"]["label"], "efforts": cl["efforts"], "models": cl["models"], "catalog": cl["catalog"]},
+        "agy": {"label": CLI_PRESETS["agy"]["label"], "efforts": ag["efforts"], "models": ag["models"], "catalog": ag["catalog"]},
+    }
 
 
 def detected(cfg=None):
@@ -95,11 +378,16 @@ def validate(a):
         out["preset"] = preset
         if preset != "custom":
             model, effort = str(a.get("model", "") or "").strip(), str(a.get("effort", "") or "").strip()
+            fb = str(a.get("fallback_model", "") or "").strip() if preset == "claude" else ""
+            pi = presets_info().get(preset) or {}
+            allowed_efforts = tuple(dict.fromkeys(list(CLI_PRESETS[preset]["efforts"]) + list(pi.get("efforts") or ())))
             if model and not _MODEL.match(model):
                 return None, "model name is not valid"
-            if effort and effort not in CLI_PRESETS[preset]["efforts"]:
-                return None, "effort must be one of: " + ", ".join(CLI_PRESETS[preset]["efforts"])
-            out.update({k: v for k, v in (("model", model), ("effort", effort)) if v})
+            if fb and not _MODEL.match(fb):
+                return None, "fallback model name is not valid"
+            if effort and effort not in allowed_efforts:
+                return None, "effort must be one of: " + ", ".join(allowed_efforts)
+            out.update({k: v for k, v in (("model", model), ("effort", effort), ("fallback_model", fb)) if v})
             if a.get("web"):
                 out["web"] = True                                                    # may search / fetch web pages; local files stay out of reach
         if preset == "custom":
@@ -145,8 +433,8 @@ def names(cfg):
 
 
 def worker_names(cfg):
-    """Any model in the unified pool (default Qwen API gateway, custom API/CLI models, Codex CLI) can act as the worker."""
-    return ["qwen", "nothink", "think", "codex"] + [a["id"] for a in (cfg.get("advisors") or [])]
+    """Any model in the unified pool (default Qwen API gateway, custom API/CLI models, Codex CLI, Antigravity CLI) can act as the worker."""
+    return ["qwen", "nothink", "think", "codex", "agy"] + [a["id"] for a in (cfg.get("advisors") or [])]
 
 
 def is_external(cfg, aid):
@@ -159,7 +447,7 @@ def meta(cfg):
     out = [{"id": b, "label": BUILTIN_LABELS[b], "external": b in BUILTIN_EXTERNAL, "builtin": True} for b in BUILTIN]
     for a in cfg.get("advisors") or []:
         d = {"id": a["id"], "label": a["label"], "external": bool(a.get("external")), "builtin": False, "type": a["type"]}
-        d.update({k: a[k] for k in ("kind", "url", "model", "effort", "preset", "command", "web", "think") if a.get(k)})
+        d.update({k: a[k] for k in ("kind", "url", "model", "effort", "fallback_model", "preset", "command", "web", "think") if a.get(k)})
         d["has_key"] = bool(a.get("key_file") and os.path.isfile(os.path.expanduser(a["key_file"])))
         out.append(d)
     return out
@@ -179,6 +467,7 @@ def models_meta(cfg):
         if not a.get("builtin"):
             out.append(a)
     out.append({"id": "codex", "label": BUILTIN_LABELS["codex"], "external": True, "builtin": True, "type": "cli", "preset": "codex"})
+    out.append({"id": "agy", "label": BUILTIN_LABELS["agy"], "external": True, "builtin": True, "type": "cli", "preset": "agy"})
     out.append({"id": "codex-relay", "label": BUILTIN_LABELS["codex-relay"], "external": True, "builtin": True, "planner_only": True})
     return out
 
@@ -205,8 +494,8 @@ def ask(a, prompt, cfg=None, timeout=300, key=None, raw=False, skills=False):
 
 
 def can_see_images(a):
-    """Claude Code CLI and Anthropic Messages API advisors accept image blocks."""
-    return bool(a) and ((a.get("type") == "cli" and a.get("preset") == "claude") or (a.get("type") == "api" and a.get("kind") == "anthropic"))
+    """Claude Code CLI, Antigravity CLI (agy), and Anthropic Messages API advisors accept image inputs."""
+    return bool(a) and ((a.get("type") == "cli" and a.get("preset") in ("claude", "agy")) or (a.get("type") == "api" and a.get("kind") == "anthropic"))
 
 
 def clip_prompt(prompt, limit):
@@ -221,11 +510,66 @@ def clip_prompt(prompt, limit):
     return prompt[:head] + ("\n...[middle truncated (%d chars) to fit advisor limit]...\n" % omitted) + prompt[-tail:]
 
 
+def _run_agy(a, text, cfg=None, timeout=600, skills=False, images=None):
+    """Run Antigravity CLI (`agy`) over NDJSON stream-json in an empty permission-locked tempdir. -> (text, error, usage)."""
+    try:
+        with tempfile.TemporaryDirectory(prefix="cadfabric-agy-") as wd:
+            argv, _ = cli_argv(a, cfg, wd, skills=skills)
+            body = text
+            if images:
+                paths = []
+                for i, im in enumerate(images):
+                    ext_i = {"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}[im["mime"]]
+                    pth = os.path.join(wd, "picture-%d.%s" % (i + 1, ext_i))
+                    with open(pth, "wb") as f:
+                        f.write(base64.b64decode(im["data"]))
+                    paths.append(pth)
+                wd_norm = re.sub(r"^[A-Za-z]:", "", wd.replace("\\", "/"))
+                perms = {"allow": ["read_file(" + wd_norm + "/*)"], "deny": ["command(*)", "write_file(*)", "mcp(*)"]}
+                if a.get("web"):
+                    perms["allow"].append("read_url(*)")
+                if "--settings" in argv:
+                    argv[argv.index("--settings") + 1] = json.dumps({"permissions": perms})
+                argv += ["--add-dir", wd]
+                body = "Look at these picture files first (view_file / read_file): " + ", ".join(paths) + "\n\n" + text
+            stdin = json.dumps({"event": "user", "message": {"content": body}}) + "\n"
+            try:
+                r = subprocess.run(argv, input=stdin, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, cwd=wd, **NOWIN)
+            except subprocess.TimeoutExpired:
+                return "", "timed out after %ds" % timeout, {}
+        res = {}
+        for ln in (r.stdout or "").splitlines():
+            try:
+                x = json.loads(ln)
+            except ValueError:
+                continue
+            if isinstance(x, dict) and x.get("event") == "result":
+                res = x.get("result") or {}
+            elif isinstance(x, dict) and "response" in x and "status" in x:
+                res = x
+        u = res.get("usage") or {}
+        resp = (res.get("response") or "").strip()
+        status = str(res.get("status") or "")
+        if r.returncode != 0 or (status and status != "SUCCESS") or not resp:
+            err_msg = res.get("error") or resp or ((r.stderr or "").strip().splitlines() or ["no output"])[-1]
+            return "", "exit %d: %s" % (r.returncode, str(err_msg)[:200]), {}
+        cin = u.get("cache_read_tokens") or 0
+        raw_in = u.get("input_tokens") or 0
+        return resp, "", {"input": max(0, raw_in - cin), "cache_read": cin, "cache_write": 0,
+                          "output": u.get("output_tokens") or 0, "usd": 0, "estimated": False}
+    except Exception as e:                                                   # noqa: BLE001 - an advisor must never crash the agent
+        return "", "%s: %s" % (type(e).__name__, str(e)[:160]), {}
+
+
 def ask_metered(a, prompt, cfg=None, timeout=600, system=None, images=None, max_tokens=None, temperature=0.2):
-    """Like ask(raw=True) but also returns token usage. -> (text, error, usage). Claude CLI & API models return real token counts when available."""
+    """Like ask(raw=True) but also returns token usage. -> (text, error, usage). Claude CLI, Agy CLI & API models return real token counts when available."""
     cli_lim = int(os.environ.get("CADFABRIC_CLI_CHARS", "180000"))
     if a.get("type") == "api":
         return _ask_api_metered(a, prompt, timeout, _read_key(a), system=system, max_tokens=max_tokens, temperature=temperature, images=images)
+    if a.get("type") == "cli" and a.get("preset") == "agy":
+        clipped = clip_prompt(prompt, cli_lim)
+        full = ((system + "\n\n") if system else "") + clipped
+        return _run_agy(a, full, cfg, timeout, images=images)
     if a.get("type") == "cli" and a.get("preset") == "claude":
         try:
             with tempfile.TemporaryDirectory(prefix="cadfabric-adv-") as wd:
@@ -284,17 +628,68 @@ def ask_metered(a, prompt, cfg=None, timeout=600, system=None, images=None, max_
     return text, err, est
 
 
-def chat_model(cfg, model_id, llm, system, user, timeout=900, max_tokens=4000, temperature=0.2, images=None):
+def valid_model_override(m):
+    s = str(m or "").strip()
+    return True if not s else bool(_MODEL.match(s))
+
+
+def valid_effort_override(e, cfg=None):
+    s = str(e or "").strip()
+    if not s:
+        return True
+    if not _EFFORT.match(s):
+        return False
+    allowed = set(ALL_EFFORTS)
+    for info in (presets_info(cfg) or {}).values():
+        allowed.update(info.get("efforts") or ())
+    return s in allowed
+
+
+def parse_model_spec(spec, cfg=None):
+    """Parse 'base[:submodel][@effort]' -> (base_id, submodel, effort). Keeps plain IDs and Ollama tags like qwen:32b intact."""
+    s = str(spec or "").strip()
+    effort = ""
+    if "@" in s:
+        head, tail = s.rsplit("@", 1)
+        if head and valid_effort_override(tail, cfg):
+            s, effort = head, tail
+    submodel = ""
+    if ":" in s:
+        head, tail = s.split(":", 1)
+        if head:
+            s, submodel = head, tail
+    return s, submodel, effort
+
+
+def chat_model(cfg, model_id, llm, system, user, timeout=900, max_tokens=4000, temperature=0.2, images=None, submodel=None, effort=None):
     """Run any model from the unified pool (default Qwen gateway, custom API/CLI, Codex CLI) -> (text, usage)."""
-    if model_id in ("off", "qwen", "nothink", "think", "", None):
-        m = llm.chat([{"role": "system", "content": system}, {"role": "user", "content": user}],
-                     think=(model_id == "think"), max_tokens=max_tokens, temperature=temperature)
+    base_id, sp_model, sp_eff = parse_model_spec(model_id, cfg) if isinstance(model_id, str) else (model_id, "", "")
+    m_over = str((sp_model if submodel is None else submodel) or "").strip()
+    e_over = str((sp_eff if effort is None else effort) or "").strip()
+    if not valid_model_override(m_over):
+        raise ValueError("invalid model name %r" % m_over)
+    if not valid_effort_override(e_over, cfg):
+        raise ValueError("invalid effort %r" % e_over)
+    if base_id in ("off", "qwen", "nothink", "think", "", None):
+        think = (e_over in ("medium", "high", "xhigh", "max", "think")) if e_over else (base_id == "think")
+        kw = {"think": think, "max_tokens": max_tokens, "temperature": temperature}
+        if m_over:
+            kw["model"] = m_over
+        m = llm.chat([{"role": "system", "content": system}, {"role": "user", "content": user}], **kw)
         u = m.get("_usage") or {}
         return m.get("content") or "", {"input": u.get("prompt_tokens", 0), "output": u.get("completion_tokens", 0),
                                         "cache_read": 0, "cache_write": 0, "usd": 0, "estimated": False}
-    adv = {"id": "codex", "type": "cli", "preset": "codex", "external": True} if model_id == "codex" else find(cfg, model_id)
-    if adv is None:
+    base = {"id": base_id, "type": "cli", "preset": base_id, "external": True} if base_id in ("codex", "agy") else find(cfg, base_id)
+    if base is None:
         raise ValueError("unknown model %r" % model_id)
+    adv = dict(base)
+    if m_over:
+        adv["model"] = m_over
+    if e_over:
+        if adv.get("type") == "cli" and adv.get("preset") in CLI_PRESETS:
+            adv["effort"] = e_over
+        elif adv.get("type") == "api" and adv.get("kind") == "openai":
+            adv["think"] = e_over in ("medium", "high", "xhigh", "max", "think")
     t, err, u = ask_metered(adv, user, cfg, timeout, system=system, images=images, max_tokens=max_tokens, temperature=temperature)
     if err:
         raise RuntimeError(err)
@@ -367,6 +762,18 @@ def cli_argv(a, cfg, cwd, skills=False):
         if not exe:
             raise RuntimeError("%s not found on this machine (install it and log in)" % p["label"])
         base = [x.replace("{cwd}", cwd) for x in p["args"]]
+        if a["preset"] == "agy":
+            perms = {"deny": ["command(*)", "read_file(*)", "write_file(*)", "mcp(*)"]}
+            if a.get("web"):
+                perms["allow"] = ["read_url(*)"]
+            if skills:
+                base = [x for x in base if x != "--disable-slash-commands"]
+            m_use, e_use = _agy_model_effort(a.get("model") or "", a.get("effort") or "")
+            extra = (["--settings", json.dumps({"permissions": perms})]
+                     + (p["model_flag"] + [m_use] if m_use else [])
+                     + (p["effort_flag"](e_use) if e_use else []))
+            at = len(base) if p["at"] is None else p["at"]
+            return [exe] + base[:at] + extra + base[at:], False
         if skills and "--tools" in base:                                            # claude only sees its skills through the Skill tool (and not with slash commands disabled): offer that one tool, nothing else
             base = [x for x in base if x != "--disable-slash-commands"]
             i = base.index("--tools"); base[i:i + 2] = ["--tools", "Skill"]
@@ -376,7 +783,9 @@ def cli_argv(a, cfg, cwd, skills=False):
                 i = base.index("--tools"); base[i:i + 2] = p["web_tools"]
             else:                                                                     # codex: a top-level flag, before `exec`
                 pre = p["web_args"]
-        extra = (p["model_flag"] + [a["model"]] if a.get("model") else []) + (p["effort_flag"](a["effort"]) if a.get("effort") else [])
+        extra = ((p["model_flag"] + [a["model"]] if a.get("model") else [])
+                 + (p["fallback_flag"] + [a["fallback_model"]] if a.get("fallback_model") and "fallback_flag" in p else [])
+                 + (p["effort_flag"](a["effort"]) if a.get("effort") else []))
         at = len(base) if p["at"] is None else p["at"]
         return [exe] + pre + base[:at] + extra + base[at:], False
     parts = shlex.split(a["command"], posix=(os.name != "nt"))
@@ -391,6 +800,9 @@ def _ask_cli(a, prompt, cfg, timeout, raw=False, skills=False):
     cli_lim = int(os.environ.get("CADFABRIC_CLI_CHARS", "180000"))
     clipped = clip_prompt(prompt, cli_lim)
     text = clipped if raw else (WEB_PREFIX if a.get("web") else PREFIX) + clipped
+    if a.get("preset") == "agy":
+        out, err, _ = _run_agy(a, text, cfg, timeout, skills=skills)
+        return out, err
     with tempfile.TemporaryDirectory(prefix="cadfabric-adv-") as wd:
         argv, in_args = cli_argv(a, cfg, wd, skills)
         if in_args:

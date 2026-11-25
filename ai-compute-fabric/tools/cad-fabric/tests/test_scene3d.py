@@ -836,6 +836,230 @@ class AdaptiveScaling(Loop):
         finally:
             shutil.rmtree(d_bin, ignore_errors=True)
 
+    def test_auto_discover_models_and_dynamic_role_overrides(self):
+        from cadfabric import advisors as A, web as web_mod
+        import base64, http.server, http.client, threading
+
+        # 1. Claude cache auto-discovery with a brand-new hypothetical family & effort
+        home = tempfile.mkdtemp(prefix="cf-home-")
+        try:
+            mc = os.path.join(home, ".claude", "cache", "model-catalog")
+            os.makedirs(mc, exist_ok=True)
+            cc_payload = {"catalog": {"config": {"models": [
+                {"id": "claude-nova-6-0", "name": "Nova 6.0", "short_name": "Nova", "section": "main",
+                 "runtime": {"effort_levels": ["low", "medium", "turbo"]}},
+                {"id": "claude-opus-5-5", "name": "Opus 5.5", "short_name": "Opus", "section": "main",
+                 "runtime": {"effort_levels": ["low", "medium", "high", "xhigh", "max"]}},
+            ]}}}
+            with open(os.path.join(mc, "test-cc.json"), "w", encoding="utf-8") as f:
+                json.dump(cc_payload, f)
+            cl = A.discover_claude_models(home=home)
+            self.assertIn("nova", cl["models"])
+            self.assertIn("claude-nova-6-0", cl["models"])
+            self.assertIn("turbo", cl["efforts"])
+
+            # Fallback to published-*.json when *-cc.json is absent
+            os.unlink(os.path.join(mc, "test-cc.json"))
+            pub_doc = {"surfaces": {"cc": {"model_selector_state": [
+                {"model": "claude-fable-5-2", "thinking": {"effort": "high"},
+                 "thinking_by_model": [{"id": "claude-comet-6-1", "thinking": {"effort": "max"}}]}
+            ]}}}
+            with open(os.path.join(mc, "published-test.json"), "w", encoding="utf-8") as f:
+                json.dump({"documentBytes": base64.b64encode(json.dumps(pub_doc).encode()).decode()}, f)
+            cl2 = A.discover_claude_models(home=home)
+            self.assertIn("claude-fable-5-2", cl2["models"])
+            self.assertIn("claude-comet-6-1", cl2["models"])
+
+            # 2. Codex cache & config.toml auto-discovery (filtering hidden entries while harvesting efforts)
+            cx_dir = os.path.join(home, ".codex")
+            os.makedirs(cx_dir, exist_ok=True)
+            with open(os.path.join(cx_dir, "models_cache.json"), "w", encoding="utf-8") as f:
+                json.dump({"models": [
+                    {"slug": "codex-hidden-review", "visibility": "hide", "supported_reasoning_levels": [{"effort": "xhigh"}]},
+                    {"slug": "gpt-5.4-codex", "visibility": "list", "supported_reasoning_levels": [{"effort": "medium"}, {"effort": "xhigh"}]},
+                ]}, f)
+            with open(os.path.join(cx_dir, "config.toml"), "w", encoding="utf-8") as f:
+                f.write('model = "o4-mini-codex"\n')
+            cx = A.discover_codex_models(home=home, probe_rpc=False)
+            self.assertIn("gpt-5.4-codex", cx["models"])
+            self.assertIn("o4-mini-codex", cx["models"])
+            self.assertNotIn("codex-hidden-review", cx["models"])
+            self.assertIn("xhigh", cx["efforts"])
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+        # 3. parse_model_spec + chat_model overrides + --fallback-model in cli_argv
+        self.assertEqual(A.parse_model_spec("claude:claude-fable-5-2@high"), ("claude", "claude-fable-5-2", "high"))
+        self.assertEqual(A.parse_model_spec("qwen:qwen2.5-coder:32b"), ("qwen", "qwen2.5-coder:32b", ""))
+        self.assertEqual(A.parse_model_spec("claude@medium"), ("claude", "", "medium"))
+
+        argv, _ = A.cli_argv({"preset": "claude", "model": "opus", "fallback_model": "sonnet", "effort": "high"}, {}, "/tmp")
+        self.assertIn("--fallback-model", argv)
+        self.assertEqual(argv[argv.index("--fallback-model") + 1], "sonnet")
+
+        seen_gw = []
+        class Gw:
+            def chat(self, msgs, **kw):
+                seen_gw.append(kw)
+                return {"content": "ok", "_usage": {"prompt_tokens": 3, "completion_tokens": 2}}
+        t, u = A.chat_model({}, "qwen:qwen-custom:32b@think", Gw(), "sys", "usr")
+        self.assertEqual(t, "ok")
+        self.assertEqual(seen_gw[-1]["model"], "qwen-custom:32b")
+        self.assertTrue(seen_gw[-1]["think"])
+
+        # 4. API GET /models discovery + Web /api/discover_models security & /api/send overrides
+        secret_file = os.path.join(self.d, "evil_secret.txt")
+        open(secret_file, "w", encoding="utf-8").write("TOP-SECRET-KEY")
+
+        class FakeApi(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+            def do_GET(self):
+                if "/anthropic/v1/models" in self.path:
+                    out = {"data": [{"id": "claude-opus-5-5", "display_name": "Opus 5.5"}, {"id": "claude-fable-5-2"}]}
+                else:
+                    out = {"data": [{"id": "qwen-3-coder"}, {"id": "qwen-plus"}]}
+                b = json.dumps(out).encode()
+                self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+
+        api_srv = http.server.HTTPServer(("127.0.0.1", 0), FakeApi)
+        threading.Thread(target=api_srv.serve_forever, daemon=True).start()
+        try:
+            base = "http://127.0.0.1:%d" % api_srv.server_address[1]
+            r_oai = A.discover_api_models(base + "/v1/chat/completions", "openai")
+            self.assertTrue(r_oai["ok"]); self.assertEqual(r_oai["models"], ["qwen-3-coder", "qwen-plus"])
+            r_ant = A.discover_api_models(base + "/anthropic/v1/messages", "anthropic", key="k1")
+            self.assertTrue(r_ant["ok"]); self.assertEqual(r_ant["models"], ["claude-opus-5-5", "claude-fable-5-2"])
+
+            dd = os.path.join(self.d, "wdisc"); os.makedirs(dd, exist_ok=True)
+            cfg_srv = {"url": base + "/v1/chat/completions", "model": "qwen-gw", "planner": "nothink", "worker": "qwen",
+                       "advisors": [{"id": "claude", "label": "Claude", "type": "cli", "preset": "claude", "external": True}],
+                       "relay": {}, "workspace": self.d, "data_dir": dd}
+            srv = web_mod.serve(Gw(), cfg_srv, port=0, token="t2", quiet=True)
+            srv.hosts.add("127.0.0.1:%d" % srv.port)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            try:
+                hdr = {"Cookie": "cft=t2", "X-Requested-With": "cadfabric", "Content-Type": "application/json"}
+                def call(path, body):
+                    c = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=10)
+                    c.request("POST", path, json.dumps(body), hdr)
+                    r = c.getresponse(); return r.status, json.loads(r.read() or b"{}")
+
+                st, data = call("/api/discover_models", {"advisor_id": "qwen"})
+                self.assertEqual(st, 200); self.assertEqual(data["models"], ["qwen-3-coder", "qwen-plus"])
+
+                # client-supplied key_file is ignored
+                st2, _ = call("/api/discover_models", {"advisor": {"id": "x", "type": "api", "kind": "openai", "url": base + "/v1/chat/completions", "key_file": secret_file}})
+                self.assertEqual(st2, 200)
+
+                srv.sess.local = False
+                try:
+                    self.assertEqual(call("/api/discover_models", {"source": "claude"})[0], 403)
+                finally:
+                    srv.sess.local = True
+
+                # /api/send validates overrides and confirm_external
+                self.assertEqual(call("/api/send", {"text": "hi", "planner": "nothink", "planner_model": "-badflag"})[0], 400)
+                self.assertEqual(call("/api/send", {"text": "hi", "planner": "claude", "planner_model": "fable", "planner_effort": "high"})[0], 409)
+            finally:
+                srv.shutdown(); srv.sess.close()
+        finally:
+            api_srv.shutdown()
+
+    def test_antigravity_cli_preset_and_discovery(self):
+        from cadfabric import advisors as A, config as cfg_mod, skillq, web as web_mod
+        import http.client, threading
+
+        d_bin = tempfile.mkdtemp(prefix="fake-agy-")
+        try:
+            exe = os.path.join(d_bin, "agy")
+            script = (
+                "#!/usr/bin/env python3\n"
+                "import json, sys\n"
+                "if len(sys.argv) > 1 and sys.argv[1] == 'models':\n"
+                "    print('\\x1b[2Kgemini-4-neon-high             Gemini 4 Neon (High)')\n"
+                "    print('gemini-4-neon-xhigh            Gemini 4 Neon (XHigh)')\n"
+                "    print('gpt-oss-120b-medium            GPT-OSS 120B (Medium)')\n"
+                "    sys.exit(0)\n"
+                "line = json.loads(sys.stdin.readline())\n"
+                "content = line['message']['content']\n"
+                "out = {'event': 'result', 'result': {'conversation_id': 'c1', 'status': 'SUCCESS', "
+                "'response': 'ARGS:' + json.dumps(sys.argv[1:]) + '|BODY:' + content, "
+                "'usage': {'input_tokens': 100, 'cache_read_tokens': 40, 'output_tokens': 12}}}\n"
+                "print(json.dumps(out))\n"
+            )
+            with open(exe, "w", encoding="utf-8") as f:
+                f.write(script)
+            os.chmod(exe, 0o755)
+            old_path, old_agy_env, old_sub = os.environ["PATH"], os.environ.get("CADFABRIC_AGY"), S.subprocess.run
+            os.environ["PATH"] = d_bin + os.pathsep + old_path
+            os.environ["CADFABRIC_AGY"] = exe
+            S.subprocess.run = self._run
+            old_cache = dict(A._AGY_CACHE)
+            try:
+                # 1. cli_argv enforces permission lockdown & resolves model+effort suffix conflicts
+                argv, in_args = A.cli_argv({"preset": "agy", "model": "gemini-3.8-flash-low", "effort": "high"}, {}, "/tmp")
+                self.assertFalse(in_args)
+                self.assertIn("--disable-slash-commands", argv)
+                self.assertEqual(argv[argv.index("--model") + 1], "gemini-3.8-flash")
+                self.assertEqual(argv[argv.index("--effort") + 1], "high")
+                perms = json.loads(argv[argv.index("--settings") + 1])["permissions"]
+                self.assertIn("command(*)", perms["deny"])
+                self.assertIn("read_file(*)", perms["deny"])
+                self.assertNotIn("read_url(*)", perms.get("allow") or [])
+
+                argv_web, _ = A.cli_argv({"preset": "agy", "web": True}, {}, "/tmp")
+                self.assertIn("read_url(*)", json.loads(argv_web[argv_web.index("--settings") + 1])["permissions"]["allow"])
+
+                argv_sk, _ = A.cli_argv({"preset": "agy"}, {}, "/tmp", skills=True)
+                self.assertNotIn("--disable-slash-commands", argv_sk)
+
+                # 2. discover_agy_models parses ANSI-cleaned two-column output
+                disc = A.discover_agy_models(probe_cli=True)
+                self.assertIn("gemini-4-neon", disc["models"])
+                self.assertIn("gemini-4-neon-xhigh", disc["models"])
+                self.assertIn("gpt-oss-120b-medium", disc["models"])
+
+                # 3. chat_model + ask_metered + image support + real usage accounting
+                self.assertTrue(A.can_see_images({"type": "cli", "preset": "agy"}))
+                t, u = A.chat_model({}, "agy:gemini-4-neon-high@medium", None, "SYS", "USR",
+                                    images=[{"name": "a.png", "mime": "image/png", "data": Pictures.PNG}])
+                self.assertIn("picture-1.png", t)
+                self.assertIn('"--model", "gemini-4-neon"', t)
+                self.assertIn('"--effort", "medium"', t)
+                self.assertEqual((u["input"], u["cache_read"], u["output"], u["estimated"]), (60, 40, 12, False))
+
+                # 4. skillq detection, config validation, and web /api/discover_models + /api/send
+                self.assertEqual(skillq.detect("antigravity có skill gì?"), ("advisor", "agy"))
+                clean, err = cfg_mod.validate_settings({"url": "http://127.0.0.1:1/v1/chat/completions", "model": "q", "planner": "agy", "worker": "agy", "relay": {}})
+                self.assertEqual(err, "")
+                self.assertEqual((clean["planner"], clean["worker"]), ("agy", "agy"))
+
+                dd = os.path.join(self.d, "wagy"); os.makedirs(dd, exist_ok=True)
+                srv = web_mod.serve(type("L", (), {"chat": lambda *a, **k: {"content": "ok", "_usage": {}}, "close": lambda s: None})(),
+                                    dict(clean, data_dir=dd, workspace=self.d), port=0, token="t3", quiet=True)
+                srv.hosts.add("127.0.0.1:%d" % srv.port)
+                threading.Thread(target=srv.serve_forever, daemon=True).start()
+                try:
+                    hdr = {"Cookie": "cft=t3", "X-Requested-With": "cadfabric", "Content-Type": "application/json"}
+                    def wcall(path, body):
+                        c = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=10)
+                        c.request("POST", path, json.dumps(body), hdr)
+                        r = c.getresponse(); return r.status, json.loads(r.read() or b"{}")
+
+                    st, d_res = wcall("/api/discover_models", {"advisor_id": "agy"})
+                    self.assertEqual(st, 200); self.assertIn("gemini-4-neon-xhigh", d_res["models"])
+                    self.assertEqual(wcall("/api/send", {"text": "hi", "planner": "agy"})[0], 409)
+                finally:
+                    srv.shutdown(); srv.sess.close()
+            finally:
+                os.environ["PATH"] = old_path
+                if old_agy_env is None: os.environ.pop("CADFABRIC_AGY", None)
+                else: os.environ["CADFABRIC_AGY"] = old_agy_env
+                S.subprocess.run = old_sub
+                A._AGY_CACHE.clear(); A._AGY_CACHE.update(old_cache)
+        finally:
+            shutil.rmtree(d_bin, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

@@ -26,13 +26,17 @@ def cmd_configure(a):
     cur = config.load()
     advs = list(cur.get("advisors") or [])
     aid = (a.advisor_cli or "") + "-cli"                                    # "codex" itself is a built-in advisor, so the CLI one is codex-cli
-    if a.advisor_cli and not any(x["id"] == aid for x in advs):
-        ent = {"id": aid, "label": advisors.CLI_PRESETS[a.advisor_cli]["label"], "type": "cli", "preset": a.advisor_cli}
+    if a.advisor_cli:
+        ent = next((x for x in advs if x.get("id") == aid), None)
+        if ent is None:
+            ent = {"id": aid, "label": advisors.CLI_PRESETS[a.advisor_cli]["label"], "type": "cli", "preset": a.advisor_cli}
+            advs.append(ent)
         if getattr(a, "advisor_model", None):
             ent["model"] = a.advisor_model
         if getattr(a, "advisor_effort", None):
             ent["effort"] = a.advisor_effort
-        advs.append(ent)
+        if getattr(a, "advisor_fallback_model", None) and a.advisor_cli == "claude":
+            ent["fallback_model"] = a.advisor_fallback_model
     clean, err = config.validate_settings({"advisors": [{k: v for k, v in x.items() if k != "key_file"} for x in advs], "url": a.url or cur["url"], "model": cur["model"] if a.model is None else a.model, "planner": a.planner or cur["planner"],
                                            "worker": getattr(a, "worker", None) or cur.get("worker") or "qwen",
                                            "relay": {"host": a.relay_host if a.relay_host is not None else cur["relay"].get("host", ""),
@@ -77,6 +81,8 @@ def cmd_doctor(a):
     from . import planners
     if cfg["planner"] == "codex":
         exe = planners.find_codex(cfg); line(bool(exe), "codex (local)", exe or "not found; install the Codex CLI and log in")
+    elif cfg["planner"] == "agy":
+        exe = advisors.find_exe("agy", cfg); line(bool(exe), "agy (local)", exe or "not found; install Antigravity CLI and log in")
     elif cfg["planner"] == "codex-relay":
         t, e = planners.ask_relay("Reply with the single word OK.", cfg, timeout=90); line(bool(t), "codex relay", (t or e)[:100])
     else:
@@ -85,16 +91,24 @@ def cmd_doctor(a):
 
 
 def cmd_run_scene(a):
-    """Headless scene build: `cadfabric run "<request>" [--planner claude] [--worker qwen]`. Writes <data dir>/scenes/<id>/ and prints the result."""
+    """Headless scene build: `cadfabric run "<request>" [--planner claude:sonnet@medium] [--worker qwen]`. Writes <data dir>/scenes/<id>/ and prints the result."""
     from .llm import LLM
     from . import scene3d, viewers
     cfg = config.load()
-    mode = a.planner or cfg["planner"]
-    wmode = getattr(a, "worker", None) or cfg.get("worker") or "qwen"
+    mode, pm0, pe0 = advisors.parse_model_spec(a.planner or cfg["planner"], cfg)
+    wmode, wm0, we0 = advisors.parse_model_spec(getattr(a, "worker", None) or cfg.get("worker") or "qwen", cfg)
+    p_model = (getattr(a, "planner_model", None) or getattr(a, "advisor_model", None) or pm0 or "").strip()
+    p_effort = (getattr(a, "planner_effort", None) or getattr(a, "advisor_effort", None) or pe0 or "").strip()
+    w_model = (getattr(a, "worker_model", None) or wm0 or "").strip()
+    w_effort = (getattr(a, "worker_effort", None) or we0 or "").strip()
     if mode not in advisors.names(cfg) and mode not in ("codex",):
         print("unknown planner %r; choose one of: %s" % (mode, ", ".join(advisors.names(cfg)))); return 2
     if wmode not in advisors.worker_names(cfg):
         print("unknown worker %r; choose one of: %s" % (wmode, ", ".join(advisors.worker_names(cfg)))); return 2
+    for lbl, val, fn in (("planner model", p_model, advisors.valid_model_override), ("worker model", w_model, advisors.valid_model_override),
+                         ("planner effort", p_effort, lambda e: advisors.valid_effort_override(e, cfg)), ("worker effort", w_effort, lambda e: advisors.valid_effort_override(e, cfg))):
+        if val and not fn(val):
+            print("invalid %s %r" % (lbl, val)); return 2
     blender = (cfg.get("blender") if os.path.isfile(str(cfg.get("blender") or "")) else None) or viewers.blender_path()
     if not blender:
         print("Blender not found: install Blender 4.x or set the BLENDER environment variable (or \"blender\" in the config file)"); return 2
@@ -102,18 +116,47 @@ def cmd_run_scene(a):
     wd = os.path.join(config.data_dir(cfg), "scenes", time.strftime("%Y%m%d-%H%M%S"))
     os.makedirs(wd, exist_ok=True)
 
-    def director(prompt, system):
+    def director(prompt, system, images=None):
         try:
-            return advisors.chat_model(cfg, mode, llm, system, prompt, timeout=900, max_tokens=8192, temperature=0.2)
+            return advisors.chat_model(cfg, mode, llm, system, prompt, timeout=900, max_tokens=8192, temperature=0.2,
+                                       images=images, submodel=p_model or None, effort=p_effort or None)
         except RuntimeError as e:
             raise RuntimeError("advisor: " + str(e)) from e
 
     def worker_fn(system, user, temperature=0.3):
-        return advisors.chat_model(cfg, wmode, llm, system, user, timeout=900, max_tokens=3000, temperature=temperature)
+        return advisors.chat_model(cfg, wmode, llm, system, user, timeout=900, max_tokens=3000, temperature=temperature,
+                                   submodel=w_model or None, effort=w_effort or None)
 
     r = scene3d.run(" ".join(a.request), wd, blender, director, worker_fn, log=print, on_event=lambda k, **kw: print("[%s] %s" % (k, kw.get("what") or kw.get("describe", "")[:80] or kw.get("n", ""))))
     print("\n" + r["final"]); print("\nSCENE: %s" % (r["scene"] or "(none)"))
     return 0 if r["ok"] else 2
+
+
+def cmd_models(a):
+    """List unified model pool plus auto-discovered sub-models and efforts for Claude CLI & Codex CLI."""
+    cfg = config.load()
+    print("=== Model Pool (Cố vấn / Thực thi) ===")
+    for m in advisors.models_meta(cfg):
+        ext = "external" if m.get("external") else "local"
+        extra = " ".join(x for x in (m.get("model"), m.get("effort"), ("fallback=" + m["fallback_model"]) if m.get("fallback_model") else "") if x)
+        print("  %-14s %-8s %s%s" % (m["id"], ext, m["label"], (" [" + extra + "]") if extra else ""))
+    pi = advisors.presets_info(cfg)
+    for k in ("claude", "agy", "codex"):
+        if k == "agy":
+            info = advisors.discover_agy_models(cfg, probe_cli=True)
+        elif k == "codex":
+            info = advisors.discover_codex_models(cfg, probe_rpc=True)
+        else:
+            info = pi.get(k) or {}
+        print("\n=== Auto-discovered: %s ===" % (CLI_PRESETS_LABEL(k)))
+        print("  efforts: %s" % ", ".join(info.get("efforts") or []))
+        ms = info.get("models") or []
+        print("  models : %s" % (", ".join(ms) if ms else "(none cached; type any model name manually)"))
+    return 0
+
+
+def CLI_PRESETS_LABEL(k):
+    return (advisors.CLI_PRESETS.get(k) or {}).get("label") or k
 
 
 def cmd_run(a):
@@ -287,10 +330,11 @@ def main(argv=None):
     p = sub.add_parser("init"); p.add_argument("--path"); p.add_argument("--force", action="store_true")
     p.add_argument("--url", default=config.DEFAULTS["url"]); p.add_argument("--model", default=""); p.add_argument("--key-file", dest="key_file"); p.add_argument("--planner", default="nothink"); p.add_argument("--worker", default="qwen")
     p.set_defaults(fn=cmd_init)
-    p = sub.add_parser("configure"); p.add_argument("--url"); p.add_argument("--model"); p.add_argument("--planner"); p.add_argument("--worker"); p.add_argument("--advisor-cli", choices=sorted(advisors.CLI_PRESETS), help="add a CLI advisor; its id is <name>-cli (claude-cli, codex-cli)"); p.add_argument("--advisor-model"); p.add_argument("--advisor-effort")
+    p = sub.add_parser("configure"); p.add_argument("--url"); p.add_argument("--model"); p.add_argument("--planner"); p.add_argument("--worker"); p.add_argument("--advisor-cli", choices=sorted(advisors.CLI_PRESETS), help="add a CLI advisor; its id is <name>-cli (claude-cli, codex-cli)"); p.add_argument("--advisor-model"); p.add_argument("--advisor-effort"); p.add_argument("--advisor-fallback-model")
     p.add_argument("--relay-host"); p.add_argument("--relay-workdir"); p.add_argument("--relay-codex"); p.add_argument("--key-stdin", action="store_true"); p.set_defaults(fn=cmd_configure)
     sub.add_parser("doctor").set_defaults(fn=cmd_doctor)
-    p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner"); p.add_argument("--worker"); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
+    sub.add_parser("models").set_defaults(fn=cmd_models)
+    p = sub.add_parser("run"); p.add_argument("request", nargs="+"); p.add_argument("--planner"); p.add_argument("--planner-model"); p.add_argument("--planner-effort"); p.add_argument("--advisor-model"); p.add_argument("--advisor-effort"); p.add_argument("--worker"); p.add_argument("--worker-model"); p.add_argument("--worker-effort"); p.add_argument("--step"); p.set_defaults(fn=cmd_run)
     p = sub.add_parser("serve"); p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8765); p.add_argument("--allow-remote", action="store_true"); p.add_argument("--open", action="store_true"); p.set_defaults(fn=cmd_serve)
     p = sub.add_parser("app"); p.add_argument("--port", type=int, default=8765); p.add_argument("--project", help="folder of the project this window is for (a different project = a different window)"); p.add_argument("--session", help="open this saved conversation");  p.add_argument("--no-browser", action="store_true"); p.add_argument("--browser", action="store_true", help="use the web browser instead of the app window"); p.set_defaults(fn=cmd_app)
     a = ap.parse_args(argv)

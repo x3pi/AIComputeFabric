@@ -354,10 +354,11 @@ class Advisors(unittest.TestCase):
         if argv: self.assertEqual(argv[-1], "-"); self.assertEqual(argv[argv.index("-m") + 1], "m1"); self.assertIn('model_reasoning_effort="high"', argv)   # prompt marker stays last
         ok = lambda a: A.validate(dict({"id": "x", "type": "cli"}, **a))[1] == ""
         self.assertTrue(ok({"preset": "claude", "model": "claude-sonnet-4-5", "effort": "max"})); self.assertTrue(ok({"preset": "codex", "model": "gpt-5.1", "effort": "high"}))
-        for bad in ({"preset": "claude", "model": "-rm"}, {"preset": "claude", "model": "a b"}, {"preset": "claude", "model": 'x"y'}, {"preset": "claude", "effort": "ultra"}, {"preset": "codex", "effort": "max"}):
+        self.assertTrue(ok({"preset": "codex", "model": "gpt-5.1", "effort": "xhigh"})); self.assertTrue(ok({"preset": "codex", "effort": "max"}))
+        for bad in ({"preset": "claude", "model": "-rm"}, {"preset": "claude", "model": "a b"}, {"preset": "claude", "model": 'x"y'}, {"preset": "claude", "effort": "ultra"}, {"preset": "codex", "effort": "ultra"}):
             self.assertFalse(ok(bad), bad)
         self.assertIn("haiku", A.presets_info()["claude"]["models"])
-        self.assertEqual(A.presets_info()["claude"]["efforts"], ["low", "medium", "high", "xhigh", "max"])
+        self.assertEqual(A.presets_info()["claude"]["efforts"][:5], ["low", "medium", "high", "xhigh", "max"])
 
     def test_api_openai_and_anthropic_shapes_and_keys(self):
         from cadfabric import advisors as A

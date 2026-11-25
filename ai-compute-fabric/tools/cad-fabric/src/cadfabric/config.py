@@ -117,7 +117,7 @@ def validate_settings(s):
         return None, "unknown planner"
     out["planner"] = planner
     worker = str(s.get("worker") or "qwen").strip()
-    known_workers = ["qwen", "nothink", "think", "codex"] + [a["id"] for a in (out.get("advisors") if "advisors" in out else s.get("_current_advisors") or [])]
+    known_workers = ["qwen", "nothink", "think", "codex", "agy"] + [a["id"] for a in (out.get("advisors") if "advisors" in out else s.get("_current_advisors") or [])]
     if worker not in known_workers:
         return None, "unknown worker"
     out["worker"] = worker

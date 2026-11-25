@@ -24,7 +24,7 @@ def detect(text):
         return None
     if re.search(r"\b(tao|dung|ve|khoan|bo|cat|thiet ke|build|make|create)\b", t) and not re.search(r"\b(liet ke|danh sach|list|ke ra)\b", t):
         return None
-    named = "codex" if re.search(r"\bcodex\b", t) else "claude" if re.search(r"\bclaude\b", t) else ""
+    named = "codex" if re.search(r"\bcodex\b", t) else "claude" if re.search(r"\bclaude\b", t) else "agy" if re.search(r"\b(agy|antigravity)\b", t) else ""
     advisor = bool(named) or bool(re.search(r"\b(co van|advisor)\b", t))
     return ("advisor" if advisor else "qwen"), named
 
@@ -57,25 +57,27 @@ def qwen_answer(data_dir, project):
 
 
 def advisor_kind(cfg, planner):
-    """-> (kind, label): kind in 'qwen' (no outside advisor), 'codex', 'claude', 'api', 'other'."""
+    """-> (kind, label): kind in 'qwen' (no outside advisor), 'codex', 'claude', 'agy', 'api', 'other'."""
     if planner in ("off", "nothink", "think", "", None):
         return "qwen", "Qwen"
     if planner in ("codex", "codex-relay"):
         return "codex", "Codex"
+    if planner == "agy":
+        return "agy", "Antigravity"
     a = advisors.find(cfg, planner)
     if not a:
         return "other", str(planner)
     if a.get("type") == "api":
         return "api", a.get("label") or planner
     pre = a.get("preset")
-    return (pre if pre in ("codex", "claude") else "other"), a.get("label") or planner
+    return (pre if pre in ("codex", "claude", "agy") else "other"), a.get("label") or planner
 
 
 def advisor_answer(cfg, planner, named=""):
     """-> (text, error). Asks the SELECTED advisor to list its own skills."""
     kind, label = advisor_kind(cfg, planner)
     if kind == "qwen":
-        return "Hiện chưa chọn cố vấn bên ngoài (đang dùng Qwen). Chọn Codex hoặc Claude ở ô **Cố vấn** rồi hỏi lại để cố vấn đó liệt kê skill của nó.", ""
+        return "Hiện chưa chọn cố vấn bên ngoài (đang dùng Qwen). Chọn Codex, Claude hoặc Antigravity ở ô **Cố vấn** rồi hỏi lại để cố vấn đó liệt kê skill của nó.", ""
     if named and named != kind:
         return ("Bạn hỏi về %s nhưng ô Cố vấn đang chọn %s. Để tránh gửi dữ liệu tới dịch vụ bạn chưa xác nhận, hãy chọn %s ở ô **Cố vấn** rồi hỏi lại." % (named.capitalize(), label, named.capitalize())), ""
     if kind == "api":
@@ -84,6 +86,8 @@ def advisor_answer(cfg, planner, named=""):
         return "Cố vấn Codex qua máy khác (relay) chưa hỗ trợ liệt kê skill. Chọn Codex CLI chạy trên máy này.", ""
     if planner == "codex":
         text, err = planners.ask_codex(SKILLS_PROMPT, cfg, raw=True)
+    elif planner == "agy":
+        text, err = advisors.ask({"id": "agy", "type": "cli", "preset": "agy"}, SKILLS_PROMPT, cfg, raw=True, skills=True)
     else:
         text, err = advisors.ask(advisors.find(cfg, planner), SKILLS_PROMPT, cfg, raw=True, skills=True)
     if err:

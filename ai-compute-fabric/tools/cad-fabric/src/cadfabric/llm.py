@@ -8,11 +8,12 @@ class LLM:
         self.cfg = cfg or config.load()
         self.url, self.model, self.key, self.timeout = self.cfg["url"], self.cfg["model"], config.read_key(self.cfg), timeout
 
-    def chat(self, messages, tools=None, think=False, max_tokens=4000, temperature=0.3):
+    def chat(self, messages, tools=None, think=False, max_tokens=4000, temperature=0.3, model=None):
         """-> assistant message dict (content, tool_calls, _usage). Retries 429/502/503."""
         body = {"messages": messages, "max_tokens": max_tokens, "temperature": temperature, "chat_template_kwargs": {"enable_thinking": think}}
-        if self.model:
-            body["model"] = self.model
+        m_use = model if model else self.model
+        if m_use:
+            body["model"] = m_use
         if tools:
             body["tools"] = tools
         headers = {"Content-Type": "application/json"}
