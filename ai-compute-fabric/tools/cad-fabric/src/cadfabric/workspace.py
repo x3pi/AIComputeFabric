@@ -8,8 +8,10 @@ TEXT_EXT = {".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".i
 DENY_NAMES = ("*.pem", "*.key", "*.p12", "*.pfx", "*.crt", "*.cer", "id_rsa*", "id_ed25519*", ".env*", "key*.txt", "*secret*", "*password*", "*credential*", "*.kdbx", "*.sqlite", "*.db")
 DENY_DIRS = {".git", ".ssh", ".gnupg", ".aws", ".config", "node_modules", "__pycache__", ".venv", "venv"}
 IMAGE_EXT = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp", ".svg": "image/svg+xml"}
+VIDEO_EXT = {".mp4": "video/mp4", ".webm": "video/webm"}
 STEP_EXT = {".step", ".stp"}
 MAX_IMAGE = 8_000_000
+MAX_VIDEO = 40_000_000
 MAX_STEP = 20_000_000
 MAX_READ = 60_000
 MAX_LIST = 400
@@ -62,25 +64,26 @@ def resolve(root, rel):
 
 
 def kind_of(name):
-    """How the file can be viewed: 'step' (drawn), 'image', 'text', or None."""
+    """How the file can be viewed: 'step' (drawn), 'image', 'video', 'text', or None."""
     e = os.path.splitext(name)[1].lower()
-    return "step" if e in STEP_EXT else "image" if e in IMAGE_EXT else "text" if e in TEXT_EXT else None
+    return "step" if e in STEP_EXT else "image" if e in IMAGE_EXT else "video" if e in VIDEO_EXT else "text" if e in TEXT_EXT else None
 
 
 def binary_file(root, rel, kind):
-    """-> (absolute path, mime, error) for an image or a STEP file inside the folder, size-capped."""
+    """-> (absolute path, mime, error) for an image, video or STEP file inside the folder, size-capped."""
     full, err = resolve(root, rel)
     if err:
         return None, None, err
     e = os.path.splitext(full)[1].lower()
-    if not os.path.isfile(full) or (kind == "image" and e not in IMAGE_EXT) or (kind == "step" and e not in STEP_EXT):
+    if not os.path.isfile(full) or (kind == "image" and e not in IMAGE_EXT) or (kind == "video" and e not in VIDEO_EXT) or (kind == "step" and e not in STEP_EXT):
         return None, None, "no such %s file: %s" % (kind, rel)
     try:
-        if os.path.getsize(full) > (MAX_IMAGE if kind == "image" else MAX_STEP):
+        cap = MAX_VIDEO if kind == "video" else (MAX_IMAGE if kind == "image" else MAX_STEP)
+        if os.path.getsize(full) > cap:
             return None, None, "file is too large to preview"
     except OSError as ex:
         return None, None, str(ex)[:120]
-    return full, IMAGE_EXT.get(e, "application/octet-stream"), ""
+    return full, (VIDEO_EXT.get(e) if kind == "video" else IMAGE_EXT.get(e)) or "application/octet-stream", ""
 
 
 def listing(root, rel=""):

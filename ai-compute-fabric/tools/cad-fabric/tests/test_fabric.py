@@ -679,6 +679,26 @@ class WorkspaceWeb(Settings):
         try: self.assertEqual(self.req("GET", "/api/raw?path=p.png")[0], 403)
         finally: sess.local = True
 
+    def test_scene_preview_blend_and_video_endpoints(self):
+        import base64
+        from cadfabric import workspace as ws_mod
+        self.assertEqual(ws_mod.kind_of("clip.mp4"), "video")
+        root = os.path.join(self.dir, "sv"); os.makedirs(os.path.join(root, "views")); png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==")
+        open(os.path.join(root, "clip.mp4"), "wb").write(b"\x00\x00\x00\x18ftypmp42")
+        open(os.path.join(root, "scene.blend"), "wb").write(b"BLENDER-v402")
+        open(os.path.join(root, "views", "iso.png"), "wb").write(png)
+        open(os.path.join(root, "preview.mp4"), "wb").write(b"\x00\x00\x00\x18ftypmp42")
+        self.assertEqual(self.req("POST", "/api/settings", {"url": self.fake_url, "model": "q", "planner": "nothink", "workspace": root})[0], 200)
+        conn = self.http.HTTPConnection("127.0.0.1", self.port); conn.request("GET", "/api/raw?path=clip.mp4", headers={"Cookie": "cft=tok"}); r = conn.getresponse()
+        self.assertEqual((r.status, r.getheader("Content-Type")), (200, "video/mp4")); r.read()
+        sess = self.srv.sess; sess.history = {"scene3d": True, "workdir": root}; sess.last_usage = {"director": {"calls": 1, "usd": 0.01}, "savings": {"saved_tok_pct": 80.0, "offload_calls_pct": 75.0}}
+        st = self.req("GET", "/api/state?since=0")[1]; self.assertTrue(st["is_scene"]); self.assertEqual(st["usage"]["savings"]["saved_tok_pct"], 80.0)
+        for path, ctype in (("/api/scene_view?view=iso", "image/png"), ("/api/scene_view?view=iso_end_of_motion", "image/png"), ("/api/part.blend", "application/octet-stream"), ("/api/scene_video", "video/mp4")):
+            conn = self.http.HTTPConnection("127.0.0.1", self.port); conn.request("GET", path, headers={"Cookie": "cft=tok"}); r = conn.getresponse(); body = r.read()
+            self.assertEqual((r.status, r.getheader("Content-Type")), (200, ctype), path); self.assertTrue(body)
+        self.assertEqual(self.req("GET", "/api/scene_view?view=bad")[0], 400)
+        sess.reset(); self.req("POST", "/api/project", {"path": ""})
+
     def test_static_libraries_reveal_and_open_endpoints(self):
         from cadfabric import viewers
         root = os.path.join(self.dir, "ctx"); os.makedirs(os.path.join(root, "d")); open(os.path.join(root, "d", "a.txt"), "w").write("x"); open(os.path.join(root, "run.py"), "w").write("print(1)"); open(os.path.join(root, "k.step"), "w").write("ISO")

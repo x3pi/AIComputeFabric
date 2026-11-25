@@ -1066,6 +1066,24 @@ def _usage_totals(sc):
         t[role] = {"calls": len(us), "input": sum(u.get("input", 0) for u in us), "cache_read": sum(u.get("cache_read", 0) for u in us),
                    "cache_write": sum(u.get("cache_write", 0) for u in us), "output": sum(u.get("output", 0) for u in us),
                    "usd": round(sum(u.get("usd", 0) or 0 for u in us), 4), "estimated": any(u.get("estimated") for u in us)}
+    d_in = t["director"]["input"] + t["director"]["cache_read"] + t["director"]["cache_write"]
+    d_tok = d_in + t["director"]["output"]
+    w_in = t["worker"]["input"] + t["worker"]["cache_read"] + t["worker"]["cache_write"]
+    w_tok = w_in + t["worker"]["output"]
+    parts = sc.plan.get("parts", []) if sc.plan else []
+    n_parts = len(parts)
+    n_derived = sum(1 for p in parts if p.get("_mirror_from") or p.get("_offset_from"))
+    n_dir_ops = sum(1 for p in parts if p.get("ops") and not p.get("_mirror_from") and not p.get("_offset_from"))
+    n_worker_parts = max(0, n_parts - n_derived - n_dir_ops)
+    avg_w = (w_tok / n_worker_parts) if (n_worker_parts > 0 and w_tok > 0) else (1500.0 if n_derived > 0 else 0.0)
+    derived_tok_est = int(round(n_derived * avg_w))
+    baseline_tok = d_tok + w_tok + derived_tok_est
+    saved_tok_pct = round(100.0 * (w_tok + derived_tok_est) / baseline_tok, 1) if baseline_tok > 0 else 0.0
+    offload_calls_pct = round(100.0 * t["worker"]["calls"] / max(1, t["director"]["calls"] + t["worker"]["calls"]), 1)
+    cache_hit_pct = round(100.0 * t["director"]["cache_read"] / d_in, 1) if d_in > 0 else 0.0
+    t["savings"] = {"saved_tok_pct": saved_tok_pct, "offload_calls_pct": offload_calls_pct, "cache_hit_pct": cache_hit_pct,
+                    "worker_tokens": w_tok, "director_tokens": d_tok, "derived_parts": n_derived,
+                    "worker_parts": n_worker_parts, "director_ops_parts": n_dir_ops}
     return t
 
 
@@ -1264,6 +1282,12 @@ def run(request, workdir, blender, director, worker, on_event=None, should_stop=
                 final += "\nChi tiết kẹt: " + ", ".join("%s (%s)" % kv for kv in sc.stuck.items())
         final += "\n\nChi phí: cố vấn %d lượt%s, Qwen %d lượt (%d token ra)." % (
             tot["director"]["calls"], (", %.4f USD" % tot["director"]["usd"]) if not tot["director"]["estimated"] else " (token ước lượng)", tot["worker"]["calls"], tot["worker"]["output"])
+        sv = tot.get("savings") or {}
+        if sv:
+            final += "\nTiết kiệm token cố vấn: **~%.1f%%** (%d%% lượt gọi chuyển sang thực thi%s%s)." % (
+                sv.get("saved_tok_pct", 0.0), round(sv.get("offload_calls_pct", 0.0)),
+                (", %d chi tiết đối xứng/mảng 0 token" % sv["derived_parts"]) if sv.get("derived_parts") else "",
+                (", cache đọc lại %.0f%%" % sv["cache_hit_pct"]) if sv.get("cache_hit_pct", 0.0) >= 10 else "")
     with open(os.path.join(workdir, "usage.json"), "w", encoding="utf-8") as f:
         json.dump(tot, f, indent=1)
     return {"final": final, "measure": None, "steps": sc.step, "warnings": len(issues), "gates": 0, "sec": sec, "stuck": why if (not ok and not stopped) else "",

@@ -73,7 +73,8 @@ textarea{border:0;outline:0;background:transparent;resize:none;width:100%;max-he
 .hint{max-width:780px;margin:5px auto 0;color:var(--mute);font-size:12.5px;text-align:center}
 aside{width:360px;border-left:1px solid var(--line);background:var(--panel);overflow:auto;display:flex;flex-direction:column}
 aside h3{margin:0;padding:11px 14px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--mute);border-bottom:1px solid var(--line)}
-#preview{margin:12px;border-radius:10px;min-height:190px;background:#fff;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:14px}#preview svg{width:100%;height:auto}
+#preview{margin:12px;border-radius:10px;min-height:190px;background:#fff;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:14px;overflow:hidden}#preview svg{width:100%;height:auto}#preview img,#preview video{width:100%;height:auto;display:block;border-radius:8px}
+.pviews{display:flex;gap:5px;flex-wrap:wrap;padding:0 14px 8px}.pviews[hidden]{display:none}.pviews button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 table{width:calc(100% - 28px);margin:0 14px 10px;border-collapse:collapse;font-size:14px}td{padding:5px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 .side-actions{padding:0 14px 14px;display:flex;gap:8px;flex-wrap:wrap}a.btn{text-decoration:none;color:var(--ink)}
 @media(max-width:640px){header{gap:6px;padding:8px 10px}#status,#ver{display:none}.btn.small{padding:5px 8px;font-size:13px}}
@@ -98,7 +99,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
 #tabbar .tab .tl{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}#tabbar .tab i{flex:none}#tabbar .tab{flex:0 0 auto;max-width:190px;overflow:hidden;display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:13px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;cursor:pointer;white-space:nowrap;color:var(--mute)}
 #tabbar .tab.on{background:var(--bg);border-color:var(--line);color:var(--ink);margin-bottom:-1px}#tabbar .tab i{font-style:normal;opacity:.6;padding:0 2px}#tabbar .tab i:hover{opacity:1}
 #viewer{display:none;flex:1;min-height:0;flex-direction:column}.chat.viewing #viewer{display:flex}.chat.viewing #log,.chat.viewing .composer{display:none}
-#vbody{flex:1;overflow:auto}#vimg{display:block;max-width:100%;margin:16px auto;background:#fff;border:1px solid var(--line)}#vimg[hidden]{display:none}
+#vbody{flex:1;overflow:auto}#vimg{display:block;max-width:100%;margin:16px auto;background:#fff;border:1px solid var(--line)}#vimg[hidden]{display:none}#vvid{display:block;max-width:100%;max-height:80vh;margin:16px auto;border-radius:10px;background:#000}#vvid[hidden]{display:none}
 #vtext{margin:0;padding:14px 18px;font:13px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
 #vmodes{display:flex;gap:4px;margin-left:10px}#vmodes button.on{background:var(--ink);color:var(--bg)}
 #v3d{width:100%;height:100%;min-height:360px}#v3d[hidden]{display:none}#vbody{position:relative}
@@ -139,7 +140,7 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
   <div id="tabbar" hidden></div>
   <div id="log"><div class="col" id="col"></div></div>
   <div id="viewer"><div class="sfhead"><b id="vname"></b><span id="vmodes"></span><span class="sp"></span><span class="mute small" id="vinfo"></span><button type="button" class="btn small" id="vatt">Đính kèm vào chat</button></div>
-   <div id="vbody"><img id="vimg" hidden alt=""><div id="v3d" hidden></div><div id="vmd" class="md" hidden></div><div id="vcode" hidden></div><pre id="vtext"></pre></div></div>
+   <div id="vbody"><img id="vimg" hidden alt=""><video id="vvid" controls width="960" height="720" hidden></video><div id="v3d" hidden></div><div id="vmd" class="md" hidden></div><div id="vcode" hidden></div><pre id="vtext"></pre></div></div>
   <div class="composer">
    <div class="box">
     <textarea id="text" rows="1" maxlength="8000" placeholder="Mô tả chi tiết cần tạo, hoặc yêu cầu chỉnh sửa chi tiết hiện tại…"></textarea>
@@ -151,8 +152,8 @@ label.f select{border:1px solid var(--line);background:var(--bg);border-radius:8
   </div>
  </div>
  <aside id="side"><div class="tabs"><button type="button" id="tabpart" class="on">Chi tiết</button><button type="button" id="tabfiles">Tệp</button><button type="button" id="tablessons">Bài học</button><button type="button" id="tabskills">Skill</button></div>
- <div id="pane_part"><div id="preview">chưa có chi tiết</div><table id="meas"></table>
-  <div class="side-actions"><button class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
+ <div id="pane_part"><div id="preview">chưa có chi tiết</div><div id="pviews" class="pviews" hidden></div><table id="meas"></table>
+  <div class="side-actions"><button type="button" class="btn small primary" id="openbtn" hidden>Mở trong CAD</button><button type="button" class="btn small" id="vidbtn" hidden>🎬 Xuất MP4</button><a class="btn small" id="dl" href="/api/part.step" hidden>Tải STEP</a></div><div class="small mute" id="openst" style="padding:0 14px 12px;overflow-wrap:anywhere"></div></div>
  <div id="pane_lessons" hidden><div style="padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="btn small primary" id="lreflect">Rút bài học từ cuộc này</button><button type="button" class="btn small" id="ladd">+ Thêm</button><button type="button" class="btn small" id="ldedupe" title="Xoá các bài học chờ duyệt bị trùng hoặc sai quy tắc">Lọc trùng</button><button type="button" class="btn small" id="lclearp" title="Xoá toàn bộ bài học đang chờ duyệt trong dự án này" hidden>Xoá chờ duyệt</button><button type="button" class="btn small" id="lskill" title="Gộp các bài đã duyệt thành một skill (chờ duyệt)">Gộp thành skill</button></div>
   <search id="lsearch" class="lsearch" hidden><label for="lfilter" class="vh">Lọc bài học</label><input type="search" id="lfilter" name="lfilter" placeholder="Lọc tiêu đề, quy tắc, #tên…" autocorrect="off" autocapitalize="none" spellcheck="false"></search>
   <div class="mute small" id="lnote" style="padding:0 14px 8px"></div><div id="llist"></div></div>
@@ -315,10 +316,32 @@ function hero(show){const h=$("hero");if(show&&!h){const x=el("div","hero");x.id
   if(cfgd&&!cfgd.configured){const b=el("div","banner","Chưa cấu hình URL API. ");const bt=el("button","btn small","Mở cài đặt");bt.onclick=openSettings;b.appendChild(bt);x.appendChild(b)}
   const c=el("div","chips");["Tạo hộp 80×50×30 mm, khoan lỗ xuyên Ø10 ở tâm mặt trên, báo thể tích.","Đĩa tròn Ø100 dày 10, khoan 6 lỗ Ø8 đều trên vòng tròn Ø70.","Trục bậc: đoạn Ø30 dài 40 và đoạn Ø20 dài 30 cùng trục, vát 2 mm đầu trục."].forEach(t=>{const k=el("div","chip",t);k.onclick=()=>{$("text").value=t;$("text").focus();grow()};c.appendChild(k)});x.appendChild(c);col().prepend(x)}
  else if(!show&&h)h.remove()}
-async function showPart(m){const t=$("meas");t.replaceChildren();
- if(!m){$("preview").textContent="chưa có chi tiết";$("dl").hidden=true;$("openbtn").hidden=true;return}
+let curView="iso",lastScene=false,lastUsageKey="";
+function showSceneView(view){curView=view||"iso";const pv=$("pviews");if(pv)[...pv.children].forEach(b=>b.classList.toggle("on",b.dataset.view===curView));
+ const im=document.createElement("img");im.alt="Bản xem trước cảnh 3D";im.width=640;im.height=480;
+ im.onerror=()=>{$("preview").textContent="không tải được ảnh xem trước"};
+ im.src="/api/scene_view?view="+encodeURIComponent(curView)+"&t="+Date.now();
+ $("preview").replaceChildren(im)}
+async function exportSceneVideo(){const vb=$("vidbtn");if(vb){vb.disabled=true;vb.textContent="Đang xuất MP4…"}
+ const r=await api("/api/scene_video",{});if(vb){vb.disabled=false;vb.textContent="🎬 Xuất MP4"}
+ if(!r.ok){toast(r.d.error||"Không xuất được video");return}
+ const pv=$("pviews");if(pv)[...pv.children].forEach(b=>b.classList.toggle("on",b.dataset.view==="video"));curView="video";
+ const v=document.createElement("video");v.controls=true;v.autoplay=true;v.loop=true;v.muted=true;v.width=640;v.height=480;v.src=r.d.url;
+ $("preview").replaceChildren(v);toast(r.d.saved?"Đã lưu "+r.d.saved+" vào thư mục làm việc":"Đã xuất video MP4")}
+if($("vidbtn"))$("vidbtn").onclick=exportSceneVideo;
+async function showPart(m,isScene,usage){const t=$("meas"),pv=$("pviews"),vb=$("vidbtn");t.replaceChildren();
+ if(!m){$("preview").textContent="chưa có chi tiết";pv.hidden=true;pv.replaceChildren();$("dl").hidden=true;$("openbtn").hidden=true;vb.hidden=true;return}
  for(const [k,v] of [["Thể tích (mm³)",fmt(m.volume)],["Bbox (mm)",m.bbox_size.map(fmt).join(" × ")],["Tâm khối lượng",m.com.map(fmt).join(", ")],["Mặt / cạnh / đỉnh",m.faces+" / "+m.edges+" / "+m.vertices],["Số solid",m.solids],["Hợp lệ",m.valid?"có":"KHÔNG"]]){const tr=t.insertRow();tr.insertCell().textContent=k;tr.insertCell().textContent=v}
+ if(usage&&usage.director){const d=usage.director,sv=usage.savings||{};
+  const tr1=t.insertRow();tr1.insertCell().textContent="Chi phí cố vấn";tr1.insertCell().textContent=d.estimated?(d.calls+" lượt (ước lượng)"):(d.usd.toFixed(4)+" USD ("+d.calls+" lượt)");
+  if(sv.saved_tok_pct!==undefined){const tr2=t.insertRow();tr2.insertCell().textContent="Tiết kiệm token";tr2.insertCell().textContent="~"+sv.saved_tok_pct+"% ("+Math.round(sv.offload_calls_pct||0)+"% lượt thực thi)"}}
  $("dl").hidden=false;$("openbtn").hidden=!local;
+ if(isScene){$("dl").href="/api/part.blend";$("dl").textContent="Tải .blend";vb.hidden=!local;pv.hidden=false;
+  if(!pv.children.length){for(const [k,lbl] of [["iso","Phối cảnh"],["side","Ngang"],["top","Trên"],["iso_end_of_motion","Cuối chuyển động"],["video","🎬 MP4"]]){
+   const b=el("button","btn small"+(k===curView?" on":""),lbl);b.type="button";b.dataset.view=k;b.onclick=()=>k==="video"?exportSceneVideo():showSceneView(k);pv.appendChild(b)}}
+  $("openbtn").textContent="Mở trong Blender";showSceneView(curView==="video"?"iso":curView);return}
+ pv.hidden=true;pv.replaceChildren();vb.hidden=true;$("dl").href="/api/part.step";$("dl").textContent="Tải STEP";
+ $("openbtn").textContent="Mở trong "+((cfgd&&cfgd.viewer_label)||"CAD");
  try{const r=await fetch("/api/part.svg?"+Date.now());if(r.ok){const d=new DOMParser().parseFromString(await r.text(),"image/svg+xml").documentElement;$("preview").replaceChildren(document.importNode(d,true))}}catch(e){}}
 function setBusy(b){busy=b;$("dot").className="dot"+(b?" busy":"");$("status").textContent=b?"đang làm…":"sẵn sàng";$("send").hidden=b;$("stop").hidden=!b;$("newbtn").disabled=b;$("histbtn").disabled=b;
  if(b&&!(workEl&&workEl.parentNode)){workEl=el("div","working","Đang làm");col().appendChild(workEl);$("log").scrollTop=1e9}if(!b&&workEl){workEl.remove();workEl=null;phase=null}}
@@ -350,10 +373,11 @@ async function poll(){if(polling)return;polling=true;try{await poll1()}finally{p
 async function poll1(){const mine=since;const {ok,d}=await api("/api/state?since="+since);if(!ok||mine!==since)return;
  d.events.forEach(render);since=d.next;if(d.busy!==busy)setBusy(d.busy);if(!col().children.length||(col().children.length===1&&workEl))hero(true);
  $("hint").textContent=d.follow_up?"Tin nhắn tiếp theo sẽ chỉnh sửa chi tiết này (phần chỉnh sửa không có kế hoạch kiểm tra riêng).":"Enter để gửi · Shift+Enter xuống dòng · /new chi tiết mới · /open mở trong CAD · /stop dừng";
- const key=d.measure?d.measure.volume+"|"+d.measure.faces:null;if(key!==lastVol){lastVol=key;showPart(d.measure)}}
+ const key=d.measure?d.measure.volume+"|"+d.measure.faces:null;const svKey=d.usage&&d.usage.savings?d.usage.savings.saved_tok_pct+"|"+d.usage.director.calls:"";
+ if(key!==lastVol||!!d.is_scene!==lastScene||svKey!==lastUsageKey){lastVol=key;lastScene=!!d.is_scene;lastUsageKey=svKey;showPart(d.measure,!!d.is_scene,d.usage)}}
 let autoSend=false;let lastAsk="",autoN=0,userStopped=false,live=false;const CONT_TEXT="Tiếp tục: hoàn thành các tính năng còn thiếu. Đừng lặp lại cách đã thất bại, thử cách khác.";
-async function redo(text,planner,send){if(busy)return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;hero(true);poll();$("text").value=text;grow();if(planner){$("planner").value=planner;chip()}$("text").focus();if(send)submit()}
-async function newPart(){if(busy)return;if(lastVol&&!confirm("Bắt đầu chi tiết mới? Chi tiết hiện tại sẽ bị xóa khỏi phiên."))return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;hero(true);poll()}
+async function redo(text,planner,send){if(busy)return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;lastScene=false;lastUsageKey="";curView="iso";hero(true);poll();$("text").value=text;grow();if(planner){$("planner").value=planner;chip()}$("text").focus();if(send)submit()}
+async function newPart(){if(busy)return;if(lastVol&&!confirm("Bắt đầu chi tiết mới? Chi tiết hiện tại sẽ bị xóa khỏi phiên."))return;await api("/api/reset",{});col().replaceChildren();since=0;lastVol=null;lastScene=false;lastUsageKey="";curView="iso";hero(true);poll()}
 async function submit(){if(sending)return;sending=true;try{await submit1()}finally{sending=false}}
 async function submit1(){const text=$("text").value.trim();if(!text)return;
  if(text==="/new"){$("text").value="";grow();return newPart()}if(text==="/stop"){$("text").value="";grow();return api("/api/stop",{})}
@@ -639,7 +663,7 @@ async function sfOpen(rel){const L=$("sflist");L.replaceChildren();
  for(const e of d.entries){const full=(d.path?d.path+"/":"")+e.name;const r=el("div","opt");
   r.oncontextmenu=ev=>fileMenu(ev,full,e.kind,e.dir);
   if(e.dir){r.textContent="📁 "+e.name;r.onclick=()=>sfOpen(full)}
-  else{r.textContent=({text:"📄 ",image:"🖼 ",step:"🧊 "}[e.kind]||"· ")+e.name+"  ("+e.size+" B)";if(e.kind)r.onclick=()=>sfView(full,e.kind);else r.classList.add("dim")}
+  else{r.textContent=({text:"📄 ",image:"🖼 ",video:"🎬 ",step:"🧊 "}[e.kind]||"· ")+e.name+"  ("+e.size+" B)";if(e.kind)r.onclick=()=>sfView(full,e.kind);else r.classList.add("dim")}
   L.appendChild(r)}
  if(!d.entries.length)L.appendChild(el("div","mute small","(thư mục trống)"));if(d.truncated)L.appendChild(el("div","mute small","(chỉ hiện 400 mục đầu)"))}
 let tabs=[],curTab="chat";
@@ -667,20 +691,21 @@ async function mdHtml(text,rel){await Promise.all([loadScript("/static/vendor/ma
 function drawTabs(){const bar=$("tabbar");const keep=bar.scrollLeft;bar.replaceChildren();bar.hidden=!tabs.length;if(!tabs.length)return;
  const mk=(id,label,closable)=>{const t=el("span","tab"+(curTab===id?" on":""));t.appendChild(el("span","tl",label));t.title=id;t.onclick=()=>activate(id);
   if(closable){const x=el("i",0,"✕");x.title="Đóng tab";x.onclick=e=>{e.stopPropagation();closeTab(id)};t.appendChild(x);t.oncontextmenu=e=>{e.preventDefault();tabMenu(e,id)}}bar.appendChild(t)};
- mk("chat","💬 Trò chuyện",false);for(const t of tabs)mk(t.rel,({text:"📄 ",image:"🖼 ",step:"🧊 "}[t.kind]||"")+t.rel.split("/").pop(),true);bar.scrollLeft=keep;const on=bar.querySelector(".tab.on");if(on)on.scrollIntoView({block:"nearest",inline:"nearest"})}
+ mk("chat","💬 Trò chuyện",false);for(const t of tabs)mk(t.rel,({text:"📄 ",image:"🖼 ",video:"🎬 ",step:"🧊 "}[t.kind]||"")+t.rel.split("/").pop(),true);bar.scrollLeft=keep;const on=bar.querySelector(".tab.on");if(on)on.scrollIntoView({block:"nearest",inline:"nearest"})}
 $("tabbar").addEventListener("wheel",e=>{if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){e.preventDefault();$("tabbar").scrollLeft+=e.deltaY}},{passive:false});
 function dispose3d(){for(const t of tabs)if(t.h3d){try{t.h3d.dispose()}catch(e){}t.h3d=null}}
 function closeTab(id){const t=tabs.find(x=>x.rel===id);if(t&&t.h3d){try{t.h3d.dispose()}catch(e){}}tabs=tabs.filter(t=>t.rel!==id);if(curTab===id)curTab=tabs.length?tabs[tabs.length-1].rel:"chat";activate(curTab)}
 function modesFor(t){const e=extOf(t.rel);if(t.kind==="step")return[["3d","3D"],["svg","Nét 2D"],["text","Văn bản"]];if(t.kind==="text"&&e==="md")return[["view","Xem"],["text","Mã nguồn"]];if(t.kind==="text"&&(e==="csv"||e==="tsv"))return[["view","Bảng"],["text","Văn bản"]];return[]}
 async function activate(id){curTab=id;const chat=id==="chat"||!tabs.some(t=>t.rel===id);if(chat)curTab="chat";document.querySelector(".chat").classList.toggle("viewing",!chat);drawTabs();dispose3d();if(chat)return;
- const t=tabs.find(x=>x.rel===id);$("vname").textContent=t.rel;$("vatt").hidden=t.kind==="image";$("vatt").textContent=att.includes(t.rel)?"Đã đính kèm":"Đính kèm vào chat";
+ const t=tabs.find(x=>x.rel===id);$("vname").textContent=t.rel;$("vatt").hidden=t.kind==="image"||t.kind==="video";$("vatt").textContent=att.includes(t.rel)?"Đã đính kèm":"Đính kèm vào chat";
  const ms=modesFor(t);if(!t.mode)t.mode=ms.length?ms[0][0]:"";const bar=$("vmodes");bar.replaceChildren();
  for(const [k,l] of ms){const b=el("button","btn small"+(t.mode===k?" on":""),l);b.type="button";b.onclick=()=>{t.mode=k;activate(id)};bar.appendChild(b)}
  await renderTab(t)}
-async function renderTab(t){const id=t.rel,live=()=>curTab===id&&t.mode!==undefined;const pic=$("vimg"),tx=$("vtext"),d3=$("v3d"),md=$("vmd"),cd=$("vcode");
- for(const x of [pic,d3,md,cd])x.hidden=true;pic.removeAttribute("src");tx.hidden=false;tx.textContent="";$("vinfo").textContent="";
+async function renderTab(t){const id=t.rel,live=()=>curTab===id&&t.mode!==undefined;const pic=$("vimg"),vid=$("vvid"),tx=$("vtext"),d3=$("v3d"),md=$("vmd"),cd=$("vcode");
+ for(const x of [pic,vid,d3,md,cd])x.hidden=true;pic.removeAttribute("src");vid.pause();vid.removeAttribute("src");tx.hidden=false;tx.textContent="";$("vinfo").textContent="";
  const msg=m=>{tx.hidden=false;tx.textContent=m};
  if(t.kind==="image"){pic.onerror=()=>{if(live()){pic.hidden=true;msg("Không xem trước được ảnh này (quá lớn hoặc hỏng).")}};pic.onload=()=>{if(live()){tx.hidden=true;$("vinfo").textContent=pic.naturalWidth+"×"+pic.naturalHeight+" px"}};pic.src="/api/raw?path="+encodeURIComponent(t.rel);pic.hidden=false;tx.hidden=true;return}
+ if(t.kind==="video"){vid.onerror=()=>{if(live()){vid.hidden=true;msg("Không phát được video này.")}};vid.onloadedmetadata=()=>{if(live()){tx.hidden=true;$("vinfo").textContent=vid.videoWidth+"×"+vid.videoHeight+" px · "+vid.duration.toFixed(1)+" s"}};vid.src="/api/raw?path="+encodeURIComponent(t.rel);vid.hidden=false;tx.hidden=true;return}
  const needText=t.kind==="text"||t.mode==="text";
  if(needText&&t.text===undefined){const {ok,d}=await api("/api/file?path="+encodeURIComponent(t.rel));t.text=ok?d.text:null;t.err=ok?"":(d.error||"")}
  if(!live())return;

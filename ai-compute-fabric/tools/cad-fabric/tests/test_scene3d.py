@@ -1060,6 +1060,30 @@ class AdaptiveScaling(Loop):
         finally:
             shutil.rmtree(d_bin, ignore_errors=True)
 
+    def test_usage_totals_computes_token_savings(self):
+        from cadfabric import scene3d as S
+        sc = S.Scene(self.d, "blender", None, None)
+        sc.plan = {"parts": [
+            {"id": "frame", "ops": [{"op": "box", "center": [0, 0, 0], "size": [10, 10, 10]}]},
+            {"id": "wheel_L", "spec": "left wheel"},
+            {"id": "wheel_R", "spec": "right wheel", "_mirror_from": {"src": "wheel_L"}},
+            {"id": "bolt_1", "spec": "bolt"},
+            {"id": "bolt_2", "spec": "bolt 2", "_offset_from": {"src": "bolt_1"}},
+        ]}
+        sc.usage = {
+            "director": [{"input": 100, "cache_read": 900, "cache_write": 100, "output": 400, "usd": 0.02}],
+            "worker": [
+                {"input": 1000, "output": 500},
+                {"input": 1000, "output": 500},
+            ],
+        }
+        tot = S._usage_totals(sc)
+        sv = tot["savings"]
+        self.assertEqual((sv["derived_parts"], sv["worker_parts"], sv["director_ops_parts"]), (2, 2, 1))
+        self.assertGreater(sv["saved_tok_pct"], 70.0)
+        self.assertEqual(sv["offload_calls_pct"], 66.7)
+        self.assertGreater(sv["cache_hit_pct"], 80.0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

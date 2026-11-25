@@ -1,13 +1,14 @@
 """Web chat for cadfabric: `cadfabric serve`. Stdlib only, one job at a time, one part per session.
 Security: binds 127.0.0.1 unless told otherwise; every request needs the access token (URL ?t=... once, then a cookie); POSTs need the X-Requested-With header;
 the Host header must be one we serve (blocks DNS rebinding); Origin, when present, must match; request bodies are capped."""
-import hmac, http.server, json, os, re, secrets, socketserver, subprocess, sys, threading, time, urllib.parse
+import hmac, http.server, json, os, re, secrets, shutil, socketserver, subprocess, sys, tempfile, threading, time, urllib.parse
 from http import cookies
 from . import advisors, config, history as history_mod, llm as llm_mod, viewers, workspace as ws_mod
 from . import cq_backend, lessons as lessons_mod, skills as skills_mod, ledger as ledger_mod, skillq, scene3d
 from .cq_backend import CadQueryBackend
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_page.html")
+BLENDER_VIDEO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blender", "blender_video.py")
 MAX_BODY = 40_000
 MAX_BODY_SEND = 7_000_000                      # /api/send may carry up to 3 pictures (base64)
 
@@ -40,7 +41,7 @@ class Session:
         self.picker = None                      # set by the desktop window: () -> folder path or ''
         self.backend = backend or CadQueryBackend()
         self.lock = threading.Lock()
-        self.events, self.busy, self.stop, self.history, self.measure = [], False, False, None, None
+        self.events, self.busy, self.stop, self.history, self.measure, self.last_usage = [], False, False, None, None, None
         self.thread = None
         self.sid, self.created, self.title = None, "", ""          # the saved-session record this conversation is written to
 
@@ -51,7 +52,7 @@ class Session:
     def state(self, since):
         with self.lock:
             return {"busy": self.busy, "events": self.events[since:], "next": len(self.events), "measure": self.measure, "has_part": self.measure is not None,
-                    "follow_up": self.history is not None}
+                    "follow_up": self.history is not None, "is_scene": bool(isinstance(self.history, dict) and self.history.get("scene3d")), "usage": self.last_usage}
 
     def send(self, text, planner, files=(), uploads=None, images=None, worker=None, planner_model="", planner_effort="", worker_model="", worker_effort=""):
         with self.lock:
@@ -203,6 +204,7 @@ class Session:
                         skills=self._scene_skills(text, lb), images=list(images), review_images=advisors.can_see_images(adv),
                         plan_cache=os.path.join(config.data_dir(self.cfg), "plan_cache"))
         self.history = r["history"]
+        self.last_usage = r.get("usage")
         rep = r.get("report") or {}
         bb = rep.get("parts_bbox_mm") or {}
         with self.lock:
@@ -355,6 +357,7 @@ class Session:
                 self.sid, self.created, self.title = rec["id"], rec.get("created", ""), rec.get("title", ""); self.autofile = None
                 self.lessons_given = set()
                 self.reflected_upto = len(self.events)
+                self.last_usage = next((e.get("usage") for e in reversed(self.events) if e.get("kind") == "final" and e.get("usage")), None)
                 self.ledger = ledger_mod.Ledger(self._ledger_path(rec["id"]))
                 if not self.ledger.cells:                                            # older record without a ledger file: rebuild it from the saved successful cells
                     for code in rec.get("cells") or []:
@@ -429,11 +432,57 @@ class Session:
         r = viewers.open_file(p, self.cfg); r["path"] = p
         return 200, r
 
+    def scene_paths(self):
+        """-> (workdir, blend_path) for the active Blender scene, or ('', '')."""
+        if not (isinstance(self.history, dict) and self.history.get("scene3d")):
+            return "", ""
+        wd = str(self.history.get("workdir") or "")
+        for p in (self.autofile, os.path.join(wd, "scene.blend") if wd else ""):
+            if p and os.path.isfile(p):
+                return wd, p
+        return wd, ""
+
+    def render_scene_video(self):
+        """Render animated MP4 preview of the active Blender scene using blender_video.py + ffmpeg. -> (status, dict)."""
+        wd, blend = self.scene_paths()
+        if not blend:
+            return 404, {"error": "chưa có cảnh Blender để xuất video"}
+        blender, ffmpeg = self.blender_exe(), shutil.which("ffmpeg")
+        if not blender or not ffmpeg:
+            return 500, {"error": "cần cài sẵn Blender và ffmpeg trên máy để xuất video MP4"}
+        out_dir = wd if (wd and os.path.isdir(wd)) else os.path.dirname(blend)
+        mp4 = os.path.join(out_dir, "preview.mp4")
+        try:
+            need = (not os.path.isfile(mp4)) or os.path.getmtime(mp4) < os.path.getmtime(blend)
+            if need:
+                with tempfile.TemporaryDirectory(prefix="cfvid-") as tmp:
+                    r1 = subprocess.run([blender, "-b", blend, "--python", BLENDER_VIDEO, "--", tmp, "60"],
+                                        capture_output=True, text=True, timeout=240, **cq_backend.NOWIN)
+                    if r1.returncode != 0 or not os.path.isfile(os.path.join(tmp, "frame_000.png")):
+                        return 500, {"error": "Blender render khung hình video thất bại: " + (r1.stderr or r1.stdout or "")[-200:]}
+                    tmp_mp4 = mp4 + ".tmp.mp4"
+                    r2 = subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-framerate", "24", "-i", os.path.join(tmp, "frame_%03d.png"),
+                                         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "21", tmp_mp4],
+                                        capture_output=True, text=True, timeout=90, **cq_backend.NOWIN)
+                    if r2.returncode != 0 or not os.path.isfile(tmp_mp4):
+                        return 500, {"error": "ffmpeg nén MP4 thất bại: " + (r2.stderr or "")[:200]}
+                    os.replace(tmp_mp4, mp4)
+            saved = ""
+            if self.local and self.autofile and self.autofile.endswith(".blend") and os.path.isdir(os.path.dirname(self.autofile)):
+                proj_mp4 = self.autofile[:-6] + ".mp4"
+                shutil.copyfile(mp4, proj_mp4 + ".tmp")
+                os.replace(proj_mp4 + ".tmp", proj_mp4)
+                saved = os.path.basename(proj_mp4)
+                self.emit("file", op="saved", path=saved)
+            return 200, {"ok": True, "url": "/api/scene_video?t=%d" % int(os.path.getmtime(mp4)), "saved": saved}
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return 500, {"error": "xuất video MP4 không thành công: %s" % str(e)[:180]}
+
     def reset(self):
         with self.lock:
             if self.busy:
                 return False
-            self.events, self.history, self.measure = [], None, None
+            self.events, self.history, self.measure, self.last_usage = [], None, None, None
             self.lessons_given = set()
             self.reflected_upto = 0
             self.ledger = ledger_mod.Ledger()
@@ -486,7 +535,7 @@ def make_handler(sess, token, hosts, data_dir):
             self.send_response(code)
             self.send_header("Content-Type", ctype); self.send_header("Content-Length", str(len(b))); self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff"); self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:")
+            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:")
             for k, v in extra:
                 self.send_header(k, v)
             self.end_headers(); self.wfile.write(b)
@@ -574,12 +623,13 @@ def make_handler(sess, token, hosts, data_dir):
             elif u.path in ("/api/raw", "/api/preview"):
                 if not sess.local:
                     return self._send(403, {"error": "the working folder is only available when the chat is bound to this computer"})
-                kind = "image" if u.path == "/api/raw" else "step"
-                full, mime, err = ws_mod.binary_file(sess.cfg.get("workspace") or "", (q.get("path") or [""])[0], kind)
+                rel_p = (q.get("path") or [""])[0]
+                kind = ("video" if ws_mod.kind_of(rel_p) == "video" else "image") if u.path == "/api/raw" else "step"
+                full, mime, err = ws_mod.binary_file(sess.cfg.get("workspace") or "", rel_p, kind)
                 if err:
                     return self._send(400, {"error": err})
-                lock = [("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")]
-                if kind == "image":
+                lock = [("Content-Security-Policy", "default-src 'none'; style-src 'self' 'unsafe-inline'; media-src 'self'; sandbox")] if kind == "video" else [("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")]
+                if kind in ("image", "video"):
                     with open(full, "rb") as f:
                         return self._send(200, f.read(), mime, lock)
                 try:
@@ -601,6 +651,40 @@ def make_handler(sess, token, hosts, data_dir):
                 except OSError as e:
                     return self._send(400, {"error": str(e)[:120]})
                 self._send(200, {"path": cur, "parent": os.path.dirname(cur) if os.path.dirname(cur) != cur else "", "dirs": names[:500]})
+            elif u.path == "/api/scene_view":
+                view = (q.get("view") or ["iso"])[0]
+                if view not in ("iso", "side", "top", "iso_end_of_motion"):
+                    return self._send(400, {"error": "bad view"})
+                wd, blend = sess.scene_paths()
+                if not blend:
+                    return self._send(404, {"error": "no scene yet"})
+                vdir = os.path.join(wd, "views") if wd else ""
+                vp = os.path.join(vdir, view + ".png") if vdir else ""
+                if (not vp or not os.path.isfile(vp)) and sess.blender_exe():
+                    try:
+                        subprocess.run([sess.blender_exe(), "-b", blend, "--python", scene3d.BLENDER_RENDER, "--", wd], capture_output=True, timeout=120, **cq_backend.NOWIN)
+                    except (OSError, subprocess.TimeoutExpired):
+                        pass
+                if (not vp or not os.path.isfile(vp)) and vdir and os.path.isfile(os.path.join(vdir, "iso.png")):
+                    vp = os.path.join(vdir, "iso.png")
+                if not vp or not os.path.isfile(vp):
+                    return self._send(404, {"error": "no rendered view"})
+                with open(vp, "rb") as f:
+                    self._send(200, f.read(), "image/png")
+            elif u.path == "/api/scene_video":
+                wd, blend = sess.scene_paths()
+                mp4 = os.path.join(wd or os.path.dirname(blend or ""), "preview.mp4") if (wd or blend) else ""
+                if not mp4 or not os.path.isfile(mp4):
+                    return self._send(404, {"error": "no video yet"})
+                with open(mp4, "rb") as f:
+                    self._send(200, f.read(), "video/mp4")
+            elif u.path == "/api/part.blend":
+                _wd, blend = sess.scene_paths()
+                if not blend:
+                    return self._send(404, {"error": "no scene yet"})
+                fn = os.path.basename(blend).replace('"', "") or "scene.blend"
+                with open(blend, "rb") as f:
+                    self._send(200, f.read(), "application/octet-stream", [("Content-Disposition", 'attachment; filename="%s"' % fn)])
             elif u.path == "/api/part.svg":
                 try:
                     self._send(200, sess.backend.preview_svg(), "image/svg+xml")
@@ -676,9 +760,11 @@ def make_handler(sess, token, hosts, data_dir):
                 ok = sess.send(text, planner, files, ups, imgs or None, worker=worker,
                                planner_model=p_model, planner_effort=p_effort, worker_model=w_model, worker_effort=w_effort)
                 self._send(200 if ok else 409, {"ok": True} if ok else {"error": "busy"})
-            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/discover_models", "/api/open", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender", "/api/lessons", "/api/skills"):
+            elif u.path in ("/api/settings", "/api/test", "/api/quit", "/api/advisor_test", "/api/discover_models", "/api/open", "/api/scene_video", "/api/pick_folder", "/api/project", "/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender", "/api/lessons", "/api/skills"):
                 if not sess.local:
                     return self._send(403, {"error": "settings and quit are only available when the chat is bound to this computer (no --allow-remote)"})
+                if u.path == "/api/scene_video":
+                    return self._send(*sess.render_scene_video())
                 if u.path == "/api/quit":
                     sess.quit = True; self._send(200, {"ok": True}); return
                 if u.path in ("/api/reveal", "/api/open_file", "/api/open_cad", "/api/open_blender"):
